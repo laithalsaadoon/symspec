@@ -595,3 +595,141 @@ describe('AC-3-6: the near-duplicate repair, followed verbatim, surfaces the con
     )
   })
 })
+
+/**
+ * Round 2 of the same claim, on the two shapes the first fix missed. Each case drives the
+ * pipeline, takes the demotion's FIRST repair command, applies it with the real `glossary` op,
+ * and re-checks. The assertion is the outcome an agent acts on: the conflicts the document
+ * contains are reported as FND_CONTRADICTION errors afterwards, so `check` exits 1 rather than
+ * certifying.
+ */
+describe('AC-3-6: the first repair command keeps every conflict visible', () => {
+  const TS = '2026-01-01T00:00:00.000Z'
+  const PRESS = 'the passenger presses the door button'
+  const DEPART = 'the train departs'
+  const req = (id: string, trigger: string, systemResponse: string, negated = false) => ({
+    id,
+    patternType: 'event-driven' as const,
+    systemName: 'door controller',
+    systemResponse,
+    trigger,
+    negated,
+    sentence: `When ${trigger}, the door controller shall ${negated ? 'not ' : ''}${systemResponse}.`,
+    priority: 'medium' as const,
+    status: 'draft' as const,
+    createdAt: TS,
+    updatedAt: TS,
+    derives: [],
+    satisfies: [],
+    verifies: [],
+    refines: [],
+  })
+  const docOf = (
+    reqs: readonly ReturnType<typeof req>[],
+    glossary: readonly { canonical: string; aliases: string[] }[] = [],
+  ): RequirementsDocument =>
+    ({
+      requirements: Object.fromEntries(reqs.map((r) => [r.id, r])),
+      glossary,
+      antonyms: [{ a: 'open', b: 'close' }],
+      waivers: [],
+      terms: [],
+      stateModel: { variables: [] },
+    }) as never
+  /** Door phrasings share a vector (the real model scores these pairs 0.76); the rest are apart. */
+  const embedder = (): Embedder => async (texts) =>
+    texts.map((t) => {
+      const v = new Float32Array(8)
+      v[/\bdoors?\b/.test(t) ? 0 : t === 'sound the chime' ? 1 : 2] = 1
+      return v
+    })
+  const check = (doc: RequirementsDocument) =>
+    runCheck(doc as never, { semantic: { embedder: embedder() } })
+  const contradictions = (report: Awaited<ReturnType<typeof runCheck>>) =>
+    report.findings
+      .filter((f) => f.code === 'FND_CONTRADICTION' && f.severity === 'error')
+      .map((f) => [...f.requirementIds].sort())
+      .sort()
+  /** Apply the demotion's first repair command, which must be a glossary merge. */
+  const followFirst = (doc: RequirementsDocument, demotion: CoverageDemotion, findings: never) => {
+    const repair = repairForDemotion(demotion, { ...CONTEXT, findings })
+    const first = repair.commands[0] ?? ''
+    const merge = /^symspec glossary "([^"]+)" "([^"]+)"$/.exec(first)
+    expect(merge, `first command is a glossary merge: ${first}`).not.toBeNull()
+    const [, canonical, alias] = merge as RegExpExecArray
+    const applied = applyOp(
+      doc,
+      { op: 'glossary', canonical: canonical as string, alias: alias as string },
+      TS,
+    )
+    if (!('document' in applied)) throw new Error(`glossary op failed: ${JSON.stringify(applied)}`)
+    return { document: applied.document, canonical: canonical as string, alias: alias as string }
+  }
+
+  it('a response that bakes in "not" gets a merge keyed on the text the solver reads', async () => {
+    // `toEncodable` strips the leading "not " and reads it as negation, so the solver puts R2
+    // on `close_the_doors` at positive polarity and R1 on `close_the_door` negated.
+    const doc = () =>
+      docOf([
+        req('R1', PRESS, 'open the door'),
+        req('R2', PRESS, 'not open the doors'),
+        req('R3', PRESS, 'sound the chime'),
+      ])
+    const before = await check(doc())
+    const demotions = before.coverage.demotions.filter(
+      (d) => d.reason === 'opposite-polarity-near-duplicate',
+    )
+    expect(demotions.map((d) => d.requirementIds)).toEqual([['R1', 'R2']])
+    expect(before.verified).toBe(false)
+
+    const { document, alias } = followFirst(
+      doc(),
+      demotions[0] as CoverageDemotion,
+      before.findings as never,
+    )
+    // The alias is the text the glossary lookup sees, never the stored "not …" prefix.
+    expect(alias).not.toMatch(/^not /)
+    const after = await check(document)
+    expect(contradictions(after)).toEqual([['R1', 'R2']])
+  })
+
+  it('never re-points a phrase the committed glossary already routes another phrase onto', async () => {
+    // The document commits "arm the barrier" -> "close the doors", so R3/R4 contradict. A merge
+    // that aliases "close the doors" away orphans that entry (lookup is one hop): R4 stays on
+    // `close_the_doors`, R3 moves, and the R3/R4 conflict disappears.
+    const doc = (without?: string) =>
+      docOf(
+        [
+          req('R1', PRESS, 'open the door'),
+          req('R2', PRESS, 'close the doors'),
+          req('R5', PRESS, 'sound the chime'),
+          req('R3', DEPART, 'close the doors'),
+          req('R4', DEPART, 'arm the barrier', true),
+        ].filter((r) => r.id !== without),
+        [{ canonical: 'close the doors', aliases: ['arm the barrier'] }],
+      )
+    const before = await check(doc())
+    expect(contradictions(before)).toEqual([['R3', 'R4']])
+    const demotions = before.coverage.demotions.filter(
+      (d) => d.reason === 'opposite-polarity-near-duplicate',
+    )
+    expect(demotions.length).toBeGreaterThan(0)
+
+    for (const demotion of demotions) {
+      const { document, canonical, alias } = followFirst(doc(), demotion, before.findings as never)
+      const after = await check(document)
+      // Both conflicts the document contains, R1/R2 included, and the committed one kept.
+      expect(contradictions(after), `after glossary "${canonical}" "${alias}"`).toEqual([
+        ['R1', 'R2'],
+        ['R3', 'R4'],
+      ])
+      // The verifier's step 3: resolve R1/R2 by deleting R1. R3/R4 must still be caught.
+      const { R1: _dropped, ...rest } = (document as { requirements: Record<string, unknown> })
+        .requirements
+      const resolved = await check({ ...document, requirements: rest } as never)
+      expect(contradictions(resolved)).toEqual([['R3', 'R4']])
+    }
+    // Control: with R1 deleted and no merge, the committed glossary still catches R3/R4.
+    expect(contradictions(await check(doc('R1')))).toEqual([['R3', 'R4']])
+  })
+})

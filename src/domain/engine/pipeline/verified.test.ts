@@ -698,6 +698,84 @@ describe('AC-3-6: the proposed merge never aliases a phrase to its own opposite'
   })
 })
 
+/**
+ * A glossary entry is global and its lookup is one hop, so a merge that is right for the pair
+ * can still break a unification the document already has. The finder refuses such a candidate
+ * and falls through to one that moves nothing else: the pair's number difference written in
+ * the other requirement's own words.
+ */
+describe('AC-3-6: the proposed merge never splits an atom the document already shares', () => {
+  const DEPART = 'the train departs'
+  const withGlossary = (
+    doc: ReturnType<typeof docOf>,
+    glossary: { canonical: string; aliases: string[] }[],
+  ) => ({ ...(doc as object), glossary }) as never
+  const doors = (extra: ReqSpec[] = []) =>
+    docOf([
+      { id: P1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door' },
+      { id: P2, systemName: 'door controller', trigger: PRESS, systemResponse: 'close the doors' },
+      ...extra,
+    ])
+  const embedder = () => tableEmbedder([['open the door', 'close the doors']])
+  const messageOf = (report: Awaited<ReturnType<typeof runCheck>>) =>
+    report.findings.find(
+      (f) => f.code === 'FND_SIMILAR_SEMANTIC' && f.requirementIds.join('|') === `${P1}|${P2}`,
+    )?.message ?? ''
+  const contradictions = (report: Awaited<ReturnType<typeof runCheck>>) =>
+    report.findings
+      .filter((f) => f.code === 'FND_CONTRADICTION')
+      .map((f) => [...f.requirementIds].sort().join('|'))
+      .sort()
+
+  it('refuses to alias a committed canonical, even one no requirement routes onto', async () => {
+    // "seal the portal" -> "close the doors" is committed; aliasing "close the doors" away would
+    // orphan it for every requirement written that way later.
+    const glossary = [{ canonical: 'close the doors', aliases: ['seal the portal'] }]
+    const report = await runCheck(withGlossary(doors(), glossary), {
+      semantic: { embedder: embedder() },
+    })
+    const message = messageOf(report)
+    expect(message).not.toContain('"close the door" "close the doors"')
+    expect(message).toContain('`symspec glossary add "open the doors" "open the door"`')
+    const after = await runCheck(
+      withGlossary(doors(), [
+        ...glossary,
+        { canonical: 'open the doors', aliases: ['open the door'] },
+      ]),
+      { semantic: { embedder: embedder() } },
+    )
+    expect(contradictions(after)).toEqual([`${P1}|${P2}`])
+  })
+
+  it('refuses to move a phrase an inflection already shares an atom with', async () => {
+    // "closes the doors" de-inflects onto `close_the_doors`, the atom P2 is on, and conflicts
+    // there with "open the doors". Aliasing "close the doors" away would move P2 alone.
+    const P3 = 'para-3-closes-doors'
+    const P4 = 'para-4-open-doors'
+    const extra: ReqSpec[] = [
+      {
+        id: P3,
+        systemName: 'door controller',
+        trigger: DEPART,
+        systemResponse: 'closes the doors',
+      },
+      { id: P4, systemName: 'door controller', trigger: DEPART, systemResponse: 'open the doors' },
+    ]
+    const report = await runCheck(doors(extra), { semantic: { embedder: embedder() } })
+    expect(contradictions(report)).toEqual([`${P3}|${P4}`])
+    const message = messageOf(report)
+    expect(message).not.toContain('"close the door" "close the doors"')
+    expect(message).toContain('`symspec glossary add "open the doors" "open the door"`')
+  })
+
+  it('a variant pair carries no antonym hint: it already sits at opposite polarity', async () => {
+    const report = await runCheck(doors(), { semantic: { embedder: embedder() } })
+    const message = messageOf(report)
+    expect(message).toContain('DEMOTES')
+    expect(message).not.toContain('symspec antonym')
+  })
+})
+
 describe('differsOnlyByInflection', () => {
   it.each([
     ['open the door', 'open the doors', true],

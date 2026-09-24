@@ -41,7 +41,8 @@ export interface SimilarSemanticFinding {
   readonly oppositePolarityVariant: boolean
   /**
    * The glossary merge the message proposes, or undefined when it withholds one. Chosen by
-   * {@link suggestMerge}: never a merge that aliases a phrase to its own opposite, so for an
+   * {@link suggestMerge}: never a merge that aliases a phrase to its own opposite or splits an
+   * atom the document already shares, so for an
    * {@link oppositePolarityVariant} pair a merge, when present, lands the two on ONE atom at
    * opposite polarity.
    */
@@ -50,7 +51,7 @@ export interface SimilarSemanticFinding {
 }
 
 /** A `symspec glossary add <canonical> <alias>` proposal: `alias` is rewritten to `canonical`. */
-interface GlossaryMerge {
+export interface GlossaryMerge {
   readonly canonical: string
   readonly alias: string
 }
@@ -91,6 +92,17 @@ export interface FindSimilarSemanticOptions {
    * polarity, and a pair the solver already unified is proposed as a merge.
    */
   atomize?: Atomize
+  /**
+   * The caller's whole-document check on a candidate merge: true when committing `merge` puts
+   * the two requirements of `pair` on one response atom AND leaves every unification the
+   * document already has intact (no two slots that share an atom today end up on different
+   * atoms, or at a different relative polarity). Lookup is one hop, so aliasing a phrase that
+   * the committed glossary, a term, an antonym flip or an inflection already routes another
+   * phrase onto moves that phrase alone, and a conflict the shared atom carried disappears.
+   * Only the caller holds every slot of every requirement, so only the caller can answer.
+   * Omitted: a candidate is checked against the pair alone.
+   */
+  admitsMerge?: (merge: GlossaryMerge, pair: readonly [string, string]) => boolean
 }
 
 /**
@@ -231,26 +243,63 @@ function areContraryPhrases(
 }
 
 /**
- * The glossary merge to propose for a high-cosine pair, or undefined when every candidate
- * would alias a phrase to its own opposite ({@link areContraryPhrases}).
+ * `raw` with the tokens where `from` and `to` differ replaced by `to`'s: the other
+ * requirement's inflection or number, written in this requirement's own words. "open the door"
+ * with `close_the_door` -> `close_the_doors` is "open the doors". Undefined when the three do not
+ * align token for token (a multiword antonym head, a dropped preposition), since then no
+ * position maps across.
+ */
+function transportInflection(raw: string, from: string, to: string): string | undefined {
+  const r = normalize(raw).split('_')
+  const f = from.split('_')
+  const t = to.split('_')
+  if (r.length !== f.length || f.length !== t.length) return undefined
+  return r.map((token, i) => (f[i] === t[i] ? token : (t[i] as string))).join(' ')
+}
+
+/**
+ * The glossary merge to propose for a high-cosine pair, or undefined when no candidate survives.
  *
- * The candidates, in order: the two raw responses (the author's own wording), then each
- * requirement's raw response aliased to the OTHER's canonical body. The second form is the
- * one an antonym flip needs: "open the door" / "close the doors" are contraries as phrases,
- * but their canonical bodies `close_the_door` / `close_the_doors` differ only in number, so
- * the right merge is "close the doors" -> "close the door". A body candidate must re-atomize
- * onto its owner's atom, or the merge it names would not unify anything.
+ * The candidates, in order: the two raw responses (the author's own wording); each raw response
+ * aliased to the OTHER requirement's canonical body; each raw response aliased to itself with
+ * the other's inflection transported in ({@link transportInflection}). The later forms are the
+ * ones an antonym flip needs: "open the door" / "close the doors" are contraries as phrases, but
+ * their canonical bodies `close_the_door` / `close_the_doors` differ only in number, so the
+ * merge is "close the doors" -> "close the door", or "open the door" -> "open the doors".
  *
- * The alias is always a requirement's RAW response, because a glossary entry is keyed on the
- * author's wording (it runs before term and antonym rewriting).
+ * A candidate is refused when:
+ * - its two phrases are contraries ({@link areContraryPhrases}): a glossary entry declares
+ *   synonyms, so it would alias a phrase to its own opposite and erase the flip;
+ * - the canonical does not re-atomize onto its owner's atom, so the merge would unify nothing;
+ * - the committed glossary already uses either phrase in a way the `glossary` op refuses or the
+ *   entry would break: the alias is already an alias (of anything) or already a canonical (its
+ *   own aliases would be orphaned, since lookup is one hop), or the canonical is itself an alias;
+ * - the caller's {@link FindSimilarSemanticOptions.admitsMerge} rejects it.
+ *
+ * The alias is always a requirement's response as the solver reads it, because a glossary entry
+ * is keyed on the author's wording (it runs before term and antonym rewriting).
  */
 function suggestMerge(
   a: SemanticRequirement,
   b: SemanticRequirement,
   atomA: ResponseAtom,
   atomB: ResponseAtom,
-  options: { readonly glossary?: ReadonlyMap<string, string>; readonly atomize?: Atomize },
+  options: {
+    readonly glossary?: ReadonlyMap<string, string>
+    readonly atomize?: Atomize
+    readonly admitsMerge?: FindSimilarSemanticOptions['admitsMerge']
+  },
 ): GlossaryMerge | undefined {
+  const toward = (
+    self: SemanticRequirement,
+    atomSelf: ResponseAtom,
+    atomOther: ResponseAtom,
+  ): string | undefined =>
+    atomSelf.body !== undefined && atomOther.body !== undefined
+      ? transportInflection(self.systemResponse, atomSelf.body, atomOther.body)
+      : undefined
+  const intoB = toward(a, atomA, atomB)
+  const intoA = toward(b, atomB, atomA)
   const candidates: { merge: GlossaryMerge; owner: ResponseAtom }[] = [
     { merge: { canonical: a.systemResponse, alias: b.systemResponse }, owner: atomA },
     ...(atomA.body !== undefined
@@ -259,16 +308,29 @@ function suggestMerge(
     ...(atomB.body !== undefined
       ? [{ merge: { canonical: phraseOf(atomB.body), alias: a.systemResponse }, owner: atomB }]
       : []),
+    ...(intoA !== undefined
+      ? [{ merge: { canonical: intoA, alias: b.systemResponse }, owner: atomA }]
+      : []),
+    ...(intoB !== undefined
+      ? [{ merge: { canonical: intoB, alias: a.systemResponse }, owner: atomB }]
+      : []),
   ]
+  const committed = options.glossary
+  const canonicals = new Set(committed?.values() ?? [])
   for (const { merge, owner } of candidates) {
+    const canonicalKey = normalize(merge.canonical)
+    const aliasKey = normalize(merge.alias)
     // A glossary entry needs two different keys (`glossary add` refuses one that is not).
-    if (normalize(merge.canonical) === normalize(merge.alias)) continue
+    if (canonicalKey === aliasKey) continue
     if (areContraryPhrases(merge.canonical, merge.alias, a.systemName, options)) continue
     const lands = responseAtom(
       { id: '', systemName: a.systemName, systemResponse: merge.canonical },
       options,
     )
     if (lands.name !== owner.name) continue
+    if (committed?.has(aliasKey) === true || canonicals.has(aliasKey)) continue
+    if (committed?.has(canonicalKey) === true) continue
+    if (options.admitsMerge?.(merge, [a.id, b.id]) === false) continue
     return merge
   }
   return undefined
@@ -336,8 +398,17 @@ export async function findSimilarSemantic(
         a.trigger !== undefined &&
         b.trigger !== undefined &&
         normalize(a.trigger) === normalize(b.trigger)
+      // AC-3-6 variant pairs are decided below, before the hint: they already sit at opposite
+      // polarity over one set of words, so an antonym link has nothing to add. Offering one
+      // hands an agent a command that commits a pair the table already holds, or none at all.
+      const [wordsA, wordsB] =
+        atomA.body !== undefined && atomB.body !== undefined
+          ? [atomA.body, atomB.body]
+          : [a.systemResponse, b.systemResponse]
+      const oppositePolarityVariant =
+        atomA.negated !== atomB.negated && differsOnlyByInflection(wordsA, wordsB)
       let antonymHint = ''
-      if (sameTrigger) {
+      if (sameTrigger && !oppositePolarityVariant) {
         const [headA] = fuseNegatingPrefix(normalize(a.systemResponse))
         const [headB] = fuseNegatingPrefix(normalize(b.systemResponse))
         antonymHint =
@@ -354,25 +425,23 @@ export async function findSimilarSemantic(
       // an antonym flip rewrites the head ("open the door" is `close_the_door` at negated
       // polarity), so the raw strings "open the door"/"close the doors" differ in a word the
       // solver itself treats as one, and a raw-text test would never match that pair. Raw
-      // text is the fallback only for an atomizer that reports no canonical body.
-      const [wordsA, wordsB] =
-        atomA.body !== undefined && atomB.body !== undefined
-          ? [atomA.body, atomB.body]
-          : [a.systemResponse, b.systemResponse]
-      const oppositePolarityVariant =
-        atomA.negated !== atomB.negated && differsOnlyByInflection(wordsA, wordsB)
+      // text is the fallback only for an atomizer that reports no canonical body. (Computed
+      // above, before the antonym hint it suppresses.)
       const waiver = `\`symspec waive add FND_SIMILAR_SEMANTIC --ref ${hi} --reason "…"\``
-      // The merge is chosen in the same canonical space as the test above, and never aliases a
-      // phrase to its own opposite; when no candidate survives, the message withholds it.
+      // The merge is chosen in the same canonical space as the test above, never aliases a
+      // phrase to its own opposite, and never breaks a unification the document already has;
+      // when no candidate survives, the message withholds it.
       const merge = suggestMerge(a, b, atomA, atomB, options)
       const mergeAdvice =
         merge !== undefined
           ? ` If they mean the same thing, run \`symspec glossary add "${merge.canonical}" ` +
             `"${merge.alias}"\` so the formal tier treats them as one atom, then re-run ` +
             '`symspec check` to surface any conflict the shared atom exposes.'
-          : ' No glossary merge is proposed: aliasing either phrasing to the other would alias a ' +
-            'phrase to its own opposite under the committed antonyms, which erases the flip. If ' +
-            'they mean the same thing, rewrite one to use the same words as the other.'
+          : ' No glossary merge is proposed: every merge of these phrasings either aliases a ' +
+            'phrase to its own opposite under the committed antonyms (which erases the flip) or ' +
+            're-points a phrase the committed vocabulary already unifies with another (which ' +
+            'splits that atom). If they mean the same thing, rewrite one to use the same words ' +
+            'as the other.'
       const variantNote = oppositePolarityVariant
         ? ` These two differ only in inflection or number and sit at OPPOSITE polarity, so if ` +
           'they mean the same thing they contradict each other — this DEMOTES `verified` until ' +

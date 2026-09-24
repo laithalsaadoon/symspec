@@ -115,7 +115,11 @@ import { extractNumericPredicates } from '../formal/numeric.ts'
 import { findNumericContradictions } from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
 import { findRelationalUnchecked } from '../formal/relational.ts'
-import { findOppositionCandidates, findSimilarSemantic } from '../formal/semantic.ts'
+import {
+  findOppositionCandidates,
+  findSimilarSemantic,
+  type GlossaryMerge,
+} from '../formal/semantic.ts'
 import { findSimilarUnunified } from '../formal/similar.ts'
 import { checkSubsumption } from '../formal/subsumption.ts'
 import { findTemporalContradictions } from '../formal/temporal.ts'
@@ -390,8 +394,8 @@ export interface CoverageDemotion {
     // doors"). If they mean one thing it is a contradiction on two atoms the solver
     // cannot see. Discharged by the glossary merge the finding proposes (it lands both on one
     // atom at opposite polarity; it is withheld when every merge would alias a phrase to its
-    // own opposite, and a rewrite is the route instead) or by waiving the finding (declared
-    // distinct) — the finding is the triage record.
+    // own opposite or split an atom the document already shares, and a rewrite is the route
+    // instead) or by waiving the finding (declared distinct) — the finding is the triage record.
     | 'opposite-polarity-near-duplicate'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
@@ -789,6 +793,55 @@ function pipelineAtomize(doc: Doc): Atomize {
 }
 
 /**
+ * AC-3-6: the whole-document admission test for a glossary merge the semantic tier proposes
+ * ({@link FindSimilarSemanticOptions.admitsMerge}). The semantic finder sees one pair; a
+ * glossary entry is global, so only here can a candidate be tried against every slot.
+ *
+ * Every slot of every requirement (`reqs`, not the gate-included subset: an entry rewrites
+ * all of them) is atomized twice through {@link pipelineAtomize}, once as committed and once
+ * with the candidate entry added. The merge is admitted when the pair's two responses land on
+ * one atom AND the old partition survives: every set of slots that shares an atom today still
+ * shares one, at the same relative polarity. The second half is the one a pair-local check
+ * cannot see. Lookup is one hop, so aliasing "close the doors" away while the glossary routes
+ * "arm the barrier" onto it moves "close the doors" alone; so does an inflection ("closes the
+ * doors"), a term, or an antonym flip ("open the doors") that shares its atom. Any conflict the
+ * shared atom carried is then gone, and a later `check` certifies over it.
+ */
+function glossaryMergeAdmission(
+  doc: Doc,
+  reqs: readonly EncodableRequirement[],
+): (merge: GlossaryMerge, pair: readonly [string, string]) => boolean {
+  const slotsUnder = (atomize: Atomize) => {
+    const slots = new Map<string, { atom: string; negated: boolean }>()
+    for (const r of reqs) {
+      for (const row of encode(r, atomize).atoms) {
+        slots.set(`${r.id}|${row.kind}`, { atom: row.atom, negated: row.negated })
+      }
+    }
+    return slots
+  }
+  const now = slotsUnder(pipelineAtomize(doc))
+  return (merge, [a, b]) => {
+    const glossary = [...doc.glossary, { canonical: merge.canonical, aliases: [merge.alias] }]
+    const merged = slotsUnder(pipelineAtomize({ ...doc, glossary }))
+    const ra = merged.get(`${a}|resp`)
+    const rb = merged.get(`${b}|resp`)
+    if (ra === undefined || rb === undefined || ra.atom !== rb.atom) return false
+    // old atom -> the one new atom its slots all move to, and whether they flip polarity.
+    const movesTo = new Map<string, string>()
+    for (const [slot, before] of now) {
+      const after = merged.get(slot)
+      if (after === undefined) return false
+      const move = `${after.atom}|${after.negated !== before.negated}`
+      const seen = movesTo.get(before.atom)
+      if (seen === undefined) movesTo.set(before.atom, move)
+      else if (seen !== move) return false
+    }
+    return true
+  }
+}
+
+/**
  * Encode the AC-3-7-INCLUDED requirements into the same guarded-implication
  * {@link EncodedRequirement} set the in-process formal tier asserts. Reuses the pipeline's own
  * gate + `toEncodable` + {@link pipelineAtomize} so the encoding is the one `check` evaluates
@@ -1112,8 +1165,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   const tierUnknowns: { tier: string; requirementIds: string[] }[] = []
   // AC-3-6: the FND_SIMILAR_SEMANTIC pairs that are opposite-polarity inflection variants,
   // keyed `lo|hi`, each mapped to whether its finding proposes a glossary merge (it withholds
-  // one that would alias a phrase to its own opposite). The demotion reads the KEPT findings,
-  // so a waiver discharges it.
+  // one that would alias a phrase to its own opposite or split a shared atom). The demotion
+  // reads the KEPT findings, so a waiver discharges it.
   const oppositeVariantPairs = new Map<string, boolean>()
 
   const report = await runSolvers(doc, {
@@ -1419,9 +1472,14 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // already unify. Runs over the SAME included set; never a verdict.
       const semantic =
         options.semantic !== undefined
-          ? await findSimilarSemantic(included, options.semantic.embedder, {
+          ? // The ENCODABLE rows, as every solver tier reads them: `toEncodable` strips a
+            // stored leading "not " into polarity, so a raw row would put "not open the doors"
+            // on its own positive atom, miss the AC-3-6 variant, and key a merge on text the
+            // glossary lookup never sees.
+            await findSimilarSemantic(encodable, options.semantic.embedder, {
               glossary: glossaryIndex(doc.glossary),
               atomize: pipelineAtomize(doc),
+              admitsMerge: glossaryMergeAdmission(doc, reqs.map(toEncodable)),
               ...(options.semantic.threshold !== undefined
                 ? { threshold: options.semantic.threshold }
                 : {}),
@@ -1870,7 +1928,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
               'compares like any other pair. '
             : "If they are the same, rewrite one to use the other's words: no glossary merge is " +
               'offered, because every merge of these phrasings aliases a phrase to its own ' +
-              'opposite. ') +
+              'opposite or splits an atom the document already shares. ') +
           'If they are genuinely distinct, waive FND_SIMILAR_SEMANTIC for the pair. Then re-run ' +
           '`symspec check`.',
       })
