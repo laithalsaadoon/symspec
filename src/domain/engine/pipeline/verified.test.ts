@@ -589,6 +589,59 @@ describe('AC-3-6: opposite polarity, same words up to inflection or number', () 
   })
 })
 
+/**
+ * The inflection test reads the CANONICAL response bodies, not the raw text: the polarity
+ * half is read off the atoms (so an antonym flip counts), and the words half has to live in
+ * the same space or a flipped head never matches its partner's surface verb.
+ */
+describe('AC-3-6: the inflection test runs in the atomizer canonical space', () => {
+  const antonymDoc = (second: string, negated: boolean, antonyms: readonly object[] = []) => {
+    const doc = docOf([
+      { id: P1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door' },
+      { id: P2, systemName: 'door controller', trigger: PRESS, systemResponse: second, negated },
+    ]) as unknown as { antonyms: unknown[] }
+    doc.antonyms = [...antonyms]
+    return doc as never
+  }
+  const pairEmbedder = (second: string) => tableEmbedder([['open the door', second]])
+
+  it('demotes on a SEED-antonym-flipped variant ("open the door" / "close the doors")', async () => {
+    const report = await runCheck(antonymDoc('close the doors', false), {
+      semantic: { embedder: pairEmbedder('close the doors') },
+    })
+    expect(report.findings.map((f) => f.code)).toContain('FND_SIMILAR_SEMANTIC')
+    expect(report.findings.map((f) => f.code)).not.toContain('FND_CONTRADICTION')
+    expect(nearDuplicate(report).map((d) => d.requirementIds)).toEqual([[P1, P2]])
+    expect(report.verified).toBe(false)
+  })
+
+  it('demotes on a DOC-committed-antonym-flipped variant ("open the door" / "shut the doors")', async () => {
+    const report = await runCheck(antonymDoc('shut the doors', false, [{ a: 'open', b: 'shut' }]), {
+      semantic: { embedder: pairEmbedder('shut the doors') },
+    })
+    expect(report.findings.map((f) => f.code)).toContain('FND_SIMILAR_SEMANTIC')
+    expect(nearDuplicate(report).map((d) => d.requirementIds)).toEqual([[P1, P2]])
+    expect(report.verified).toBe(false)
+  })
+
+  it('control: an antonym flip that lands on the SAME polarity does not demote', async () => {
+    // "shall not close the doors" is "open the doors" once the flip composes with the
+    // negation: same side as "open the door", so nothing contradicts.
+    const report = await runCheck(antonymDoc('close the doors', true), {
+      semantic: { embedder: pairEmbedder('close the doors') },
+    })
+    expect(report.findings.map((f) => f.code)).toContain('FND_SIMILAR_SEMANTIC')
+    expect(nearDuplicate(report)).toEqual([])
+  })
+
+  it('control: without the committed pair, "shut" is just another verb', async () => {
+    const report = await runCheck(antonymDoc('shut the doors', false), {
+      semantic: { embedder: pairEmbedder('shut the doors') },
+    })
+    expect(nearDuplicate(report)).toEqual([])
+  })
+})
+
 describe('differsOnlyByInflection', () => {
   it.each([
     ['open the door', 'open the doors', true],

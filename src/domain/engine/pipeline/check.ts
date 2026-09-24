@@ -1417,6 +1417,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         options.semantic !== undefined
           ? await findSimilarSemantic(included, options.semantic.embedder, {
               glossary: glossaryIndex(doc.glossary),
+              atomize: pipelineAtomize(doc),
               ...(options.semantic.threshold !== undefined
                 ? { threshold: options.semantic.threshold }
                 : {}),

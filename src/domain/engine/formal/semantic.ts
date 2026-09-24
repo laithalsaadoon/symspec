@@ -18,7 +18,7 @@
  */
 
 import { ANTONYM_INDEX, type AntonymEntry } from './antonyms.ts'
-import { type Atom, atomize, deInflectHead, normalize } from './atomize.ts'
+import { type Atomize, atomize, deInflectHead, normalize } from './atomize.ts'
 import type { Embedder } from './embed.ts'
 
 /** An info-severity semantic-similarity finding (Appendix B `FND_SIMILAR_SEMANTIC`). */
@@ -69,6 +69,14 @@ export interface FindSimilarSemanticOptions {
   threshold?: number
   /** Glossary index (AC-9-2): pairs that already unify through it are skipped. */
   glossary?: ReadonlyMap<string, string>
+  /**
+   * The document's own atomizer — the SAME closure the solver tiers get, so the committed
+   * glossary, antonym table and terms all apply. Supersedes {@link glossary} when given.
+   * Without it the finder atomizes against the glossary and the SEED antonym table only,
+   * which misses a doc-committed opposite (open/shut): the pair reads at the wrong
+   * polarity, and a pair the solver already unified is proposed as a merge.
+   */
+  atomize?: Atomize
 }
 
 /**
@@ -118,15 +126,38 @@ export interface FindSimilarSemanticOptions {
  */
 export const DEFAULT_SEMANTIC_THRESHOLD = 0.72
 
-/** The scoped RESPONSE atom for a requirement, consulting the glossary (AC-9-2). */
-function responseAtom(req: SemanticRequirement, glossary?: ReadonlyMap<string, string>): Atom {
-  return atomize({
+/**
+ * A response atom as this module reads it: name, polarity, and the canonical body — the
+ * slot text after glossary, terms and antonym rewriting. `body` is undefined only when an
+ * injected atomizer returns no structured ref (a hand-written test double); the name is
+ * never parsed for it.
+ */
+interface ResponseAtom {
+  readonly name: string
+  readonly negated: boolean
+  readonly body: string | undefined
+}
+
+/**
+ * The scoped RESPONSE atom for a requirement: through the document's atomizer when the
+ * caller supplied one, else the glossary (AC-9-2) over the seed antonym table.
+ */
+function responseAtom(
+  req: SemanticRequirement,
+  options: { readonly glossary?: ReadonlyMap<string, string>; readonly atomize?: Atomize },
+): ResponseAtom {
+  if (options.atomize !== undefined) {
+    const lit = options.atomize('resp', req.systemResponse, req.systemName, req.negated ?? false)
+    return { name: lit.atom, negated: lit.negated, body: lit.ref?.body }
+  }
+  const atom = atomize({
     kind: 'resp',
     text: req.systemResponse,
     systemName: req.systemName,
     ...(req.negated !== undefined ? { negated: req.negated } : {}),
-    ...(glossary !== undefined ? { glossary } : {}),
+    ...(options.glossary !== undefined ? { glossary: options.glossary } : {}),
   })
+  return { name: atom.name, negated: atom.negated, body: atom.ref.body }
 }
 
 const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
@@ -194,8 +225,8 @@ export async function findSimilarSemantic(
       if (a.systemName !== b.systemName) continue
 
       // Skip pairs already unified by atomize (glossary/antonym/identical).
-      const atomA = responseAtom(a, options.glossary)
-      const atomB = responseAtom(b, options.glossary)
+      const atomA = responseAtom(a, options)
+      const atomB = responseAtom(b, options)
       if (atomA.name === atomB.name) continue
 
       const key = pairKey(a.id, b.id)
@@ -235,11 +266,18 @@ export async function findSimilarSemantic(
               'synonyms, register an antonym instead (see `symspec antonym add`).'
       }
 
-      // AC-3-6: opposite polarity (read off the atoms, so an antonym-flipped response
-      // counts) over the same words up to inflection/number.
+      // AC-3-6: opposite polarity over the same words up to inflection/number, BOTH halves
+      // read off the atoms. The words half compares the canonical bodies, not the raw text:
+      // an antonym flip rewrites the head ("open the door" is `close_the_door` at negated
+      // polarity), so the raw strings "open the door"/"close the doors" differ in a word the
+      // solver itself treats as one, and a raw-text test would never match that pair. Raw
+      // text is the fallback only for an atomizer that reports no canonical body.
+      const [wordsA, wordsB] =
+        atomA.body !== undefined && atomB.body !== undefined
+          ? [atomA.body, atomB.body]
+          : [a.systemResponse, b.systemResponse]
       const oppositePolarityVariant =
-        atomA.negated !== atomB.negated &&
-        differsOnlyByInflection(a.systemResponse, b.systemResponse)
+        atomA.negated !== atomB.negated && differsOnlyByInflection(wordsA, wordsB)
       const variantNote = oppositePolarityVariant
         ? ` These two differ only in inflection or number and sit at OPPOSITE polarity, so if ` +
           'they mean the same thing they contradict each other — this DEMOTES `verified` until ' +
@@ -380,8 +418,12 @@ export async function findOppositionCandidates(
       if (a.systemName !== b.systemName) continue
 
       // Already unified (glossary/antonym/identical) ⇒ not a candidate.
-      const atomA = responseAtom(a, options.glossary)
-      const atomB = responseAtom(b, options.glossary)
+      const atomA = responseAtom(a, {
+        ...(options.glossary !== undefined ? { glossary: options.glossary } : {}),
+      })
+      const atomB = responseAtom(b, {
+        ...(options.glossary !== undefined ? { glossary: options.glossary } : {}),
+      })
       if (atomA.name === atomB.name) continue
 
       // Structural opposition shape: same object remainder, different verb head.
