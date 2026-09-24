@@ -280,6 +280,20 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
         ],
       }
 
+    case 'conditional-conflict-unchecked':
+      // Two requirements demand opposite things of one response under guards the solver
+      // never asserted together. NO OPS: whether the guards can co-occur is a fact about
+      // the domain, and any edit that resolves it (or declares them exclusive) changes what
+      // a requirement MEANS — a judgment no run can make. The commands are the reads an
+      // agent needs to make it: both requirements, then the re-check.
+      return {
+        ops: [],
+        commands: [
+          ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
+          `symspec check ${context.docPath}`,
+        ],
+      }
+
     case 'no-decide-tier-comparison':
       // No two requirements shared an atom. The mechanical lever is a glossary or
       // antonym link — but WHICH terms to link is a judgment about the document's

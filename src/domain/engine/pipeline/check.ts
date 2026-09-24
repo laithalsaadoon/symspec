@@ -88,6 +88,8 @@ import {
   type CheckedContextGroup,
   contextAtomsOf,
   type GroupSolverCheck,
+  liveIn,
+  planGroups,
 } from '../formal/contradiction.ts'
 import {
   excludedFromFormalFinding,
@@ -292,9 +294,9 @@ export interface ResidualRisk {
    */
   unmatchedAtoms: number
   /**
-   * How many gate-included requirements share NO atom with any other included
-   * requirement — vocabulary-disjoint islands the decide tier never actually
-   * constrained against a peer. Mirrors `coverage.requirements[].participates`
+   * How many gate-included requirements the decide tier never actually
+   * constrained against a peer — never co-live, in a decided context group, with a
+   * requirement they share an atom with (AC-3-1). Mirrors `coverage.requirements[].participates`
    * for one-glance reading; any nonzero count demotes {@link CheckReport.verified}.
    */
   uncoveredRequirements: number
@@ -304,10 +306,13 @@ export interface ResidualRisk {
 export interface CoverageRequirementRow {
   id: string
   /**
-   * True when this requirement shares ≥1 atom with ≥1 OTHER gate-included
-   * requirement — i.e. the SMT conjunction genuinely constrained it against a
-   * peer. A non-participating requirement was never cross-compared, so its
-   * conflicts are invisible no matter what the rest of the document proves.
+   * True when this requirement was CO-LIVE with ≥1 other gate-included requirement it
+   * shares an atom with, in a context group the contradiction solver decided — i.e. the
+   * SMT conjunction genuinely asserted the two obligations together (AC-3-1) — or when a
+   * decide-tier cross-requirement finding names it. Sharing an atom alone does not count:
+   * two requirements whose guards no group asserts together were never compared, however
+   * much vocabulary they share. A non-participating requirement was never cross-compared,
+   * so its conflicts are invisible no matter what the rest of the document proves.
    */
   participates: boolean
   /** This requirement's singleton atoms (atoms no other requirement references). */
@@ -361,6 +366,12 @@ export interface CoverageDemotion {
     // happened to finish. Recorded where the `unknown` happened, never inferred from
     // another tier. Discharged by raising `--timeout-ms`; there is no finding to waive.
     | 'solver-unknown'
+    // AC-3-2: two requirements under one system constrain the same response atom at
+    // opposite polarity, and no context group makes both live — so the solver never
+    // asserted them together and never asked whether they can hold at once. The
+    // detect-and-demote bridge for a conflict whose reachability (can the two guards
+    // co-occur?) this tier cannot decide. Not waivable: there is no finding behind it.
+    | 'conditional-conflict-unchecked'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
   action: string
@@ -449,9 +460,10 @@ export interface CheckReport {
    * First-class "did the formal tier actually verify anything across
    * requirements?" flag (wishlist #5, hardened after the Run 3 adversarial
    * eval). `true` requires ALL of:
-   *   (a) PARTICIPATION — every gate-included requirement shares ≥1 atom with
-   *       another included requirement, so the SMT conjunction genuinely
-   *       constrained it against a peer. This kills the eval's winning shape:
+   *   (a) PARTICIPATION — every gate-included requirement was co-live, in a
+   *       context group the solver decided, with a peer it shares ≥1 atom with
+   *       (AC-3-1), so the SMT conjunction genuinely asserted it against that
+   *       peer. This kills the eval's winning shape:
    *       dense distractor vocabulary buying one checked pair while the
    *       conflicting pair's atoms stayed singletons;
    *   (b) NO OPEN OPPOSITION CANDIDATES — every kept `FND_OPPOSITION_CANDIDATE`
@@ -854,6 +866,144 @@ function compareFindings(a: CheckFinding, b: CheckFinding): number {
 }
 
 /**
+ * AC-3-1: the requirements the contradiction solver actually asserted TOGETHER with a
+ * peer they share an atom with — co-live ({@link liveIn}, carried as `liveIds`) in a
+ * context group whose every check was decided.
+ *
+ * Both halves are necessary. Co-liveness without a shared atom is a conjunction that
+ * constrains nothing across the pair (two unconditional rules about unrelated things),
+ * which the atom-sharing rule this replaces never counted either. A shared atom without
+ * co-liveness is the defect: the obligations were never asserted in the same solver call.
+ * An `unknown` group decided nothing, so it confers no participation (its members are
+ * disclosed by the `solver-unknown` demotion instead).
+ */
+function coLiveParticipants(
+  groups: readonly CheckedContextGroup[],
+  atomOwners: ReadonlyMap<string, ReadonlySet<string>>,
+): Set<string> {
+  const atomsOf = new Map<string, string[]>()
+  for (const [atom, owners] of atomOwners) {
+    if (owners.size < 2) continue
+    for (const id of owners) {
+      const list = atomsOf.get(id)
+      if (list === undefined) atomsOf.set(id, [atom])
+      else list.push(atom)
+    }
+  }
+  const shareAtom = (a: string, b: string): boolean =>
+    (atomsOf.get(a) ?? []).some((atom) => atomOwners.get(atom)?.has(b) === true)
+
+  const participants = new Set<string>()
+  for (const group of groups) {
+    if (group.outcome !== 'decided') continue
+    const live = group.liveIds
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i] as string
+        const b = live[j] as string
+        if (shareAtom(a, b)) {
+          participants.add(a)
+          participants.add(b)
+        }
+      }
+    }
+  }
+  return participants
+}
+
+/** One AC-3-2 pair: opposite polarity on one response atom, never co-live. */
+interface ConditionalConflict {
+  readonly a: string
+  readonly b: string
+  /** The response slot text of the lexicographically-first requirement. */
+  readonly response: string
+  /** Each requirement's guard slot texts (empty = unconditional). */
+  readonly contextA: readonly string[]
+  readonly contextB: readonly string[]
+  /** The union of both guard texts, deduplicated, in slot order. */
+  readonly union: readonly string[]
+}
+
+/** Render a requirement's guard texts for a demotion action. */
+function describeContext(context: readonly string[]): string {
+  return context.length === 0
+    ? 'unconditionally'
+    : `when ${context.map((t) => `"${t}"`).join(' and ')}`
+}
+
+/** Pair key over two requirement ids; U+0000 cannot occur in an id. */
+const pairKeyOf = (x: string, y: string): string => (x < y ? `${x}\u0000${y}` : `${y}\u0000${x}`)
+
+/**
+ * AC-3-2: every pair of included requirements that constrain the SAME response atom at
+ * OPPOSITE polarity while no planned context group makes both live.
+ *
+ * The atom name is system-scoped, so "under one system" is carried by the key. Planned
+ * groups rather than decided ones: a pair co-live in a group the solver did not decide is
+ * disclosed by `solver-unknown` (or the budget demotion when the tier never ran), and
+ * naming it here too would claim its contexts were never asserted together when they
+ * were. A pair a `FND_CONTRADICTION` already names was compared — a guard-implication
+ * bridge can make a requirement live in a group its own guard does not name — so it is
+ * excluded.
+ */
+function conditionalConflicts(
+  encoded: readonly EncodedRequirement[],
+  formal: readonly CheckFinding[],
+): ConditionalConflict[] {
+  const groups = planGroups(encoded.map(contextAtomsOf))
+  const contradicted = new Set<string>()
+  for (const f of formal) {
+    if (f.code !== 'FND_CONTRADICTION') continue
+    for (const x of f.requirementIds)
+      for (const y of f.requirementIds) if (x !== y) contradicted.add(pairKeyOf(x, y))
+  }
+
+  const byAtom = new Map<string, { enc: EncodedRequirement; negated: boolean; text: string }[]>()
+  for (const enc of encoded) {
+    for (const row of enc.atoms) {
+      if (row.kind !== 'resp') continue
+      const list = byAtom.get(row.atom) ?? []
+      list.push({ enc, negated: row.negated, text: row.slotText })
+      byAtom.set(row.atom, list)
+    }
+  }
+
+  const guardTexts = (e: EncodedRequirement): string[] =>
+    e.atoms.filter((r) => r.kind === 'pre' || r.kind === 'trig').map((r) => r.slotText)
+
+  const out = new Map<string, ConditionalConflict>()
+  for (const rows of byAtom.values()) {
+    for (const pos of rows) {
+      if (pos.negated) continue
+      for (const neg of rows) {
+        if (!neg.negated || neg.enc.id === pos.enc.id) continue
+        const key = pairKeyOf(pos.enc.id, neg.enc.id)
+        if (out.has(key) || contradicted.has(key)) continue
+        const ctxPos = contextAtomsOf(pos.enc)
+        const ctxNeg = contextAtomsOf(neg.enc)
+        if (groups.some((g) => liveIn(g, ctxPos) && liveIn(g, ctxNeg))) continue
+        const [first, second] = pos.enc.id < neg.enc.id ? [pos, neg] : [neg, pos]
+        const contextA = guardTexts(first.enc)
+        const contextB = guardTexts(second.enc)
+        out.set(key, {
+          a: first.enc.id,
+          b: second.enc.id,
+          response: first.text,
+          contextA,
+          contextB,
+          union: [...new Set([...contextA, ...contextB])],
+        })
+      }
+    }
+  }
+  return [...out.values()].sort((x, y) => {
+    if (x.a !== y.a) return x.a < y.a ? -1 : 1
+    if (x.b !== y.b) return x.b < y.b ? -1 : 1
+    return 0
+  })
+}
+
+/**
  * Run the full default `check` pipeline over a loaded document. Never touches
  * Lean (AC-5-5); never hands a gate-excluded statement to the SMT layer
  * (AC-3-7); every formal finding carries `evidence` (AC-4-6).
@@ -909,6 +1059,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   // is computed from the same roster.
   let coverageAtomOwners: ReadonlyMap<string, ReadonlySet<string>> = new Map()
   let coverageIncludedIds: readonly string[] = []
+  // AC-3-2: the encoded (included) requirements, for the opposite-polarity pair scan.
+  let coverageEncoded: readonly EncodedRequirement[] = []
 
   // AC-1-7: the ONE whole-run solver deadline every tier shares, plus its
   // truncation ledger. Constructed inside the formal runner (so the clock starts
@@ -992,6 +1144,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       }
       coverageAtomOwners = atomOwners
       coverageIncludedIds = included.map((r) => r.id)
+      coverageEncoded = encoded
 
       const includedPairs = pairs.filter((p) => includedIdSet.has(p.a) && includedIdSet.has(p.b))
 
@@ -1499,25 +1652,32 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   const inconclusive =
     report.pairsChecked === 0 && requirements.length >= 2 && !decideTierCrossReqFired
 
-  // A requirement participates when (a) it shares ≥1 atom with another
-  // included requirement (the propositional conjunction constrained it), OR
-  // (b) a decide-tier cross-requirement finding names it (the numeric/temporal
-  // tiers compare requirements the propositional atom roster cannot see).
+  // AC-3-1: a requirement participates when (a) it was CO-LIVE with a peer it shares ≥1
+  // atom with, in a context group the contradiction solver DECIDED — the only situation in
+  // which the SMT conjunction actually asserted the two obligations together — OR (b) a
+  // decide-tier cross-requirement finding names it (the numeric/temporal tiers compare
+  // requirements the propositional groups cannot see). Sharing an atom is NOT enough: two
+  // requirements under guards no group asserts together share their response atom and were
+  // still never compared, which is exactly how the canonical feature-interaction conflict
+  // earned `verified: true`.
   const decideFindingParticipants = new Set<string>()
   for (const f of formal) {
     if (f.requirementIds.length >= 2 && !PROPOSE_ONLY_FND_CODES.has(f.code)) {
       for (const id of f.requirementIds) decideFindingParticipants.add(id)
     }
   }
+  const coLive = coLiveParticipants(contradictionGroups, coverageAtomOwners)
   const coverageRows: CoverageRequirementRow[] = [...coverageIncludedIds]
     .sort()
     .map((id): CoverageRequirementRow => {
       const singletons: string[] = []
-      let shares = decideFindingParticipants.has(id)
+      const vocabularyPeers = new Set<string>()
+      const shares = decideFindingParticipants.has(id) || coLive.has(id)
       for (const [atomName, owners] of coverageAtomOwners) {
         if (!owners.has(id)) continue
-        if (owners.size >= 2) shares = true
-        else singletons.push(atomName)
+        if (owners.size >= 2) {
+          for (const peer of owners) if (peer !== id) vocabularyPeers.add(peer)
+        } else singletons.push(atomName)
       }
       singletons.sort()
       return {
@@ -1536,9 +1696,19 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
                   ? `${id} is the only requirement, so there is nothing to cross-compare yet. ` +
                     'Coverage begins when a second requirement lands (`symspec add`); this row ' +
                     'will then say whether the two share vocabulary.'
-                  : `Rewrite ${id} to share guard/response vocabulary with the requirements it ` +
-                    'relates to, or link its terms via `symspec glossary add`/`symspec antonym add` ' +
-                    'so the formal tier can cross-compare it.',
+                  : vocabularyPeers.size > 0
+                    ? // The vocabulary is ALREADY shared, so the rewrite-for-vocabulary advice
+                      // would be wrong: what is missing is a context in which both hold.
+                      `${id} shares atoms with ${[...vocabularyPeers].sort().join(', ')}, but no ` +
+                      'context group the solver decided asserted it together with any of them: ' +
+                      'their guards are only ever asserted separately, so their obligations were ' +
+                      'never compared. symspec checks each distinct guard set on its own (asserting ' +
+                      'unrelated guards together would fake conflicts between mutually exclusive ' +
+                      'triggers) and cannot yet decide whether these guards co-occur. See any ' +
+                      `\`conditional-conflict-unchecked\` demotion naming ${id}.`
+                    : `Rewrite ${id} to share guard/response vocabulary with the requirements it ` +
+                      'relates to, or link its terms via `symspec glossary add`/`symspec antonym add` ' +
+                      'so the formal tier can cross-compare it.',
             }),
       }
     })
@@ -1561,6 +1731,27 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         reason: 'uncovered-requirement',
         requirementIds: [row.id],
         action: row.suggestion ?? '',
+      })
+    }
+    // AC-3-2: two requirements constraining ONE response atom at opposite polarity, under
+    // guards no planned context group makes both live, are a conflict the solver never
+    // looked for — it asserts each guard set on its own. Detect and demote: whether the
+    // guards can co-occur is not something this tier can decide.
+    for (const c of conditionalConflicts(coverageEncoded, formal)) {
+      demotions.push({
+        reason: 'conditional-conflict-unchecked',
+        requirementIds: [c.a, c.b],
+        action:
+          `${c.a} and ${c.b} constrain the same response ("${c.response}") at opposite polarity, ` +
+          `under contexts that are never asserted together: ${c.a} applies ${describeContext(c.contextA)}` +
+          ` and ${c.b} applies ${describeContext(c.contextB)}. No context group the solver checked ` +
+          'makes both live, so it never tested whether they can hold at once — and if ' +
+          `${c.union.map((t) => `"${t}"`).join(' and ')} can hold together, they conflict there. ` +
+          'Decide whether those contexts can overlap. If they can, change one of the two ' +
+          'requirements so it no longer demands the opposite of the other in the overlap, then ' +
+          're-run `symspec check`. If they cannot, symspec has no way yet to record that the ' +
+          'guards are mutually exclusive, so this stays demoted; it is not waivable, because ' +
+          'nothing was decided.',
       })
     }
     // Excluded-from-formal: the solver never saw these requirements, so
@@ -1624,12 +1815,19 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       })
     }
     if (inconclusive) {
+      // When the requirements ALREADY share vocabulary, "align vocabulary" is the wrong
+      // advice: what kept them apart is guards that are never asserted together, which the
+      // coverage rows and any `conditional-conflict-unchecked` demotion name precisely.
+      const vocabularyShared = [...coverageAtomOwners.values()].some((o) => o.size >= 2)
       demotions.push({
         reason: 'no-decide-tier-comparison',
         requirementIds: requirements.map((r) => r.id),
-        action:
-          'No cross-requirement comparison happened. Align vocabulary across requirements (shared ' +
-          'guards/objects) or commit glossary/antonym links so the decide tier can compare pairs.',
+        action: vocabularyShared
+          ? 'No cross-requirement comparison happened. The requirements share atoms, but their ' +
+            'guards are never asserted together, so no pair was compared — see ' +
+            '`coverage.requirements` and any `conditional-conflict-unchecked` demotion for which.'
+          : 'No cross-requirement comparison happened. Align vocabulary across requirements (shared ' +
+            'guards/objects) or commit glossary/antonym links so the decide tier can compare pairs.',
       })
     }
     if (options.semantic === undefined) {

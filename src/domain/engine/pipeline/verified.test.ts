@@ -268,3 +268,210 @@ describe('AC-3-4: a solver unknown in the temporal tier', () => {
     expect(report.verified).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// AC-3-1 / AC-3-2 — participation is co-liveness, and a conditional conflict demotes
+// ---------------------------------------------------------------------------
+
+/**
+ * The canonical feature-interaction conflict: a passenger may open the door; the door may
+ * not open while the train moves. Both constrain one response atom at opposite polarity, and
+ * because their guards differ no context group asserts both — the solver never asks whether
+ * they can hold at once. The chime pair doubles it, so a fix that special-cases one pair
+ * cannot pass.
+ */
+const D1 = 'door-1-open-on-button'
+const D2 = 'door-2-not-open-moving'
+const C1 = 'door-3-chime-on-button'
+const C2 = 'door-4-no-chime-moving'
+const PRESS = 'the passenger presses the open button'
+const MOVING = 'the train is moving'
+const doorTrainDoc = () =>
+  docOf([
+    { id: D1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door' },
+    {
+      id: D2,
+      systemName: 'door controller',
+      preCondition: MOVING,
+      systemResponse: 'open the door',
+      negated: true,
+    },
+    { id: C1, systemName: 'door controller', trigger: PRESS, systemResponse: 'sound the chime' },
+    {
+      id: C2,
+      systemName: 'door controller',
+      preCondition: MOVING,
+      systemResponse: 'sound the chime',
+      negated: true,
+    },
+  ])
+
+/** Just the door pair: nothing else shares a guard with either requirement. */
+const doorPairDoc = () =>
+  docOf([
+    { id: D1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door' },
+    {
+      id: D2,
+      systemName: 'door controller',
+      preCondition: MOVING,
+      systemResponse: 'open the door',
+      negated: true,
+    },
+  ])
+
+const conditional = (report: Awaited<ReturnType<typeof runCheck>>) =>
+  report.coverage.demotions.filter((d) => d.reason === 'conditional-conflict-unchecked')
+
+describe('AC-3-1: a requirement participates only when co-live with a peer in a decided group', () => {
+  it('sharing a response atom across two guards that never meet is NOT participation', async () => {
+    const report = await runCheck(doorPairDoc(), SEMANTIC())
+    // Premise: the response atom is shared and only the two guards are singletons, so the
+    // pre-AC-3-1 predicate ("shares an atom") would mark both as compared.
+    expect(report.residualRisk.unmatchedAtoms).toBe(2)
+    expect(report.coverage.requirements.map((r) => [r.id, r.participates])).toEqual([
+      [D1, false],
+      [D2, false],
+    ])
+    expect(reasons(report).filter((r) => r === 'uncovered-requirement')).toHaveLength(2)
+    // The row must not hand out vocabulary advice to requirements that already share it.
+    for (const row of report.coverage.requirements) {
+      expect(row.suggestion).not.toMatch(/share guard\/response vocabulary/i)
+    }
+  })
+
+  it('co-live requirements that share an atom DO participate', async () => {
+    // One trigger, two different responses: both live in the one group, sharing its guard.
+    const report = await runCheck(
+      docOf([
+        {
+          id: 'p-a',
+          systemName: 'door controller',
+          trigger: PRESS,
+          systemResponse: 'open the door',
+        },
+        {
+          id: 'p-b',
+          systemName: 'door controller',
+          trigger: PRESS,
+          systemResponse: 'sound the chime',
+        },
+      ]),
+      SEMANTIC(),
+    )
+    expect(report.coverage.requirements.map((r) => r.participates)).toEqual([true, true])
+    expect(report.coverage.demotions).toEqual([])
+    expect(report.verified).toBe(true)
+  })
+
+  it('co-liveness in a group the solver did NOT decide is not participation', async () => {
+    const report = await runCheck(twoConflictDoc(), {
+      ...SEMANTIC(),
+      contradictionCheck: unknownForDoorGroup,
+    })
+    const byId = new Map(report.coverage.requirements.map((r) => [r.id, r.participates]))
+    // The gate pair was decided (and conflicts); the door pair was only co-live in a group
+    // whose every check came back unknown.
+    expect([byId.get(R1), byId.get(R2), byId.get(R3), byId.get(R4)]).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ])
+  })
+})
+
+describe('AC-3-2: opposite polarity on one response atom under guards no checked group joins', () => {
+  it('demotes with conditional-conflict-unchecked, naming both ids and the union of contexts', async () => {
+    const report = await runCheck(doorTrainDoc(), { ...SEMANTIC(), strict: true })
+    // Premise: the decide tier reports nothing — this is the `verified: true` of the review.
+    expect(report.findings.filter((f) => f.severity === 'error')).toEqual([])
+    // And every requirement DOES participate — each is co-live with its sibling under the
+    // same guard — so participation alone cannot demote this document. The pair demotion is
+    // the only thing standing between it and `verified: true`.
+    expect(report.coverage.requirements.map((r) => r.participates)).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ])
+    expect(reasons(report).filter((r) => r !== 'conditional-conflict-unchecked')).toEqual([])
+
+    const demotions = conditional(report)
+    expect(demotions.map((d) => d.requirementIds)).toEqual([
+      [D1, D2],
+      [C1, C2],
+    ])
+    for (const d of demotions) {
+      expect(d.action).toContain(PRESS)
+      expect(d.action).toContain(MOVING)
+      // The one repair that would be wrong: the requirements already share their vocabulary.
+      expect(d.action).not.toMatch(/align vocabulary/i)
+    }
+    expect(report.verified).toBe(false)
+    expect(report.strictGate).toBe('fail')
+  })
+
+  it('on the bare door pair, no demotion tells the author to align vocabulary it already shares', async () => {
+    // Two requirements and no sibling, so `pairsChecked` is 0 and the run is also
+    // inconclusive — the `no-decide-tier-comparison` demotion fires beside the pair demotion,
+    // and its generic advice ("align vocabulary") would be the wrong remedy here too.
+    const report = await runCheck(doorPairDoc(), SEMANTIC())
+    expect(conditional(report).map((d) => d.requirementIds)).toEqual([[D1, D2]])
+    expect(reasons(report)).toContain('no-decide-tier-comparison')
+    for (const d of report.coverage.demotions) expect(d.action).not.toMatch(/align vocabulary/i)
+  })
+
+  it('does not fire once a checked group makes both live — the solver then decides the pair', async () => {
+    // Nest the guards: the forbidding rule now carries the button press too, so the group
+    // {press, moving} has both obligations live and the conflict becomes a proof.
+    const report = await runCheck(
+      docOf([
+        { id: D1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door' },
+        {
+          id: D2,
+          systemName: 'door controller',
+          preCondition: MOVING,
+          trigger: PRESS,
+          systemResponse: 'open the door',
+          negated: true,
+        },
+      ]),
+      SEMANTIC(),
+    )
+    expect(report.findings.map((f) => f.code)).toContain('FND_CONTRADICTION')
+    expect(conditional(report)).toEqual([])
+  })
+
+  it('does not fire for SAME-polarity pairs, which cannot conflict with each other', async () => {
+    const report = await runCheck(
+      docOf([
+        { id: D1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door' },
+        {
+          id: D2,
+          systemName: 'door controller',
+          preCondition: MOVING,
+          systemResponse: 'open the door',
+        },
+      ]),
+      SEMANTIC(),
+    )
+    expect(conditional(report)).toEqual([])
+  })
+
+  it('does not fire across two systems, whose atoms are distinct', async () => {
+    const report = await runCheck(
+      docOf([
+        { id: D1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door' },
+        {
+          id: D2,
+          systemName: 'hatch controller',
+          preCondition: MOVING,
+          systemResponse: 'open the door',
+          negated: true,
+        },
+      ]),
+      SEMANTIC(),
+    )
+    expect(conditional(report)).toEqual([])
+  })
+})
