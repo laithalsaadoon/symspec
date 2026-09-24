@@ -49,7 +49,7 @@ import { describe, expect, it } from 'vitest'
 import { getContext, type Z3Context } from './backend.ts'
 import { findContradictions, minimizeCore } from './contradiction.ts'
 import { cmp, type EncodableRequirement, materialize, type Z3Bool } from './encode.ts'
-import type { NumericPredicate } from './numeric.ts'
+import { type NumericPredicate, parseRational } from './numeric.ts'
 import {
   findNumericContradictions,
   minimizeNumericCore,
@@ -175,6 +175,8 @@ function bound(comparator: NumericPredicate['comparator'], value: number): Numer
     label: 'replication lag',
     comparator,
     value,
+    exact: parseRational(String(value)),
+    dimension: 'time',
     baseUnit: 'ms',
     slot: 'resp',
     sourceText: `${comparator} ${value} ms`,

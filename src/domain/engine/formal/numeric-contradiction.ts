@@ -68,10 +68,17 @@
  * at all. The unitless bound's magnitude is simply unknown; ASSUMING a unit for it
  * (either direction) would fabricate a magnitude, so the only sound move is to
  * decline the comparison. Declining is a MISS — the honest failure direction —
- * whereas comparing invents a verdict. This mirrors the guard the propose-only
- * quantity-alias tier already had (`quantity-alias.ts`: `if (pa.baseUnit !==
- * pb.baseUnit) continue`); the DECIDE tier, where a false positive is
+ * whereas comparing invents a verdict. The propose-only quantity-alias tier pairs on
+ * the same {@link unitClassOf}; the DECIDE tier, where a false positive is
  * unrecoverable, must be at least as strict as the tier that may only suggest.
+ *
+ * The same argument covers a unit no dimension recognizes (spec 007 AC-2-5). It
+ * used to normalize to `''`, so `retain audit logs for at least 90 days` and `… for
+ * at most 1 year` were two unitless bounds, `>= 90 ∧ <= 1`, and an error. An
+ * unrecognized unit now keys on its raw text: `days` meets `days`, and never `year`
+ * or a bare number. A recognized unit keys on its DIMENSION as well as its base, and
+ * converts into that base exactly (`numeric.ts` `Rational`), so `2 km` meets `500
+ * meters` as `2000 m` and `500 m`, and `1.1 hours` meets `66 minutes` at one point.
  *
  * The group is PARTITIONED, not skipped: a quantity carrying both a unitless and
  * an `ms` bound still has its `ms` bounds proved against each other. Skipping the
@@ -97,9 +104,9 @@
 import type { Z3Context } from './backend.ts'
 import type { SolverBounds } from './budget.ts'
 import { liveIn, planGroups } from './contradiction.ts'
-import { cmp, materialize } from './encode.ts'
+import type { Z3Bool } from './encode.ts'
 import type { Evidence } from './finding.ts'
-import type { NumericPredicate } from './numeric.ts'
+import { type NumericPredicate, unitClassOf } from './numeric.ts'
 
 /** A numeric-contradiction finding (Appendix B `FND_NUMERIC_CONTRADICTION`, error). */
 export interface NumericContradictionFinding {
@@ -129,19 +136,46 @@ export interface RequirementPredicates {
 }
 
 /**
- * Group key for the comparison partition: the canonical quantity PLUS the base
- * unit its value was normalized onto. `|` cannot occur in either component
- * (`quantityKey` emits `[a-z0-9_]`, `baseUnit` is a `DIMENSIONS` base or `''`),
- * so the join is unambiguous.
+ * Group key for the comparison partition: the canonical quantity PLUS its unit
+ * class ({@link unitClassOf} — the dimension and the unit the value was
+ * normalized onto, or the raw text of a unit no dimension recognizes). A JSON
+ * array, so no character a system name or a raw unit can contain makes the join
+ * ambiguous.
  *
  * Units are part of the key rather than a post-hoc filter because comparability
  * is a property of the pair, not of one predicate: `ms` bounds are mutually
- * comparable, unitless bounds are mutually comparable, and the two sets never
- * mix. Keying makes that partition total — every predicate lands in exactly one
- * arithmetically-coherent group.
+ * comparable, unitless bounds are mutually comparable, `days` bounds are mutually
+ * comparable, and none of those sets mix. Keying makes that partition total —
+ * every predicate lands in exactly one arithmetically-coherent group.
  */
 function comparisonKey(pred: NumericPredicate): string {
-  return `${pred.quantity}|${pred.baseUnit}`
+  return JSON.stringify([pred.quantity, unitClassOf(pred)])
+}
+
+/**
+ * The Z3 constraint one bound asserts: `quantity <comparator> exact`, over a Real.
+ *
+ * The value is the bound's exact rational, handed to `Real.val` as numerator and
+ * denominator — never the display `number`, whose unit conversion was a float
+ * product (see {@link NumericPredicate.exact}).
+ */
+function boundFormula(ctx: Z3Context, pred: NumericPredicate): Z3Bool {
+  const q = ctx.Real.const(pred.quantity)
+  const v = ctx.Real.val(pred.exact)
+  switch (pred.comparator) {
+    case '<':
+      return q.lt(v)
+    case '<=':
+      return q.le(v)
+    case '=':
+      return q.eq(v)
+    case '>=':
+      return q.ge(v)
+    case '>':
+      return q.gt(v)
+    case '!=':
+      return q.neq(v)
+  }
 }
 
 /** One (context group, quantity, base unit) cell: the bounds that genuinely co-hold. */
@@ -324,7 +358,7 @@ export async function findNumericContradictions(
     // is exactly the set of requirement ids whose predicates cannot co-hold.
     for (const { id, pred } of solverEntries) {
       const guard = ctx.Bool.const(id)
-      const predFormula = materialize(ctx, cmp(pred.quantity, pred.comparator, pred.value))
+      const predFormula = boundFormula(ctx, pred)
       solver.add(ctx.Implies(guard, predFormula))
     }
     const guards = [...distinctIds].sort().map((id) => ctx.Bool.const(id))
@@ -424,9 +458,7 @@ export async function minimizeNumericCore(
     for (const { id, pred } of entries) {
       if (!trial.includes(id)) continue
       const guard = ctx.Bool.const(id)
-      solver.add(
-        ctx.Implies(guard, materialize(ctx, cmp(pred.quantity, pred.comparator, pred.value))),
-      )
+      solver.add(ctx.Implies(guard, boundFormula(ctx, pred)))
     }
     const guards = trial.map((id) => ctx.Bool.const(id))
     if ((await solver.check(...guards)) === 'unsat') current = trial

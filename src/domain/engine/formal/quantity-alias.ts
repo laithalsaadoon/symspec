@@ -49,7 +49,7 @@
 
 import { normalize } from './atomize.ts'
 import type { NumericComparator } from './encode.ts'
-import type { NumericPredicate } from './numeric.ts'
+import { type NumericPredicate, unitClassOf } from './numeric.ts'
 
 /** One requirement's numeric predicates + the context needed to group it. */
 export interface QuantityAliasInput {
@@ -201,9 +201,10 @@ export function findQuantityAliasCandidates(
         for (const pb of rb.predicates) {
           // Already the same quantity → the numeric tier handles it; skip.
           if (pa.quantity === pb.quantity) continue
-          // Comparable unit: both unitless or the same normalized base. A time
-          // bound and a byte bound are genuinely different quantities.
-          if (pa.baseUnit !== pb.baseUnit) continue
+          // Comparable unit: the same class the decide tier partitions on. A time
+          // bound and a byte bound are genuinely different quantities, and an alias
+          // between them would hand the decide tier a pair it never compares.
+          if (unitClassOf(pa) !== unitClassOf(pb)) continue
           if (!opposed(pa.comparator, pb.comparator)) continue
           const object = sharedObjectSuffix(pa.label, pb.label)
           if (object === null) continue

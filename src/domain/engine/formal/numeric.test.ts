@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { extractNumericPredicates, type PredicateSlot } from './numeric.ts'
+import { extractNumericPredicates, type PredicateSlot, RAW_UNIT_DIMENSION } from './numeric.ts'
 
 describe('a numeric predicate is stamped with the slot it was read out of', () => {
   const SLOTS: readonly PredicateSlot[] = ['resp', 'trig', 'pre']
@@ -49,5 +49,54 @@ describe('a numeric predicate is stamped with the slot it was read out of', () =
       ['<', 3, 'pre'],
       ['>', 5, 'pre'],
     ])
+  })
+})
+
+describe('a bound carries its dimension, its unit, and an exact value (spec 007 AC-2-5)', () => {
+  const one = (text: string) => {
+    const preds = extractNumericPredicates(text, 'svc', 'resp')
+    expect(preds).toHaveLength(1)
+    const [p] = preds
+    return {
+      exact: `${p?.exact.numerator}/${p?.exact.denominator}`,
+      dimension: p?.dimension,
+      baseUnit: p?.baseUnit,
+    }
+  }
+
+  it('converts a recognized unit into its base exactly', () => {
+    expect(one('keep the session open at least 1.1 hours')).toEqual({
+      exact: '3960000/1',
+      dimension: 'time',
+      baseUnit: 'ms',
+    })
+    expect(one('hold the cabin temperature at least 51 degrees fahrenheit')).toEqual({
+      exact: '95/9',
+      dimension: 'temperature',
+      baseUnit: '°C',
+    })
+  })
+
+  it('keys an unrecognized unit on its raw text, case and rate suffix included', () => {
+    expect(one('retain audit logs for at least 90 days')).toEqual({
+      exact: '90/1',
+      dimension: RAW_UNIT_DIMENSION,
+      baseUnit: 'days',
+    })
+    expect(one('sample the sensor at least 100 times per minute')).toEqual({
+      exact: '100/1',
+      dimension: RAW_UNIT_DIMENSION,
+      baseUnit: 'times per minute',
+    })
+    expect(one('keep the firmware image at least 64 Mb').baseUnit).toBe('Mb')
+  })
+
+  it('leaves a bare number unitless, and a function word after it is not a unit', () => {
+    expect(one('keep latency below 100')).toEqual({ exact: '100/1', dimension: '', baseUnit: '' })
+    expect(one('keep latency below 100 and log it')).toEqual({
+      exact: '100/1',
+      dimension: '',
+      baseUnit: '',
+    })
   })
 })

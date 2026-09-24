@@ -22,7 +22,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { getContext } from './backend.ts'
-import type { NumericPredicate, PredicateSlot } from './numeric.ts'
+import { type NumericPredicate, type PredicateSlot, parseRational } from './numeric.ts'
 import {
   findNumericContradictions,
   planComparisonCells,
@@ -46,6 +46,8 @@ const bound = (
   label: 'temperature',
   comparator,
   value,
+  exact: parseRational(String(value)),
+  dimension: '',
   baseUnit: '',
   slot,
   sourceText: `${comparator} ${value}`,
