@@ -64,6 +64,7 @@ Even if the network is down the logger shall persist events.
 Even if the network is down, persist events.
 Even if the network is down, the logger shall persist events.
 Every audit record shall be retained.
+Every request shall be logged.
 Every tier's encoding shall be a documented sound projection of this table, and a test shall
 Except during maintenance, log requests.
 Except during maintenance, the gateway shall log requests.
@@ -105,18 +106,28 @@ In case studies, the analyst shall cite sources.
 In case the guard door opens the press controller shall stop the press.
 In case the guard door opens, the press controller shall stop the press.
 In case the power fails, the UPS shall start the generator.
+In normal operation, none of the valves shall open.
 It never produces a verdict, and these two never demote one either — a wording opinion must
 Neither replica shall be promoted.
 Neither request shall be dropped.
+Neither the gateway nor the proxy shall log requests.
 No request shall be dropped.
 No request shall, under load, be dropped.
+No request with a body shall be dropped.
 Nobody shall be able to delete the audit log.
 None of the requests shall be dropped.
+Not a single packet shall be lost.
+Not a single request shall be dropped.
+Not all of the requests shall be logged.
 Not all requests shall be logged.
+Not any request shall be dropped.
 Not every request shall be logged.
+Not one request shall be dropped.
+Not only the gateway but also the proxy shall log requests.
 Note: The gateway shall be notified of cached requests.
 Note: The gateway shall log requests.
 Note: Unless the guard door is closed, the press controller shall start the press.
+Nothing in this section shall be logged.
 Nothing shall be written to the audit log.
 Once the door closes, the pump controller shall start the pump.
 One response at opposite polarity under two triggers that cannot both hold. The
@@ -145,7 +156,11 @@ Reproducer: "When the passenger presses the open button, the door controller sha
 Reproducer: a parent with R2 "While the train is moving, the door controller shall not open the
 Reproducers: "When a flagged purchase order is received, the procurement system shall not accept
 Reproducers: "shall not keep the door unlocked above 30 seconds" plus "shall keep the door
+Requests from none of the hosts shall be accepted.
 Requests not cached by the edge shall, on arrival, be forwarded to the origin.
+Requests shall be dropped.
+Requests shall not be logged.
+Requests shall, under no circumstances, be dropped.
 Requests with no body shall be rejected.
 SAYS it fell back — a fallback must not read like a detection
 Sabotage: reintroduce the AC-1-1 defect with the BFS in place; the BFS must catch it and
@@ -210,12 +225,18 @@ The gateway mustn't forward requests.
 The gateway rather than not the proxy shall, always, forward requests.
 The gateway shall also not be notified of requests.
 The gateway shall be able to forward requests that are not cached.
+The gateway shall be neither notified nor logged.
+The gateway shall be never notified.
+The gateway shall be no longer notified.
+The gateway shall be not able to drop requests.
 The gateway shall be notified of no requests.
 The gateway shall be notified of requests that are not cached.
+The gateway shall ensure that no request is dropped.
 The gateway shall forward requests that are not cached and log them.
 The gateway shall forward requests that are not cached.
 The gateway shall forward requests.
 The gateway shall load its config before startup.
+The gateway shall log requests, not responses.
 The gateway shall log requests.
 The gateway shall never be notified.
 The gateway shall never drop requests.
@@ -228,6 +249,9 @@ The gateway shall not log requests.
 The gateway shall not only be notified of requests but also log them.
 The gateway shall not only log requests but also forward them.
 The gateway shall reject requests that are not signed.
+The gateway shall, at no time, drop requests.
+The gateway shall, under load, not drop requests.
+The gateway shall, under no circumstances, drop requests.
 The gateway shan't drop requests.
 The gateway shan't forward requests.
 The gateway shan't, under load, drop requests.
@@ -280,6 +304,8 @@ The schedule materializer shall record one schedule_occurrence per schedule id, 
 The schedule materializer shall remain the sole component that projects agent_schedule rows into Procrastinate jobs.
 The schedule repository port shall extend the materializer-facing protocol with get, list, update, set_enabled, and delete operations that speak in ScheduleDefinition domain types.
 The schedule revision counter shall increase strictly monotonically across updates to a given schedule.
+The single packet shall be lost.
+The single request shall be dropped.
 The svc shall not issue a token.
 The system shall operate.
 The till drawer shall lock after each sale.
@@ -345,6 +371,8 @@ WHEN <trigger>, the system shall <response>
 When E, the system shall set S
 When P exceeds 5 bar, the pump controller shall close the bypass valve.
 When a cancel request targets a non-terminal run, the schedule management service shall transition the run via compare-and-set and request job cancellation with abort.
+When a device plugs in no driver shall be reloaded.
+When a device plugs in, no driver shall be reloaded.
 When a fault occurs, the gateway shall log requests.
 When a flagged purchase order is received, the procurement system shall
 When a flagged purchase order is received, the procurement system shall not accept the purchase order.
@@ -396,6 +424,7 @@ When the account is locked, the provided tokens shall not be validated.
 When the audit completes, the auth service shall
 When the batch closes, the mailer shall
 When the batch starts, the scheduler shall finish within 2.25 seconds.
+When the button is pressed no request shall be sent.
 When the clinician starts an infusion, the infusion pump shall complete the infusion within 30 minutes.
 When the clinician starts an infusion, the infusion pump shall run the infusion for at least 60 minutes.
 When the door opens, unless the alarm is armed, the light shall turn on.
@@ -415,6 +444,8 @@ When the operator presses the button, the station controller shall cool the cabi
 When the operator presses the button, the station controller shall heat the cabin.
 When the passenger presses open, the door controller shall open the door
 When the player places the token on the board, the auth service shall advance the turn.
+When the pump starts up no valve shall be opened.
+When the pump starts up, no valve shall be opened.
 When the quarter closes, the planning service shall not extend the project schedule.
 When the quarter closes, the planning service shall publish the project schedule.
 When the queue drains, while the lock is held, the worker shall commit the batch
@@ -429,7 +460,17 @@ When the token is presented, the auth service shall advance the turn.
 When the token is presented, the auth service shall revoke the active session.
 When the train is moving, the door controller shall open the door.
 When the user is created stored credentials shall not be hashed.
+When the user logs in neither replica shall be promoted.
+When the user logs in no session shall be reused.
+When the user logs in none of the sessions shall be reused.
+When the user logs in, neither replica shall be promoted.
+When the user logs in, no session shall be reused.
+When the user logs in, none of the sessions shall be reused.
 When the user logs in, the auth service shall issue a session token.
+When the user logs out no session shall persist.
+When the user logs out, no session shall persist.
+When the user signs in no token shall be reissued.
+When the user signs in, no token shall be reissued.
 When the user signs in, the auth service shall issue a session token
 When the user signs in, the auth service shall issue a session token.
 When the user submits the order, the checkout service shall reserve the inventory and charge the payment method.
@@ -441,6 +482,7 @@ Where SSO is configured, the auth service shall issue a session token.
 Where a one-time deferred run is fire-and-forget, the run service shall defer the job directly with a future scheduled execution time and omit the schedule row.
 Where a one-time deferred run must remain editable or cancellable before it fires, the run service shall represent the one-time deferred run as a once schedule row rather than a directly deferred job.
 Where a run's execution profile enables the schedule-management tool set, the agent runtime shall receive MCP tools to create, inspect, update, pause, resume, and delete schedules and to request, inspect, and cancel runs.
+Where encryption is enabled, none of the keys shall be logged.
 Where the edge cache is installed, while the gateway is online, when a request arrives, the gateway shall forward requests that are not cached.
 While <adjective> the X shall ...
 While MFA is enabled, the auth service shall issue a session token.
@@ -458,6 +500,7 @@ While in maintenance mode, the routing table shall not be flushed.
 While maintenance mode is enabled, the api shall reject every request
 While offline all requests shall not be logged.
 While offline no request shall be dropped.
+While offline none of the requests shall be dropped.
 While offline the cache shall be flushed.
 While offline the gateway shall not log requests.
 While offline the user's session store shall not be encrypted at rest.
@@ -465,6 +508,8 @@ While offline, all payment requests shall not be logged.
 While offline, every audit record shall not be retained.
 While offline, except-list entries shall not be skipped.
 While offline, no request shall be dropped.
+While offline, none of the requests shall be dropped.
+While offline, not all requests shall be logged.
 While offline, provided tokens shall be cached.
 While offline, the contracts shall not be archived.
 While offline, the payment request shall not be logged.
@@ -494,12 +539,16 @@ While the maintenance mode is active, the conveyor controller shall not stop the
 While the mode is running, the pump controller shall not accept a start command
 While the operating mode is α, the flight computer shall engage the yaw damper.
 While the operating mode is β, the flight computer shall disengage the yaw damper.
+While the operator is logged in no session shall expire.
+While the operator is logged in, no session shall expire.
+While the operator is logged in, the session shall expire.
 While the pulse width is 10 s, the gate driver shall disable the output stage.
 While the pulse width is 10 µs, the gate driver shall enable the output stage.
 While the temperature is above 5 degrees celsius, when the temperature is below 3 degrees celsius, the vent controller shall log the fault.
 While the tenant quota remains below its monthly ceiling, upon sign-in the auth service shall issue a session token.
 While the train is moving, the door controller shall not open the door
 While the train is moving, the door controller shall not open the door.
+While the user is not a guest the session shall be kept.
 While the user is not signed in the session store shall be cleared.
 While the user is not signed in, the session store shall be cleared.
 While the user is not signed in, the session store shall not be cleared.

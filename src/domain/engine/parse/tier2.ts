@@ -377,22 +377,81 @@ const SUBJECT_NEGATORS: ReadonlySet<string> = new Set([
   'nothing',
 ])
 
+/** UPOS tags of the quantifier or article a subject-opening `not` precedes ("Not all", "Not one"). */
+const QUANTIFIER_POS: ReadonlySet<string> = new Set(['DET', 'NUM'])
+
+/** Word classes that, once seen after the modal, put a later negator inside a phrase of its own. */
+const PHRASE_HEAD_POS: ReadonlySet<string> = new Set(['NOUN', 'PROPN', 'PRON', 'NUM', 'SCONJ'])
+
 /**
- * True when a negating determiner OPENS the main clause's subject, so that it governs the modal
- * ("No request shall …", "None of the requests shall …", "While offline, no request shall …"):
- * it is the first token of the line, or it sits in the subject chunk and is not the object of a
- * preposition ("a request with no body" names a request, it does not forbid one). A negator
- * anywhere else left of the modal — a relative clause ("users who are not admins"), a comma-less
- * leading clause ("when no user is signed in the …") — scopes over that phrase alone.
+ * True when a negator left of the modal OPENS the main clause's subject, so that it governs the
+ * modal: "No request shall …", "Neither replica …", "None of the requests …", "Not all requests
+ * …", "While offline, none of the requests …", "When the user signs in no token …". Opening
+ * means one of:
+ *
+ * - a No/None/Neither/Nobody/Nothing that is the first token of the line;
+ * - one inside the subject chunk that is not the object of a preposition ("a request with no
+ *   body" names a request, it does not forbid one). After a leading clause Tier 2 binds, the
+ *   chunk opens the main clause whatever the lead ends on: wink tags the particle of "signs in"
+ *   / "plugs in" `ADP` after a verb it tags `NOUN`, and "When the user signs in no token …" means
+ *   what its comma twin means;
+ * - `none of` / `neither of` directly before the chunk, on the same terms;
+ * - `not` before a quantifier or article that opens the chunk ("Not all", "Not every", "Not a
+ *   single", "Not one", "Not any", "Not all of the …"), unless a copula precedes it: "who are not
+ *   admins" / "is not a guest" negate a predicate, not the subject.
+ *
+ * A negator anywhere else left of the modal — a relative clause ("users who are not admins"), a
+ * prepositional object, a comma-less leading clause ("when no user is signed in the …") — scopes
+ * over that phrase alone.
  */
 function subjectNegatorGovernsModal(
   tokens: WinkToken[],
   chunkStart: number,
   modalIdx: number,
+  leadBound: boolean,
 ): boolean {
+  const opensAt = (i: number): boolean => i === 0 || leadBound || tokens[i - 1]!.pos !== 'ADP'
+  const word = (i: number): string => tokens[i]?.value.toLowerCase() ?? ''
+  // The subject's own start, widened over a partitive `<quantifier> of` ("all of the requests").
+  const partitive = word(chunkStart - 1) === 'of' ? chunkStart - 2 : -1
   for (let i = 0; i < modalIdx; i++) {
-    if (!SUBJECT_NEGATORS.has(tokens[i]!.value.toLowerCase())) continue
-    if (i === 0 || (i >= chunkStart && tokens[i - 1]!.pos !== 'ADP')) return true
+    const w = word(i)
+    if (SUBJECT_NEGATORS.has(w)) {
+      if (i === 0) return true
+      if ((i >= chunkStart || i === partitive) && opensAt(i)) return true
+    } else if (w === 'not') {
+      const head = i + 1 === partitive ? partitive : i + 1 === chunkStart ? chunkStart : -1
+      if (head < 0 || !QUANTIFIER_POS.has(tokens[head]!.pos)) continue
+      if (i === 0 || (opensAt(i) && tokens[i - 1]!.pos !== 'AUX')) return true
+    }
+  }
+  return false
+}
+
+/**
+ * True when a negation that starts INSIDE the response governs the modal: its negator sits in
+ * the verb group or a negating adverbial before any noun, pronoun or subordinator of the response
+ * ("be never notified", "be neither notified nor logged", "be notified of no requests", ", under
+ * no circumstances, drop"), where it scopes over the whole predicate. A negator after one ("forward
+ * requests that are not cached", "scoped by id, not by a string") scopes over that phrase.
+ * A parenthetical closed before the negator (", under load, not drop") is skipped.
+ *
+ * The negator is read off wink's negation flags, which start on the token AFTER it: each run of
+ * flagged response tokens that starts inside the response names one negator. wink opens no scope
+ * after `not only` ("not only X but also Y" obliges both halves), so that never reaches here.
+ */
+function responseNegatorGovernsModal(tokens: WinkToken[], modalIdx: number): boolean {
+  for (let n = modalIdx + 1; n < tokens.length - 1; n++) {
+    if (tokens[n]!.negationFlag || !tokens[n + 1]!.negationFlag) continue
+    // A `, … ,` parenthetical that closes before the negator is dropped; one still open holds it.
+    const before: WinkToken[] = []
+    let open: WinkToken[] | undefined
+    for (const t of tokens.slice(modalIdx + 1, n)) {
+      if (t.value === ',') open = open === undefined ? [] : undefined
+      else (open ?? before).push(t)
+    }
+    if (open !== undefined) before.push(...open)
+    if (!before.some((t) => PHRASE_HEAD_POS.has(t.pos))) return true
   }
   return false
 }
@@ -534,30 +593,32 @@ export function repairWithWink(
   if (responseTokens.length === 0) {
     return { ok: false, escalate: true, tier: 2, notes: [...baseNotes, 'no-response-recovered'] }
   }
+  // Recover a leading EARS clause (text before the subject noun chunk).
+  const leadText = joinTokens(tokens.slice(0, chunkStart))
+  const lead = classifyLeadingClause(leadText)
   const rawResponse = joinTokens(responseTokens)
   const neg = extractNegation(rawResponse)
   const modalToken = tokens[modalIdx]!
   // Only a negation that GOVERNS THE MODAL sets the flag (spec 007 AC-2-3): the modal-adjacent
-  // negator `extractNegation` reads, the `n't` wink splits off shan't/mustn't/won't, or wink's
-  // negation scope over the response when a negating determiner opens the subject ("No request
-  // shall be dropped"). wink's scope runs from ANY negator to the next punctuation, so without
-  // the subject test a "not"/"no" in a relative clause, a prepositional phrase or a comma-less
-  // leading clause would flag the response too; and one that starts inside the response
-  // ("requests that are not cached") scopes over that phrase, which keeps its "not" in the text.
+  // negator `extractNegation` reads, the `n't` wink splits off shan't/mustn't/won't, or base's own
+  // evidence — wink's negation scope reaching the response — when the negator it starts from
+  // governs: one that opens the main clause's subject ("No request shall be dropped") or one in
+  // the response's verb group ("shall be never notified"). wink's scope runs from ANY negator to
+  // the next punctuation, so without those tests a "not"/"no" in a relative clause, a
+  // prepositional phrase or a comma-less leading clause would flag the response too, and so would
+  // one that starts inside the response ("requests that are not cached"), which keeps its "not"
+  // in the text. The gate on base's evidence means this can only clear rows base set.
   const negated =
     neg.negated ||
     isContractedNegator(responseTokens[0]!) ||
     (responseTokens.some((t) => t.negationFlag) &&
-      subjectNegatorGovernsModal(tokens, chunkStart, modalIdx))
+      (subjectNegatorGovernsModal(tokens, chunkStart, modalIdx, lead !== undefined) ||
+        responseNegatorGovernsModal(tokens, modalIdx)))
   const systemResponse = neg.response
 
   const notes = [...baseNotes]
   const repairNotes: string[] = []
   if (modalToken.value.toLowerCase() !== 'shall') repairNotes.push('nonstandard-modal')
-
-  // Recover a leading EARS clause (text before the subject noun chunk).
-  const leadText = joinTokens(tokens.slice(0, chunkStart))
-  const lead = classifyLeadingClause(leadText)
 
   const slots: Tier1Slots = {
     patternType: lead ? lead.patternType : 'ubiquitous',

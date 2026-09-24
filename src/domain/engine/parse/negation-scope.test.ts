@@ -137,3 +137,81 @@ describe('AC-2-3: a negation inside the subject or a comma-less lead does not se
     expect((await ok(line)).negated).toBe(false)
   })
 })
+
+describe('AC-2-3 round 2: every negation base read as governing the modal keeps `negated`', () => {
+  // The round-1 narrowing cleared these, each a real prohibition base stored as one, so a real
+  // FND_CONTRADICTION disappeared and consistent pairs gained a fabricated one. Every row is
+  // pinned at base's parse: same slots, `negated: true`.
+  it.each([
+    // `None of` opens the main clause behind a comma-lead Tier 2 binds: `none of` sits in the
+    // lead slot text, outside the subject chunk, yet it is the subject's quantifier.
+    ['While offline, none of the requests shall be dropped.', 'requests'],
+    ['In normal operation, none of the valves shall open.', 'valves'],
+    ['Where encryption is enabled, none of the keys shall be logged.', 'keys'],
+    // `Not <quantifier>` opens the subject the way No/None/Neither do and scopes over the modal.
+    ['Not all requests shall be logged.', 'requests'],
+    ['Not every request shall be logged.', 'request'],
+    ['Not a single packet shall be lost.', 'single packet'],
+    ['Not one request shall be dropped.', 'one request'],
+    ['Not any request shall be dropped.', 'request'],
+    ['Not all of the requests shall be logged.', 'requests'],
+    ['While offline, not all requests shall be logged.', 'requests'],
+    // A comma-less lead ending on a verb particle ("signs in") that wink tags ADP: the negator
+    // after it opens the main clause, exactly as it does after the comma.
+    ['When the user signs in no token shall be reissued.', 'token'],
+    ['When the user signs in, no token shall be reissued.', 'token'],
+    ['When the user logs in no session shall be reused.', 'session'],
+    ['When the user logs in, no session shall be reused.', 'session'],
+    ['While the operator is logged in no session shall expire.', 'session'],
+    ['When the user logs out no session shall persist.', 'session'],
+    ['When the pump starts up no valve shall be opened.', 'valve'],
+    ['When a device plugs in no driver shall be reloaded.', 'driver'],
+    ['When the user logs in neither replica shall be promoted.', 'replica'],
+    ['When the user logs in none of the sessions shall be reused.', 'sessions'],
+    ['When the user logs in, none of the sessions shall be reused.', 'sessions'],
+    ['When the button is pressed no request shall be sent.', 'request'],
+    // A negator inside the verb group, or a negating adverbial, before the main verb.
+    ['The gateway shall be never notified.', 'gateway'],
+    ['The gateway shall be no longer notified.', 'gateway'],
+    ['The gateway shall be not able to drop requests.', 'gateway'],
+    ['The gateway shall be neither notified nor logged.', 'gateway'],
+    ['The gateway shall, under no circumstances, drop requests.', 'gateway'],
+    ['The gateway shall, at no time, drop requests.', 'gateway'],
+    ['Requests shall, under no circumstances, be dropped.', 'Requests'],
+    ['The gateway shall be notified of no requests.', 'gateway'],
+    // A parenthetical closed before the negator is not part of the response's phrase.
+    ['The gateway shall, under load, not drop requests.', 'gateway'],
+  ] as const)('%s', async (line, systemName) => {
+    const r = await ok(line)
+    expect(r.negated).toBe(true)
+    expect(r.slots.systemName).toBe(systemName)
+  })
+
+  it('a comma alone never flips polarity after a verb particle', async () => {
+    for (const [bare, comma] of [
+      [
+        'When the user signs in no token shall be reissued.',
+        'When the user signs in, no token shall be reissued.',
+      ],
+      [
+        'When the user logs in no session shall be reused.',
+        'When the user logs in, no session shall be reused.',
+      ],
+    ] as const) {
+      expect((await ok(bare)).negated).toBe((await ok(comma)).negated)
+    }
+  })
+
+  it.each([
+    // The object of a preposition still names a thing, not a prohibition.
+    'A request with no body shall be rejected.',
+    // A copula before `not a`: the lead's predicate, not the subject's quantifier.
+    'Users who are not admins shall be able to view logs.',
+    'While the user is not a guest the session shall be kept.',
+    // A `not` after a noun in the response modifies that noun's phrase.
+    'Atoms shall be scoped by vocabulary id, not by a normalized string.',
+    'The gateway shall log requests, not responses.',
+  ])('a negator that does not open the subject or the verb group still leaves it clear — %s', async (line) => {
+    expect((await ok(line)).negated).toBe(false)
+  })
+})
