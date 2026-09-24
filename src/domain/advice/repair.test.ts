@@ -512,8 +512,8 @@ describe('a pair demotion repair is scoped to its own pair', () => {
 /**
  * The verifier's reproducer, driven through the pipeline and this module rather than
  * asserted on a message string: "open the door" / "close the doors" under one trigger, with
- * open/close committed as opposites. The two sit on `close_the_door` (negated) and
- * `close_the_doors`, so the pair demotes. The claim under test is the one an agent acts on:
+ * open/close committed as opposites. The two are contrary atoms (spec 007 AC-2-1), both
+ * asserted, over the keys `close_the_door` and `close_the_doors`, so the pair demotes. The claim under test is the one an agent acts on:
  * running the repair's FIRST command and re-checking must reach the contradiction the
  * document contains. A raw-text merge ("close the doors" <- "open the door") aliases one
  * phrase to its own opposite, which the solver then reports as a redundancy and certifies.
@@ -573,7 +573,8 @@ describe('AC-3-6: the near-duplicate repair, followed verbatim, surfaces the con
     const merge = /^symspec glossary "([^"]+)" "([^"]+)"$/.exec(first)
     expect(merge, `first command is a glossary merge: ${first}`).not.toBeNull()
     const [, canonical, alias] = merge as RegExpExecArray
-    // Never the raw pair: that aliases "open the door" to its own opposite.
+    // Never the raw pair: that aliases "open the door" to its own contrary, one atom at one
+    // polarity, which the solver reads as a redundancy (spec 007 AC-2-1).
     expect(new Set([canonical, alias])).not.toEqual(new Set(['open the door', 'close the doors']))
 
     const applied = applyOp(
@@ -668,7 +669,7 @@ describe('AC-3-6: the first repair command keeps every conflict visible', () => 
   }
 
   it('a response that bakes in "not" gets a merge keyed on the text the solver reads', async () => {
-    // `toEncodable` strips the leading "not " and reads it as negation, so the solver puts R2
+    // on `open_the_doors` negated and R1 on `open_the_door` (spec 007 AC-2-1: no rename).
     // on `close_the_doors` at positive polarity and R1 on `close_the_door` negated.
     const doc = () =>
       docOf([

@@ -590,9 +590,12 @@ describe('AC-3-6: opposite polarity, same words up to inflection or number', () 
 })
 
 /**
- * The inflection test reads the CANONICAL response bodies, not the raw text: the polarity
- * half is read off the atoms (so an antonym flip counts), and the words half has to live in
- * the same space or a flipped head never matches its partner's surface verb.
+ * The inflection test reads the CANONICAL response atoms, not the raw text. Under spec 007
+ * AC-2-1 an antonym pair is two contrary atoms, `¬(A ∧ B)`, so "open the door" / "close the
+ * doors" are the same words up to number once read in opposition-key space (`close_the_door` /
+ * `close_the_doors`), and would conflict as one thing exactly when BOTH are asserted: the
+ * conflict half is read off the atoms' polarity and class side, and the words half off the keys,
+ * or a contrary head never matches its partner's surface verb.
  */
 describe('AC-3-6: the inflection test runs in the atomizer canonical space', () => {
   const antonymDoc = (second: string, negated: boolean, antonyms: readonly object[] = []) => {
@@ -605,7 +608,7 @@ describe('AC-3-6: the inflection test runs in the atomizer canonical space', () 
   }
   const pairEmbedder = (second: string) => tableEmbedder([['open the door', second]])
 
-  it('demotes on a SEED-antonym-flipped variant ("open the door" / "close the doors")', async () => {
+  it('demotes on a SEED-contrary variant ("open the door" / "close the doors")', async () => {
     const report = await runCheck(antonymDoc('close the doors', false), {
       semantic: { embedder: pairEmbedder('close the doors') },
     })
@@ -615,7 +618,7 @@ describe('AC-3-6: the inflection test runs in the atomizer canonical space', () 
     expect(report.verified).toBe(false)
   })
 
-  it('demotes on a DOC-committed-antonym-flipped variant ("open the door" / "shut the doors")', async () => {
+  it('demotes on a DOC-committed-contrary variant ("open the door" / "shut the doors")', async () => {
     const report = await runCheck(antonymDoc('shut the doors', false, [{ a: 'open', b: 'shut' }]), {
       semantic: { embedder: pairEmbedder('shut the doors') },
     })
@@ -624,12 +627,39 @@ describe('AC-3-6: the inflection test runs in the atomizer canonical space', () 
     expect(report.verified).toBe(false)
   })
 
-  it('control: an antonym flip that lands on the SAME polarity does not demote', async () => {
-    // "shall not close the doors" is "open the doors" once the flip composes with the
-    // negation: same side as "open the door", so nothing contradicts.
+  it('control: a contrary pair with one side NEGATED does not demote', async () => {
+    // "open the door" and "shall not close the doors" is `A ∧ ¬B` over contraries A, B: the
+    // contrary axiom `¬(A ∧ B)` holds, so even as one door nothing contradicts.
     const report = await runCheck(antonymDoc('close the doors', true), {
       semantic: { embedder: pairEmbedder('close the doors') },
     })
+    expect(report.findings.map((f) => f.code)).toContain('FND_SIMILAR_SEMANTIC')
+    expect(nearDuplicate(report)).toEqual([])
+  })
+
+  it('control: BOTH sides negated does not demote — "do neither" is consistent (AC-2-1)', async () => {
+    // The rename model read "shall not open the door" as `close_the_door` and "shall not close
+    // the doors" as `¬close_the_doors`: opposite polarity, a demotion. Under the contrary axiom
+    // `¬A ∧ ¬B` is satisfiable, so demoting here would charge the author for a consistent pair.
+    const report = await runCheck(
+      docOf([
+        {
+          id: P1,
+          systemName: 'door controller',
+          trigger: PRESS,
+          systemResponse: 'open the door',
+          negated: true,
+        },
+        {
+          id: P2,
+          systemName: 'door controller',
+          trigger: PRESS,
+          systemResponse: 'close the doors',
+          negated: true,
+        },
+      ]),
+      { semantic: { embedder: pairEmbedder('close the doors') } },
+    )
     expect(report.findings.map((f) => f.code)).toContain('FND_SIMILAR_SEMANTIC')
     expect(nearDuplicate(report)).toEqual([])
   })
@@ -643,10 +673,11 @@ describe('AC-3-6: the inflection test runs in the atomizer canonical space', () 
 })
 
 /**
- * The merge the finding proposes lives in the same canonical space as the test that raised
- * it. A glossary entry declares two phrases synonyms, so the raw pair "open the door" /
- * "close the doors" would alias a phrase to its own opposite under open/close: the flip is
- * erased and the solver reads the contradiction as a redundancy.
+ * The merge the finding proposes lives in the same opposition-key space as the test that raised
+ * it. A glossary entry declares two phrases synonyms, so the raw pair "open the door" / "close
+ * the doors" would alias a phrase to its own contrary under open/close: both land on one atom at
+ * one polarity, and the solver reads the contradiction as a redundancy. The merge that keeps it
+ * a contradiction aligns the number only, so the two become contraries over ONE key.
  */
 describe('AC-3-6: the proposed merge never aliases a phrase to its own opposite', () => {
   const pair = (first: string, second: string) =>
@@ -747,6 +778,36 @@ describe('AC-3-6: the proposed merge never splits an atom the document already s
     expect(contradictions(after)).toEqual([`${P1}|${P2}`])
   })
 
+  it('refuses to move a phrase off an opposition key the document already shares', async () => {
+    // P5 "close the door" is the contrary of P1 "open the door" over the key `close_the_door`,
+    // and both fire on PRESS, so they contradict. With "close the doors" a committed canonical,
+    // the one merge left is "open the doors" <- "open the door": it moves P1 alone onto the key
+    // `close_the_doors`, off the key it shares with P5, and the P1/P5 contradiction disappears.
+    // No atom is split (P1 is alone on `open_the_door`), so only the key partition sees it.
+    const P5 = 'para-5-close-door'
+    const glossary = [{ canonical: 'close the doors', aliases: ['seal the portal'] }]
+    const extra: ReqSpec[] = [
+      { id: P5, systemName: 'door controller', trigger: PRESS, systemResponse: 'close the door' },
+    ]
+    const report = await runCheck(withGlossary(doors(extra), glossary), {
+      semantic: { embedder: embedder() },
+    })
+    expect(contradictions(report)).toEqual([`${P1}|${P5}`])
+    const message = messageOf(report)
+    expect(message).not.toContain('"open the doors" "open the door"')
+    expect(message).toContain('No glossary merge is proposed')
+    expect(nearDuplicate(report).map((d) => d.requirementIds)).toContainEqual([P1, P2])
+    // The fixture discriminates: the refused merge, committed anyway, loses P1/P5.
+    const moved = await runCheck(
+      withGlossary(doors(extra), [
+        ...glossary,
+        { canonical: 'open the doors', aliases: ['open the door'] },
+      ]),
+      { semantic: { embedder: embedder() } },
+    )
+    expect(contradictions(moved)).not.toContain(`${P1}|${P5}`)
+  })
+
   it('refuses to move a phrase an inflection already shares an atom with', async () => {
     // "closes the doors" de-inflects onto `close_the_doors`, the atom P2 is on, and conflicts
     // there with "open the doors". Aliasing "close the doors" away would move P2 alone.
@@ -768,7 +829,7 @@ describe('AC-3-6: the proposed merge never splits an atom the document already s
     expect(message).toContain('`symspec glossary add "open the doors" "open the door"`')
   })
 
-  it('a variant pair carries no antonym hint: it already sits at opposite polarity', async () => {
+  it('a variant pair carries no antonym hint: the table already relates it', async () => {
     const report = await runCheck(doors(), { semantic: { embedder: embedder() } })
     const message = messageOf(report)
     expect(message).toContain('DEMOTES')

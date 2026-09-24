@@ -309,6 +309,11 @@ Unwanted behavior: If an opposite-polarity pair's responses score above the sema
 and differ only in inflection or number ("open the door" / "open the doors"), then `check` shall
 demote `verified` until the pair is aliased or declared distinct.
 Sabotage: leave `FND_SIMILAR_SEMANTIC` non-demoting for opposite polarity; the reproducer goes red.
+Note (with AC-2-1): an antonym pair is two contrary atoms, so "opposite polarity" reads as "would
+conflict if the words named one thing": one atom at opposite polarity, or both asserted on
+opposite sides of one class whose opposition keys differ only in inflection or number ("open the
+door" / "close the doors"). Both negated ("do neither") is consistent and does not demote. A
+proposed merge never unifies two contraries, and never splits a shared atom or opposition key.
 
 ---
 

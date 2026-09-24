@@ -245,6 +245,13 @@ export interface Opposition {
    * related, and nothing else.
    */
   readonly key: string
+  /**
+   * The class-and-remainder body {@link key} renders from (`close_the_door` for "open the door"
+   * under open/close), so a propose tier can compare two keys up to inflection or number without
+   * parsing a rendered name — "open the door" and "close the doors" are contraries whose keys
+   * differ only in `door`/`doors` (AC-3-6).
+   */
+  readonly body: string
   /** Which polarity side of the class the head verb sits on (`reject`, `decline` vs `accept`). */
   readonly negative: boolean
 }
@@ -915,6 +922,7 @@ export function atomize(args: AtomizeArgs): Atom {
       const classBody = canonRest === '' ? entry.canonical : `${entry.canonical}_${canonRest}`
       opposition = {
         key: renderAtom({ scope, kind: 'resp', body: classBody }),
+        body: classBody,
         negative: entry.negated,
       }
     } else if (tok1 !== tokens[0]) {
