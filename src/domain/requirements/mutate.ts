@@ -51,6 +51,7 @@ import {
   type Relation,
   type Requirement,
   type RequirementsDocument,
+  STATE_VAR_NAME_PATTERN,
   type StateModel,
   type StateVariable,
   type TermEntry,
@@ -1111,6 +1112,24 @@ const applyState = (
     return usage('A `state` op requires a variable name.', [
       'Name the variable: `symspec state --name lock_held --type bool`.',
     ])
+  }
+
+  // THE NAME RULE, at the fold rather than only at the schema backstop on save, so the
+  // refusal names the offending word (spec 007 AC-1-4). A variable or enum member spelled
+  // like an expression keyword under case folding (`True`, `NOT`, `And`) lexes as that
+  // keyword everywhere it is written, so it could be declared and never referenced.
+  for (const candidate of [name, ...(op.type === 'enum' ? (op.domain ?? []) : [])]) {
+    const trimmed = candidate.trim()
+    if (trimmed.length > 0 && !STATE_VAR_NAME_PATTERN.test(trimmed)) {
+      return usage(
+        `${JSON.stringify(trimmed)} is not a usable state ${trimmed === name ? 'variable name' : `member of ${JSON.stringify(name)}`}.`,
+        [
+          'Names are identifier-shaped (letters, digits, `_`, `.`; not starting with a digit) and must not equal an expression keyword — `and`, `or`, `not`, `true`, `false`, `when` — in ANY letter case.',
+          'The expression lexer folds case, so `True` reads as the literal `true` and `NOT` as the connective: a variable so named could be declared but never referenced.',
+          `Rename it, e.g. ${JSON.stringify(`${trimmed}_state`)}.`,
+        ],
+      )
+    }
   }
 
   const variable = stateVariableOf({ ...op, name })

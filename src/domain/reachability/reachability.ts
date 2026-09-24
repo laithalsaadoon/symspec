@@ -90,25 +90,17 @@
  * the two runs IS the detector for "the frame was load-bearing here" — no separate
  * dependency analysis needed.
  *
- * ## V29 — `getAnswer()` IS NOT A TRACE, AND RULE NAMES NEED PROGRAMMATIC RULES
+ * ## V29 / SPEC 007 AC-1-3 — A TRACE IS READ OFF STATES, NEVER OFF RULE NAMES
  *
- * `getAnswer()` on `sat` returns a hyper-resolution PROOF TERM (725 chars on a 4-step
- * system), and `get_ground_sat_answer` returned literal `false` — useless on this
- * shape, despite being the research's first recommendation.
- * `get_rules_along_trace` is the call that works.
- *
- * But rules loaded via `fixedpoint_from_string` carry NO names, so
- * `get_rule_names_along_trace` yields `<null>` per entry. Hence every rule here is
- * registered PROGRAMMATICALLY with its requirement's own key
- * (`fixedpoint_add_rule(..., mk_string_symbol(key))`), which is what lets a trace name
- * WHICH REQUIREMENTS fired in which order. Re-verified on 5.0.0: a 4-rule system
- * returned `"<null>;R-bad;R-set;R-tick;R-tick;R-tick;R-init"` — real names, rule
- * multiplicity preserved.
- *
- * Two ordering mitigations kept regardless: the trace is extracted LAST (after the
- * verdict and the invariant), because a `shared_occs` assertion would ABORT rather
- * than throw and `try/catch` cannot protect against it; and the trace comes back
- * REVERSE-ordered (violation first), so it is reversed before rendering.
+ * `getAnswer()` on `sat` returns a hyper-resolution PROOF TERM, `get_ground_sat_answer`
+ * returned literal `false` on this shape, and `get_rule_names_along_trace` — the call the
+ * first implementation used — returns rule names that do NOT correspond to the steps that
+ * happen: on `st{IDLE,RUNNING,DONE}` it blamed `FINISH` (guard `st = RUNNING`) for leaving
+ * the initial state whenever FINISH's id sorted first. So Spacer decides REACHABILITY and
+ * nothing else; the trace is reconstructed by {@link reconstructTrace}, a bounded model
+ * check over the same transition relation whose model IS the state sequence, and each step
+ * is named by evaluating the effects' own bodies on it. Rules are still registered with
+ * their requirement's key, which keeps a Spacer answer readable when debugging.
  *
  * ## V28 — THE INVARIANT IS INDEPENDENTLY RE-CHECKED, WHICH MAKES ITS TEXT NON-LOAD-BEARING
  *
@@ -180,6 +172,7 @@ import {
   validateExpression,
   writesOf,
 } from '../requirements/state-expr.ts'
+import { type ExplicitVerdict, explicitCheck } from './explicit-state.ts'
 
 // ---------------------------------------------------------------------------
 // The verdict vocabulary
@@ -230,10 +223,17 @@ export const verdictOfLbool = (lbool: number): ReachabilityVerdict => {
  * - `'undecidable'` — the solver gave up well inside its budget. Raising the budget
  *   will NOT help; the model needs bounding or simplifying.
  *
- * Two reasons rather than one because they need different remedies, and conflating
- * them would send an agent into a loop raising a budget that was never the problem.
+ * - `'frame-undeclared'` — NOT a solver limitation (spec 007 AC-1-6): the constraint holds
+ *   once every unwritten variable is held fixed, and is violable when the variables the
+ *   document declares `volatile` change on their own. Whether they can is a fact about the
+ *   system the document does not state, so neither a proof nor a defect is claimed. The
+ *   remedy is to state it (declare them `frame: stable`) or to author the requirements that
+ *   make it true — never a budget or a bound.
+ *
+ * Distinct reasons because they need different remedies, and conflating them would send
+ * an agent into a loop raising a budget that was never the problem.
  */
-export type UnknownReason = 'budget-exhausted' | 'undecidable'
+export type UnknownReason = 'budget-exhausted' | 'undecidable' | 'frame-undeclared'
 
 /**
  * Classify an `unknown` from the CLOCK, never from `reason_unknown` (V15).
@@ -302,54 +302,57 @@ export type FrameVerdict =
   /** Unreachable with NOTHING framed. The strongest available answer: it holds under
    * the document's own transition relation, with no assumption added. */
   | 'PROVED'
-  /** Unreachable only WITH the declared frames. True given a hypothesis the document
-   * does not state, so it is disclosed and DEMOTES. */
+  /** Unreachable only WITH the frames the document DECLARES (`frame: stable`). True given
+   * a hypothesis the requirements do not establish, so it is disclosed and DEMOTES. */
   | 'PROVED_UNDER_HYPOTHESES'
   /** Reachable both ways: a genuine defect, reported at error severity with a trace. */
   | 'VIOLATED'
-  /** Either run failed to decide. Demotes; never reported as proven. */
+  /** Nothing is claimed either way: a run failed to decide, or the answer turns on a
+   * frame the document does not declare (see {@link UnknownReason}). Demotes; never
+   * reported as proven. */
   | 'UNKNOWN'
 
 /**
- * Decide the frame lattice (AC-2-5, binding) from the runs that were performed.
+ * Decide the frame lattice from the runs that were performed — THE implementation of the
+ * table the `frame` field documents ({@link FRAME_VERDICT_TABLE}, rendered into the
+ * field's description), and asserted row-by-row against it (spec 007 AC-1-6).
  *
- * | `none` run | framed run | verdict | reasoning |
+ * Three runs, ordered by how much they pin, so each is sound for what it licenses:
+ *
+ * | `none` | `declared` (pins `stable`) | `full` (pins all unwritten) | verdict |
  * |---|---|---|---|
- * | unreachable | (not needed) | `PROVED` | holds with NOTHING assumed |
- * | reachable | reachable | `VIOLATED` | reachable using only sanctioned changes |
- * | reachable | unreachable | `PROVED_UNDER_HYPOTHESES` | the frame is load-bearing |
- * | unknown (either) | | `UNKNOWN` | never reported as proven |
+ * | unreachable | — | — | `PROVED` — holds with NOTHING assumed |
+ * | reachable | unreachable | — | `PROVED_UNDER_HYPOTHESES` — holds under the frames the document declares |
+ * | reachable | reachable (or not run) | reachable | `VIOLATED` — reachable using only requirement-sanctioned changes |
+ * | reachable | reachable (or not run) | unreachable | `UNKNOWN` (frame-undeclared) — holds only if VOLATILE variables stay put |
+ * | any `unknown` on the path | | | `UNKNOWN` |
  *
- * This is the decision doc's table verbatim. What the doc leaves open — and what the first
- * implementation got wrong — is WHICH frame the second run applies.
+ * `declared` is `undefined` when nothing is declared `stable`: that run would pin nothing
+ * and be the `none` run again.
  *
- * ## Why the framed run pins EVERY unwritten variable, not just the declared ones
+ * ## Why the undeclared case is UNKNOWN and not PROVED_UNDER_HYPOTHESES
  *
- * Pinning only the variables declared `frame: stable` makes the framed run identical to
- * the unpinned one whenever nothing is declared, so `reachable` in both is trivially true
- * and every such constraint reports `VIOLATED` at error severity. The worked lock/grant
- * fixture caught exactly that: a lock-count constraint reported violated by a requirement
- * that only touches `idle`, because with nothing pinned `granted` may jump spontaneously.
- * A confident error-severity finding about a defect the document does not contain.
- *
- * So the framed run pins every variable an effect does not write — the maximal frame — and
- * the DECLARED set is then used to make the disclosed hypothesis as TIGHT as possible (see
- * {@link decideConstraint}). That keeps both directions sound: nothing-pinned is the sound
- * direction for proving unreachable, fully-pinned is the sound direction for reporting a
- * counterexample, and the divergence between them is still the detector for "the frame was
- * load-bearing here".
+ * An earlier lattice reported `PROVED_UNDER_HYPOTHESES` whenever the FULL run was
+ * unreachable, and used the declared set only to word the disclosure. The `frame` field's
+ * documentation said the second run used the DECLARED frames, so the documented behavior
+ * and the implemented one disagreed — and the disagreement had teeth: the suggested repair
+ * (release the frame) could not change the verdict, because the verdict never read the
+ * declaration. Now a proof under hypotheses is a proof under hypotheses the document
+ * STATES, and declaring or releasing a frame moves the verdict between the two rows.
  */
 export const decideFrameVerdict = (
   none: ReachabilityVerdict,
-  framed: ReachabilityVerdict | undefined,
+  declared: ReachabilityVerdict | undefined,
+  full: ReachabilityVerdict | undefined,
 ): FrameVerdict => {
   if (none === 'unknown') return 'UNKNOWN'
   if (none === 'unreachable') return 'PROVED'
-  // `none === 'reachable'`. On its own that is NOT evidence of a defect — with nothing
-  // pinned a variable may change spontaneously, so the witness may use a transition the
-  // document never licensed. The framed run is what distinguishes the two.
-  if (framed === undefined || framed === 'unknown') return 'UNKNOWN'
-  return framed === 'reachable' ? 'VIOLATED' : 'PROVED_UNDER_HYPOTHESES'
+  if (declared === 'unknown') return 'UNKNOWN'
+  if (declared === 'unreachable') return 'PROVED_UNDER_HYPOTHESES'
+  // Reachable under the document's own frames. The FULL run decides whether that is a
+  // requirement-sanctioned defect.
+  if (full === undefined || full === 'unknown') return 'UNKNOWN'
+  return full === 'reachable' ? 'VIOLATED' : 'UNKNOWN'
 }
 
 // ---------------------------------------------------------------------------
@@ -549,6 +552,8 @@ export const writeSetOf = (prepared: PreparedModel): ReadonlyMap<string, readonl
       writers.get(target)?.push(effect.label)
     }
   }
+  // In LABEL order, so a disclosure reads the same whatever ids the requirements carry.
+  for (const list of writers.values()) list.sort()
   return writers
 }
 
@@ -724,17 +729,17 @@ const compile = (
     case 'ref': {
       const bound = binding.get(expr.name)
       if (bound !== undefined) return bound
-      // An enum member: compiled to its INDEX in the declared domain, which is the
-      // same encoding `sortFor` gives the variable.
-      const index = enumMemberIndex(expr.name, vars)
-      if (index !== undefined) {
-        return Z3.mk_numeral(ctx, String(index), Z3.mk_int_sort(ctx))
-      }
+      // A bare ref that is not a bound variable. The validator rewrites every enum member
+      // to a `member` node, so reaching here is a validator defect, never a document one.
       throw new Error(
-        `reachability: "${expr.name}" resolved to neither a declared variable nor an enum member. ` +
-          'The expression should have been refused by core/state-expr.ts before reaching the encoder.',
+        `reachability: "${expr.name}" is not a declared variable, and an enum member reaches the encoder only as a resolved \`member\` node. ` +
+          'The expression should have been resolved by requirements/state-expr.ts before reaching the encoder.',
       )
     }
+    case 'member':
+      // An enum member: compiled to its INDEX in the domain of the enum the TYPE CHECKER
+      // assigned to this position — the same encoding `sortFor` gives that variable.
+      return Z3.mk_numeral(ctx, String(memberIndex(expr, vars)), Z3.mk_int_sort(ctx))
     case 'not':
       return Z3.mk_not(ctx, go(expr.operand))
     case 'and':
@@ -766,15 +771,25 @@ const compile = (
   }
 }
 
-/** The index of an enum member in its owning variable's declared domain, or
- * `undefined` when the name is not a member of any declared enum. */
-const enumMemberIndex = (name: string, vars: DeclaredVars): number | undefined => {
-  for (const variable of vars.values()) {
-    if (variable.type !== 'enum') continue
-    const index = variable.domain.indexOf(name)
-    if (index >= 0) return index
+/**
+ * The index of a RESOLVED enum member in the domain of its owning enum (spec 007 AC-1-1).
+ *
+ * Looked up in `member.enumOf` and nowhere else. A member name may belong to several
+ * enums at different indices (`open` is index 0 of `door{open,closed}` and index 2 of
+ * `valve{shut,ajar,open}`); the first-match search this replaced encoded `valve = open`
+ * as `valve = shut` and certified a PROVED over a constraint the initial state violates.
+ * Throws on a miss because the validator guarantees membership — a miss is a validator
+ * defect, and a silent fallback would hide it.
+ */
+const memberIndex = (member: Extract<Expr, { kind: 'member' }>, vars: DeclaredVars): number => {
+  const owner = vars.get(member.enumOf)
+  const index = owner?.type === 'enum' ? owner.domain.indexOf(member.name) : -1
+  if (index < 0) {
+    throw new Error(
+      `reachability: "${member.name}" is not a member of enum ${member.enumOf}; the validator should have refused it.`,
+    )
   }
-  return undefined
+  return index
 }
 
 /** The range constraint a variable's declared domain imposes, if any. Applied to both
@@ -811,6 +826,95 @@ const rangeConstraints = (
 // ---------------------------------------------------------------------------
 // The encoding
 // ---------------------------------------------------------------------------
+
+/** A conjunction, with the empty and singleton cases spelled out so Z3 never sees a
+ * zero- or one-argument `and`. */
+const andOf = (Z3: LowLevelZ3, ctx: Ast, terms: readonly Ast[]): Ast =>
+  terms.length === 0 ? Z3.mk_true(ctx) : terms.length === 1 ? terms[0] : Z3.mk_and(ctx, terms)
+
+/** A disjunction; the empty one is `false`. */
+const orOf = (Z3: LowLevelZ3, ctx: Ast, terms: readonly Ast[]): Ast =>
+  terms.length === 0 ? Z3.mk_false(ctx) : terms.length === 1 ? terms[0] : Z3.mk_or(ctx, terms)
+
+/**
+ * The initial-state predicate over one binding: every per-variable and model-wide
+ * `initial`, plus the declared ranges. ONE builder for the Horn `init` rule, the
+ * satisfiability gate, and the trace reconstruction, so the three cannot disagree about
+ * which states are initial.
+ */
+const initTermOf = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  binding: ReadonlyMap<string, Ast>,
+): Ast =>
+  andOf(Z3, ctx, [
+    ...prepared.initial.map((e) => compile(Z3, ctx, e, binding, prepared.vars)),
+    ...rangeConstraints(Z3, ctx, prepared.variables, binding),
+  ])
+
+/**
+ * ONE effect's contribution to the transition relation, over a pre- and a post-state
+ * binding: its guard over the pre-state, its updates, and the frame.
+ *
+ * The single builder for the Horn transition rules AND the trace reconstruction, which
+ * is what makes a reconstructed step a step of the relation the proof was about.
+ *
+ * `frame` is the ONLY thing that differs between the runs. Which variables get pinned is
+ * the whole content of {@link FrameMode}; see its header for why this is three modes and
+ * not a boolean.
+ */
+const effectBody = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  effect: StateEffect,
+  frame: FrameMode,
+  preBinding: ReadonlyMap<string, Ast>,
+  postBinding: ReadonlyMap<string, Ast>,
+): Ast => {
+  const written = writesOf(effect.assignments)
+  const updates: Ast[] = []
+  // THE GUARD, over the PRE-state: the effect fires only from a state satisfying it.
+  // An absent guard contributes nothing, so the effect is available everywhere —
+  // which is the sound default, since it admits more transitions and therefore makes
+  // strictly fewer things provable.
+  if (effect.guard !== undefined) {
+    updates.push(compile(Z3, ctx, effect.guard, preBinding, prepared.vars))
+  }
+  for (const assignment of effect.assignments) {
+    const target = postBinding.get(assignment.target)
+    if (target === undefined) continue
+    updates.push(
+      Z3.mk_eq(ctx, target, compile(Z3, ctx, assignment.value, preBinding, prepared.vars)),
+    )
+  }
+  const pinned = new Set(
+    frame === 'none'
+      ? []
+      : frame === 'full'
+        ? prepared.variables.map((v) => v.name)
+        : prepared.stableVars,
+  )
+  for (const name of pinned) {
+    // A variable this effect WRITES is never pinned — the write is the point.
+    if (written.has(name)) continue
+    const before = preBinding.get(name)
+    const after = postBinding.get(name)
+    if (before !== undefined && after !== undefined) updates.push(Z3.mk_eq(ctx, after, before))
+  }
+  // THE DECLARED RANGE CONSTRAINS ONLY A FREE VARIABLE (spec 007 AC-1-2) — one the effect
+  // neither writes nor pins, whose next value the environment chooses within its type.
+  //
+  // A WRITTEN variable's next value is whatever the effect computes. Conjoining its range
+  // here made an out-of-range write UNSATISFIABLE, which silently DISABLED the step: a
+  // `queue_len := queue_len + 1` at the declared maximum simply never fired, so anything
+  // it would have caused was "proved" impossible. The overflow is now a real transition,
+  // and {@link checkRanges} reports it as `FND_RANGE_VIOLATION`. A PINNED variable keeps
+  // its value, in range or not.
+  const free = prepared.variables.filter((v) => !written.has(v.name) && !pinned.has(v.name))
+  return andOf(Z3, ctx, [...updates, ...rangeConstraints(Z3, ctx, free, postBinding)])
+}
 
 /** One built Horn system, ready to query, plus what is needed to re-check its answer. */
 interface HornSystem {
@@ -873,7 +977,7 @@ const buildSystem = (
   Z3: LowLevelZ3,
   ctx: Ast,
   prepared: PreparedModel,
-  constraint: ConstraintRule,
+  target: BadTarget,
   frame: FrameMode,
   timeoutMs: number,
 ): { readonly system: HornSystem; readonly refusedParams: readonly string[] } => {
@@ -898,8 +1002,7 @@ const buildSystem = (
   const preBinding = new Map(prepared.variables.map((v, i) => [v.name, pre[i]]))
   const postBinding = new Map(prepared.variables.map((v, i) => [v.name, post[i]]))
 
-  const and = (terms: readonly Ast[]): Ast =>
-    terms.length === 0 ? Z3.mk_true(ctx) : terms.length === 1 ? terms[0] : Z3.mk_and(ctx, terms)
+  const and = (terms: readonly Ast[]): Ast => andOf(Z3, ctx, terms)
   const app = (decl: Ast, args: readonly Ast[]) => Z3.mk_app(ctx, decl, args)
   const forall = (bound: readonly Ast[], body: Ast) =>
     bound.length === 0 ? body : Z3.mk_forall_const(ctx, 0, bound, [], body)
@@ -912,10 +1015,7 @@ const buildSystem = (
   }
 
   // --- INIT ------------------------------------------------------------------
-  const initTerm = and([
-    ...prepared.initial.map((e) => compile(Z3, ctx, e, preBinding, prepared.vars)),
-    ...rangeConstraints(Z3, ctx, prepared.variables, preBinding),
-  ])
+  const initTerm = initTermOf(Z3, ctx, prepared, preBinding)
   const initRule = forall(pre, Z3.mk_implies(ctx, initTerm, app(invRelation, pre)))
   Z3.fixedpoint_add_rule(ctx, fp, initRule, sym('init'))
 
@@ -924,39 +1024,7 @@ const buildSystem = (
   // relation the certificate check re-uses.
   const transitions: Ast[] = []
   for (const { label, effect } of prepared.effects) {
-    const written = writesOf(effect.assignments)
-    const updates: Ast[] = []
-    // THE GUARD, over the PRE-state: the effect fires only from a state satisfying it.
-    // An absent guard contributes nothing, so the effect is available everywhere —
-    // which is the sound default, since it admits more transitions and therefore makes
-    // strictly fewer things provable.
-    if (effect.guard !== undefined) {
-      updates.push(compile(Z3, ctx, effect.guard, preBinding, prepared.vars))
-    }
-    for (const assignment of effect.assignments) {
-      const target = postBinding.get(assignment.target)
-      if (target === undefined) continue
-      updates.push(
-        Z3.mk_eq(ctx, target, compile(Z3, ctx, assignment.value, preBinding, prepared.vars)),
-      )
-    }
-    // THE FRAME — the ONLY thing that differs between the runs. Which variables get
-    // pinned is the whole content of `FrameMode`; see its header for why this is three
-    // modes and not a boolean.
-    const pinned =
-      frame === 'none'
-        ? []
-        : frame === 'full'
-          ? prepared.variables.map((v) => v.name)
-          : prepared.stableVars
-    for (const name of pinned) {
-      // A variable this effect WRITES is never pinned — the write is the point.
-      if (written.has(name)) continue
-      const before = preBinding.get(name)
-      const after = postBinding.get(name)
-      if (before !== undefined && after !== undefined) updates.push(Z3.mk_eq(ctx, after, before))
-    }
-    const body = and([...updates, ...rangeConstraints(Z3, ctx, prepared.variables, postBinding)])
+    const body = effectBody(Z3, ctx, prepared, effect, frame, preBinding, postBinding)
     transitions.push(body)
     rule(and([app(invRelation, pre), body]), app(invRelation, post), label)
   }
@@ -973,14 +1041,25 @@ const buildSystem = (
         : Z3.mk_or(ctx, transitions)
 
   // --- THE BAD STATE ---------------------------------------------------------
-  // `Inv(x) ∧ ¬C(x) ⇒ Bad()`. Named after the constraint's OWN requirement, so a trace
-  // ends with the requirement whose property was violated.
-  const badTerm = Z3.mk_not(ctx, compile(Z3, ctx, constraint.predicate, preBinding, prepared.vars))
+  // A STATE target: `Inv(x) ∧ ¬C(x) ⇒ Bad()`, named after the constraint's own
+  // requirement. A STEP target (a range overflow, AC-1-2): `Inv(x) ∧ Tₑ(x, x') ∧ ¬R(x') ⇒
+  // Bad()`, named after the effect — "from some reachable state, effect e writes outside
+  // the declared range".
+  const badTerm =
+    target.kind === 'state'
+      ? target.bad(preBinding)
+      : and([
+          effectBody(Z3, ctx, prepared, target.effect.effect, frame, preBinding, postBinding),
+          target.bad(preBinding, postBinding),
+        ])
   Z3.fixedpoint_add_rule(
     ctx,
     fp,
-    forall(pre, Z3.mk_implies(ctx, and([app(invRelation, pre), badTerm]), app(badRelation, []))),
-    sym(constraint.label),
+    forall(
+      target.kind === 'state' ? pre : [...pre, ...post],
+      Z3.mk_implies(ctx, and([app(invRelation, pre), badTerm]), app(badRelation, [])),
+    ),
+    sym(target.kind === 'state' ? target.label : target.effect.label),
   )
 
   return {
@@ -1080,14 +1159,13 @@ const checkInitialSatisfiable = (
     // deliberately: `--min 0 --max 3` with `initial "held = 5"` is exactly as vacuous as
     // a self-contradictory predicate, and it is the shape an author reaches by narrowing
     // a bound after writing the initial.
-    const terms = [
-      ...prepared.initial.map((e) => compile(Z3, ctx, e, binding, prepared.vars)),
-      ...rangeConstraints(Z3, ctx, prepared.variables, binding),
-    ]
+    const hasTerms =
+      prepared.initial.length > 0 ||
+      rangeConstraints(Z3, ctx, prepared.variables, binding).length > 0
     // NOTHING declared initial and no ranges: `true` is trivially satisfiable and there
     // is nothing to ask. Skipping the solver call here is not merely an optimization —
     // it keeps the common (unconstrained-initial) document from paying a query at all.
-    if (terms.length === 0) return { satisfiable: true }
+    if (!hasTerms) return { satisfiable: true }
 
     const s = Z3.mk_solver(ctx)
     Z3.solver_inc_ref(ctx, s)
@@ -1096,7 +1174,7 @@ const checkInitialSatisfiable = (
     Z3.params_set_uint(ctx, params, Z3.mk_string_symbol(ctx, 'timeout'), timeoutMs)
     Z3.solver_set_params(ctx, s, params)
     Z3.params_dec_ref(ctx, params)
-    Z3.solver_assert(ctx, s, terms.length === 1 ? terms[0] : Z3.mk_and(ctx, terms))
+    Z3.solver_assert(ctx, s, initTermOf(Z3, ctx, prepared, binding))
     const lbool = yield* solver.solve(
       {
         start: () => Z3.solver_check(ctx, s) as Promise<number>,
@@ -1115,8 +1193,17 @@ const checkInitialSatisfiable = (
 
 /** A counterexample, as evidence. */
 export interface TraceEvidence {
-  /** The rules that fired, in FORWARD order (init first, violation last). */
+  /** The rules that fired, in FORWARD order (init first, violation last). Empty when no
+   * trace was recovered — never a guessed one. */
   readonly steps: readonly TraceStep[]
+  /**
+   * The STATE SEQUENCE the steps walk, one record per state (`states[0]` is the initial
+   * state), each variable rendered as the author wrote it: `true`/`false`, a decimal
+   * integer, or an enum member name. `steps[i + 1]` is the requirement that takes
+   * `states[i]` to `states[i + 1]`, which is what lets a reader CHECK a trace rather than
+   * trust it (spec 007 AC-1-3).
+   */
+  readonly states: readonly Readonly<Record<string, string>>[]
 }
 
 /**
@@ -1354,42 +1441,187 @@ const checkCertificate = (
   })
 
 /**
- * Extract the counterexample trace, LAST and defensively (V29).
+ * The longest counterexample {@link reconstructTrace} will search for, in steps.
  *
- * Three measured facts shape this:
- *
- * - `get_rules_along_trace` is the call that works; `get_ground_sat_answer` returns
- *   literal `false` on this shape and `getAnswer` returns a proof term.
- * - `get_rule_names_along_trace` returns ONE symbol containing every name joined by
- *   `;`, leading with a `<null>` for the query itself. Verified on 5.0.0:
- *   `"<null>;R-bad;R-set;R-tick;R-tick;R-tick;R-init"`.
- * - The order is REVERSED (violation first, initial state last), so it is reversed
- *   here to read forward.
- *
- * Wrapped in try/catch AND called last, because those defend against different things:
- * the catch handles a throw, and the ORDERING is the only defense against a
- * `shared_occs` assertion, which would abort the process rather than throw.
+ * Spacer has already PROVEN a violation reachable when this runs, so the search always
+ * terminates in principle; the cap bounds how long a pathological (very deep) witness may
+ * cost. 128 steps is far beyond every measured fixture (the deepest is 9) and each
+ * extra depth is one incremental SAT check, so the cap is reached only by a model whose
+ * shortest witness is genuinely long — and then the finding says the trace was not
+ * recovered rather than printing a wrong one.
  */
-const extractTrace = (Z3: LowLevelZ3, ctx: Ast, fp: Ast): TraceEvidence => {
-  try {
-    const symbol = Z3.fixedpoint_get_rule_names_along_trace(ctx, fp)
-    const joined = Z3.get_symbol_string(ctx, symbol) as string
-    const steps = joined
-      .split(';')
-      .map((name) => name.trim())
-      // The leading `<null>` is the query relation itself, which is not a rule an
-      // author wrote — dropping it keeps the trace to requirements and `init`.
-      .filter((name) => name.length > 0 && name !== '<null>')
-      .reverse()
-      .map((rule) => ({ rule }))
-    return { steps }
-  } catch {
-    // A trace is EVIDENCE, not a verdict. Failing to extract one must not turn a
-    // sound `reachable` into an error, so the finding is reported with no steps and
-    // the check integration says so rather than pretending to a trace it does not have.
-    return { steps: [] }
-  }
+const TRACE_DEPTH_CAP = 128
+
+/** What a query (and a reconstructed trace) is looking for: a bad STATE, or a bad STEP. */
+type BadTarget =
+  /** A state violating a constraint: `bad` over the final state. */
+  | {
+      readonly kind: 'state'
+      readonly label: string
+      readonly bad: (at: ReadonlyMap<string, Ast>) => Ast
+    }
+  /** A final STEP by `effect` whose post-state satisfies `bad` (a range overflow). */
+  | {
+      readonly kind: 'step'
+      readonly effect: EffectRule
+      readonly bad: (pre: ReadonlyMap<string, Ast>, post: ReadonlyMap<string, Ast>) => Ast
+    }
+
+/** Render one variable's model value for evidence: a bool as `true`/`false`, an int in
+ * decimal, an enum as its MEMBER NAME (the index is an encoding artifact). */
+const renderValue = (Z3: LowLevelZ3, ctx: Ast, variable: StateVariable, value: Ast): string => {
+  if (variable.type === 'bool') return Z3.get_bool_value(ctx, value) === 1 ? 'true' : 'false'
+  const numeral = Z3.get_numeral_string(ctx, value) as string
+  if (variable.type === 'int') return numeral
+  return variable.domain[Number(numeral)] ?? `<index ${numeral}>`
 }
+
+/**
+ * RECONSTRUCT a counterexample from the solver's STATE SEQUENCE (spec 007 AC-1-3).
+ *
+ * ## Why the rule-name trace was replaced
+ *
+ * Spacer's `get_rule_names_along_trace` returns rule NAMES, and the names it returned did
+ * not correspond to the steps that happen. Measured on `st{IDLE,RUNNING,DONE}` with
+ * `START: when st = IDLE` and `FINISH: when st = RUNNING`: when FINISH's id sorted first,
+ * the trace for `st = IDLE` read `FINISH -> …`, blaming a requirement whose guard is false
+ * in the initial state, and a constraint violated by the initial state itself lost its
+ * `init`. A trace is the one piece of evidence an author acts on, so a trace that names
+ * the wrong requirement sends them to fix the wrong sentence.
+ *
+ * ## What this does instead
+ *
+ * Bounded model checking over THE SAME transition relation the proof run used
+ * ({@link effectBody} with the same frame): assert `Init(s0)`, then for k = 0, 1, …
+ * ask whether `target` holds at step k, adding `T(s_k, s_k+1)` between asks. The first
+ * `sat` is a SHORTEST witness, and its model is the state sequence. Each step is then
+ * NAMED by evaluating every effect's own body on `(s_i, s_i+1)` in the model and taking
+ * the first that holds in LABEL order — so every named step is one whose guard holds in
+ * its pre-state and whose updates produce its post-state, and the name never depends on
+ * which requirement's id sorts first. The disjunction is built in label order for the
+ * same reason: the formula, and therefore the model, is identical under any permutation
+ * of requirement ids.
+ *
+ * Returns NO steps (never a guessed trace) when the cap or the budget is reached first;
+ * the finding then says the trace was not recovered. Every check goes through the
+ * interruptible solve, awaited one at a time.
+ */
+const reconstructTrace = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  target: BadTarget,
+  frame: FrameMode,
+  timeoutMs: number,
+): Effect.Effect<TraceEvidence, never, SolverService> =>
+  Effect.gen(function* () {
+    const solver = yield* SolverService
+    const sorts = prepared.variables.map((v) => sortFor(Z3, ctx, v))
+    const stateAt = (k: number): ReadonlyMap<string, Ast> =>
+      new Map(
+        prepared.variables.map((v, i) => [
+          v.name,
+          Z3.mk_const(ctx, Z3.mk_string_symbol(ctx, `k${k}_${v.name}`), sorts[i]),
+        ]),
+      )
+    // LABEL order, not id order — see the header.
+    const effects = [...prepared.effects].sort((a, b) =>
+      a.label < b.label ? -1 : a.label > b.label ? 1 : a.requirementId < b.requirementId ? -1 : 1,
+    )
+
+    const s = Z3.mk_solver(ctx)
+    Z3.solver_inc_ref(ctx, s)
+    const params = Z3.mk_params(ctx)
+    Z3.params_inc_ref(ctx, params)
+    Z3.params_set_uint(ctx, params, Z3.mk_string_symbol(ctx, 'timeout'), timeoutMs)
+    Z3.solver_set_params(ctx, s, params)
+    Z3.params_dec_ref(ctx, params)
+
+    const states: ReadonlyMap<string, Ast>[] = [stateAt(0)]
+    Z3.solver_assert(ctx, s, initTermOf(Z3, ctx, prepared, states[0] as ReadonlyMap<string, Ast>))
+    const startedAt = Date.now()
+    const empty: TraceEvidence = { steps: [], states: [] }
+
+    for (let k = 0; k <= TRACE_DEPTH_CAP; k += 1) {
+      if (Date.now() - startedAt > timeoutMs) break
+      const here = states[k] as ReadonlyMap<string, Ast>
+      Z3.solver_push(ctx, s)
+      let finalPost: ReadonlyMap<string, Ast> | undefined
+      if (target.kind === 'state') {
+        Z3.solver_assert(ctx, s, target.bad(here))
+      } else {
+        finalPost = stateAt(k + 1)
+        Z3.solver_assert(
+          ctx,
+          s,
+          andOf(Z3, ctx, [
+            effectBody(Z3, ctx, prepared, target.effect.effect, frame, here, finalPost),
+            target.bad(here, finalPost),
+          ]),
+        )
+      }
+      const lbool = yield* solver.solve(
+        {
+          start: () => Z3.solver_check(ctx, s) as Promise<number>,
+          interrupt: () => {
+            Z3.interrupt(ctx)
+          },
+        },
+        0,
+      )
+      if (lbool === 1) {
+        const model = Z3.solver_get_model(ctx, s)
+        Z3.model_inc_ref(ctx, model)
+        const evaluate = (term: Ast): Ast => Z3.model_eval(ctx, model, term, true)
+        const holds = (term: Ast): boolean => Z3.get_bool_value(ctx, evaluate(term)) === 1
+        const sequence = finalPost !== undefined ? [...states, finalPost] : [...states]
+        const rendered = sequence.map((binding) =>
+          Object.fromEntries(
+            prepared.variables.map((v) => [
+              v.name,
+              renderValue(Z3, ctx, v, evaluate(binding.get(v.name))),
+            ]),
+          ),
+        )
+        const steps: TraceStep[] = [{ rule: 'init' }]
+        for (let i = 0; i < k; i += 1) {
+          const pre = states[i] as ReadonlyMap<string, Ast>
+          const post = states[i + 1] as ReadonlyMap<string, Ast>
+          const fired = effects.find((e) =>
+            holds(effectBody(Z3, ctx, prepared, e.effect, frame, pre, post)),
+          )
+          // Unreachable: the asserted transition IS the disjunction of these bodies.
+          // Refusing to name a step is still better than naming a wrong one.
+          if (fired === undefined) {
+            Z3.model_dec_ref(ctx, model)
+            Z3.solver_dec_ref(ctx, s)
+            return empty
+          }
+          steps.push({ rule: fired.label })
+        }
+        steps.push({ rule: target.kind === 'state' ? target.label : target.effect.label })
+        Z3.model_dec_ref(ctx, model)
+        Z3.solver_dec_ref(ctx, s)
+        return { steps, states: rendered }
+      }
+      Z3.solver_pop(ctx, s, 1)
+      // `unknown` (budget) ends the search: a longer witness would only cost more.
+      if (lbool !== -1) break
+      const next = stateAt(k + 1)
+      states.push(next)
+      Z3.solver_assert(
+        ctx,
+        s,
+        orOf(
+          Z3,
+          ctx,
+          effects.map((e) => effectBody(Z3, ctx, prepared, e.effect, frame, here, next)),
+        ),
+      )
+    }
+    Z3.solver_dec_ref(ctx, s)
+    return empty
+  })
 
 // ---------------------------------------------------------------------------
 // One constraint, end to end
@@ -1404,7 +1636,10 @@ export interface ConstraintResult {
   /** The strict (no-frame) run's raw verdict — retained because the two runs' verdicts
    * ARE the frame-was-load-bearing detector, so both belong in the record. */
   readonly strict: ReachabilityVerdict
-  /** The framed run's verdict, when a framed run was performed. */
+  /** The DECLARED run's verdict (only the `stable` variables pinned), when one was
+   * performed — i.e. when the document declares anything `stable`. */
+  readonly declared?: ReachabilityVerdict
+  /** The FULL-frame run's verdict (every unwritten variable pinned), when performed. */
   readonly framed?: ReachabilityVerdict
   /** Present on a PROVED / PROVED_UNDER_HYPOTHESES verdict. */
   readonly invariant?: InvariantEvidence
@@ -1423,14 +1658,99 @@ export interface ConstraintResult {
    * {@link ReachabilityReport}.
    */
   readonly refusedParams: readonly string[]
-  /** The stable variables the proof relied on, on PROVED_UNDER_HYPOTHESES. Named with
-   * their writers, so the disclosure is actionable. */
+  /**
+   * The frame hypotheses, named with their writers so the disclosure is actionable, and
+   * carrying each variable's DECLARATION so a repair can re-declare it with its own type,
+   * range, and initial (spec 007 AC-1-6):
+   *
+   * - on PROVED_UNDER_HYPOTHESES, the variables the document declares `stable` — the
+   *   hypotheses the proof rests on;
+   * - on UNKNOWN with reason `frame-undeclared`, the `volatile` variables the proof would
+   *   need held — the hypotheses the document does not state.
+   */
   readonly hypotheses?: readonly {
     readonly variable: string
     readonly writers: readonly string[]
+    readonly declaration: StateVariable
   }[]
   /** Wall-clock ms for every query this constraint needed. Reported, never gated on. */
   readonly elapsedMs: number
+  /**
+   * The frame the proof holds under, on PROVED (`none`) and PROVED_UNDER_HYPOTHESES — the
+   * relation the explicit-state cross-check re-decides.
+   */
+  readonly proofFrame?: FrameMode
+  /**
+   * The explicit-state cross-check of a PROVED / PROVED_UNDER_HYPOTHESES (spec 007
+   * AC-1-5). `disagrees` WITHDRAWS the proof: the verdict is then `UNKNOWN` and the
+   * projection reports `FND_CERTIFICATE_DISAGREES`.
+   */
+  readonly crossCheck?: CrossCheck
+}
+
+/**
+ * What the independent explicit-state search said about a proof.
+ *
+ * - `agrees` — it enumerated every reachable state (`states` of them) and the constraint
+ *   holds in each.
+ * - `disagrees` — it found a reachable violating state, with the path. One of the two
+ *   checkers is wrong, and a proof is never reported over a disagreement.
+ * - `not-applicable` — the search did not finish. With `beyondCap: true` it SHOWED the model
+ *   has more reachable states than the cross-check covers, and the proof stands on the Horn
+ *   tier and its certificate alone. With `beyondCap: false` it stopped without showing that
+ *   (a safety valve on the initial search or the steps, or an initial predicate it cannot
+ *   enumerate), so the model may be one AC-1-5 requires it to cover. The proof is then
+ *   WITHHELD: the verdict is `UNKNOWN`.
+ */
+export type CrossCheck =
+  | { readonly status: 'agrees'; readonly states: number }
+  | {
+      readonly status: 'disagrees'
+      readonly frame: FrameMode
+      readonly trace: readonly string[]
+      readonly path: readonly Readonly<Record<string, string>>[]
+    }
+  | { readonly status: 'not-applicable'; readonly reason: string; readonly beyondCap: boolean }
+
+/**
+ * Cross-check a PROVED / PROVED_UNDER_HYPOTHESES by explicit-state search (AC-1-5). WITHDRAW
+ * the proof when the two checkers disagree, and WITHHOLD it when the search stopped without
+ * showing the model is beyond its cap.
+ *
+ * The search ({@link explicitCheck}) shares nothing with the Horn encoder beyond the parsed
+ * expression AST, which is what makes its agreement evidence: an encoder defect that makes
+ * Spacer prove the wrong question (the AC-1-1 enum defect did) is invisible to the V28
+ * certificate, which re-checks that same wrong question, and visible here.
+ */
+const crossChecked = (
+  prepared: PreparedModel,
+  constraint: ConstraintRule,
+  result: ConstraintResult,
+): ConstraintResult => {
+  if (result.verdict !== 'PROVED' && result.verdict !== 'PROVED_UNDER_HYPOTHESES') return result
+  const frame: FrameMode = result.proofFrame ?? (result.verdict === 'PROVED' ? 'none' : 'full')
+  const verdict: ExplicitVerdict = explicitCheck(prepared, constraint.predicate, frame)
+  if (verdict.status === 'holds') {
+    return { ...result, crossCheck: { status: 'agrees', states: verdict.states } }
+  }
+  const { invariant: _withdrawn, hypotheses: _moot, ...rest } = result
+  if (verdict.status === 'not-applicable') {
+    const crossCheck = {
+      status: 'not-applicable',
+      reason: verdict.reason,
+      beyondCap: verdict.beyondCap,
+    } as const
+    // Out of scope only when the search SHOWED it. A search that merely stopped could be
+    // looking at a small model, and a proof it never examined is not reported as checked.
+    return verdict.beyondCap
+      ? { ...result, crossCheck }
+      : { ...rest, verdict: 'UNKNOWN', crossCheck }
+  }
+  return {
+    ...rest,
+    verdict: 'UNKNOWN',
+    crossCheck: { status: 'disagrees', frame, trace: verdict.trace, path: verdict.path },
+  }
 }
 
 /** Run ONE query on a freshly built system, returning its verdict and evidence. */
@@ -1438,7 +1758,7 @@ const runQuery = (
   Z3: LowLevelZ3,
   ctx: Ast,
   prepared: PreparedModel,
-  constraint: ConstraintRule,
+  target: BadTarget,
   frame: FrameMode,
   timeoutMs: number,
 ): Effect.Effect<
@@ -1454,7 +1774,7 @@ const runQuery = (
 > =>
   Effect.gen(function* () {
     const solver = yield* SolverService
-    const { system, refusedParams } = buildSystem(Z3, ctx, prepared, constraint, frame, timeoutMs)
+    const { system, refusedParams } = buildSystem(Z3, ctx, prepared, target, frame, timeoutMs)
     const query = Z3.mk_app(ctx, system.badRelation, [])
 
     const startedAt = Date.now()
@@ -1491,6 +1811,18 @@ const runQuery = (
       refusedParams,
     }
   })
+
+/** A constraint as a query target: a reachable state where its predicate is FALSE. */
+const constraintTarget = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  constraint: ConstraintRule,
+): BadTarget => ({
+  kind: 'state',
+  label: constraint.label,
+  bad: (at) => Z3.mk_not(ctx, compile(Z3, ctx, constraint.predicate, at, prepared.vars)),
+})
 
 /**
  * Decide ONE constraint, running the prove-twice protocol (AC-2-5).
@@ -1530,8 +1862,21 @@ export const decideConstraint = (
   constraint: ConstraintRule,
   timeoutMs: number,
 ): Effect.Effect<ConstraintResult, never, SolverService> =>
+  decideBySpacer(Z3, ctx, prepared, constraint, timeoutMs).pipe(
+    Effect.map((result) => crossChecked(prepared, constraint, result)),
+  )
+
+/** The prove-twice protocol itself, before the explicit-state cross-check. */
+const decideBySpacer = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  constraint: ConstraintRule,
+  timeoutMs: number,
+): Effect.Effect<ConstraintResult, never, SolverService> =>
   Effect.gen(function* () {
-    const openRun = yield* runQuery(Z3, ctx, prepared, constraint, 'none', timeoutMs)
+    const target = constraintTarget(Z3, ctx, prepared, constraint)
+    const openRun = yield* runQuery(Z3, ctx, prepared, target, 'none', timeoutMs)
     let elapsedMs = openRun.elapsedMs
 
     /** Assemble the invariant evidence for a run that proved unreachable. */
@@ -1563,6 +1908,7 @@ export const decideConstraint = (
         invariant: yield* invariantOf(openRun),
         elapsedMs,
         refusedParams: openRun.refusedParams,
+        proofFrame: 'none' as const,
       }
     }
 
@@ -1579,74 +1925,202 @@ export const decideConstraint = (
       }
     }
 
-    // (2) Reachable with nothing pinned. The FRAMED run — every unwritten variable pinned
-    // — decides whether that is a real defect or an artifact of assuming nothing.
-    const framedRun = yield* runQuery(Z3, ctx, prepared, constraint, 'full', timeoutMs)
-    elapsedMs += framedRun.elapsedMs
-    let refusedParams = [...new Set([...openRun.refusedParams, ...framedRun.refusedParams])]
-    const verdict = decideFrameVerdict(openRun.verdict, framedRun.verdict)
-
-    if (verdict === 'PROVED_UNDER_HYPOTHESES') {
-      const writers = writeSetOf(prepared)
-      // MINIMIZE THE FRAME SET (decision-doc design rule 3), so the disclosure names what
-      // the proof actually needs rather than everything that happened to be pinned.
-      //
-      // One extra query, and only when the document declared something: if the DECLARED
-      // stable set alone carries the proof, the hypothesis is exactly what the author
-      // wrote down — a far more actionable disclosure than "all 6 variables". When it does
-      // not (or nothing was declared), the honest hypothesis is every variable the maximal
-      // frame pinned, and saying so is the point.
-      let hypothesisVars = prepared.variables.map((v) => v.name)
-      if (prepared.stableVars.length > 0) {
-        const declaredRun = yield* runQuery(Z3, ctx, prepared, constraint, 'declared', timeoutMs)
-        elapsedMs += declaredRun.elapsedMs
-        refusedParams = [...new Set([...refusedParams, ...declaredRun.refusedParams])]
-        if (declaredRun.verdict === 'unreachable') hypothesisVars = [...prepared.stableVars]
+    // (2) Reachable with nothing pinned. First the DOCUMENT'S OWN hypotheses: the run that
+    // pins exactly the variables declared `frame: stable`. Skipped when nothing is declared,
+    // because that run would then be the unpinned one again.
+    let refusedParams = [...openRun.refusedParams]
+    const writers = writeSetOf(prepared)
+    let declaredRun: typeof openRun | undefined
+    if (prepared.stableVars.length > 0) {
+      declaredRun = yield* runQuery(Z3, ctx, prepared, target, 'declared', timeoutMs)
+      elapsedMs += declaredRun.elapsedMs
+      refusedParams = [...new Set([...refusedParams, ...declaredRun.refusedParams])]
+      if (declaredRun.verdict === 'unreachable') {
+        return {
+          ...base,
+          verdict: 'PROVED_UNDER_HYPOTHESES' as const,
+          strict: openRun.verdict,
+          declared: declaredRun.verdict,
+          invariant: yield* invariantOf(declaredRun),
+          // EXACTLY the variables the document declared `stable` — the hypotheses it states —
+          // each with its writers, which is what turns "this is conditional" into "this
+          // depends on granted changing only via TX-A1, TX-A2". A variable written by NO
+          // requirement is the V16 shape, and an empty writer list is how that shows.
+          hypotheses: prepared.stableVars.map((variable) => ({
+            variable,
+            writers: writers.get(variable) ?? [],
+            declaration: prepared.vars.get(variable) as StateVariable,
+          })),
+          elapsedMs,
+          refusedParams,
+          proofFrame: 'declared' as const,
+        }
       }
-      return {
-        ...base,
-        verdict,
-        strict: openRun.verdict,
-        framed: framedRun.verdict,
-        invariant: yield* invariantOf(framedRun),
-        // The variables the proof LEANED ON, each with its writers — which is what turns
-        // "this is conditional" into "this depends on granted changing only via TX-A1,
-        // TX-A2". A variable written by NO requirement is the V16 shape, and showing an
-        // empty writer list is how that becomes visible.
-        hypotheses: hypothesisVars.map((variable) => ({
-          variable,
-          writers: writers.get(variable) ?? [],
-        })),
-        elapsedMs,
-        refusedParams,
+      if (declaredRun.verdict === 'unknown') {
+        return {
+          ...base,
+          verdict: 'UNKNOWN' as const,
+          strict: openRun.verdict,
+          declared: declaredRun.verdict,
+          unknownReason: classifyUnknown(declaredRun.elapsedMs, timeoutMs),
+          elapsedMs,
+          refusedParams,
+        }
       }
     }
 
+    // (3) Reachable under the document's own frames. The FULL run — every unwritten variable
+    // pinned — decides whether that is a real defect or needs a change no requirement makes.
+    const framedRun = yield* runQuery(Z3, ctx, prepared, target, 'full', timeoutMs)
+    elapsedMs += framedRun.elapsedMs
+    refusedParams = [...new Set([...refusedParams, ...framedRun.refusedParams])]
+    const verdict = decideFrameVerdict(openRun.verdict, declaredRun?.verdict, framedRun.verdict)
+    const runs = {
+      strict: openRun.verdict,
+      ...(declaredRun !== undefined ? { declared: declaredRun.verdict } : {}),
+      framed: framedRun.verdict,
+    }
+
     if (verdict === 'UNKNOWN') {
+      if (framedRun.verdict === 'unreachable') {
+        // FRAME-UNDECLARED: holds once every unwritten variable is held fixed, violable when
+        // the variables the document declares VOLATILE move on their own. Neither a defect
+        // (no requirement gets there) nor a proof (the document never says they stay put).
+        // The hypotheses it would need are the volatile variables, named with their writers
+        // so the repair can state them.
+        const stable = new Set(prepared.stableVars)
+        return {
+          ...base,
+          verdict,
+          ...runs,
+          unknownReason: 'frame-undeclared' as const,
+          hypotheses: prepared.variables
+            .filter((v) => !stable.has(v.name))
+            .map((v) => ({ variable: v.name, writers: writers.get(v.name) ?? [], declaration: v })),
+          elapsedMs,
+          refusedParams,
+        }
+      }
       return {
         ...base,
         verdict,
-        strict: openRun.verdict,
-        framed: framedRun.verdict,
+        ...runs,
         unknownReason: classifyUnknown(framedRun.elapsedMs, timeoutMs),
         elapsedMs,
         refusedParams,
       }
     }
 
-    // VIOLATED. The trace comes from the FRAMED run, never the unpinned one: under full
-    // framing every step is a requirement-sanctioned change, so the witness is a real
-    // behavior of the described system. The unpinned run's witness may include a
-    // spontaneous change, which is exactly what would make the trace fiction.
+    // VIOLATED. The trace is reconstructed under the FRAMED relation, never the unpinned
+    // one: under full framing every step is a requirement-sanctioned change, so the
+    // witness is a real behavior of the described system. The unpinned run's witness may
+    // include a spontaneous change, which is exactly what would make the trace fiction.
+    const traceStarted = Date.now()
+    const trace = yield* reconstructTrace(Z3, ctx, prepared, target, 'full', timeoutMs)
+    elapsedMs += Date.now() - traceStarted
     return {
       ...base,
       verdict: 'VIOLATED' as const,
-      strict: openRun.verdict,
-      framed: framedRun.verdict,
-      trace: extractTrace(Z3, ctx, framedRun.system.fp),
+      ...runs,
+      trace,
       elapsedMs,
       refusedParams,
     }
+  })
+
+// ---------------------------------------------------------------------------
+// Declared ranges (spec 007 AC-1-2)
+// ---------------------------------------------------------------------------
+
+/** The result of asking whether ONE effect can write ONE bounded variable out of range. */
+export interface RangeCheckResult {
+  /** The EFFECT's label — the requirement whose write is in question. */
+  readonly label: string
+  readonly requirementId: string
+  /** The bounded int variable it writes. */
+  readonly variable: string
+  /** The declared inclusive bounds, as written. */
+  readonly range: { readonly min?: number; readonly max?: number }
+  /**
+   * `reachable` — from some reachable state (under the full frame, so every step is
+   * requirement-sanctioned) the effect writes a value outside the range. `unreachable` —
+   * it never does. `unknown` — undecided; demotes.
+   */
+  readonly verdict: ReachabilityVerdict
+  /** On `reachable`: the path to the overflowing step. Its LAST state is the out-of-range
+   * post-state and the one before it is the reachable pre-state. */
+  readonly trace?: TraceEvidence
+  readonly unknownReason?: UnknownReason
+  readonly elapsedMs: number
+}
+
+/**
+ * Ask, for every effect and every bounded int variable it WRITES, whether the write can
+ * leave the declared range from a reachable state (spec 007 AC-1-2).
+ *
+ * A declared range is a claim about every reachable state. Enforcing it by conjoining it
+ * into the transition relation made an overflowing step unsatisfiable, so the step
+ * silently never fired and everything downstream of it was "proved" impossible — measured:
+ * a queue declared `0..2` whose ENQ_FULL writes 3 reported `not dropped` proved with exit
+ * 0. The range is now a CHECKED obligation instead: the transition admits the write
+ * ({@link effectBody}), and this query reports it.
+ *
+ * Asked under the FULL frame, the sound direction for reporting a reachable defect: the
+ * witness then uses only requirement-sanctioned changes. Enum targets need no check — the
+ * type checker admits only members of the target's own domain, and a bool has no range.
+ */
+const checkRanges = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  timeoutMs: number,
+): Effect.Effect<readonly RangeCheckResult[], never, SolverService> =>
+  Effect.gen(function* () {
+    const results: RangeCheckResult[] = []
+    const int = (n: number) => Z3.mk_numeral(ctx, String(n), Z3.mk_int_sort(ctx))
+    for (const effect of prepared.effects) {
+      for (const target of writesOf(effect.effect.assignments)) {
+        const variable = prepared.vars.get(target)
+        if (variable?.type !== 'int' || variable.domain === undefined) continue
+        const { min, max } = variable.domain
+        if (min === undefined && max === undefined) continue
+        const outOfRange: BadTarget = {
+          kind: 'step',
+          effect,
+          bad: (_pre, post) => {
+            const term = post.get(target)
+            const escapes: Ast[] = []
+            if (min !== undefined) escapes.push(Z3.mk_lt(ctx, term, int(min)))
+            if (max !== undefined) escapes.push(Z3.mk_gt(ctx, term, int(max)))
+            return orOf(Z3, ctx, escapes)
+          },
+        }
+        const run = yield* runQuery(Z3, ctx, prepared, outOfRange, 'full', timeoutMs)
+        let elapsedMs = run.elapsedMs
+        const base = {
+          label: effect.label,
+          requirementId: effect.requirementId,
+          variable: target,
+          range: { ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}) },
+        }
+        if (run.verdict === 'reachable') {
+          const startedAt = Date.now()
+          const trace = yield* reconstructTrace(Z3, ctx, prepared, outOfRange, 'full', timeoutMs)
+          elapsedMs += Date.now() - startedAt
+          results.push({ ...base, verdict: 'reachable', trace, elapsedMs })
+        } else if (run.verdict === 'unknown') {
+          results.push({
+            ...base,
+            verdict: 'unknown',
+            unknownReason: classifyUnknown(run.elapsedMs, timeoutMs),
+            elapsedMs,
+          })
+        } else {
+          results.push({ ...base, verdict: 'unreachable', elapsedMs })
+        }
+      }
+    }
+    return results
   })
 
 // ---------------------------------------------------------------------------
@@ -1657,6 +2131,9 @@ export const decideConstraint = (
 export interface ReachabilityReport {
   /** One entry per encodable constraint, in stable requirement order. */
   readonly results: readonly ConstraintResult[]
+  /** One entry per (effect, bounded int variable it writes) — the declared-range
+   * obligations (spec 007 AC-1-2). Empty on a vacuous model, where nothing was asked. */
+  readonly rangeChecks: readonly RangeCheckResult[]
   /** Requirements the tier could not read, each with why. Never silently dropped. */
   readonly skipped: readonly { readonly label: string; readonly reason: string }[]
   /** How many requirements contributed a transition. */
@@ -1771,8 +2248,14 @@ export const runReachability = (
       for (const name of result.refusedParams) refused.add(name)
     }
 
+    // THE DECLARED-RANGE OBLIGATIONS. Not asked on a vacuous model, for the same reason no
+    // constraint query is: with no states, "never overflows" would be a vacuous answer.
+    const rangeChecks = vacuous ? [] : yield* checkRanges(Z3, ctx, prepared, timeoutMs)
+    for (const check of rangeChecks) elapsedMs += check.elapsedMs
+
     return {
       results,
+      rangeChecks,
       skipped: prepared.skipped,
       effects: prepared.effects.length,
       variables: prepared.variables.length,

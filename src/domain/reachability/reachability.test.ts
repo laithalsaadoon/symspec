@@ -339,30 +339,33 @@ describe('a VIOLATED verdict carries a counterexample trace naming REQUIREMENTS 
 
 describe('AC-2-5 — the frame lattice decides the verdict', () => {
   /**
-   * The decision table, verbatim from the decision doc.
+   * The decision table — the rows the `frame` field documents ({@link FRAME_VERDICT_TABLE})
+   * plus the `unknown` rows. Three runs, ordered by how much they pin: nothing, the
+   * DECLARED `stable` variables, every unwritten variable.
    *
-   * What the doc leaves open is WHICH frame the second run applies, and that is where the
-   * soundness lives: the framed run pins EVERY variable an effect does not write, not only
-   * those declared `frame: stable`. Pinning only the declared ones makes the framed run
-   * identical to the unpinned one whenever nothing is declared, so `reachable` in both is
-   * trivially true and every such constraint reports VIOLATED at error severity. The worked
-   * lock/grant fixture caught exactly that.
+   * The soundness still lives in which run licenses which verdict: VIOLATED needs the FULL
+   * run (every step requirement-sanctioned), PROVED needs the unpinned one, and a proof that
+   * needs pinning is PROVED_UNDER_HYPOTHESES only when the DOCUMENT declared the frame —
+   * otherwise it is UNKNOWN, because the document never said those variables stay put.
    */
   it.each([
-    ['unreachable', undefined, 'PROVED'],
-    ['unreachable', 'reachable', 'PROVED'],
+    ['unreachable', undefined, undefined, 'PROVED'],
+    ['reachable', 'unreachable', undefined, 'PROVED_UNDER_HYPOTHESES'],
     // Reachable under FULL framing: every step is requirement-sanctioned, so the
     // counterexample is real. The ONLY route to an error-severity finding.
-    ['reachable', 'reachable', 'VIOLATED'],
-    // The frame is load-bearing: unreachable once unwritten variables stop moving.
-    ['reachable', 'unreachable', 'PROVED_UNDER_HYPOTHESES'],
-    // No framed run performed, or it did not decide — never a proof, never a defect.
-    ['reachable', undefined, 'UNKNOWN'],
-    ['reachable', 'unknown', 'UNKNOWN'],
-    ['unknown', undefined, 'UNKNOWN'],
-    ['unknown', 'unreachable', 'UNKNOWN'],
-  ] as const)('none=%s framed=%s -> %s', (none, framed, expected) => {
-    expect(decideFrameVerdict(none, framed)).toBe(expected)
+    ['reachable', 'reachable', 'reachable', 'VIOLATED'],
+    ['reachable', undefined, 'reachable', 'VIOLATED'],
+    // Holds only if VOLATILE variables stay put: neither a defect nor a proof.
+    ['reachable', 'reachable', 'unreachable', 'UNKNOWN'],
+    ['reachable', undefined, 'unreachable', 'UNKNOWN'],
+    // A run that did not decide — never a proof, never a defect.
+    ['reachable', undefined, undefined, 'UNKNOWN'],
+    ['reachable', undefined, 'unknown', 'UNKNOWN'],
+    ['reachable', 'unknown', undefined, 'UNKNOWN'],
+    ['unknown', undefined, undefined, 'UNKNOWN'],
+    ['unknown', 'unreachable', 'unreachable', 'UNKNOWN'],
+  ] as const)('none=%s declared=%s full=%s -> %s', (none, declared, full, expected) => {
+    expect(decideFrameVerdict(none, declared, full)).toBe(expected)
   })
 
   /**
@@ -409,7 +412,8 @@ describe('AC-2-5 — the frame lattice decides the verdict', () => {
     // reporting that as a proof is the fabricated-proof defect.
     expect(result.verdict).toBe('PROVED_UNDER_HYPOTHESES')
     expect(result.strict).toBe('reachable')
-    expect(result.framed).toBe('unreachable')
+    // Proved by the DECLARED run — the frames the document states — not the full one.
+    expect(result.declared).toBe('unreachable')
 
     // The DISCLOSURE, and it names the variable the proof relied on plus its writers —
     // which is what makes the finding actionable rather than merely honest.
@@ -460,12 +464,16 @@ describe('AC-2-5 — the frame lattice decides the verdict', () => {
     // NOT `VIOLATED`: `alarm` is written by no requirement, so the only route to the
     // violation is a spontaneous change the document never licensed. An earlier
     // implementation reported this exact model as an error-severity defect.
-    expect(result.verdict).toBe('PROVED_UNDER_HYPOTHESES')
+    //
+    // And NOT `PROVED_UNDER_HYPOTHESES` either (spec 007 AC-1-6): the proof needs `alarm`
+    // held, which the document does not declare. That is UNKNOWN with reason
+    // `frame-undeclared`, naming the hypotheses a declaration would state.
+    expect(result.verdict).toBe('UNKNOWN')
+    expect(result.unknownReason).toBe('frame-undeclared')
     expect(result.strict).toBe('reachable')
     expect(result.framed).toBe('unreachable')
-    // With NOTHING declared `stable`, the honest hypothesis is every variable the maximal
-    // frame pinned — including `alarm`, whose empty writer list is the V16 shape made
-    // visible.
+    // With NOTHING declared `stable`, the named hypotheses are every volatile variable —
+    // including `alarm`, whose empty writer list is the V16 shape made visible.
     const hypotheses = result.hypotheses ?? []
     expect(hypotheses.map((h) => h.variable)).toContain('alarm')
     expect(hypotheses.find((h) => h.variable === 'alarm')?.writers).toEqual([])

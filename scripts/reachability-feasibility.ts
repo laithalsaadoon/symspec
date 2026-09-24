@@ -217,7 +217,11 @@ const model = (buggy: boolean): RequirementsDocument => {
         {
           name: 'granted',
           type: 'int',
-          frame: 'volatile',
+          // `stable`: the counter changes only through GRANT and RELEASE. Declared, because a
+          // proof that needs it held is PROVED_UNDER_HYPOTHESES only when the document STATES
+          // the hypothesis; left volatile, the same proof is UNKNOWN (frame-undeclared) and
+          // this gate would be measuring a disclosure instead of a proof (spec 007 AC-1-6).
+          frame: 'stable',
           initial: 'granted = 0',
           domain: { min: 0, max: 4 },
         },

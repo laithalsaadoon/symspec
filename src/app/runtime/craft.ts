@@ -604,8 +604,10 @@ document is bad is \`counts.error\` and the exit code, which went 0 → 1.
  * `check` operation and asserts the same four verdicts. The numbers in the section are the
  * numbers that came back, including the ones that are inconvenient — TX-C1 proves
  * PROVED_UNDER_HYPOTHESES rather than frame-closed, because with two state variables the
- * nothing-assumed run is essentially always reachable. Writing `PROVED` there would have
- * been a nicer story and a fiction.
+ * nothing-assumed run is essentially always reachable, and it proves THAT only because the
+ * example declares both variables `stable` (spec 007 AC-1-6: left volatile, the verdict is
+ * UNKNOWN with reason frame-undeclared). Writing `PROVED` there would have been a nicer
+ * story and a fiction.
  */
 const STATE_MODEL: CraftSection = {
   id: 'state-model',
@@ -726,19 +728,24 @@ whose \`alarm\` variable is written by NO requirement, the framed run returns UN
 back a certificate for it. A frame-by-default tool would therefore certify fictions, so
 \`volatile\` is the default and the safe direction is the one that proves less.
 
-What that means in practice is the verdict you will actually see most often:
+What that means in practice — the three verdicts a multi-variable model actually produces:
 
 - **\`FND_REACHABILITY_PROVED\`** — proved with nothing assumed. Frame-closed, and the
   strongest thing the tier says. Realistically a property of single-variable models.
-- **\`FND_REACHABILITY_UNDER_HYPOTHESES\`** — proved only once the unwritten variables are
-  held fixed. The message NAMES the variables relied upon together with the requirements
-  that write them, says **THE DOCUMENT DOES NOT STATE THAT**, and DEMOTES \`verified\`. With
+- **\`FND_REACHABILITY_UNDER_HYPOTHESES\`** — proved once the variables YOU declared
+  \`stable\` are held fixed. The message NAMES them together with the requirements that
+  write them, says no requirement establishes the hypothesis, and DEMOTES \`verified\`. With
   more than one state variable this is the honest common outcome, not a failure.
+- **\`FND_REACHABILITY_UNKNOWN\`, reason \`frame-undeclared\`** — the same proof when the
+  variables it needs held are left \`volatile\`: it holds only if they stay put, and
+  **THE DOCUMENT DOES NOT STATE THAT**. Its repair is the \`state\` ops that declare them
+  \`stable\`, and applying them moves the verdict to PROVED_UNDER_HYPOTHESES. Releasing the
+  frame again moves it back. Both demote.
 
-So do not chase \`PROVED\`. Declaring everything \`stable\` does not upgrade the verdict —
-it TIGHTENS the disclosed hypothesis, because the tier re-runs with your declared set and
-names exactly what you wrote down instead of all N variables. The discharge is to author the
-requirements that justify the assumption, which is spec work rather than a flag.
+So do not chase \`PROVED\`. Declaring a variable \`stable\` does not upgrade a verdict to
+proven — it STATES a hypothesis, which the tier then names instead of leaving the question
+open. The discharge is to author the requirements that justify the assumption, which is spec
+work rather than a flag.
 
 ### The worked example: the real TX-C1, proved and then broken
 
@@ -748,15 +755,16 @@ Measured on the built CLI, on the hex-bonk \`agent-run-triggers\` production req
 > lock keyed on the conversation id so they execute sequentially.
 
 That is a mutual-exclusion invariant. Two variables and three effects express the lock's
-lifecycle.
+lifecycle, and both variables are declared \`stable\`: the lock count and the waiting flag
+change only when a requirement changes them.
 
 **Step 1 — declare, classify, and PROVE.**
 
 \`\`\`bash
 symspec init ./requirements.json
 cat > plan.jsonl <<'OPS'
-{"op":"state","name":"held","type":"int","min":0,"max":3,"initial":"held = 0"}
-{"op":"state","name":"queued","type":"bool","initial":"queued = false"}
+{"op":"state","name":"held","type":"int","min":0,"max":3,"initial":"held = 0","frame":"stable"}
+{"op":"state","name":"queued","type":"bool","initial":"queued = false","frame":"stable"}
 {"op":"add","key":"TX-A1","patternType":"event-driven","trigger":"an agent worker claims a run","systemName":"run service","systemResponse":"acquire the conversation lock"}
 {"op":"add","key":"TX-A2","patternType":"event-driven","trigger":"a run reaches a terminal state","systemName":"run service","systemResponse":"release the conversation lock"}
 {"op":"add","key":"TX-A3","patternType":"event-driven","trigger":"a run for a locked conversation is queued","systemName":"run service","systemResponse":"mark the run waiting"}
@@ -772,7 +780,7 @@ symspec check --field data.reachability
 
 \`\`\`json
 {"variables":2,"effects":3,"constraints":1,"proved":0,
- "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":337,"timeoutMs":2000}
+ "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":148,"timeoutMs":2000}
 \`\`\`
 
 TX-C1 holds — and the verdict is \`PROVED_UNDER_HYPOTHESES\`, not \`PROVED\`, exactly as
@@ -780,8 +788,9 @@ the frame section predicts. The finding says so and names the hypothesis:
 
 \`\`\`
 TX-C1: PROVED_UNDER_HYPOTHESES — no reachable state violates this constraint, ASSUMING
-these variables change only when a requirement changes them: held (written by TX-A1,
-TX-A2); queued (written by TX-A1, TX-A3). THE DOCUMENT DOES NOT STATE THAT.
+these variables, which the document declares \`frame: stable\`, change only when a
+requirement changes them: held (written by TX-A1, TX-A2); queued (written by TX-A1, TX-A3).
+That is a HYPOTHESIS: no requirement establishes it.
 \`\`\`
 
 **Step 2 — add a second invariant that sounds obviously true, and watch it FAIL.**
@@ -795,7 +804,7 @@ symspec check --field data.reachability
 
 \`\`\`json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":537,"timeoutMs":2000}
+ "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":324,"timeoutMs":2000}
 \`\`\`
 
 Exit **1**, through the existing contract — the error-severity finding lands in
@@ -826,7 +835,7 @@ symspec check --field data.reachability
 
 \`\`\`json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":350,"timeoutMs":2000}
+ "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":228,"timeoutMs":2000}
 \`\`\`
 
 Exit **0**. Both invariants now hold, and the change was to the requirement the trace

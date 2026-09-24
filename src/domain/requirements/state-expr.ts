@@ -101,11 +101,30 @@ export type CompareOp = (typeof COMPARE_OPS)[number]
 export type Expr =
   /** `true` / `false`. */
   | { readonly kind: 'bool'; readonly value: boolean }
-  /** An integer literal. */
-  | { readonly kind: 'int'; readonly value: number }
+  /**
+   * An integer literal, as an ARBITRARY-PRECISION integer (spec 007 AC-1-4).
+   *
+   * A `bigint`, never a `number`: the literal reaches Z3 as its decimal string
+   * (`String(value)`), and a `Number` would round every integer past 2^53 — measured,
+   * `x = 9007199254740993` compiled to `x = 9007199254740992`, so a constraint that the
+   * initial state violates was certified PROVED.
+   */
+  | { readonly kind: 'int'; readonly value: bigint }
   /** A bare identifier: a declared variable, or an enum member. Resolved by
    * {@link sortOf}, never by the parser. */
   | { readonly kind: 'ref'; readonly name: string }
+  /**
+   * An enum MEMBER, resolved: `name` is a member of the domain of the enum variable
+   * `enumOf`. The parser NEVER produces this node; only {@link resolveExpr} does, from a
+   * `ref` at a position the type checker assigned the sort `{enumOf}`.
+   *
+   * It exists because one member name may belong to SEVERAL enums (`open` in both
+   * `door{open,closed}` and `valve{shut,ajar,open}`), and the index it encodes to differs
+   * per enum. An encoder that re-resolved a bare name by searching the declared enums in
+   * order encoded `valve = open` as `valve = shut` and certified a false PROVED (spec 007
+   * AC-1-1). Carrying the owning enum in the AST leaves every consumer nothing to search.
+   */
+  | { readonly kind: 'member'; readonly enumOf: string; readonly name: string }
   | { readonly kind: 'not'; readonly operand: Expr }
   | { readonly kind: 'and'; readonly operands: readonly Expr[] }
   | { readonly kind: 'or'; readonly operands: readonly Expr[] }
@@ -488,12 +507,13 @@ class Parser {
     }
     if (token.type === 'int') {
       // Every integer here is a decimal run of digits (the lexer guarantees it), so
-      // `Number` cannot produce NaN. A NEGATIVE literal is not a token — it is
+      // `BigInt` cannot throw — and it is `BigInt`, never `Number`, because a `Number`
+      // silently rounds past 2^53 (AC-1-4). A NEGATIVE literal is not a token — it is
       // `0 - n` or a unary position the grammar does not admit, which is deliberate:
       // `-` is binary only, so `x = -1` must be written `x = 0 - 1`. Stated in the
       // field description rather than silently accepted, because a unary minus that
       // only sometimes parses is worse than one that never does.
-      return { kind: 'int', value: Number(token.text) }
+      return { kind: 'int', value: BigInt(token.text) }
     }
     if (token.type === 'ident') {
       const lowered = token.text.toLowerCase()
@@ -733,20 +753,53 @@ const undeclared = (name: string, vars: DeclaredVars): ExprError => {
  * construction: an enum member is always an atom, never a subexpression.
  */
 export const sortOf = (expr: Expr, vars: DeclaredVars, expected?: Sort): Sort | ExprError => {
+  const typed = resolveExpr(expr, vars, expected)
+  return isExprError(typed) ? typed : typed.sort
+}
+
+/** An expression together with the sort the type checker assigned it, with every enum
+ * member rewritten to an {@link Expr} `member` node naming its owning enum. */
+export interface Typed {
+  readonly sort: Sort
+  readonly expr: Expr
+}
+
+/**
+ * THE TYPE CHECKER, and the ONLY producer of `member` nodes (spec 007 AC-1-1).
+ *
+ * Returns the sort AND a copy of the expression in which every bare `ref` that resolved to
+ * an enum member is replaced by `{kind: 'member', enumOf, name}` — `enumOf` being the enum
+ * sort this checker assigned to that position. So the member's owning enum is decided in
+ * exactly one place, by the same rule that decided the expression is well-sorted, and no
+ * downstream consumer (the Horn encoder, the explicit-state cross-check) ever has to
+ * re-resolve a name. Re-resolving is what the first-match defect did: searching the
+ * declared enums in order put `valve = open` at `door`'s index for `open`.
+ *
+ * {@link sortOf} is this function with the rewritten expression discarded.
+ */
+export const resolveExpr = (expr: Expr, vars: DeclaredVars, expected?: Sort): Typed | ExprError => {
   switch (expr.kind) {
     case 'bool':
-      return 'bool'
+      return { sort: 'bool', expr }
     case 'int':
-      return 'int'
+      return { sort: 'int', expr }
+    case 'member':
+      // Already resolved (a caller re-checked a resolved AST). Its sort is its owner's.
+      return { sort: { enumOf: expr.enumOf }, expr }
     case 'ref': {
       const variable = vars.get(expr.name)
-      if (variable !== undefined) return sortOfVar(variable)
+      if (variable !== undefined) return { sort: sortOfVar(variable), expr }
       // Not a variable. It can only legitimately be a member of the enum domain it
       // is being compared against.
       if (expected !== undefined && typeof expected === 'object') {
         const owner = vars.get(expected.enumOf)
         const domain = owner !== undefined && owner.type === 'enum' ? owner.domain : []
-        if (domain.includes(expr.name)) return expected
+        if (domain.includes(expr.name)) {
+          return {
+            sort: expected,
+            expr: { kind: 'member', enumOf: expected.enumOf, name: expr.name },
+          }
+        }
         return fail(
           `"${expr.name}" is not a member of enum ${expected.enumOf}'s declared domain.`,
           [
@@ -758,42 +811,50 @@ export const sortOf = (expr: Expr, vars: DeclaredVars, expected?: Sort): Sort | 
       return undeclared(expr.name, vars)
     }
     case 'not': {
-      const operand = sortOf(expr.operand, vars, 'bool')
+      const operand = resolveExpr(expr.operand, vars, 'bool')
       if (isExprError(operand)) return operand
-      if (operand !== 'bool') {
-        return fail(`\`not\` needs a boolean operand, got ${sortName(operand)}.`, [
+      if (operand.sort !== 'bool') {
+        return fail(`\`not\` needs a boolean operand, got ${sortName(operand.sort)}.`, [
           'Compare it first: `not (retry_count = 0)` rather than `not retry_count`.',
         ])
       }
-      return 'bool'
+      return { sort: 'bool', expr: { kind: 'not', operand: operand.expr } }
     }
     case 'and':
     case 'or': {
+      const operands: Expr[] = []
       for (const operand of expr.operands) {
-        const sort = sortOf(operand, vars, 'bool')
-        if (isExprError(sort)) return sort
-        if (sort !== 'bool') {
-          return fail(`\`${expr.kind}\` needs boolean operands, got ${sortName(sort)}.`, [
+        const typed = resolveExpr(operand, vars, 'bool')
+        if (isExprError(typed)) return typed
+        if (typed.sort !== 'bool') {
+          return fail(`\`${expr.kind}\` needs boolean operands, got ${sortName(typed.sort)}.`, [
             `Compare the non-boolean operand first: \`retry_count = 0 ${expr.kind} lock_held\`.`,
           ])
         }
+        operands.push(typed.expr)
       }
-      return 'bool'
+      return { sort: 'bool', expr: { kind: expr.kind, operands } }
     }
     case 'compare':
-      return sortOfCompare(expr, vars)
+      return resolveCompare(expr, vars)
     case 'arith': {
+      const sides: Expr[] = []
       for (const side of [expr.left, expr.right]) {
-        const sort = sortOf(side, vars, 'int')
-        if (isExprError(sort)) return sort
-        if (sort !== 'int') {
-          return fail(`Arithmetic \`${expr.op}\` needs integer operands, got ${sortName(sort)}.`, [
-            'Only declared `int` variables and integer literals may be added or subtracted.',
-            'A bool or enum variable has no arithmetic — compare it instead.',
-          ])
+        const typed = resolveExpr(side, vars, 'int')
+        if (isExprError(typed)) return typed
+        if (typed.sort !== 'int') {
+          return fail(
+            `Arithmetic \`${expr.op}\` needs integer operands, got ${sortName(typed.sort)}.`,
+            [
+              'Only declared `int` variables and integer literals may be added or subtracted.',
+              'A bool or enum variable has no arithmetic — compare it instead.',
+            ],
+          )
         }
+        sides.push(typed.expr)
       }
-      return 'int'
+      const [left, right] = sides as [Expr, Expr]
+      return { sort: 'int', expr: { kind: 'arith', op: expr.op, left, right } }
     }
   }
 }
@@ -813,44 +874,47 @@ export const sortOf = (expr: Expr, vars: DeclaredVars, expected?: Sort): Sort | 
  * sequence as an ordering would let a reordering of the domain array silently change
  * what a requirement means.
  */
-const sortOfCompare = (
+const resolveCompare = (
   expr: Extract<Expr, { kind: 'compare' }>,
   vars: DeclaredVars,
-): Sort | ExprError => {
-  const leftFirst = sortOf(expr.left, vars)
-  let left: Sort
-  let right: Sort
+): Typed | ExprError => {
+  const leftFirst = resolveExpr(expr.left, vars)
+  let left: Typed
+  let right: Typed
   if (isExprError(leftFirst)) {
     // The left side could not stand alone. Resolve the right and retry the left
     // against it — the `PENDING = run_state` direction.
-    const rightAlone = sortOf(expr.right, vars)
+    const rightAlone = resolveExpr(expr.right, vars)
     if (isExprError(rightAlone)) return leftFirst
-    const leftRetry = sortOf(expr.left, vars, rightAlone)
+    const leftRetry = resolveExpr(expr.left, vars, rightAlone.sort)
     if (isExprError(leftRetry)) return leftRetry
     left = leftRetry
     right = rightAlone
   } else {
     left = leftFirst
-    const rightWithHint = sortOf(expr.right, vars, leftFirst)
+    const rightWithHint = resolveExpr(expr.right, vars, leftFirst.sort)
     if (isExprError(rightWithHint)) return rightWithHint
     right = rightWithHint
   }
 
-  if (!sameSort(left, right)) {
-    return fail(`Cannot compare ${sortName(left)} with ${sortName(right)}.`, [
+  if (!sameSort(left.sort, right.sort)) {
+    return fail(`Cannot compare ${sortName(left.sort)} with ${sortName(right.sort)}.`, [
       'Both sides of a comparison must have the same declared sort.',
       'A bool compares with `true`/`false` or another bool; an int with an integer expression; an enum only with a member of its OWN declared domain.',
     ])
   }
   if (expr.op !== '=' && expr.op !== '!=') {
-    if (left !== 'int') {
-      return fail(`\`${expr.op}\` is integer-only, but both sides are ${sortName(left)}.`, [
+    if (left.sort !== 'int') {
+      return fail(`\`${expr.op}\` is integer-only, but both sides are ${sortName(left.sort)}.`, [
         'Use `=` or `!=` for bool and enum variables.',
         'An enum domain is an unordered SET — the order it is listed in is not a declared ordering, so `<` over it would change meaning whenever the domain array is reordered.',
       ])
     }
   }
-  return 'bool'
+  return {
+    sort: 'bool',
+    expr: { kind: 'compare', op: expr.op, left: left.expr, right: right.expr },
+  }
 }
 
 /**
@@ -869,8 +933,9 @@ export const validateExpression = (
   const expr = parseExpression(source)
   if (isExprError(expr)) return expr
   const vars = declaredVars(model)
-  const sort = sortOf(expr, vars)
-  if (isExprError(sort)) return sort
+  const typed = resolveExpr(expr, vars)
+  if (isExprError(typed)) return typed
+  const sort = typed.sort
   if (sort !== 'bool') {
     return fail(
       `A${role === 'initial' ? 'n initial-state' : ''} ${role} must be a PREDICATE (boolean), but "${source}" is ${sortName(sort)}.`,
@@ -882,7 +947,8 @@ export const validateExpression = (
       ],
     )
   }
-  return expr
+  // The RESOLVED expression — every enum member carries its owning enum (AC-1-1).
+  return typed.expr
 }
 
 /**
@@ -903,9 +969,12 @@ export const validateEffect = (source: string, model: StateModel): StateEffect |
   // THE GUARD is a predicate over declared state, checked exactly like a constraint —
   // it must resolve and it must be boolean. A guard that is an int (`when retry_count:`)
   // would force the encoder to invent a coercion, which is the one thing it must not do.
+  let guard: Expr | undefined
   if (effect.guard !== undefined) {
-    const guardSort = sortOf(effect.guard, vars)
-    if (isExprError(guardSort)) return guardSort
+    const typedGuard = resolveExpr(effect.guard, vars)
+    if (isExprError(typedGuard)) return typedGuard
+    const guardSort = typedGuard.sort
+    guard = typedGuard.expr
     if (guardSort !== 'bool') {
       return fail(
         `A \`when\` guard must be a PREDICATE (boolean), but it is ${sortName(guardSort)} in "${source}".`,
@@ -917,12 +986,14 @@ export const validateEffect = (source: string, model: StateModel): StateEffect |
     }
   }
 
+  const assignments: Assignment[] = []
   for (const assignment of effect.assignments) {
     const target = vars.get(assignment.target)
     if (target === undefined) return undeclared(assignment.target, vars)
     const want = sortOfVar(target)
-    const got = sortOf(assignment.value, vars, want)
-    if (isExprError(got)) return got
+    const typedValue = resolveExpr(assignment.value, vars, want)
+    if (isExprError(typedValue)) return typedValue
+    const got = typedValue.sort
     if (!sameSort(want, got)) {
       return fail(
         `Cannot assign ${sortName(got)} to ${JSON.stringify(assignment.target)}, which is declared ${sortName(want)}.`,
@@ -933,8 +1004,10 @@ export const validateEffect = (source: string, model: StateModel): StateEffect |
         ],
       )
     }
+    assignments.push({ target: assignment.target, value: typedValue.expr })
   }
-  return effect
+  // The RESOLVED effect — every enum member carries its owning enum (AC-1-1).
+  return { ...(guard !== undefined ? { guard } : {}), assignments }
 }
 
 /** A domain member to show in an example, for an enum target. */
@@ -964,6 +1037,7 @@ export const readsOf = (expr: Expr, vars: DeclaredVars): ReadonlySet<string> => 
     switch (node.kind) {
       case 'bool':
       case 'int':
+      case 'member':
         return
       case 'ref':
         if (vars.has(node.name)) found.add(node.name)
@@ -1092,6 +1166,7 @@ export const cheapInitialContradiction = (
   const literalOf = (expr: Expr): string | undefined => {
     if (expr.kind === 'bool') return String(expr.value)
     if (expr.kind === 'int') return String(expr.value)
+    if (expr.kind === 'member') return expr.name
     // A bare ref that is NOT a declared variable is an enum member, and the sort checker
     // has already proven it belongs to the compared variable's domain.
     if (expr.kind === 'ref' && !vars.has(expr.name)) return expr.name
@@ -1128,15 +1203,17 @@ export const cheapInitialContradiction = (
       // checker (a non-member ref does not resolve), so only int bounds reach here.
       const variable = vars.get(name)
       if (variable?.type === 'int' && variable.domain !== undefined) {
-        const n = Number(value)
-        if (Number.isInteger(n)) {
-          if (variable.domain.min !== undefined && n < variable.domain.min) {
+        // Compared as BIGINTS: `value` is a literal's exact decimal text, and routing it
+        // through a `Number` would round past 2^53 (AC-1-4).
+        const n = /^-?[0-9]+$/.test(value) ? BigInt(value) : undefined
+        if (n !== undefined) {
+          if (variable.domain.min !== undefined && n < BigInt(variable.domain.min)) {
             return (
               `${JSON.stringify(name)} is required to equal ${value}, which is below its ` +
               `declared minimum of ${variable.domain.min} (${source})`
             )
           }
-          if (variable.domain.max !== undefined && n > variable.domain.max) {
+          if (variable.domain.max !== undefined && n > BigInt(variable.domain.max)) {
             return (
               `${JSON.stringify(name)} is required to equal ${value}, which is above its ` +
               `declared maximum of ${variable.domain.max} (${source})`
