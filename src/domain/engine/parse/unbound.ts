@@ -1,143 +1,220 @@
 /**
- * The unbound-leading-clause post-condition (spec 007 AC-2-2).
+ * The unbound-clause post-condition (spec 007 AC-2-2).
  *
- * Tier 2 pivots on the modal, takes the noun chunk to its left as the subject, and binds the
- * text before that chunk only when `classifyLeadingClause` recognises its keyword (While, When,
- * If, Where and their synonyms). Anything else it drops, and the requirement is stored from the
- * main clause alone. For most dropped text that is harmless decoration (`(1)`, `•`, `[P1]`). For
- * a clause that CONDITIONS the requirement — "Unless the guard door is closed, the press
- * controller shall not start the press" — it is not: the stored requirement holds always, is
- * stronger than the one written, and fabricates conflicts downstream.
+ * EARS binds a leading clause to a slot only through its keyword (While, When, If, Where and
+ * their synonyms). A clause opened by anything else — "Unless the guard door is closed, the press
+ * controller shall not start the press" — binds to nothing, and the ladder stored the main clause
+ * alone: a requirement that holds always, stronger than the one written, which fabricates
+ * conflicts downstream.
  *
- * This module is a check on a parse that already happened, not a second parser. It reads the
- * tokens Tier 2 recorded as dropped ({@link Tier2Ok.droppedLead}) — text that by construction
- * sits in no stored slot — and reports the clause only when all of these hold:
+ * This is a check on the OUTCOME of a parse that already succeeded, not a second parser. It
+ * compares the source words before the modal with the words of the stored slots
+ * (`systemName`, `trigger`, `preCondition`, `systemResponse`), case-insensitively, and calls the
+ * words no slot holds the DROPPED SPAN. When that span holds an unbound marker as whole words —
+ * {@link MARKERS} — the parse lost a condition, and the line is refused naming the span.
  *
- * - an unbound marker introduces a clause of the dropped text: it follows a clause boundary (the
- *   line start or any letterless token — punctuation, brackets, quotes, bullets, list and section
- *   numbers) with at most one word between ("Moreover unless", "NOTE unless") or "<word> that".
- *   So tags, labels and connectives Tier 2 also dropped (`[P1, SAFETY]`, `1.2.3`, `Safety
- *   requirement:`, `However,`) never hide it, while a marker inside a phrase the lead opened with
- *   other words ("For requests received before midnight,") is not the lead's clause;
- * - the marker is a whole word, followed by a word or by `,` / `:` / `;` — so "Until-dates" is a
- *   compound, and a bare "Until" before "dates shall …" is a noun modifier, not a clause;
- * - `In case` is the conjunction: followed by `of` or by a determiner or pronoun opening a clause
- *   ("In case the power fails"), not by a noun it compounds with ("In case studies");
- * - the clause has content, and it ENDS inside the dropped text: at a comma/colon/semicolon, at
- *   the bracket or quote that opened it, at a dash set off before the subject, or — with no
- *   punctuation at all — exactly where a fresh subject noun phrase begins
- *   ({@link DroppedLead.subjectOpensCleanly}). Otherwise the clause
- *   runs on into the subject: either part of it is already in `systemName` (base's "fire the
- *   sprinkler controller"), which base's parse keeps, or the marker word was modifying a noun the
- *   chunk completes ("Until dates in the form").
+ * Because it reads only what was dropped, the rule is indifferent to the shape that carried the
+ * marker there: brackets, list markers, tags and labels, a measure phrase spelled in words, or
+ * punctuation inside the subject that moves where Tier 2's subject chunk starts. And a marker
+ * word that survives INTO a stored slot is never a refusal (Tier 1's bare main clause keeps a lead
+ * in `systemName`; a bound trigger keeps its own "before").
  *
- * There is deliberately no "does the content appear in a slot anyway" test: dropped text is in
- * no slot, and a substring match ("Unless armed, the alarm shall stay armed") would only find a
- * coincidence and store the requirement without its condition.
+ * The cost is known and accepted: a dropped marker used as an ordinary word ("In case studies,
+ * …", "The provided token …" where Tier 2 keeps only "token") is refused too. That refusal is loud
+ * and recoverable — the author restates the line — where storing it risks a silent one.
  *
- * Tier 1 never drops text (its bare main clause keeps a lead inside `systemName`), so a line Tier
- * 1 stored keeps its base parse, as does any line with no modal: it was never going to be stored.
+ * Inert text base already strips ({@link preprocess}'s REQ-/list-number prefixes) is not source
+ * text here, and the determiner base strips before a slot ("the press controller" →
+ * `press controller`) counts as part of that slot.
  */
 
-import type { DroppedLead, Tier2Ok, WinkToken } from './tier2.ts'
-import { joinTokens } from './tier2.ts'
+import { preprocess } from './preprocess.ts'
+import type { Tier1Slots } from './tier1.ts'
 
-/** The markers that open a clause no EARS slot binds, as token sequences. `Provided` needs its
- * `that`: bare "Provided tokens" is a participle. */
+/** The markers that open a clause no EARS slot binds, as word sequences, longest first. */
 const MARKERS: readonly (readonly string[])[] = [
-  ['unless'],
   ['provided', 'that'],
   ['in', 'case'],
+  ['only', 'if'],
+  ['even', 'if'],
+  ['unless'],
+  ['provided'],
   ['except'],
   ['before'],
   ['until'],
-  ['only', 'if'],
-  ['even', 'if'],
 ]
 
-const OPENERS = new Set(['(', '[', '{'])
-const CLOSERS = new Set([')', ']', '}'])
-const CLAUSE_PUNCT = new Set([',', ':', ';'])
-/** What may end a clause the lead opened: its punctuation, or a dash set off before the subject. */
-const CLAUSE_END = new Set([...CLAUSE_PUNCT, '-', '–', '—'])
+/** Determiners the ladder strips from the front of a slot (`the gateway` → `gateway`). */
+const DETERMINERS: ReadonlySet<string> = new Set([
+  'the',
+  'a',
+  'an',
+  'its',
+  'their',
+  'his',
+  'her',
+  'our',
+  'your',
+  'my',
+  'this',
+  'that',
+  'these',
+  'those',
+])
 
-const isWord = (t: WinkToken): boolean => /[\p{L}\p{N}]/u.test(t.value)
-const hasLetter = (t: WinkToken): boolean => /\p{L}/u.test(t.value)
+/** The first modal, contracted forms included (both tiers pivot on it). */
+const MODAL = /\b(?:shall|must|will|should)\b|\b(?:shan|won|mustn|shouldn)'t\b/i
 
-/**
- * True when the marker at token `at` introduces a clause of the lead rather than sitting inside a
- * phrase another word opened: it follows a clause boundary — the line start, or any token with no
- * letter in it (`,` `:` `;` `-` `_` `§`, brackets, quotes, bullets, list and section numbers) —
- * with at most one word between ("Moreover unless", "NOTE unless"), or "<word> that" ("Note that
- * unless"). "For requests received before midnight," has three: the `before` is inside the lead's
- * own phrase, and base's parse is kept.
- */
-function introducesClause(tokens: readonly WinkToken[], at: number): boolean {
-  let start = at
-  while (start > 0 && hasLetter(tokens[start - 1]!)) start--
-  const words = tokens.slice(start, at).map((t) => t.value.toLowerCase())
-  return words.length <= 1 || (words.length === 2 && words[1] === 'that')
+const BRACKET = /[()[\]{}]/
+/** What ends a label or tag left of the clause: a bracket, or a colon or semicolon after it. */
+const LABEL_END = /[()[\]{}:;]/
+/** A character that joins two words into one (`Until-dates`, `until_x`, `unless's`). */
+const JOINER = /[-‑_']/u
+const ALNUM = /[\p{L}\p{N}]/u
+
+interface Word {
+  readonly lower: string
+  readonly start: number
+  readonly end: number
 }
 
-/** The marker starting at token `i`, or `undefined`. */
-const markerAt = (tokens: readonly WinkToken[], i: number): readonly string[] | undefined =>
-  MARKERS.find((m) => m.every((w, k) => tokens[i + k]?.value.toLowerCase() === w))
+const wordsOf = (text: string): Word[] =>
+  [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => ({
+    lower: m[0].toLowerCase(),
+    start: m.index,
+    end: m.index + m[0].length,
+  }))
+
+/** The unbound clause a parse dropped: the span as written, and the marker it holds. */
+export interface DroppedClause {
+  readonly span: string
+  readonly marker: string
+}
 
 /**
- * The leading clause a Tier-2 parse dropped without binding, as the author wrote it (brackets,
- * quotes and trailing punctuation removed), or `undefined` when the parse lost no condition.
+ * The dropped span holding an unbound marker, or `undefined` when every marker word before the
+ * modal — if any — survived into a stored slot.
+ *
+ * @param input  The line as given to the ladder.
+ * @param slots  The slots the successful parse would store.
  */
-export function unboundLeadingClause(ok: Tier2Ok): string | undefined {
-  const dropped: DroppedLead | undefined = ok.droppedLead
-  if (dropped === undefined) return undefined
-  const tokens = dropped.tokens
+export function droppedUnboundClause(input: string, slots: Tier1Slots): DroppedClause | undefined {
+  const text = preprocess(input)
+  const modal = MODAL.exec(text)
+  if (modal === null) return undefined
+  const words = wordsOf(text.slice(0, modal.index))
+  const covered = words.map(() => false)
 
-  for (let at = 0; at < tokens.length; at++) {
-    const marker = markerAt(tokens, at)
-    if (marker === undefined || !introducesClause(tokens, at)) continue
-    const clause = clauseAt(dropped, at, marker)
-    if (clause !== undefined) return clause
+  // Each slot claims the occurrence its tier took it from: the subject sits just before the
+  // modal, a bound clause right after its keyword. `systemResponse` lies after the modal, so it
+  // covers a pre-modal word only by an exact occurrence, never by the word-set fallback.
+  cover(words, covered, slots.systemName, 'last', true)
+  cover(words, covered, slots.preCondition, 'first', true)
+  cover(words, covered, slots.trigger, 'first', true)
+  cover(words, covered, slots.systemResponse, 'last', false)
+
+  for (let i = 0; i < words.length; i++) {
+    const marker = MARKERS.find((m) => markerAt(text, words, covered, i, m))
+    if (marker === undefined) continue
+    return {
+      span: spanAround(text, words, covered, i, i + marker.length - 1),
+      marker: marker.join(' '),
+    }
   }
   return undefined
 }
 
-/** The clause the marker at token `at` opens, when it is one the parse dropped whole. */
-function clauseAt(dropped: DroppedLead, at: number, marker: readonly string[]): string | undefined {
-  const tokens = dropped.tokens
-  const next = tokens[at + marker.length]
-  if (next === undefined || !(isWord(next) || CLAUSE_PUNCT.has(next.value))) return undefined
-  if (
-    marker[0] === 'in' &&
-    next.value.toLowerCase() !== 'of' &&
-    next.pos !== 'DET' &&
-    next.pos !== 'PRON'
-  ) {
-    return undefined
+/** Mark the words of `slot`'s occurrence (and the determiner the ladder stripped before it). */
+function cover(
+  words: readonly Word[],
+  covered: boolean[],
+  slot: string | undefined,
+  which: 'first' | 'last',
+  fallback: boolean,
+): void {
+  const target = wordsOf(slot ?? '').map((w) => w.lower)
+  if (target.length === 0) return
+  const at = (p: number): boolean => target.every((w, k) => words[p + k]?.lower === w)
+  const starts = [...Array(Math.max(0, words.length - target.length + 1)).keys()].filter(at)
+  const p = which === 'first' ? starts[0] : starts.at(-1)
+  if (p === undefined) {
+    // The slot is not a contiguous run of source words (a tier normalized it): fall back to
+    // word membership, which can only cover more — never refuse a line base's slots account for.
+    if (!fallback) return
+    const set = new Set(target)
+    words.forEach((w, i) => {
+      if (set.has(w.lower)) covered[i] = true
+    })
+    return
   }
+  for (let k = 0; k < target.length; k++) covered[p + k] = true
+  if (p > 0 && DETERMINERS.has(words[p - 1]!.lower)) covered[p - 1] = true
+}
 
-  // The clause ends at the first bracket (or, behind an opening quote, the quote) that closes
-  // something the clause itself did not open.
-  const quoted = tokens.slice(0, at).some((t) => t.value === '"')
-  let depth = 0
-  let end = tokens.length
-  let closed = false
-  for (let i = at + marker.length; i < tokens.length; i++) {
-    const v = tokens[i]!.value
-    if (OPENERS.has(v)) depth++
-    else if (CLOSERS.has(v) && depth > 0) depth--
-    else if (CLOSERS.has(v) || (v === '"' && quoted && depth === 0)) {
-      end = i
-      closed = true
-      break
+/** True when `marker` starts at word `i` as dropped, whole, adjacent words. */
+function markerAt(
+  text: string,
+  words: readonly Word[],
+  covered: readonly boolean[],
+  i: number,
+  marker: readonly string[],
+): boolean {
+  return marker.every((m, k) => {
+    const w = words[i + k]
+    if (w === undefined || w.lower !== m || covered[i + k]) return false
+    if (k > 0 && text.slice(words[i + k - 1]!.end, w.start).trim() !== '') return false
+    return isWhole(text, w)
+  })
+}
+
+/** A word not joined to a neighbour by a hyphen, underscore or apostrophe (`Until-dates`). */
+const isWhole = (text: string, w: Word): boolean =>
+  !(JOINER.test(text[w.start - 1] ?? '') && ALNUM.test(text[w.start - 2] ?? '')) &&
+  !(JOINER.test(text[w.end] ?? '') && ALNUM.test(text[w.end + 1] ?? ''))
+
+/**
+ * The run of dropped words around the marker, as the author wrote it: extended over dropped
+ * words until a covered word or a bracket (`[P1] [Unless …]`, `(1) Unless …`), and leftwards
+ * also until a label's colon or semicolon (`Note: Unless …`). A bare section number directly
+ * before the marker (`§3 Unless …`) is dropped from the name, as are a trailing determiner and
+ * any unpaired bracket or quote.
+ */
+function spanAround(
+  text: string,
+  words: readonly Word[],
+  covered: readonly boolean[],
+  first: number,
+  last: number,
+): string {
+  const gap = (a: number): string => text.slice(words[a]!.end, words[a + 1]!.start)
+  let l = first
+  let r = last
+  while (l > 0 && !covered[l - 1] && !LABEL_END.test(gap(l - 1))) l--
+  while (r + 1 < words.length && !covered[r + 1] && !BRACKET.test(gap(r))) r++
+  if (words.slice(l, first).every((w) => /^\p{N}+$/u.test(w.lower))) l = first
+  while (r > last && DETERMINERS.has(words[r]!.lower)) r--
+  return withoutUnpaired(text.slice(words[l]!.start, words[r]!.end))
+}
+
+/** Drop brackets without a partner in `s`, and every quote when they do not pair up. */
+function withoutUnpaired(s: string): string {
+  const partner: Record<string, string> = { ')': '(', ']': '[', '}': '{' }
+  const drop = new Set<number>()
+  const open: number[] = []
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!
+    if ('([{'.includes(ch)) open.push(i)
+    else if (ch in partner) {
+      if (open.length > 0 && s[open.at(-1)!] === partner[ch]) open.pop()
+      else drop.add(i)
     }
   }
-  let clause = tokens.slice(at, end)
-  while (clause.length > 0 && CLAUSE_END.has(clause.at(-1)!.value)) {
-    clause = clause.slice(0, -1)
-    closed = true
-  }
-
-  if (!clause.slice(marker.length).some(isWord)) return undefined
-  if (!closed && !dropped.subjectOpensCleanly) return undefined
-  return joinTokens(clause)
+  for (const i of open) drop.add(i)
+  const quotes = s.split('').filter((ch) => ch === '"').length
+  return s
+    .split('')
+    .filter((ch, i) => !drop.has(i) && !(ch === '"' && quotes % 2 === 1))
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
 }

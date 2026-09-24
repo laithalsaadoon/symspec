@@ -1,17 +1,17 @@
 /**
- * Spec 007 AC-2-2: a leading clause no EARS slot binds is refused, never dropped.
+ * Spec 007 AC-2-2: a line whose parse drops an unbound clause marker is refused, never stored.
  *
- * Tier 2 takes the noun chunk left of the modal as the subject and hands the text before it to
- * `classifyLeadingClause`. When that text is an `Unless` / `Provided that` / `In case` / `Except`
- * / `Before` / `Until` / `Only if` / `Even if` clause, nothing binds it, and the requirement was
- * stored from the main clause alone: stronger than the one written. The check is a
- * POST-CONDITION on that parse, so it fires exactly when the clause's content is missing from
- * every stored slot, and the controls pin every neighbouring shape at its base parse:
+ * The rule is an OUTCOME post-condition on the parse the ladder already produced, not a matcher
+ * over sentence shapes. After a Tier-1 or Tier-2 parse succeeds, the source words before the
+ * modal that appear in no stored slot are the DROPPED SPAN. If that span holds an unbound marker
+ * as whole words — Unless, Provided (that), In case, Except, Before, Until, Only if, Even if — the
+ * stored requirement would hold in states the author excluded, so the line is `ERR_CLAUSE_UNBOUND`
+ * naming the span.
  *
- * - no modal: still `skipped`, because there is no requirement to store;
- * - the clause folded into a slot (Tier 1's bare main clause keeps the whole lead in
- *   `systemName`): stored as before;
- * - the marker word used as an ordinary word ("The provided token", "Until dates"): no clause.
+ * Because the rule reads only what was dropped, every form of the clause is covered alike:
+ * bracketed, parenthesised, behind a tag or label, with a number spelled in words, or with
+ * punctuation inside the subject that moves where Tier 2's subject chunk starts. And a marker
+ * word that survives INTO a stored slot is never a refusal, whatever shape carried it there.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -19,8 +19,9 @@ import { type ParseErrorResult, type ParseOkResult, parseLine } from './result.t
 
 const refused = async (line: string): Promise<ParseErrorResult> => {
   const r = await parseLine(line)
-  if (r.outcome !== 'error')
-    throw new Error(`expected an error for ${line}, got ${JSON.stringify(r)}`)
+  if (r.outcome !== 'error' || r.code !== 'ERR_CLAUSE_UNBOUND') {
+    throw new Error(`expected ERR_CLAUSE_UNBOUND for ${line}, got ${JSON.stringify(r)}`)
+  }
   return r
 }
 
@@ -30,12 +31,25 @@ const stored = async (line: string): Promise<ParseOkResult> => {
   return r
 }
 
-describe('AC-2-2: an unbound leading clause is refused with ERR_CLAUSE_UNBOUND', () => {
-  it('the reproducer: refused, the clause named, nothing salvaged to store', async () => {
+/** The span the refusal names: the first quoted string of its message. */
+const namedSpan = (r: ParseErrorResult): string => /"([^"]*)"/.exec(r.error)?.[1] ?? ''
+
+/** True when every bracket in `s` is closed by its partner, in order. */
+const balanced = (s: string): boolean => {
+  const pairs: Record<string, string> = { ')': '(', ']': '[', '}': '{' }
+  const stack: string[] = []
+  for (const ch of s) {
+    if ('([{'.includes(ch)) stack.push(ch)
+    else if (ch in pairs && stack.pop() !== pairs[ch]) return false
+  }
+  return stack.length === 0
+}
+
+describe('AC-2-2: a dropped unbound marker is refused with ERR_CLAUSE_UNBOUND', () => {
+  it('the reproducer: refused, the dropped span named, nothing salvaged to store', async () => {
     const line = 'Unless the guard door is closed, the press controller shall not start the press.'
     const r = await refused(line)
-    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
-    expect(r.error).toContain('"Unless the guard door is closed"')
+    expect(namedSpan(r)).toBe('Unless the guard door is closed')
     expect(r.error).toContain(line)
     // A partial or a proposed op is a requirement without its condition by another route.
     expect(r.partial).toBeUndefined()
@@ -47,6 +61,10 @@ describe('AC-2-2: an unbound leading clause is refused with ERR_CLAUSE_UNBOUND',
     [
       'Provided that the guard door is closed, the press controller shall start the press.',
       'Provided that the guard door is closed',
+    ],
+    [
+      'Provided the guard door is closed, the press controller shall start the press.',
+      'Provided the guard door is closed',
     ],
     ['In case of fire, the sprinkler controller shall open the valves.', 'In case of fire'],
     [
@@ -68,274 +86,161 @@ describe('AC-2-2: an unbound leading clause is refused with ERR_CLAUSE_UNBOUND',
       'unless the guard door is closed, the press controller shall start the press.',
       'unless the guard door is closed',
     ],
-  ])('each marker, with a comma: %s', async (line, clause) => {
-    const r = await refused(line)
-    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
-    expect(r.error).toContain(`"${clause}"`)
-  })
-
-  it.each([
     [
       'Unless the guard door is closed the press controller shall start the press.',
       'Unless the guard door is closed',
     ],
-    [
-      'Before the press starts the press controller shall lock the guard door.',
-      'Before the press starts',
-    ],
-    [
-      'In case the guard door opens the press controller shall stop the press.',
-      'In case the guard door opens',
-    ],
-    // A clause ending on a verb particle ("is down") ends where the subject begins.
-    ['Even if the network is down the logger shall persist events.', 'Even if the network is down'],
-  ])('comma-less, where Tier 2 cut the clause off the subject: %s', async (line, clause) => {
-    const r = await refused(line)
-    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
-    expect(r.error).toContain(`"${clause}"`)
+  ])('each marker: %s', async (line, span) => {
+    expect(namedSpan(await refused(line))).toBe(span)
   })
 
   it.each([
-    [
-      '[Unless the guard door is closed] the press controller shall start the press.',
-      'Unless the guard door is closed',
-    ],
-    [
-      '(Unless the guard door is closed) the press controller shall start the press.',
-      'Unless the guard door is closed',
-    ],
-    [
-      '[Unless the guard door is closed], the press controller shall start the press.',
-      'Unless the guard door is closed',
-    ],
-    [
-      '[Provided that the guard door is closed] the press controller shall start the press.',
-      'Provided that the guard door is closed',
-    ],
-    ['(Only if armed) the press controller shall be able to start the press.', 'Only if armed'],
-    [
-      '(Even if the network is down) the logger shall persist events.',
-      'Even if the network is down',
-    ],
-    // The clause ends at its own closing bracket, not at whatever else Tier 2 dropped.
-    [
-      '[Unless the guard door is closed] [P1] the press controller shall start the press.',
-      'Unless the guard door is closed',
-    ],
-  ])('as the content of a leading bracket group, named without the brackets: %s', async (line, clause) => {
-    const r = await refused(line)
-    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
-    expect(r.error).toContain(`"${clause}"`)
-    expect(r.error).not.toMatch(/Leading clause "[[(]|[\])]"/)
+    // A bare noun or a number after "In case": the most natural form of the clause.
+    'In case power fails, the UPS shall start the generator.',
+    'In case sensors fail, the controller shall stop the pump.',
+    'In case connectivity is lost, the app shall cache writes.',
+    'In case two sensors disagree, the controller shall stop the pump.',
+    // A measure phrase before the marker, spelled in words or in digits alike.
+    'Five seconds before the press starts, the press controller shall sound the horn.',
+    '5 seconds before the press starts, the press controller shall sound the horn.',
+    'Two seconds before shutdown, the gateway shall flush its logs.',
+    'Only minutes before shutdown, the gateway shall flush its logs.',
+    'At all times except during maintenance, the gateway shall log requests.',
+  ])('whatever words stand around the marker — %s', async (line) => {
+    await refused(line)
   })
 
-  const GUARD = 'Unless the guard door is closed'
   it.each([
-    [`(1) ${GUARD}, the press controller shall start the press.`, GUARD],
-    [`(a) ${GUARD}, the press controller shall start the press.`, GUARD],
-    [`a) ${GUARD}, the press controller shall start the press.`, GUARD],
-    [`1) ${GUARD}, the press controller shall start the press.`, GUARD],
-    [`• ${GUARD}, the press controller shall start the press.`, GUARD],
-    [`> ${GUARD}, the press controller shall start the press.`, GUARD],
-    [`[P1] ${GUARD}, the press controller shall start the press.`, GUARD],
-    [`[SAFETY] ${GUARD}, the press controller shall start the press.`, GUARD],
-    [`Note: ${GUARD}, the press controller shall start the press.`, GUARD],
-    [`Safety: ${GUARD}, the press controller shall start the press.`, GUARD],
-    [`(P1) ${GUARD} the press controller shall start the press.`, GUARD],
-    [`[P1] [${GUARD}] the press controller shall start the press.`, GUARD],
-    [`{${GUARD}} the press controller shall start the press.`, GUARD],
-    [`[[${GUARD}]] the press controller shall start the press.`, GUARD],
-    [`([${GUARD}]) the press controller shall start the press.`, GUARD],
-    [`"${GUARD}", the press controller shall start the press.`, GUARD],
-    [
-      'Unless: the guard door is closed, the press controller shall start the press.',
-      'Unless: the guard door is closed',
-    ],
-    [
-      'Unless, of course, the guard door is closed, the press controller shall start the press.',
-      'Unless, of course, the guard door is closed',
-    ],
-    ['[P1] Before startup, the gateway shall load its config.', 'Before startup'],
-    ['(ii) Before startup, the gateway shall load its config.', 'Before startup'],
-  ])('behind list, tag, label, bracket or quote decoration Tier 2 also dropped: %s', async (line, clause) => {
+    // Punctuation inside the subject moves where Tier 2's subject chunk starts; the dropped
+    // span then runs into the subject, and it still holds the marker.
+    "Unless the door is shut, the operator's console shall stop.",
+    'Unless the door is shut, PLC_1 shall stop.',
+    'Unless the door is shut, the press_controller shall stop.',
+    'Unless the door is shut, the press #3 shall stop.',
+    'Unless the door is shut, the press controller v2.1 shall stop.',
+    'Unless the door is shut, the I/O module shall stop.',
+    'Unless the door is shut, the press/brake unit shall stop.',
+    'Unless the door is shut, the "press" unit shall stop.',
+    "Before startup, the operator's console shall load its config.",
+  ])('punctuation inside the subject never hides the marker — %s', async (line) => {
     const r = await refused(line)
-    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
-    expect(r.error).toContain(`Leading clause "${clause}"`)
+    expect(namedSpan(r)).toMatch(/^(Unless the door is shut|Before startup)/)
   })
 
-  it('"In case" followed by a clause or by "of" is the conjunction', async () => {
-    const r = await refused('In case the power fails, the UPS shall start the generator.')
-    expect(r.error).toContain('"In case the power fails"')
+  it.each([
+    ['(1) Unless the guard door is closed, the press controller shall start the press.'],
+    ['(a) Unless the guard door is closed, the press controller shall start the press.'],
+    ['a) Unless the guard door is closed, the press controller shall start the press.'],
+    ['• Unless the guard door is closed, the press controller shall start the press.'],
+    ['> Unless the guard door is closed, the press controller shall start the press.'],
+    ['[P1] Unless the guard door is closed, the press controller shall start the press.'],
+    ['[SAFETY] Unless the guard door is closed, the press controller shall start the press.'],
+    ['(P1) Unless the guard door is closed the press controller shall start the press.'],
+    ['[P1] [Unless the guard door is closed] the press controller shall start the press.'],
+    ['[Unless the guard door is closed] [P1] the press controller shall start the press.'],
+    ['{Unless the guard door is closed} the press controller shall start the press.'],
+    ['[[Unless the guard door is closed]] the press controller shall start the press.'],
+    ['([Unless the guard door is closed]) the press controller shall start the press.'],
+    ['"Unless the guard door is closed", the press controller shall start the press.'],
+  ])('brackets, tags and list markers around the clause: named clean — %s', async (line) => {
+    const span = namedSpan(await refused(line))
+    expect(span).toContain('Unless the guard door is closed')
+    expect(balanced(span), span).toBe(true)
   })
 
-  it('refused even when a word of the clause recurs in a slot by coincidence', async () => {
-    // "armed" is in the response, but the condition "unless armed" is in no slot.
-    const r = await refused('Unless armed, the alarm shall stay armed.')
-    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
-    expect(r.error).toContain('"Unless armed"')
+  it.each([
+    'Note: Unless the guard door is closed, the press controller shall start the press.',
+    'Safety: Unless the guard door is closed, the press controller shall start the press.',
+    'Safety requirement Unless the guard door is closed, the press controller shall not start the press.',
+    'SAFETY REQUIREMENT Unless the guard door is closed, the press controller shall start the press.',
+    'Unless: the guard door is closed, the press controller shall start the press.',
+    'Unless, of course, the guard door is closed, the press controller shall start the press.',
+    '[P1] Before startup, the gateway shall load its config.',
+    '(ii) Before startup, the gateway shall load its config.',
+  ])('labels and punctuation after the marker never hide it — %s', async (line) => {
+    await refused(line)
+  })
+
+  it('a word of the clause recurring in a slot does not cover the marker', async () => {
+    const r = await refused(
+      'Unless the press is closed, the press controller shall stop the press.',
+    )
+    expect(namedSpan(r)).toBe('Unless the press is closed')
+  })
+
+  it('the same marker surviving in the response does not cover the dropped one', async () => {
+    const r = await refused(
+      'Unless the guard door is closed, the press controller shall stop the press unless overridden.',
+    )
+    expect(namedSpan(r)).toBe('Unless the guard door is closed')
+  })
+
+  it('a base fold that keeps clause content but drops the marker is refused', async () => {
+    // Base stored {systemName: "fire the sprinkler controller"}: "fire" survived, "In case of"
+    // did not, so the stored requirement holds whether or not there is a fire.
+    expect(
+      namedSpan(await refused('In case of fire the sprinkler controller shall open the valves.')),
+    ).toBe('In case of')
+  })
+
+  it.each([
+    'In case studies, the analyst shall cite sources.',
+    'Until dates of expired contracts shall be archived.',
+    // Tier 2 drops the participle "provided" from the subject chunk, so it is in no slot.
+    'The provided token shall be validated.',
+    'Provided tokens shall be validated.',
+  ])('by decision, a dropped marker used as an ordinary word is refused too — %s', async (line) => {
+    // Loud and recoverable beats silent: the author restates the line, and nothing is stored
+    // stronger than written.
+    await refused(line)
   })
 })
 
-describe('AC-2-2 controls: every neighbouring shape keeps its base parse', () => {
+describe('AC-2-2 controls: a line that drops no marker keeps its base parse', () => {
   it.each([
-    ['Unless , the gateway shall be notified.', 'gateway'],
-    ['[Unless ] the press controller shall be notified.', 'press controller'],
-  ])('a bare marker with nothing after it drops no condition, so it is stored as before — %s', async (line, systemName) => {
-    expect((await stored(line)).slots.systemName).toBe(systemName)
-  })
-
-  it.each([
+    'Unless the door is closed.',
     'Before deploying, read the runbook.',
-    'Unless the guard door is closed, stop the press.',
-    'Unless the guard door is closed, the press controller is required to stop.',
-    'Until further notice, keep the siren on.',
-  ])('no modal: still skipped, never an error — %s', async (line) => {
-    const r = await parseLine(line)
-    expect(r.outcome).toBe('skipped')
+    'Until startup completes the gateway is unavailable.',
+  ])('no modal: still skipped — %s', async (line) => {
+    expect((await parseLine(line)).outcome).toBe('skipped')
   })
 
   it.each([
-    ['Unless armed the alarm shall sound.', 'Unless armed the alarm'],
-    ['Before startup the gateway shall load its config.', 'Before startup the gateway'],
-    ['[Before startup] the gateway shall load its config.', '[Before startup] the gateway'],
-    [
-      '[Except during maintenance] the gateway shall log requests.',
-      '[Except during maintenance] the gateway',
-    ],
-    ['Only if armed the alarm shall sound.', 'armed the alarm'],
-  ])('the clause folded into a slot: stored as base stored it — %s', async (line, systemName) => {
+    ['Unless overridden the press shall stop.', 'Unless overridden the press'],
+    ['(Before startup) the gateway shall load its config.', '(Before startup) the gateway'],
+  ] as const)('the marker word survives into systemName — %s', async (line, systemName) => {
     expect((await stored(line)).slots.systemName).toBe(systemName)
   })
 
   it.each([
-    ['The provided token shall be validated.', 'token'],
-    ['Provided tokens shall be validated.', 'tokens'],
-    ['Provided credentials shall match the stored hash.', 'Provided credentials'],
-    ['Until dates shall be required.', 'dates'],
-    ['Until-dates shall be validated.', 'dates'],
-    ['Except entries shall be skipped.', 'entries'],
-    ['Except handlers shall log errors.', 'Except handlers'],
-    ['Except-list entries shall be skipped.', 'list entries'],
+    ['Until-dates shall be required.', 'dates'],
+    ['The until-date field shall be required.', 'date field'],
     ['Unless-clauses shall be flagged.', 'clauses'],
-    ['Before hooks shall run in order.', 'Before hooks'],
-    ['Till drawers shall lock after each sale.', 'Till drawers'],
-  ])('a marker word used as an ordinary word is no clause — %s', async (line, systemName) => {
+    ['Except-list entries shall be skipped.', 'list entries'],
+  ] as const)('a hyphenated compound is not the marker word — %s', async (line, systemName) => {
     expect((await stored(line)).slots.systemName).toBe(systemName)
   })
 
-  it.each([
-    ['Until dates of expired contracts shall be archived.', 'contracts'],
-    ['Until dates in the form shall be validated.', 'form'],
-    ['Until dates on invoices shall be validated.', 'invoices'],
-    ['Except entries in the list shall be skipped.', 'list'],
-    ['Before images of each page shall be retained.', 'page'],
-    ['In case studies, the analyst shall cite sources.', 'analyst'],
-    ['In case management, the case worker shall close stale cases.', 'case worker'],
-    ['In case files, the clerk shall record the verdict.', 'clerk'],
-    ['In case sensitive mode, the matcher shall compare bytes.', 'matcher'],
-  ])('a marker word modifying a noun, then more words, is still no clause — %s', async (line, systemName) => {
-    expect((await stored(line)).slots.systemName).toBe(systemName)
-  })
-
-  it.each([
-    [
-      'In case of fire the sprinkler controller shall open the valves.',
-      'fire the sprinkler controller',
-    ],
-    ['Until the operator acknowledges the alarm the siren shall sound.', 'alarm the siren'],
-    ['Unless the operator is present the press shall be locked.', 'present the press'],
-  ])('a comma-less clause Tier 2 fused into the subject: stored as base stored it — %s', async (line, systemName) => {
-    expect((await stored(line)).slots.systemName).toBe(systemName)
-  })
-
-  it.each([
-    ['[P1] The gateway shall be notified of cached requests.', 'gateway'],
-    ['Note: The gateway shall be notified of cached requests.', 'gateway'],
-  ])('decoration with no marker behind it drops no condition — %s', async (line, systemName) => {
-    expect((await stored(line)).slots.systemName).toBe(systemName)
+  it('a marker inside a bound clause survives into that slot', async () => {
+    const r = await stored('When the door opens before the press stops, the press shall halt.')
+    expect(r.slots.trigger).toBe('the door opens before the press stops')
   })
 
   it('a trailing clause stays in the response, as before', async () => {
-    const r = await stored(
-      'The press controller shall start the press unless the guard door is closed.',
-    )
-    expect(r.slots.systemResponse).toBe('start the press unless the guard door is closed')
+    const r = await stored('The press controller shall stop the press unless overridden.')
+    expect(r.slots.systemResponse).toBe('stop the press unless overridden')
+  })
+
+  it('a dropped lead with no marker is inert decoration, as before', async () => {
+    const r = await stored('(1) The password store shall be encrypted at rest.')
+    expect(r.slots.systemName).toBe('password store')
   })
 
   it('a compound line keeps its compound error', async () => {
-    const r = await refused(
-      'Unless the guard door is closed, the press controller shall start the press and log the start.',
+    const r = await parseLine(
+      'Unless the guard door is closed, the press controller shall stop the press and sound the horn.',
     )
-    expect(r.code).toBe('ERR_PARSE_COMPOUND')
-  })
-})
-
-describe('AC-2-2 round 2: the marker opens the dropped lead after any clause boundary', () => {
-  // Round 1 looked past an allowlist of decoration shapes only, so any other prefix Tier 2 also
-  // dropped still hid the marker, and the line was stored ubiquitous with its condition gone.
-  const G = 'Unless the guard door is closed'
-  const g = 'unless the guard door is closed'
-  const MAIN = 'the press controller shall start the press.'
-  const NOT = 'the press controller shall not start the press.'
-  it.each([
-    [`Safety requirement: ${G}, ${NOT}`, G],
-    [`Safety-critical: ${G}, ${NOT}`, G],
-    [`[P1, SAFETY] ${G}, ${NOT}`, G],
-    [`[P1 SAFETY] ${G}, ${NOT}`, G],
-    [`[req 12] ${G}, ${NOT}`, G],
-    [`1.2 ${G}, ${NOT}`, G],
-    [`1.2.3 ${G}, ${NOT}`, G],
-    [`§3 ${G}, ${NOT}`, G],
-    [`SR-12.3: ${G}, ${NOT}`, G],
-    [`_${G}, ${MAIN}_`, G],
-    [`Important - ${G}, ${MAIN}`, G],
-    [`NOTE ${g}, ${MAIN}`, g],
-    [`Note that ${g}, ${MAIN}`, g],
-    [`Also, ${g}, ${MAIN}`, g],
-    [`However, ${g}, ${MAIN}`, g],
-    [`Moreover, ${g}, ${MAIN}`, g],
-    [`In addition, ${g}, ${MAIN}`, g],
-    [`Otherwise, ${g}, ${MAIN}`, g],
-    [`Then, ${g}, ${MAIN}`, g],
-    [`Moreover ${g} ${NOT}`, g],
-    ['Additionally, before startup, the gateway shall load its config.', 'before startup'],
-    // A marker word used as an ordinary word first ("In case studies") does not hide a real
-    // clause after it.
-    [
-      'In case studies, unless the guard door is closed, the analyst shall cite sources.',
-      'unless the guard door is closed',
-    ],
-  ])('%s', async (line, clause) => {
-    const r = await refused(line)
-    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
-    expect(r.error).toContain(`Leading clause "${clause}"`)
-  })
-
-  it.each([
-    [`${G} press controllers shall not start presses.`, G],
-    [`${G} PressCtl shall stop.`, G],
-    [`${G} users shall be able to log in.`, G],
-    [`${G} operators shall be able to start the press.`, G],
-    [
-      'Until the guard door closes press controllers shall hold the press.',
-      'Until the guard door closes',
-    ],
-    [`${G} - users shall be able to log in.`, G],
-  ])('comma-less, the clause ending on its verb before a bare subject: %s', async (line, clause) => {
-    const r = await refused(line)
-    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
-    expect(r.error).toContain(`Leading clause "${clause}"`)
-  })
-
-  it.each([
-    // The marker sits inside a phrase the lead opened with another word: it does not introduce
-    // the leading clause, so base's parse is kept.
-    ['For requests received before midnight, the gateway shall batch them.', 'gateway'],
-    // A participle after a preposition modifies the noun that follows; the marker opened a noun
-    // phrase the subject completes.
-    ['Until dates of expired contracts shall be archived.', 'contracts'],
-    ['Note that the gateway shall be notified of cached requests.', 'gateway'],
-  ])('controls, stored as base stored them — %s', async (line, systemName) => {
-    expect((await stored(line)).slots.systemName).toBe(systemName)
+    expect(r.outcome).toBe('error')
+    if (r.outcome === 'error') expect(r.code).toBe('ERR_PARSE_COMPOUND')
   })
 })

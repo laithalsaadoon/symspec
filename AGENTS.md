@@ -726,7 +726,7 @@ one.
 | `ERR_DOC_EXISTS` | `init` refused to overwrite an existing document at the resolved path. |
 | `ERR_EMBED_MODEL_MISSING` | The embedding model (core to every `check`) is not cached and remote loading is disabled — the run fails closed rather than silently skipping the semantic/opposition tier. |
 | `ERR_DUPLICATE_KEY` | A create supplied a --key that another requirement already uses; keys must be unique. |
-| `ERR_CLAUSE_UNBOUND` | A leading clause (Unless, Provided that, In case, Except, Before, Until, Only if, Even if) has no EARS slot, so the requirement is refused rather than stored without its condition. |
+| `ERR_CLAUSE_UNBOUND` | The words before the modal that no stored slot holds include an unbound clause marker (Unless, Provided (that), In case, Except, Before, Until, Only if, Even if), so the requirement is refused rather than stored without its condition. |
 
 ## Finding codes (`FND_*`)
 

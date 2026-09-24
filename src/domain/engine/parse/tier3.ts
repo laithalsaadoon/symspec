@@ -42,7 +42,7 @@
  * is reserved for sentences that lack *any* obligation vocabulary.
  *
  * `ERR_CLAUSE_UNBOUND` (spec 007 AC-2-2) sits outside this heuristic: it is not a failure to
- * parse but a successful Tier-2 parse that dropped a leading `Unless`/`Before`/… clause, so
+ * parse but a successful parse whose slots dropped an `Unless`/`Before`/… clause marker, so
  * `./unbound.ts` decides it as a post-condition and {@link makeClauseUnboundEnvelope} builds
  * the envelope.
  *
@@ -174,7 +174,7 @@ function suggestionsFor(code: ParseErrorCode, partial: PartialSlots): readonly s
 
     case 'ERR_CLAUSE_UNBOUND':
       return [
-        'Restate the leading clause as one EARS binds to a slot: "While <state>, …" (precondition), "When <event>, …" (trigger), or "If <condition>, then …" (unwanted behavior).',
+        'Restate the named clause as one EARS binds to a slot: "While <state>, …" (precondition), "When <event>, …" (trigger), or "If <condition>, then …" (unwanted behavior).',
         '"Unless <P>, …" applies exactly when <P> does not hold: name that state, e.g. "While <not P>, the <system> shall …".',
         'Do not delete the clause to make the line parse: without its condition the requirement is stronger than the one written.',
       ]
@@ -270,10 +270,14 @@ function assignCode(allNotes: Set<string>, triggers: Set<EscalationTrigger>): Pa
 // Error message builders per code
 // ---------------------------------------------------------------------------
 
-function messageFor(code: ParseErrorCode, text: string, clause?: string): string {
+function messageFor(
+  code: ParseErrorCode,
+  text: string,
+  dropped?: { readonly span: string; readonly marker: string },
+): string {
   switch (code) {
     case 'ERR_CLAUSE_UNBOUND':
-      return `Leading clause "${clause ?? ''}" has no EARS slot (While/When/If…then/Where), and storing the rest would drop its condition: "${text}"`
+      return `"${dropped?.span ?? ''}" is in no stored slot, and its "${dropped?.marker ?? ''}" opens a condition no EARS slot binds (While/When/If…then/Where), so storing the rest would drop that condition: "${text}"`
     case 'ERR_PARSE_NO_MODAL':
       return `No modal verb ("shall", "must", "will", "should") found in: "${text}"`
     case 'ERR_PARSE_NOT_A_REQUIREMENT':
@@ -326,7 +330,7 @@ export function makeTier3Envelope(text: string, outcome: Tier2Outcome): Tier3Env
 }
 
 /**
- * The Tier-3 envelope for a line whose leading clause no EARS slot binds (spec 007 AC-2-2).
+ * The Tier-3 envelope for a line whose parse dropped an unbound clause marker (spec 007 AC-2-2).
  *
  * Not reachable through {@link assignCode}: the ladder decides this one as a post-condition on
  * an otherwise-successful parse (`./unbound.ts`), because the failure is not that parsing broke
@@ -334,14 +338,19 @@ export function makeTier3Envelope(text: string, outcome: Tier2Outcome): Tier3Env
  * no split — either would hand an agent the same requirement minus its clause.
  *
  * @param text    The original input text.
- * @param clause  The unbound clause as written, without the brackets that framed it.
+ * @param span    The dropped span, as written, without unpaired brackets.
+ * @param marker  The unbound marker the span holds (`unless`, `in case`, …).
  */
-export function makeClauseUnboundEnvelope(text: string, clause: string): Tier3Envelope {
+export function makeClauseUnboundEnvelope(
+  text: string,
+  span: string,
+  marker: string,
+): Tier3Envelope {
   const code: ParseErrorCode = 'ERR_CLAUSE_UNBOUND'
   return {
     tier: 3,
     code,
-    error: messageFor(code, text, clause),
+    error: messageFor(code, text, { span, marker }),
     suggestions: suggestionsFor(code, {}),
     notes: ['clause-unbound'],
   }

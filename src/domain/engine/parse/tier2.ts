@@ -91,29 +91,6 @@ export interface Tier2Ok {
   tier: 2
   /** Provenance notes: escalation triggers plus repair notes (e.g. `subject-repaired`). */
   notes: string[]
-  /**
-   * The text left of the subject that {@link classifyLeadingClause} could not bind to a slot,
-   * and so appears in NO slot of this parse. Present only when such text exists. Never
-   * projected into a `ParseResult`: it is the evidence `unboundLeadingClause` (spec 007 AC-2-2)
-   * reads to decide whether the repair dropped a condition.
-   */
-  droppedLead?: DroppedLead
-}
-
-/** What a Tier-2 repair dropped left of the subject, as {@link Tier2Ok.droppedLead} records it. */
-export interface DroppedLead {
-  /** The dropped tokens, in order. */
-  tokens: readonly WinkToken[]
-  /**
-   * True when the subject chunk opens a fresh noun phrase where the dropped text ends: the chunk
-   * starts on a determiner (or, determiner-less, on a noun right after the lead's closing verb),
-   * holds no determiner after that, and the dropped text does not end on a preposition that opens
-   * a phrase the chunk completes. Only then does a comma-less lead end exactly where the subject begins. When it
-   * is false, part of the lead may sit in `systemName` ("In case of fire the sprinkler
-   * controller" → "fire the sprinkler controller"), or the chunk completes a noun phrase the
-   * lead began ("Until dates in the form").
-   */
-  subjectOpensCleanly: boolean
 }
 
 /** Tier-2 could not repair the clause; the caller escalates to the Tier-3 envelope (T-AC-2-7). */
@@ -366,99 +343,69 @@ const LEADING_DETERMINER_POS: ReadonlySet<string> = new Set(['DET', 'PRON'])
 const isModal = (t: WinkToken): boolean =>
   MODAL_LEMMAS.has(t.value.toLowerCase()) || MODAL_LEMMAS.has(t.lemma.toLowerCase())
 
-/** The `n't` wink splits off a contracted modal (`shan't` → `sha` + `n't`). */
-const isContractedNegator = (t: WinkToken): boolean => t.value.toLowerCase() === "n't"
-
-/** Determiners and pronouns that negate the noun phrase they open ("No request", "None of"). */
-const SUBJECT_NEGATORS: ReadonlySet<string> = new Set([
-  'no',
-  'none',
-  'neither',
-  'nobody',
-  'nothing',
-])
-
-/** UPOS tags of the quantifier or article a subject-opening `not` precedes ("Not all", "Not one"). */
-const QUANTIFIER_POS: ReadonlySet<string> = new Set(['DET', 'NUM'])
-
-/** Word classes that, once seen after the modal, put a later negator inside a phrase of its own. */
-const PHRASE_HEAD_POS: ReadonlySet<string> = new Set(['NOUN', 'PROPN', 'PRON', 'NUM', 'SCONJ'])
+/** The `n't` wink splits off a contracted modal (`shan't` → `sha` + `n't`, `won't` → `wo` + `n't`). */
+const isContractedNegator = (t: WinkToken | undefined): boolean => t?.value.toLowerCase() === "n't"
 
 /**
- * True when a negator left of the modal OPENS the main clause's subject, so that it governs the
- * modal: "No request shall …", "Neither replica …", "None of the requests …", "Not all requests
- * …", "While offline, none of the requests …", "When the user signs in no token …". Opening
- * means one of:
- *
- * - a No/None/Neither/Nobody/Nothing that is the first token of the line;
- * - one inside the subject chunk that is not the object of a preposition ("a request with no
- *   body" names a request, it does not forbid one). After a leading clause Tier 2 binds, the
- *   chunk opens the main clause whatever the lead ends on: wink tags the particle of "signs in"
- *   / "plugs in" `ADP` after a verb it tags `NOUN`, and "When the user signs in no token …" means
- *   what its comma twin means;
- * - `none of` / `neither of` directly before the chunk, on the same terms;
- * - `not` before a quantifier or article that opens the chunk ("Not all", "Not every", "Not a
- *   single", "Not one", "Not any", "Not all of the …"), unless a copula precedes it: "who are not
- *   admins" / "is not a guest" negate a predicate, not the subject.
- *
- * A negator anywhere else left of the modal — a relative clause ("users who are not admins"), a
- * prepositional object, a comma-less leading clause ("when no user is signed in the …") — scopes
- * over that phrase alone.
+ * The negators wink's flags in the response were keyed on, as token indices: for each run of
+ * flagged tokens that reaches the response, the token just before the run. wink flags the tokens
+ * AFTER a negator, up to the next punctuation, and never the negator itself, so that token is the
+ * negator the run came from ("No" in "No request shall be dropped", "not" in "requests that are
+ * not cached"). A run that starts the line has no negator token and yields -1.
  */
-function subjectNegatorGovernsModal(
-  tokens: WinkToken[],
-  chunkStart: number,
-  modalIdx: number,
-  leadBound: boolean,
-): boolean {
-  const opensAt = (i: number): boolean => i === 0 || leadBound || tokens[i - 1]!.pos !== 'ADP'
-  const word = (i: number): string => tokens[i]?.value.toLowerCase() ?? ''
-  // The subject's own start, widened over a partitive `<quantifier> of` ("all of the requests").
-  const partitive = word(chunkStart - 1) === 'of' ? chunkStart - 2 : -1
-  for (let i = 0; i < modalIdx; i++) {
-    const w = word(i)
-    if (SUBJECT_NEGATORS.has(w)) {
-      if (i === 0) return true
-      if ((i >= chunkStart || i === partitive) && opensAt(i)) return true
-    } else if (w === 'not') {
-      const head = i + 1 === partitive ? partitive : i + 1 === chunkStart ? chunkStart : -1
-      if (head < 0 || !QUANTIFIER_POS.has(tokens[head]!.pos)) continue
-      if (i === 0 || (opensAt(i) && tokens[i - 1]!.pos !== 'AUX')) return true
-    }
+function responseScopeNegators(tokens: readonly WinkToken[], modalIdx: number): number[] {
+  const negators: number[] = []
+  for (let i = modalIdx + 1; i < tokens.length; i++) {
+    const runStartsHere =
+      tokens[i]!.negationFlag && (i === modalIdx + 1 || !tokens[i - 1]!.negationFlag)
+    if (!runStartsHere) continue
+    let start = i
+    while (start > 0 && tokens[start - 1]!.negationFlag) start--
+    negators.push(start - 1)
   }
-  return false
+  return negators
+}
+
+/** True when `word` occurs verbatim in `text` as a whole token. */
+function occursVerbatim(text: string, word: string): boolean {
+  const escaped = word.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&')
+  return new RegExp(`(?<![\\p{L}\\p{N}'])${escaped}(?![\\p{L}\\p{N}])`, 'u').test(text)
 }
 
 /**
- * True when a negation that starts INSIDE the response governs the modal: its negator sits in
- * the verb group or a negating adverbial before any noun, pronoun or subordinator of the response
- * ("be never notified", "be neither notified nor logged", "be notified of no requests", ", under
- * no circumstances, drop"), where it scopes over the whole predicate. A negator after one ("forward
- * requests that are not cached", "scoped by id, not by a string") scopes over that phrase.
- * A parenthetical closed before the negator (", under load, not drop") is skipped.
+ * The `negated` flag, as the spec 007 AC-2-3 post-condition over the flag the parse computed.
  *
- * The negator is read off wink's negation flags, which start on the token AFTER it: each run of
- * flagged response tokens that starts inside the response names one negator. wink opens no scope
- * after `not only` ("not only X but also Y" obliges both halves), so that never reaches here.
+ * `baseNegated` unions two sources: the modal-adjacent negator {@link extractNegation} strips
+ * (`shall not`, `shall never`), and wink's negation scope reaching the response. The defect is
+ * the second source when the negator it was keyed on sits INSIDE the response: "shall forward
+ * requests that are not cached" keeps its `not` in `systemResponse` AND flipped the flag, so the
+ * line was stored as the prohibition of a phrase that is itself negative.
+ *
+ * So the flag is cleared ONLY when every negator the response's flags were keyed on is a response
+ * token present verbatim in the stored `systemResponse`. Otherwise it is kept exactly: a negator
+ * left of the modal ("No request", "Requests from none of the hosts", "Users who are not
+ * admins") is in no slot, and clearing the flag would store the positive obligation it denies.
+ * A contracted modal (`shan't`, `mustn't`, `won't`) negates the modal itself, so it always sets
+ * the flag, including where a comma after it stops wink's scope.
  */
-function responseNegatorGovernsModal(tokens: WinkToken[], modalIdx: number): boolean {
-  for (let n = modalIdx + 1; n < tokens.length - 1; n++) {
-    if (tokens[n]!.negationFlag || !tokens[n + 1]!.negationFlag) continue
-    // A `, … ,` parenthetical that closes before the negator is dropped; one still open holds it.
-    const before: WinkToken[] = []
-    let open: WinkToken[] | undefined
-    for (const t of tokens.slice(modalIdx + 1, n)) {
-      if (t.value === ',') open = open === undefined ? [] : undefined
-      else (open ?? before).push(t)
-    }
-    if (open !== undefined) before.push(...open)
-    if (!before.some((t) => PHRASE_HEAD_POS.has(t.pos))) return true
-  }
-  return false
+function governingNegation(
+  tokens: readonly WinkToken[],
+  modalIdx: number,
+  baseNegated: boolean,
+  modalNegatorStripped: boolean,
+  systemResponse: string,
+): boolean {
+  if (isContractedNegator(tokens[modalIdx + 1])) return true
+  if (!baseNegated || modalNegatorStripped) return baseNegated
+  const keyed = responseScopeNegators(tokens, modalIdx)
+  const negationStaysInText =
+    keyed.length > 0 &&
+    keyed.every((k) => k > modalIdx && occursVerbatim(systemResponse, tokens[k]!.value))
+  return !negationStaysInText
 }
 
 /** Join token surface forms into slot text, collapsing the whitespace the join introduces. */
-export function joinTokens(tokens: readonly WinkToken[]): string {
+function joinTokens(tokens: WinkToken[]): string {
   return (
     tokens
       .map((t) => t.value)
@@ -494,25 +441,6 @@ function subjectChunkStart(tokens: WinkToken[], modalIdx: number): number {
   }
   return start
 }
-
-/**
- * True when token `i` is a preposition opening a phrase the next tokens complete: an `ADP` after
- * a noun ("dates in | the form"), not a verb particle ("is down", "logs in").
- */
-const opensPrepositionalPhrase = (tokens: WinkToken[], i: number): boolean =>
-  tokens[i]!.pos === 'ADP' && !['AUX', 'VERB'].includes(tokens[i - 1]?.pos ?? '')
-
-/**
- * True when a determiner-less subject chunk starts right after the verb that ends a leading
- * clause ("Unless the guard door is closed | users shall …", "Until the door closes | press
- * controllers shall …"): a noun after a verb that is itself not a participle modifying that noun
- * after a preposition or article ("Until dates of expired | contracts": the chunk completes the
- * lead's own noun phrase).
- */
-const opensBareSubject = (tokens: WinkToken[], chunkStart: number): boolean =>
-  ['NOUN', 'PROPN'].includes(tokens[chunkStart]!.pos) &&
-  tokens[chunkStart - 1]?.pos === 'VERB' &&
-  !['ADP', 'DET'].includes(tokens[chunkStart - 2]?.pos ?? '')
 
 /** Classify the leading clause (keyword before the subject) into a pattern + slot. */
 interface LeadingClause {
@@ -606,32 +534,27 @@ export function repairWithWink(
   if (responseTokens.length === 0) {
     return { ok: false, escalate: true, tier: 2, notes: [...baseNotes, 'no-response-recovered'] }
   }
-  // Recover a leading EARS clause (text before the subject noun chunk).
-  const leadText = joinTokens(tokens.slice(0, chunkStart))
-  const lead = classifyLeadingClause(leadText)
   const rawResponse = joinTokens(responseTokens)
   const neg = extractNegation(rawResponse)
-  const modalToken = tokens[modalIdx]!
-  // Only a negation that GOVERNS THE MODAL sets the flag (spec 007 AC-2-3): the modal-adjacent
-  // negator `extractNegation` reads, the `n't` wink splits off shan't/mustn't/won't, or base's own
-  // evidence — wink's negation scope reaching the response — when the negator it starts from
-  // governs: one that opens the main clause's subject ("No request shall be dropped") or one in
-  // the response's verb group ("shall be never notified"). wink's scope runs from ANY negator to
-  // the next punctuation, so without those tests a "not"/"no" in a relative clause, a
-  // prepositional phrase or a comma-less leading clause would flag the response too, and so would
-  // one that starts inside the response ("requests that are not cached"), which keeps its "not"
-  // in the text. The gate on base's evidence means this can only clear rows base set.
-  const negated =
-    neg.negated ||
-    isContractedNegator(responseTokens[0]!) ||
-    (responseTokens.some((t) => t.negationFlag) &&
-      (subjectNegatorGovernsModal(tokens, chunkStart, modalIdx, lead !== undefined) ||
-        responseNegatorGovernsModal(tokens, modalIdx)))
   const systemResponse = neg.response
+  // Union of the modal-window negator and any wink negation flag in the response span, then
+  // the spec 007 AC-2-3 post-condition over it (see `governingNegation`).
+  const negated = governingNegation(
+    tokens,
+    modalIdx,
+    neg.negated || responseTokens.some((t) => t.negationFlag),
+    neg.negated,
+    systemResponse,
+  )
 
   const notes = [...baseNotes]
   const repairNotes: string[] = []
+  const modalToken = tokens[modalIdx]!
   if (modalToken.value.toLowerCase() !== 'shall') repairNotes.push('nonstandard-modal')
+
+  // Recover a leading EARS clause (text before the subject noun chunk).
+  const leadText = joinTokens(tokens.slice(0, chunkStart))
+  const lead = classifyLeadingClause(leadText)
 
   const slots: Tier1Slots = {
     patternType: lead ? lead.patternType : 'ubiquitous',
@@ -648,17 +571,6 @@ export function repairWithWink(
   // Tier 2 is a repair tier: confident enough to use, never `high`. Any repair
   // note (or a soft escalation trigger) pins it to `low`.
   const confidence: Confidence = repairNotes.length > 0 || baseNotes.length > 0 ? 'low' : 'medium'
-  const droppedLead: DroppedLead | undefined =
-    lead || leadText.trim() === ''
-      ? undefined
-      : {
-          tokens: tokens.slice(0, chunkStart),
-          subjectOpensCleanly:
-            (LEADING_DETERMINER_POS.has(tokens[chunkStart]!.pos) ||
-              opensBareSubject(tokens, chunkStart)) &&
-            !subjectTokens.some((t) => t.pos === 'DET') &&
-            !opensPrepositionalPhrase(tokens, chunkStart - 1),
-        }
 
   return {
     ok: true,
@@ -668,7 +580,6 @@ export function repairWithWink(
     confidence,
     tier: 2,
     notes,
-    ...(droppedLead !== undefined ? { droppedLead } : {}),
   }
 }
 

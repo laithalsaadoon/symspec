@@ -343,13 +343,13 @@ export class ErrDuplicateKey extends Schema.TaggedErrorClass<ErrDuplicateKey>()(
   override readonly [Runtime.errorReported] = false
 }
 
-/** A leading clause has no EARS slot, so storing the rest would drop its condition (spec 007 AC-2-2). */
+/** A parse left an unbound clause marker out of every slot, so storing it would drop a condition (spec 007 AC-2-2). */
 export class ErrClauseUnbound extends Schema.TaggedErrorClass<ErrClauseUnbound>()(
   'ERR_CLAUSE_UNBOUND',
   ErrorFields,
   {
     description:
-      'A leading clause (Unless, Provided that, In case, Except, Before, Until, Only if, Even if) has no EARS slot, so the requirement is refused rather than stored without its condition. Suggestion: restate the named clause as While/When/If…then, or name the state in which the requirement applies.',
+      'The words before the modal that no stored slot holds include an unbound clause marker (Unless, Provided (that), In case, Except, Before, Until, Only if, Even if), so the requirement is refused rather than stored without its condition. Suggestion: restate the named clause as While/When/If…then, or name the state in which the requirement applies.',
   },
 ) {
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR

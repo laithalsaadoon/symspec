@@ -751,3 +751,49 @@ will NOT help
 §3 Unless the guard door is closed, the press controller shall not start the press.
 • The gateway shall be notified of cached requests.
 • Unless the guard door is closed, the press controller shall start the press.
+In case power fails, the UPS shall start the generator.
+In case sensors fail, the controller shall stop the pump.
+In case connectivity is lost, the app shall cache writes.
+In case two sensors disagree, the controller shall stop the pump.
+Five seconds before the press starts, the press controller shall sound the horn.
+Two seconds before shutdown, the gateway shall flush its logs.
+Only minutes before shutdown, the gateway shall flush its logs.
+At all times except during maintenance, the gateway shall log requests.
+Unless the door is shut, the operator's console shall stop.
+Unless the door is shut, PLC_1 shall stop.
+Unless the door is shut, the press_controller shall stop.
+Unless the door is shut, the press #3 shall stop.
+Unless the door is shut, the press controller v2.1 shall stop.
+Unless the door is shut, the I/O module shall stop.
+Unless the door is shut, the press/brake unit shall stop.
+Unless the door is shut, the "press" unit shall stop.
+Before startup, the operator's console shall load its config.
+Safety requirement Unless the guard door is closed, the press controller shall not start the press.
+SAFETY REQUIREMENT Unless the guard door is closed, the press controller shall start the press.
+Unless the press is closed, the press controller shall stop the press.
+Unless overridden the press shall stop.
+When the door opens before the press stops, the press shall halt.
+The press controller shall stop the press unless overridden.
+Unless the guard door is closed, the press controller shall stop the press and sound the horn.
+Requests shall, under no circumstances, be forwarded.
+The gateway shall not forward requests that are not cached.
+Not even one request shall be dropped.
+Not even a single request shall be dropped.
+Not a single one of the requests shall be dropped.
+Not even one of the requests shall be dropped.
+Never a request shall be dropped.
+While offline, not even one request shall be dropped.
+The requests of no user shall be logged.
+The user that is not an admin shall be denied access.
+While mains power is present, the UPS shall not start the generator.
+While the press is running, the press controller shall not sound the horn.
+Requests from all of the hosts shall be accepted.
+Requests from the hosts shall not be accepted.
+The requests of every user shall be logged.
+The requests of a user shall not be logged.
+Hosts shall not be accepted.
+The admin shall not be denied access.
+Requests shall not be dropped.
+5 seconds before the press starts, the press controller shall sound the horn.
+Unless the guard door is closed, the press controller shall stop the press unless overridden.
+The user that is not an admin shall be denied access, not logged.
