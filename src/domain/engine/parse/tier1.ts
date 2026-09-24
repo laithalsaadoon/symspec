@@ -106,11 +106,13 @@ const MODAL_ANYWHERE = new RegExp(String.raw`\b${KW.modal}\b`, 'i')
  * indefinite (`a`/`an`) — to match symspec's article-free `systemName`
  * convention (validate-parse-lint.md finding P22: `a virus scan` → `virus
  * scan`). The `neg` group captures an explicit negator so the formal tier
- * receives `¬R` rather than a string containing "not".
+ * receives `¬R` rather than a string containing "not". `not only` is not a
+ * negator: "shall not only X but also Y" obliges both (spec 007 AC-2-3), so it
+ * stays in the response and the line stays positive.
  */
 export const MAIN = new RegExp(
   String.raw`^(?:(?:the|an|a)\s+)?(?<system>.+?)\s+(?<modal>${KW.modal})\s+` +
-    String.raw`(?<neg>not\s+|never\s+|not\s+be\s+able\s+to\s+)?(?<response>.+)$`,
+    String.raw`(?<neg>not\s+(?!only\b)|never\s+|not\s+be\s+able\s+to\s+)?(?<response>.+)$`,
   'i',
 )
 

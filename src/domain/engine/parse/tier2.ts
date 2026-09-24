@@ -343,6 +343,9 @@ const LEADING_DETERMINER_POS: ReadonlySet<string> = new Set(['DET', 'PRON'])
 const isModal = (t: WinkToken): boolean =>
   MODAL_LEMMAS.has(t.value.toLowerCase()) || MODAL_LEMMAS.has(t.lemma.toLowerCase())
 
+/** The `n't` wink splits off a contracted modal (`shan't` → `sha` + `n't`). */
+const isContractedNegator = (t: WinkToken): boolean => t.value.toLowerCase() === "n't"
+
 /** Join token surface forms into slot text, collapsing the whitespace the join introduces. */
 function joinTokens(tokens: WinkToken[]): string {
   return (
@@ -475,13 +478,17 @@ export function repairWithWink(
   }
   const rawResponse = joinTokens(responseTokens)
   const neg = extractNegation(rawResponse)
-  // Union of the modal-window negator and any wink negation flag in the response span.
-  const negated = neg.negated || responseTokens.some((t) => t.negationFlag)
+  const modalToken = tokens[modalIdx]!
+  // Only a negation that GOVERNS THE MODAL sets the flag (spec 007 AC-2-3): the modal-adjacent
+  // negator `extractNegation` reads, the `n't` wink splits off shan't/mustn't/won't, or a
+  // negation whose scope already covers the modal itself ("No request shall be dropped"). A
+  // negation flag that starts inside the response ("requests that are not cached") scopes over
+  // that phrase, not over the obligation, and the phrase keeps its "not" in the response text.
+  const negated = neg.negated || isContractedNegator(responseTokens[0]!) || modalToken.negationFlag
   const systemResponse = neg.response
 
   const notes = [...baseNotes]
   const repairNotes: string[] = []
-  const modalToken = tokens[modalIdx]!
   if (modalToken.value.toLowerCase() !== 'shall') repairNotes.push('nonstandard-modal')
 
   // Recover a leading EARS clause (text before the subject noun chunk).
