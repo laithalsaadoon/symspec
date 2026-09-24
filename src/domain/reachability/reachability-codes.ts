@@ -157,19 +157,24 @@ export const ReachabilityFndCodeMeta: Record<
     code: 'FND_REACHABILITY_UNKNOWN',
     description:
       'info — whether a declared constraint (or a declared range) can be violated was not decided, ' +
-      'so nothing is claimed either way and `verified` is DEMOTED. The message states which of three ' +
-      'causes applies, because they need different remedies. Two are solver limits the solver ' +
-      'cannot be asked about: a timed-out Spacer query reports its reason as the literal string ' +
+      'so nothing is claimed either way and `verified` is DEMOTED. The message states which cause ' +
+      'applies, because the causes need different remedies. Budget exhaustion and undecidability ' +
+      'are solver limits the solver cannot be asked about: a timed-out Spacer query reports its reason as the literal string ' +
       '"ok", so budget exhaustion is told from undecidability out-of-band, by measured elapsed time ' +
-      'against the budget that was set. The third, frame-undeclared, is not a solver limit: the ' +
+      'against the budget that was set. Frame-undeclared is not a solver limit: the ' +
       'constraint holds once every unwritten variable is held fixed and is violable when the ' +
       'variables the document declares `volatile` change on their own, which the document does not ' +
-      'rule out. Suggestion: for budget exhaustion raise --reachability-timeout-ms (this tier`s own ' +
+      'rule out. Cross-check-incomplete withholds a proof: the solver proved the ' +
+      'constraint, but the independent explicit-state search stopped without showing the model is ' +
+      'beyond the size it must re-decide. Suggestion: for budget exhaustion raise ' +
+      '--reachability-timeout-ms (this tier`s own ' +
       'per-query bound, which defaults to --timeout-ms when absent); for genuine undecidability bound ' +
       'the integer domains in the state model instead, since more time will not help; for ' +
       'frame-undeclared either author the requirements that keep the named variables fixed or apply ' +
       'the repair ops, which declare them `frame: stable` (the verdict becomes ' +
-      'FND_REACHABILITY_UNDER_HYPOTHESES, still demoted).',
+      'FND_REACHABILITY_UNDER_HYPOTHESES, still demoted); for cross-check-incomplete state each ' +
+      'initial value as `name = <value or expression>` or narrow the declared ranges, so the search ' +
+      'can enumerate the model.',
   },
   FND_REACHABILITY_NOT_CHECKED: {
     code: 'FND_REACHABILITY_NOT_CHECKED',

@@ -31,22 +31,32 @@
  *   frame pins it (`full`: every variable; `declared`: the `stable` ones; `none`: none),
  *   and otherwise FREE: it takes every value in its declared domain.
  *
- * ## When it does not run
+ * ## When it does not run, and what that means for the proof
  *
- * Only when the answer is finite and small: every variable a step leaves free, and every
- * variable the initial predicates leave unbounded, must have a finite domain, and the
- * enumeration must stay within {@link REACHABILITY_BFS_STATE_CAP} states and
- * {@link REACHABILITY_BFS_WORK_CAP} generated successors. Otherwise it returns
- * `not-applicable` with the reason, and the proof stands on the Horn tier and its
- * certificate alone — which is what it stood on before this module existed.
+ * It returns `not-applicable`, with the reason, in two cases that mean opposite things:
  *
- * The caps measure what the search VISITS, never what the declarations multiply out to. A
- * bounded int's range is a pair of bounds, sized before any value is produced; the initial
- * states are found by backtracking that prunes a branch as soon as its assigned prefix
- * refutes an initial predicate, so N bools each initialised `= false` are one initial
- * state reached in 2N steps, not 2^N candidates; an int's initial candidates
- * are narrowed to the interval its top-level literal comparisons leave; and a step's free
- * fan-out is sized from the domain sizes before a single successor is built.
+ * - `beyondCap: true`: the search has SHOWN that the model has more than
+ *   {@link REACHABILITY_BFS_STATE_CAP} reachable states. It found that many distinct states,
+ *   or one step from a reachable state has that many distinct successors, or a variable
+ *   takes infinitely many values. Spec 007 AC-1-5 requires a cross-check only up to the
+ *   cap, so the proof stands on the Horn tier and its certificate.
+ * - `beyondCap: false`: the search stopped WITHOUT showing that. It used up the
+ *   {@link REACHABILITY_BFS_WORK_CAP} safety valve, or it met an initial predicate it cannot
+ *   enumerate. The model may be small, so the tier WITHHOLDS the proof. Otherwise a proof
+ *   the second checker never examined would be reported as if it had been.
+ *
+ * The caps measure what the search VISITS, never what the declarations multiply out to:
+ *
+ * - A bounded int's range is a pair of bounds, sized before any value is produced.
+ * - The initial states are found by backtracking, and a branch is pruned as soon as its
+ *   assigned prefix refutes an initial predicate. A variable that a top-level `x = e`
+ *   defines is COMPUTED as soon as `e`'s variables are assigned, never branched on. So N
+ *   bools initialised `fi = g` are one initial state in whatever order they are declared.
+ *   An int's candidates are narrowed to the interval its top-level literal comparisons leave.
+ * - A step's successor set depends only on the post-state's values for the variables the
+ *   step does not leave free. The search expands each distinct such projection ONCE, so
+ *   every successor it generates is a distinct state, and a volatile sensor free on every
+ *   step costs its range once per projection, not once per reachable state.
  */
 
 import type { StateVariable } from '../requirements/document.ts'
@@ -68,11 +78,17 @@ import type { Expr, StateEffect } from '../requirements/state-expr.ts'
 export const REACHABILITY_BFS_STATE_CAP = 10_000
 
 /**
- * The most SUCCESSORS (including duplicates) the cross-check will generate before giving up.
+ * THE SAFETY VALVE: the most units of work (candidate initial assignments examined, plus
+ * successors generated) the cross-check spends before it gives up.
  *
- * The state cap alone does not bound the work: under the `none` frame every unwritten
- * variable is free, so ONE step from ONE state fans out over the product of their domains
- * (2^11 for eleven free bools). Twenty successors per reachable state at the state cap.
+ * It is a count, not a clock, so the same document always gets the same answer. The step
+ * phase needs little of it. Each projection is expanded once, so the successors generated
+ * are at most the number of distinct free-variable sets among the effects times the
+ * reachable states. The valve exists for the initial predicates, where a constraint that
+ * no prefix refutes (a sum, say) can take exponentially many candidates to find a handful
+ * of states. When it trips, the search has NOT shown the model is beyond
+ * {@link REACHABILITY_BFS_STATE_CAP}, so the verdict carries `beyondCap: false` and the
+ * proof is withheld.
  */
 export const REACHABILITY_BFS_WORK_CAP = 200_000
 
@@ -103,8 +119,12 @@ export type ExplicitVerdict =
       readonly trace: readonly string[]
       readonly path: readonly Readonly<Record<string, string>>[]
     }
-  /** The enumeration could not be completed; nothing is claimed. */
-  | { readonly status: 'not-applicable'; readonly reason: string }
+  /**
+   * The enumeration could not be completed, and nothing is claimed about the constraint.
+   * `beyondCap` says whether the search SHOWED that the model has more than
+   * {@link REACHABILITY_BFS_STATE_CAP} reachable states (see the module doc).
+   */
+  | { readonly status: 'not-applicable'; readonly reason: string; readonly beyondCap: boolean }
 
 // ---------------------------------------------------------------------------
 // Evaluation
@@ -186,11 +206,13 @@ const integer = (expr: Expr, state: State): bigint => {
 interface Domain {
   readonly size: bigint
   readonly values: () => Iterable<Value>
+  readonly has: (value: Value) => boolean
 }
 
 const listed = (values: readonly Value[]): Domain => ({
   size: BigInt(values.length),
   values: () => values,
+  has: (value) => values.includes(value),
 })
 
 const interval = (lo: bigint, hi: bigint): Domain => ({
@@ -198,6 +220,7 @@ const interval = (lo: bigint, hi: bigint): Domain => ({
   *values() {
     for (let n = lo; n <= hi; n += 1n) yield n
   },
+  has: (value) => typeof value === 'bigint' && lo <= value && value <= hi,
 })
 
 /** Every value a variable's declared type admits, or `undefined` when that is infinite. */
@@ -270,6 +293,56 @@ const initialCandidates = (variable: StateVariable, facts: readonly Expr[]): Dom
     if (op === '<') atMost(n - 1n)
   }
   return lo === undefined || hi === undefined ? undefined : interval(lo, hi)
+}
+
+/** Every variable an expression reads. */
+const readsOf = (expr: Expr, into: Set<string> = new Set()): Set<string> => {
+  switch (expr.kind) {
+    case 'ref':
+      into.add(expr.name)
+      break
+    case 'not':
+      readsOf(expr.operand, into)
+      break
+    case 'and':
+    case 'or':
+      for (const operand of expr.operands) readsOf(operand, into)
+      break
+    case 'arith':
+    case 'compare':
+      readsOf(expr.left, into)
+      readsOf(expr.right, into)
+      break
+    default:
+      break
+  }
+  return into
+}
+
+/** A top-level `x = e`: in EVERY initial state, `x` is `e`'s value on the other variables. */
+interface Definition {
+  readonly expr: Expr
+  readonly reads: ReadonlySet<string>
+}
+
+/**
+ * The definitions the top-level conjuncts state, per variable. `x = y` defines each side
+ * by the other. A side that reads its own variable (`x = x + 0`) defines nothing.
+ */
+const definitionsOf = (facts: readonly Expr[]): ReadonlyMap<string, readonly Definition[]> => {
+  const found = new Map<string, Definition[]>()
+  const add = (target: Expr, expr: Expr): void => {
+    if (target.kind !== 'ref') return
+    const reads = readsOf(expr)
+    if (reads.has(target.name)) return
+    found.set(target.name, [...(found.get(target.name) ?? []), { expr, reads }])
+  }
+  for (const fact of facts) {
+    if (fact.kind !== 'compare' || fact.op !== '=') continue
+    add(fact.left, fact.right)
+    add(fact.right, fact.left)
+  }
+  return found
 }
 
 /**
@@ -345,65 +418,153 @@ function* assignments(
 
 type NotApplicable = Extract<ExplicitVerdict, { status: 'not-applicable' }>
 
+/** The search SHOWED the model has more reachable states than the cap: out of scope. */
+const beyondCap = (reason: string): NotApplicable => ({
+  status: 'not-applicable',
+  reason,
+  beyondCap: true,
+})
+
+/** The search stopped WITHOUT showing that: the model may be small, so the proof is withheld. */
+const undetermined = (reason: string): NotApplicable => ({
+  status: 'not-applicable',
+  reason,
+  beyondCap: false,
+})
+
+/** One step of the initial-state search: compute a defined variable, or branch over one. */
+type InitialStep =
+  | { readonly name: string; readonly define: Expr }
+  | { readonly name: string; readonly choose: Domain }
+
 /**
- * The initial states, found by BACKTRACKING over each variable's narrowed candidates and
- * pruning a branch as soon as its assigned prefix refutes an initial predicate. The caps
- * apply to what the search actually visits — the initial states found, and the partial
- * assignments examined — never to the product of the declared domains, which N pinned
- * bools inflate to 2^N without adding a single initial state.
+ * The ORDER the initial-state search assigns variables in, fixed before it starts.
+ *
+ * A variable whose definition reads only variables already placed is COMPUTED. That is
+ * always tried first, so a pinned variable declared last is still placed before anything
+ * that depends on it, and a chain of equalities costs one branch, not one per link. When
+ * no definition is ready, the search branches on the unplaced variable with the fewest
+ * candidates, and among those, the one the initial predicates mention most, which is the
+ * one whose value unlocks or refutes the most. Declaration order breaks the remaining ties
+ * only, so it never decides whether a definition is used.
+ *
+ * `NotApplicable` when an unbounded int is left with neither a definition nor a literal
+ * bound. `beyondCap` is true when no predicate but its own literal bounds mentions it, so
+ * it takes infinitely many initial values. It is false otherwise (`x + y = 3`), because the
+ * search cannot tell how many values the predicate leaves.
  */
-const initialStates = (model: ExplicitModel): readonly State[] | NotApplicable => {
+const initialPlan = (model: ExplicitModel): readonly InitialStep[] | NotApplicable => {
   const facts = conjuncts(model.initial)
-  const candidates = new Map<string, Domain>()
-  for (const variable of model.variables) {
-    const domain = initialCandidates(variable, facts)
-    if (domain === undefined) {
-      return {
-        status: 'not-applicable',
-        reason: `the initial value of the unbounded int ${variable.name} is not bounded by a literal`,
+  const definitions = definitionsOf(facts)
+  const mentions = new Map<string, number>()
+  for (const fact of facts) {
+    for (const name of readsOf(fact)) mentions.set(name, (mentions.get(name) ?? 0) + 1)
+  }
+  const plan: InitialStep[] = []
+  const placed = new Set<string>()
+  while (placed.size < model.variables.length) {
+    const unplaced = model.variables.filter((v) => !placed.has(v.name))
+    let step: InitialStep | undefined
+    for (const variable of unplaced) {
+      const ready = definitions
+        .get(variable.name)
+        ?.find((d) => [...d.reads].every((name) => placed.has(name)))
+      if (ready !== undefined) {
+        step = { name: variable.name, define: ready.expr }
+        break
       }
     }
-    candidates.set(variable.name, domain)
+    if (step === undefined) {
+      let best: { name: string; domain: Domain; mentions: number } | undefined
+      for (const variable of unplaced) {
+        const domain = initialCandidates(variable, facts)
+        if (domain === undefined) continue
+        const count = mentions.get(variable.name) ?? 0
+        if (
+          best === undefined ||
+          domain.size < best.domain.size ||
+          (domain.size === best.domain.size && count > best.mentions)
+        ) {
+          best = { name: variable.name, domain, mentions: count }
+        }
+      }
+      if (best === undefined) {
+        const name = (unplaced[0] as StateVariable).name
+        const independent = facts.every(
+          (fact) => !readsOf(fact).has(name) || boundOn(name, fact) !== undefined,
+        )
+        return independent
+          ? beyondCap(
+              `the initial value of the unbounded int ${name} is not bounded by a literal, so there are infinitely many initial states`,
+            )
+          : undetermined(
+              `the initial value of the unbounded int ${name} is constrained by a predicate the search cannot enumerate`,
+            )
+      }
+      step = { name: best.name, choose: best.domain }
+    }
+    plan.push(step)
+    placed.add(step.name)
   }
-  // Narrowest first, so pinned variables are assigned before the branching ones and a
-  // refuting predicate prunes as high in the tree as it can.
-  const order = [...model.variables]
-    .map((v) => v.name)
-    .sort((a, b) => {
-      const d = (candidates.get(a) as Domain).size - (candidates.get(b) as Domain).size
-      return d < 0n ? -1 : d > 0n ? 1 : 0
-    })
+  return plan
+}
+
+/**
+ * The initial states, found by BACKTRACKING along {@link initialPlan} and pruning a branch
+ * as soon as its assigned prefix refutes an initial predicate. The caps apply to what the
+ * search actually visits (the initial states found, and the candidate assignments examined),
+ * never to the product of the declared domains, which N pinned bools inflate to 2^N without
+ * adding a single initial state.
+ */
+const initialStates = (
+  model: ExplicitModel,
+  declared: ReadonlyMap<string, Domain>,
+): { readonly states: readonly State[]; readonly work: number } | NotApplicable => {
+  const plan = initialPlan(model)
+  if ('status' in plan) return plan
   const found: State[] = []
   let examined = 0
   const extend = (index: number, state: Map<string, Value>): NotApplicable | undefined => {
-    if (index === order.length) {
+    const step = plan[index]
+    if (step === undefined) {
       found.push(new Map(state))
       return found.length > REACHABILITY_BFS_STATE_CAP
-        ? {
-            status: 'not-applicable',
-            reason: `more than ${REACHABILITY_BFS_STATE_CAP} initial states`,
-          }
+        ? beyondCap(`more than ${REACHABILITY_BFS_STATE_CAP} initial states`)
         : undefined
     }
-    const name = order[index] as string
-    for (const value of (candidates.get(name) as Domain).values()) {
+    const values = 'define' in step ? [evaluate(step.define, state)] : step.choose.values()
+    for (const value of values) {
       examined += 1
       if (examined > REACHABILITY_BFS_WORK_CAP) {
-        return {
-          status: 'not-applicable',
-          reason: `more than ${REACHABILITY_BFS_WORK_CAP} candidate initial assignments examined`,
-        }
+        return undetermined(
+          `more than ${REACHABILITY_BFS_WORK_CAP} candidate initial assignments examined`,
+        )
       }
-      state.set(name, value)
+      // A computed value must still lie in the declared domain. A branched one does,
+      // because its candidates were drawn from it.
+      if ('define' in step && declared.get(step.name)?.has(value) === false) continue
+      state.set(step.name, value)
       if (model.initial.every((p) => partial(p, state) !== false)) {
         const stop = extend(index + 1, state)
         if (stop !== undefined) return stop
       }
     }
-    state.delete(name)
+    state.delete(step.name)
     return undefined
   }
-  return extend(0, new Map()) ?? found
+  return extend(0, new Map()) ?? { states: found, work: examined }
+}
+
+/** What one effect does to the variables, fixed for the whole search. */
+interface StepPlan {
+  readonly label: string
+  readonly effect: StateEffect
+  /** The variables it leaves free: neither written nor pinned by the frame. */
+  readonly free: readonly string[]
+  /** The rest, whose post-state values decide the whole successor set. */
+  readonly fixed: readonly string[]
+  /** The free set, as a key: effects that free the same variables share expansions. */
+  readonly freeKey: string
 }
 
 /**
@@ -419,6 +580,7 @@ export const explicitCheck = (
   frame: ExplicitFrame,
 ): ExplicitVerdict => {
   const variables = model.variables
+  const names = variables.map((v) => v.name)
   const domains = new Map<string, Domain>()
   for (const variable of variables) {
     const domain = declaredDomain(variable)
@@ -426,11 +588,12 @@ export const explicitCheck = (
   }
 
   // --- The initial states ---------------------------------------------------
-  const initial = initialStates(model)
+  const initial = initialStates(model, domains)
   if ('status' in initial) return initial
+  let work = initial.work
   const seen = new Map<string, { state: State; parent?: string; via?: string }>()
   let frontier: string[] = []
-  for (const state of initial) {
+  for (const state of initial.states) {
     // Every predicate is decided on a complete assignment; `partial` only pruned.
     if (!model.initial.every((p) => truth(p, state))) continue
     const key = keyOf(variables, state)
@@ -439,10 +602,22 @@ export const explicitCheck = (
     frontier.push(key)
   }
 
-  const pinnedByFrame = new Set(
-    frame === 'none' ? [] : frame === 'full' ? variables.map((v) => v.name) : model.stableVars,
-  )
-  let work = 0
+  const pinnedByFrame = new Set(frame === 'none' ? [] : frame === 'full' ? names : model.stableVars)
+  const steps: readonly StepPlan[] = model.effects.map(({ label, effect }) => {
+    const written = new Set(effect.assignments.map((a) => a.target))
+    const free = names.filter((name) => !written.has(name) && !pinnedByFrame.has(name))
+    const freeSet = new Set(free)
+    return {
+      label,
+      effect,
+      free,
+      fixed: names.filter((name) => !freeSet.has(name)),
+      freeKey: free.join('\u0001'),
+    }
+  })
+  // Every (free set, fixed projection) already expanded. Its successors are already in
+  // `seen`, so expanding it again would only regenerate duplicates.
+  const expanded = new Set<string>()
 
   const violation = (key: string): ExplicitVerdict => {
     const trace: string[] = []
@@ -468,35 +643,35 @@ export const explicitCheck = (
     const next: string[] = []
     for (const key of frontier) {
       const pre = (seen.get(key) as { state: State }).state
-      for (const { label, effect } of model.effects) {
+      for (const { label, effect, free, fixed, freeKey } of steps) {
         if (effect.guard !== undefined && !truth(effect.guard, pre)) continue
         const post = new Map(pre)
-        const written = new Set<string>()
         for (const assignment of effect.assignments) {
           post.set(assignment.target, evaluate(assignment.value, pre))
-          written.add(assignment.target)
         }
-        const free = variables
-          .map((v) => v.name)
-          .filter((name) => !written.has(name) && !pinnedByFrame.has(name))
+        const projection = `${freeKey}\u0002${fixed.map((n) => String(post.get(n))).join('\u0000')}`
+        if (expanded.has(projection)) continue
+        expanded.add(projection)
+        // Sized BEFORE generating. The successors of one projection are pairwise distinct
+        // (they differ on a free variable) and all reachable, because this step fires from
+        // a reachable state. So a fan-out past the state cap SHOWS the model is past it.
         let fanOut = 1n
         for (const name of free) {
           const domain = domains.get(name)
           if (domain === undefined) {
-            return {
-              status: 'not-applicable',
-              reason: `the unbounded int ${name} is free in a step, so a step has infinitely many successors`,
-            }
+            return beyondCap(
+              `the unbounded int ${name} is free in a step, so a step has infinitely many successors`,
+            )
           }
           fanOut *= domain.size
         }
-        // Sized BEFORE generating: a step that leaves a wide bounded int free is refused
-        // from the product of the domain sizes, not after enumerating the range.
+        if (fanOut > BigInt(REACHABILITY_BFS_STATE_CAP)) {
+          return beyondCap(
+            `a step from a reachable state has more than ${REACHABILITY_BFS_STATE_CAP} distinct successors`,
+          )
+        }
         if (BigInt(work) + fanOut > BigInt(REACHABILITY_BFS_WORK_CAP)) {
-          return {
-            status: 'not-applicable',
-            reason: `more than ${REACHABILITY_BFS_WORK_CAP} successors to generate`,
-          }
+          return undetermined(`more than ${REACHABILITY_BFS_WORK_CAP} successors to generate`)
         }
         for (const successor of assignments(post, free, domains)) {
           work += 1
@@ -504,10 +679,7 @@ export const explicitCheck = (
           if (seen.has(successorKey)) continue
           seen.set(successorKey, { state: successor, parent: key, via: label })
           if (seen.size > REACHABILITY_BFS_STATE_CAP) {
-            return {
-              status: 'not-applicable',
-              reason: `more than ${REACHABILITY_BFS_STATE_CAP} reachable states`,
-            }
+            return beyondCap(`more than ${REACHABILITY_BFS_STATE_CAP} reachable states`)
           }
           if (!truth(constraint, successor)) return violation(successorKey)
           next.push(successorKey)

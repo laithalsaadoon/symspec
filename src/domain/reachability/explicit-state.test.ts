@@ -75,8 +75,13 @@ const docOf = (
   terms: [],
 })
 
-const run = (document: RequirementsDocument): Promise<ReachabilityReport> =>
-  Effect.runPromise(runReachability(document).pipe(Effect.provide(Layer.fresh(solverServiceLayer))))
+const run = (
+  document: RequirementsDocument,
+  options: { readonly timeoutMs?: number } = {},
+): Promise<ReachabilityReport> =>
+  Effect.runPromise(
+    runReachability(document, options).pipe(Effect.provide(Layer.fresh(solverServiceLayer))),
+  )
 
 const SHARED_MEMBER = (): RequirementsDocument =>
   docOf(
@@ -182,6 +187,7 @@ describe('explicitCheck decides small models on its own', () => {
     expect(verdict).toEqual({
       status: 'not-applicable',
       reason: `more than ${REACHABILITY_BFS_STATE_CAP} reachable states`,
+      beyondCap: true,
     })
     expect(REACHABILITY_BFS_WORK_CAP).toBeGreaterThan(REACHABILITY_BFS_STATE_CAP)
   })
@@ -291,6 +297,7 @@ describe('the caps bound the states the search visits, not the declared domains'
     expect(verdict).toEqual({
       status: 'not-applicable',
       reason: `more than ${REACHABILITY_BFS_STATE_CAP} initial states`,
+      beyondCap: true,
     })
   })
 
@@ -315,7 +322,8 @@ describe('the caps bound the states the search visits, not the declared domains'
     )
     expect(verdict).toEqual({
       status: 'not-applicable',
-      reason: `more than ${REACHABILITY_BFS_WORK_CAP} successors to generate`,
+      reason: `a step from a reachable state has more than ${REACHABILITY_BFS_STATE_CAP} distinct successors`,
+      beyondCap: true,
     })
   })
 
@@ -360,6 +368,287 @@ describe('the caps bound the states the search visits, not the declared domains'
     const result = (await run(document)).results[0]
     expect(['PROVED', 'PROVED_UNDER_HYPOTHESES']).toContain(result?.verdict)
     expect(result?.crossCheck).toEqual({ status: 'agrees', states: 2 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 1c. Duplicates never count as work, and declaration order never decides applicability
+// ---------------------------------------------------------------------------
+
+/**
+ * The verifier's AC-1-5 reproducer: a counter that opens the valve at ten, and a volatile
+ * sensor `reading` that no effect writes. Under the `none` frame `reading` is free on every
+ * step, so every state fans out over its full `0..READING_MAX` range, but the fan-out from
+ * the eleven states of one counter value lands on the SAME states. So the reachable space is
+ * `1 + 11 * (READING_MAX + 1)` states (3312 at READING_MAX = 300). That is under the state
+ * cap, while the successors generated with duplicates, about `11 * 301^2`, are over the old
+ * work cap.
+ */
+const READING_MAX = 300
+const SENSOR_STATES = 1 + 11 * (READING_MAX + 1)
+const SENSOR = (constraintText = 'valve = shut or valve = ajar'): RequirementsDocument =>
+  docOf(
+    [
+      {
+        name: 'door',
+        type: 'enum',
+        frame: 'volatile',
+        domain: ['open', 'closed'],
+        initial: 'door = closed',
+      },
+      {
+        name: 'valve',
+        type: 'enum',
+        frame: 'volatile',
+        domain: ['shut', 'ajar', 'open'],
+        initial: 'valve = ajar',
+      },
+      { name: 'c', type: 'int', frame: 'volatile', domain: { min: 0, max: 10 }, initial: 'c = 0' },
+      {
+        name: 'reading',
+        type: 'int',
+        frame: 'volatile',
+        domain: { min: 0, max: READING_MAX },
+        initial: 'reading = 0',
+      },
+    ],
+    [
+      effect(1, 'TICK', 'when c < 10 and valve = ajar: c := c + 1, valve := valve, door := door'),
+      effect(2, 'OPEN', 'when c = 10 and valve = ajar: valve := open, c := c, door := door'),
+      constraint(3, 'C1', constraintText),
+    ],
+  )
+
+/**
+ * The verifier's declaration-order reproducer: {@link FLAGS} bools each initialised
+ * `fi = g`, with `g` DECLARED LAST and pinned `g = false`. Pruning by prefix cannot begin
+ * until `g` is assigned, so an order that puts `g` last examines 2^FLAGS.length prefixes.
+ * The model has ONE reachable state. `lastFirst` reverses the declarations, so the
+ * test also shows that the answer does not depend on declaration order.
+ */
+const LATE_PIN = (lastFirst = false): RequirementsDocument => {
+  const flags = FLAGS.slice(1).map(
+    (name): StateVariable => ({ name, type: 'bool', frame: 'volatile', initial: `${name} = g` }),
+  )
+  const variables: StateVariable[] = [
+    {
+      name: 'door',
+      type: 'enum',
+      frame: 'volatile',
+      domain: ['open', 'closed'],
+      initial: 'door = closed',
+    },
+    {
+      name: 'valve',
+      type: 'enum',
+      frame: 'volatile',
+      domain: ['shut', 'ajar', 'open'],
+      initial: 'valve = open',
+    },
+    ...flags,
+    { name: 'g', type: 'bool', frame: 'volatile', initial: 'g = false' },
+  ]
+  return docOf(lastFirst ? [...variables].reverse() : variables, [
+    effect(
+      1,
+      'E1',
+      `when valve = open: valve := open, door := door, g := g, ${flags.map((f) => `${f.name} := ${f.name}`).join(', ')}`,
+    ),
+    constraint(2, 'C1', 'valve = shut'),
+  ])
+}
+
+/**
+ * THE SAFETY VALVE's fixture. Seven digits whose initial sum is 63, so each one is 9 and
+ * there is ONE initial state. A sum is not a definition the search can solve for, and a
+ * partial sum refutes nothing, so the search visits 10^7 leaves before it finds that state.
+ * The work cap trips before the state count is known. The Horn tier proves `a = 9`.
+ */
+const DIGITS = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+const SUM_OF_NINES = (): RequirementsDocument =>
+  docOf(
+    DIGITS.map(
+      (name, i): StateVariable => ({
+        name,
+        type: 'int',
+        frame: 'volatile',
+        domain: { min: 0, max: 9 },
+        ...(i === 0 ? { initial: `${DIGITS.join(' + ')} = 63` } : {}),
+      }),
+    ),
+    [effect(1, 'HOLD', 'when a = 9: a := a'), constraint(2, 'NINE', 'a = 9')],
+  )
+
+describe('the search counts distinct states, never duplicates or declaration order', () => {
+  it('sizes the sensor reproducer under the state cap and its duplicate fan-out over the work cap', () => {
+    expect(SENSOR_STATES).toBeLessThanOrEqual(REACHABILITY_BFS_STATE_CAP)
+    expect(11 * (READING_MAX + 1) ** 2).toBeGreaterThan(REACHABILITY_BFS_WORK_CAP)
+  })
+
+  it('enumerates the sensor model state by state: a free sensor adds states, not work', () => {
+    const document = SENSOR('c <= 10')
+    expect(explicitCheck(prepareModel(document), predicateOf(document, 'c <= 10'), 'none')).toEqual(
+      { status: 'holds', states: SENSOR_STATES },
+    )
+  })
+
+  it('finds the sensor violation at depth twelve', () => {
+    const document = SENSOR()
+    const verdict = explicitCheck(
+      prepareModel(document),
+      predicateOf(document, 'valve = shut or valve = ajar'),
+      'none',
+    )
+    expect(verdict.status === 'violated' && verdict.trace).toEqual([
+      ...Array.from({ length: 10 }, () => 'TICK'),
+      'OPEN',
+    ])
+  })
+
+  it('the tier reports the sensor proof PROVED with the cross-check AGREEING', async () => {
+    const result = (await run(SENSOR('c <= 10'))).results[0]
+    expect(result?.verdict).toBe('PROVED')
+    expect(result?.crossCheck).toEqual({ status: 'agrees', states: SENSOR_STATES })
+  })
+
+  it('the sensor reproducer is VIOLATED, with no PROVED and no disagreement', async () => {
+    // Spacer needs ~1.6s of the 2s default to find this depth-12 counterexample (measured),
+    // and a budget-exhausted UNKNOWN would hide both a VIOLATED and a disagreement. The
+    // budget is not what this test is about, so it gets a wide one.
+    const report = await run(SENSOR(), { timeoutMs: 20_000 })
+    const codes = projectReachability(report, 'doc.json').findings.map((f) => f.code)
+    expect(codes).toContain('FND_REACHABILITY_VIOLATED')
+    expect(codes).not.toContain('FND_REACHABILITY_PROVED')
+    expect(codes).not.toContain('FND_CERTIFICATE_DISAGREES')
+  })
+
+  it('solves the late-pinned bools by propagation, in either declaration order', () => {
+    for (const lastFirst of [false, true]) {
+      const document = LATE_PIN(lastFirst)
+      const verdict = explicitCheck(
+        prepareModel(document),
+        predicateOf(document, 'valve = shut'),
+        'none',
+      )
+      expect(verdict.status === 'violated' && verdict.states).toBe(1)
+    }
+  })
+
+  it('the late-pinned reproducer yields no PROVED and no disagreement', async () => {
+    const codes = projectReachability(await run(LATE_PIN()), 'doc.json').findings.map((f) => f.code)
+    expect(codes).not.toContain('FND_REACHABILITY_PROVED')
+    expect(codes).not.toContain('FND_CERTIFICATE_DISAGREES')
+  })
+
+  it('solves an unbounded int that an initial equation defines', () => {
+    const document = docOf(
+      [
+        { name: 'x', type: 'int', frame: 'volatile', initial: 'x = y + 1' },
+        { name: 'y', type: 'int', frame: 'volatile', domain: { min: 0, max: 3 } },
+      ],
+      [effect(1, 'HOLD', 'x := x, y := y'), constraint(2, 'POS', 'x >= 1')],
+    )
+    expect(explicitCheck(prepareModel(document), predicateOf(document, 'x >= 1'), 'none')).toEqual({
+      status: 'holds',
+      states: 4,
+    })
+  })
+
+  it('drops a defined value that falls outside its declared range', () => {
+    // y is narrower, so it is branched and x is COMPUTED. y = 2 would define x = 4, outside
+    // 0..3, so it is not an initial state, as in the Horn encoding.
+    const document = docOf(
+      [
+        {
+          name: 'x',
+          type: 'int',
+          frame: 'volatile',
+          domain: { min: 0, max: 3 },
+          initial: 'x = y + 2',
+        },
+        { name: 'y', type: 'int', frame: 'volatile', domain: { min: 0, max: 2 } },
+      ],
+      [effect(1, 'HOLD', 'x := x, y := y'), constraint(2, 'POS', 'x >= 1')],
+    )
+    expect(explicitCheck(prepareModel(document), predicateOf(document, 'x >= 1'), 'none')).toEqual({
+      status: 'holds',
+      states: 2,
+    })
+  })
+
+  it('branches first on the variable the initial predicates mention most, in either declaration order', () => {
+    // No definition here: `fi != g` and `not g` are not `x = e`. Only the order helps.
+    // Branching `g` first lets each `fi != g` refute a wrong value at its own level.
+    // Declaration order would put `g` last and examine 2^19 prefixes.
+    const flags = FLAGS.slice(1)
+    const variables: StateVariable[] = [
+      ...flags.map(
+        (name): StateVariable => ({
+          name,
+          type: 'bool',
+          frame: 'volatile',
+          initial: `${name} != g`,
+        }),
+      ),
+      { name: 'g', type: 'bool', frame: 'volatile', initial: 'not g' },
+    ]
+    for (const ordered of [variables, [...variables].reverse()]) {
+      const document = docOf(ordered, [
+        effect(1, 'HOLD', `g := g, ${flags.map((f) => `${f} := ${f}`).join(', ')}`),
+        constraint(2, 'C', 'not g'),
+      ])
+      expect(explicitCheck(prepareModel(document), predicateOf(document, 'not g'), 'none')).toEqual(
+        { status: 'holds', states: 1 },
+      )
+    }
+  })
+})
+
+describe('a cross-check that runs out of work WITHHOLDS the proof', () => {
+  it('trips the work cap on the sum of nines, without claiming the model is large', () => {
+    const document = SUM_OF_NINES()
+    const verdict = explicitCheck(prepareModel(document), predicateOf(document, 'a = 9'), 'none')
+    expect(verdict).toEqual({
+      status: 'not-applicable',
+      reason: `more than ${REACHABILITY_BFS_WORK_CAP} candidate initial assignments examined`,
+      beyondCap: false,
+    })
+  })
+
+  it('the tier withdraws that proof instead of reporting it unchecked', async () => {
+    const result = (await run(SUM_OF_NINES())).results[0]
+    expect(result?.verdict).toBe('UNKNOWN')
+    expect(result?.crossCheck).toMatchObject({ status: 'not-applicable', beyondCap: false })
+    const projection = projectReachability(await run(SUM_OF_NINES()), 'doc.json')
+    const codes = projection.findings.map((f) => f.code)
+    expect(codes).not.toContain('FND_REACHABILITY_PROVED')
+    expect(codes).toContain('FND_REACHABILITY_UNKNOWN')
+    expect(projection.demotions.map((d) => d.reason)).toContain(
+      'reachability-cross-check-incomplete',
+    )
+  })
+
+  it('an initial predicate it cannot enumerate withholds too, but an independent unbounded int does not', () => {
+    const tangled = docOf(
+      [
+        { name: 'x', type: 'int', frame: 'volatile', initial: 'x + y = 3' },
+        { name: 'y', type: 'int', frame: 'volatile', domain: { min: 0, max: 3 } },
+      ],
+      [effect(1, 'HOLD', 'x := x, y := y'), constraint(2, 'C', 'y <= 3')],
+    )
+    expect(
+      explicitCheck(prepareModel(tangled), predicateOf(tangled, 'y <= 3'), 'none'),
+    ).toMatchObject({ status: 'not-applicable', beyondCap: false })
+    const independent = docOf(
+      [
+        { name: 'x', type: 'int', frame: 'volatile', initial: 'x >= 0' },
+        { name: 'y', type: 'int', frame: 'volatile', domain: { min: 0, max: 3 } },
+      ],
+      [effect(1, 'HOLD', 'x := x, y := y'), constraint(2, 'C', 'y <= 3')],
+    )
+    expect(
+      explicitCheck(prepareModel(independent), predicateOf(independent, 'y <= 3'), 'none'),
+    ).toMatchObject({ status: 'not-applicable', beyondCap: true })
   })
 })
 

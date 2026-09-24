@@ -1695,8 +1695,11 @@ export interface ConstraintResult {
  *   holds in each.
  * - `disagrees` — it found a reachable violating state, with the path. One of the two
  *   checkers is wrong, and a proof is never reported over a disagreement.
- * - `not-applicable` — the state space is not finite-and-small; the proof stands on the Horn
- *   tier and its certificate alone.
+ * - `not-applicable` — the search did not finish. With `beyondCap: true` it SHOWED the model
+ *   has more reachable states than the cross-check covers, and the proof stands on the Horn
+ *   tier and its certificate alone. With `beyondCap: false` it stopped without showing that
+ *   (the work safety valve, or an initial predicate it cannot enumerate), so the model may
+ *   be one AC-1-5 requires it to cover. The proof is then WITHHELD: the verdict is `UNKNOWN`.
  */
 export type CrossCheck =
   | { readonly status: 'agrees'; readonly states: number }
@@ -1706,11 +1709,12 @@ export type CrossCheck =
       readonly trace: readonly string[]
       readonly path: readonly Readonly<Record<string, string>>[]
     }
-  | { readonly status: 'not-applicable'; readonly reason: string }
+  | { readonly status: 'not-applicable'; readonly reason: string; readonly beyondCap: boolean }
 
 /**
- * Cross-check a PROVED / PROVED_UNDER_HYPOTHESES by explicit-state search (AC-1-5), and
- * WITHDRAW the proof when the two checkers disagree.
+ * Cross-check a PROVED / PROVED_UNDER_HYPOTHESES by explicit-state search (AC-1-5). WITHDRAW
+ * the proof when the two checkers disagree, and WITHHOLD it when the search stopped without
+ * showing the model is beyond its cap.
  *
  * The search ({@link explicitCheck}) shares nothing with the Horn encoder beyond the parsed
  * expression AST, which is what makes its agreement evidence: an encoder defect that makes
@@ -1728,10 +1732,19 @@ const crossChecked = (
   if (verdict.status === 'holds') {
     return { ...result, crossCheck: { status: 'agrees', states: verdict.states } }
   }
-  if (verdict.status === 'not-applicable') {
-    return { ...result, crossCheck: { status: 'not-applicable', reason: verdict.reason } }
-  }
   const { invariant: _withdrawn, hypotheses: _moot, ...rest } = result
+  if (verdict.status === 'not-applicable') {
+    const crossCheck = {
+      status: 'not-applicable',
+      reason: verdict.reason,
+      beyondCap: verdict.beyondCap,
+    } as const
+    // Out of scope only when the search SHOWED it. A search that merely stopped could be
+    // looking at a small model, and a proof it never examined is not reported as checked.
+    return verdict.beyondCap
+      ? { ...result, crossCheck }
+      : { ...rest, verdict: 'UNKNOWN', crossCheck }
+  }
   return {
     ...rest,
     verdict: 'UNKNOWN',

@@ -32,6 +32,7 @@
 import type { Repair } from '../../ports/repair.ts'
 import type { StateVariable } from '../requirements/document.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
+import { REACHABILITY_BFS_STATE_CAP } from './explicit-state.ts'
 import type { ConstraintResult, ReachabilityReport } from './reachability.ts'
 import type { ReachabilityFndCode } from './reachability-codes.ts'
 
@@ -99,6 +100,11 @@ export const REACHABILITY_DEMOTION_REASONS = [
   // Its own reason because its discharge is a frame DECLARATION (or requirements), where
   // `reachability-frame-relied-upon`'s is the opposite — releasing one.
   'reachability-frame-undeclared',
+  // APPENDED for spec 007 AC-1-5: the solver proved the constraint, but the explicit-state
+  // search stopped without either finishing or showing the model is beyond its cap, so the
+  // proof was withheld. Its own reason because the remedy is to make the model enumerable,
+  // not to raise the solver's budget or to read a refutation.
+  'reachability-cross-check-incomplete',
 ] as const
 
 export type ReachabilityDemotionReason = (typeof REACHABILITY_DEMOTION_REASONS)[number]
@@ -357,6 +363,41 @@ export const projectReachability = (
           'withdrawn. Nothing about this constraint is claimed. Read the witness path against ' +
           'the state model; report the document if the solver was the one that was wrong.',
         repair: { ops: [], commands: [`symspec check ${docPath}`] },
+      })
+      continue
+    }
+    // A PROOF THE EXPLICIT SEARCH COULD NOT EXAMINE (AC-1-5). It stopped without showing the
+    // model is beyond its cap, so the model may be one the cross-check must cover. The
+    // tier has withheld the proof (verdict UNKNOWN), and this says why.
+    if (result.crossCheck?.status === 'not-applicable' && !result.crossCheck.beyondCap) {
+      const why = result.crossCheck.reason
+      findings.push({
+        code: 'FND_REACHABILITY_UNKNOWN',
+        severity: 'info',
+        requirementIds: ids,
+        message:
+          `${result.label}: the unbounded solver proved this constraint, but the independent ` +
+          `explicit-state search that must re-decide every proof over a model of at most ` +
+          `${REACHABILITY_BFS_STATE_CAP} reachable states stopped (${why}) without showing that ` +
+          'this model is larger. The proof is WITHHELD, and nothing is claimed either way.',
+        evidence: {
+          unknownReason: 'cross-check-incomplete',
+          crossCheckReason: why,
+          strictRun: result.strict,
+        },
+      })
+      demotions.push({
+        reason: 'reachability-cross-check-incomplete' satisfies ReachabilityDemotionReason,
+        requirementIds: ids,
+        action:
+          `The proof for ${result.label} was not re-decided by the explicit-state cross-check ` +
+          `(${why}), so it is not reported. Make the model enumerable: state each variable's ` +
+          'initial value as `name = <value or expression>` rather than through a combined ' +
+          'predicate, or narrow the declared ranges. Raising the solver budget will NOT help.',
+        repair: {
+          ops: [],
+          commands: [`symspec list ${docPath}`, `symspec check ${docPath}`],
+        },
       })
       continue
     }

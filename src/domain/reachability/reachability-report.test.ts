@@ -678,6 +678,24 @@ describe('every reachability demotion names the command that supplies what is mi
         ],
       }),
     ],
+    // The explicit-state search stopped without showing the model is beyond its cap
+    // (spec 007 AC-1-5): the proof is withheld, and the runnable steps are reading the
+    // model and re-checking once it is enumerable.
+    [
+      'reachability-cross-check-incomplete',
+      reportOf({
+        results: [
+          resultOf({
+            verdict: 'UNKNOWN',
+            crossCheck: {
+              status: 'not-applicable',
+              reason: 'more than 200000 candidate initial assignments examined',
+              beyondCap: false,
+            },
+          }),
+        ],
+      }),
+    ],
   ]
 
   it('covers every reason in the CLOSED list — a new reason fails here', () => {
