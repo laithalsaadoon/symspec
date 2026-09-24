@@ -145,7 +145,7 @@ message: Requirements 778c1db4…, 99c274ba… cannot all hold: under a reachabl
          responses demand one atom at opposite polarity, or two contrary actions.
 evidence:
   atomTable:
-    - atom: sys__auth_service__trig__user_submits_valid_credentials   negated: false
+    - atom: sys__auth_service__guard__user_submits_valid_credentials  negated: false
     - atom: sys__auth_service__resp__grant_access                     negated: true
     - atom: sys__auth_service__resp__grant_access                     negated: false
   core: [778c1db4…, 99c274ba…]

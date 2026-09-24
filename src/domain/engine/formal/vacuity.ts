@@ -16,8 +16,8 @@
  *
  * ## Why it is narrow, and who it blames
  *
- * `kind` is part of atom identity — `renderAtom` writes `sys__<scope>__<kind>__<body>` — so a
- * RESPONSE atom is never a PRECONDITION atom, and no response can contradict a guard by naming
+ * The namespace is part of atom identity — `renderAtom` writes `sys__<scope>__<ns>__<body>`, with
+ * `resp` apart from the shared `guard` namespace — so a RESPONSE atom is never a GUARD atom, and no response can contradict a guard by naming
  * the same condition. One shape is left: two OTHER requirements force a single `resp` atom at
  * OPPOSITE polarity (or two `resp` atoms a contrary axiom relates, AC-2-1), and each of their
  * context sets is a subset of the target's, so asserting the target's guard activates both and

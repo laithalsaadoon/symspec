@@ -19,9 +19,9 @@
  *
  * ## Why a `resp`-versus-`pre` collision cannot be the mechanism
  *
- * A `resp` atom and a `pre` atom are never the same name: `renderAtom` writes
- * `sys__<scope>__<kind>__<body>`, so `kind` is part of atom identity and the two live in
- * disjoint namespaces — the same property the falsifiability lemma in `subsumption.ts` rests on.
+ * A `resp` atom and a guard atom are never the same name: `renderAtom` writes
+ * `sys__<scope>__<namespace>__<body>`, so the namespace is part of atom identity and the two live
+ * in disjoint namespaces — the same property the falsifiability lemma in `subsumption.ts` rests on.
  * "shall disable maintenance mode" therefore cannot collide with "while maintenance mode is
  * enabled", and the last case in this file pins that as a namespace property rather than as a
  * fact about two particular phrases.
@@ -162,15 +162,18 @@ describe('a response atom and a guard atom are different atoms', () => {
     expect(response.atom).not.toBe(guard.atom)
   })
 
-  it('holds for every kind pair over identical text, because `kind` is in the name', () => {
+  it('holds for every NAMESPACE pair over identical text, because the namespace is in the name', () => {
     // The general property, so the case does not depend on the two phrases above normalizing
-    // differently. Every kind renders its own namespace, so no text can cross one.
-    const kinds: readonly AtomKind[] = ['pre', 'trig', 'resp', 'feat']
+    // differently. `resp`, the guard namespace and `feat` each render their own, so no text can
+    // cross one. `trig` and `pre` are ONE namespace (spec 007 AC-3-3) — a "When X" and a "While X"
+    // name the same condition — and that sharing never reaches a response.
+    const kinds: readonly AtomKind[] = ['pre', 'resp', 'feat']
     for (const text of ['maintenance mode is enabled', 'the alarm', 'halt the car']) {
       const names = kinds.map((kind) => real(kind, text, 'ops portal', false).atom)
-      expect(new Set(names).size, `two kinds collided on ${text}: ${names.join(' ')}`).toBe(
+      expect(new Set(names).size, `two namespaces collided on ${text}: ${names.join(' ')}`).toBe(
         kinds.length,
       )
+      expect(real('trig', text, 'ops portal', false).atom).toBe(names[0])
     }
   })
 })

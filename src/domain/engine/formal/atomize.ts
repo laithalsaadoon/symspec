@@ -40,8 +40,9 @@
  *      false-positive risk class (AC-4-11), so we buy only what closed rules
  *      can honestly deliver.
  *
- *   3. PER-systemName SCOPING. Every atom is prefixed `sys__<system>__<kind>__`
- *      (rendered by {@link renderAtom}, the one place that format is written).
+ *   3. PER-systemName SCOPING. Every atom is prefixed `sys__<system>__<namespace>__`
+ *      (rendered by {@link renderAtom}, the one place that format is written; trigger and
+ *      precondition share the `guard` namespace — {@link atomNamespace}).
  *      Identical response text under two different systems therefore yields two
  *      distinct atoms and can never unify into a spurious cross-system
  *      contradiction (spec AC-4-2a; research-smt.md §4.1 — "scope atoms per
@@ -121,10 +122,11 @@ export type AtomKind = 'trig' | 'pre' | 'resp' | 'feat'
  * **Open semantic question, deliberately NOT resolved here (AC-2-7 note (a)).**
  * Whether `feat` should exist at all: one slot yielding two different atom
  * namespaces depending on `patternType` is arguably wrong, and collapsing
- * `feat` → `pre` is arguably more correct. It is NOT a refactor — collapsing it
- * makes an `optional-feature` precondition share an atom with a `state-driven`
- * precondition of the same text, which can only INCREASE unification and
- * therefore increase error-severity findings. The conservative choice (keep the
+ * `feat` into the shared `guard` namespace `pre` and `trig` render into (spec 007
+ * AC-3-3, {@link atomNamespace}) is arguably more correct. It is NOT a refactor —
+ * collapsing it makes an `optional-feature` precondition share an atom with a
+ * `state-driven` precondition of the same text, which can only INCREASE
+ * unification and therefore increase error-severity findings. The conservative choice (keep the
  * namespaces separate, exactly as shipped) is what is implemented, because the
  * other direction moves in the false-positive direction and needs a human.
  */
@@ -146,7 +148,11 @@ export const GUARD_KINDS: ReadonlySet<AtomKind> = new Set<AtomKind>(['pre', 'tri
 export interface AtomRef {
   /** The normalized `systemName` the atom is scoped under (invariant 3). */
   readonly scope: string
-  /** Which EARS slot the atom came from. */
+  /**
+   * Which EARS slot the atom came from. NOT the name's namespace: `trig` and `pre` render into the
+   * one `guard` namespace ({@link atomNamespace}), so two refs that differ only in this field name
+   * one atom.
+   */
   readonly kind: AtomKind
   /**
    * The normalized slot body, post-glossary / copula / antonym rewriting. Empty
@@ -158,9 +164,30 @@ export interface AtomRef {
 }
 
 /**
+ * The NAMESPACE an atom of each slot kind is named in — the `<ns>` of `sys__<scope>__<ns>__<body>`.
+ *
+ * Trigger and precondition share ONE namespace, `guard` (spec 007 AC-3-3). They used to be named
+ * by slot (`trig` / `pre`), which made "When the train is moving" and "While the train is moving"
+ * two unrelated Booleans: the contradiction tier keys a context group on the exact guard-atom set,
+ * so a requirement guarded one way never met one guarded the other way, and a real conflict went
+ * uncompared while the document counted as verified. Every propositional tier evaluates a single
+ * snapshot, in which both clauses assert the same thing — the condition holds now — so they are
+ * one atom. The SLOT is not forgotten: it stays on {@link AtomRef.kind} and on every atom-table
+ * row, which is where `incomplete.ts` reads trigger-versus-precondition.
+ *
+ * `resp` stays its own namespace, so a response can never be a guard by naming the same words
+ * (the subsumption lemma and the vacuity blame analysis both rest on that). `feat` stays its own
+ * namespace too: whether an optional-feature precondition should share the guard namespace is the
+ * open question recorded on {@link GUARD_KINDS}, and this AC does not decide it.
+ */
+export function atomNamespace(kind: AtomKind): string {
+  return kind === 'trig' || kind === 'pre' ? 'guard' : kind
+}
+
+/**
  * Render an {@link AtomRef} to its scoped atom name. The ONE place the name
- * format `sys__<system>__<kind>__<body>` is written down, so both tiers'
- * atom names are byte-identical by construction rather than by comment.
+ * format `sys__<system>__<namespace>__<body>` is written down ({@link atomNamespace}), so both
+ * tiers' atom names are byte-identical by construction rather than by comment.
  */
 export function renderAtom(ref: AtomRef): string {
   // POSTCONDITIONS, not comments. An empty scope makes `sys____<kind>__<body>`, which merges every
@@ -173,7 +200,7 @@ export function renderAtom(ref: AtomRef): string {
   if (!/^[\p{L}\p{M}\p{N}_]+$/u.test(ref.scope) || ref.scope.includes('__')) {
     throw new Error(`renderAtom: scope outside [letters digits _]: ${JSON.stringify(ref.scope)}`)
   }
-  return `sys__${ref.scope}__${ref.kind}__${ref.body}`
+  return `sys__${ref.scope}__${atomNamespace(ref.kind)}__${ref.body}`
 }
 
 /** A single Boolean atom: its fully-scoped name plus the polarity to assert. */
