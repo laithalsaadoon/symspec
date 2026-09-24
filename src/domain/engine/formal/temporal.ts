@@ -412,7 +412,10 @@ export async function findTemporalContradictions(
   const guards = ids.map((id) => ctx.Bool.const(id))
   const res = await solver.check(...guards)
   const evidence: Evidence = { atomTable: [], temporal: { bound: k, complete: false } }
+  // AC-3-4: an `unknown` decided nothing, so it is disclosed (and demotes) rather than read as
+  // consistent; the finding below says so in the findings list too.
   if (res === 'unknown') {
+    bounds.onUnknown?.('temporal', ids)
     return [
       {
         code: 'FND_NEEDS_REVIEW',

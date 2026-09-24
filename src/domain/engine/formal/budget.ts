@@ -154,4 +154,11 @@ export interface SolverBounds {
    * every unit of work.
    */
   budget?: SolverBudget
+  /**
+   * Told when a tier's solver returns `unknown` for a check that could have produced a
+   * finding, naming the requirements the check covered (AC-3-4). A tier with no finer
+   * disclosure channel reports here so the pipeline can demote with `solver-unknown`;
+   * omitted ⇒ the tier behaves exactly as before (an `unknown` yields no finding).
+   */
+  onUnknown?: (tier: string, requirementIds: readonly string[]) => void
 }
