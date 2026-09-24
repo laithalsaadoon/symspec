@@ -472,14 +472,21 @@ export function evalRoundCases(): AdversarialCase[] {
   }
 
   // ---- 8. Run 2 reactor shape: "keeps the reactor online" copula bridge.
+  //
+  // The overheating rules are STATE-driven. Run 2 phrased them as events ("When the sensor
+  // reports overheating …"), and that shape is not a snapshot conflict: an event-driven "mark
+  // the coolant pump engaged" is an action effect that takes hold at the NEXT step (spec 007
+  // AC-6-1), so it never meets the same-instant "deny power" — the fabrication AC-2-9 closed.
+  // `formal/guard-implication.test.ts` pins that event-driven shape as withheld; this round
+  // keeps the copula bridge it was written to exercise, through a bridge the snapshot may assert.
   {
     const t = 'reactor'
     const reqs = [
       mkReq({
         id: rid(t, 1),
-        patternType: 'event-driven',
+        patternType: 'state-driven',
         systemName: 'controller',
-        trigger: 'the temperature sensor reports overheating',
+        preCondition: 'the reactor is overheating',
         systemResponse: 'mark the coolant pump engaged',
       }),
       mkReq({
@@ -498,9 +505,9 @@ export function evalRoundCases(): AdversarialCase[] {
       }),
       mkReq({
         id: rid(t, 4),
-        patternType: 'event-driven',
+        patternType: 'state-driven',
         systemName: 'controller',
-        trigger: 'the temperature sensor reports overheating',
+        preCondition: 'the reactor is overheating',
         systemResponse: 'deny power to the distribution grid',
       }),
     ]
@@ -512,9 +519,10 @@ export function evalRoundCases(): AdversarialCase[] {
       culpritIds: [rid(t, 3), rid(t, 4)],
       doc: docOf(reqs),
       note:
-        'Run 2 R3/R8 shape: overheating engages the pump, "keeps the reactor online" bridges into ' +
-        'the copula guard "the reactor is online", forcing grant AND deny power. Closed by: ' +
-        'keep/hold establish form + copula strip + grant/deny merge (E/A3/B).',
+        'Run 2 R3/R8 shape: while overheating the pump is engaged, "keeps the reactor online" ' +
+        'bridges into the copula guard "the reactor is online", forcing grant AND deny power. ' +
+        'Closed by: keep/hold establish form + copula strip + grant/deny merge (E/A3/B). The ' +
+        'bridges are state-driven: an event-driven one lands at the next step (AC-2-9).',
     })
   }
 

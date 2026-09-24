@@ -18,7 +18,9 @@
  *
  * ## The fix (sound, deterministic)
  *
- * For each requirement that (a) has a context (a `pre`/`trig` guard) and (b)
+ * For each requirement that (a) has a STATE context (a `pre` guard, and no
+ * trigger — an event-timed establishment lands at the next step, which this
+ * single-instant tier cannot express; see `establishesInSameInstant`) and (b)
  * whose response is a recognized STATE-ESTABLISHMENT ("be/become/mark/set …
  * <state>"), extract the state phrase, re-atomize it as a GUARD atom, and emit
  * the implication `bridgeId ⟹ (context ⟹ stateAsGuard)`. Asserting this into
@@ -202,6 +204,34 @@ export function establishedStateCandidates(response: string): string[] {
 }
 
 /**
+ * True when a requirement's established state may be asserted in the SAME instant as its
+ * context — which is the only thing the single-instant propositional snapshot can express.
+ *
+ * Under the reactive semantics (spec 007 AC-6-1) a state-driven `While P` obligation is
+ * `P@t ⇒ R@t`, so "While P, the system shall be S" puts S in P's instant and the bridge
+ * `P ⇒ S` is a faithful snapshot of it. An event-driven `When E` or unwanted-behavior
+ * `If E, then` response establishes its state as an action EFFECT, which takes hold at `t+1`:
+ * `E@t ⇒ S@t+1`. The snapshot has no next step, so asserting `E ⇒ S` there claims S already
+ * holds at the instant E fires, and puts S's obligations into E's group where they meet E's
+ * other same-instant responses. That produced a `FND_CONTRADICTION` for "When start is pressed,
+ * set the mode to running" + "While running, shall not accept a start command" + "When start
+ * is pressed, accept a start command" — three obligations the document never asks to hold at
+ * one instant (AC-2-9).
+ *
+ * Decided on the SLOT, not the pattern label: any trigger makes the establishment event-timed,
+ * whatever `patternType` says, so a mislabelled requirement cannot slip an event bridge through.
+ *
+ * Withholding is the sound direction. It can only remove an implication from the conjunction,
+ * and removing a conjunct cannot turn a satisfiable group unsatisfiable, so it can lose a
+ * conflict (a miss, which "sound modulo atomization" already allows) and never manufacture
+ * one. A multi-step conflict an event bridge used to reach — the established state meeting a
+ * LATER occurrence of an event — belongs to the realizability tier (AC-6-2), not to a snapshot.
+ */
+function establishesInSameInstant(r: EncodableRequirement): boolean {
+  return r.trigger === undefined || r.trigger === ''
+}
+
+/**
  * Compute the guard-implication bridges the spec asserts (#2).
  *
  * `atomize` MUST be the same (glossary/antonym-aware) atomizer the contradiction
@@ -209,8 +239,9 @@ export function establishedStateCandidates(response: string): string[] {
  * rule keys on canonicalize identically. Pure and deterministic — no solver
  * contact.
  *
- * A requirement contributes a bridge only when: it has a context guard; its
- * response is a recognized state-establishment; and the established state,
+ * A requirement contributes a bridge only when: it has a state (`pre`) guard and
+ * no event trigger (AC-2-9, {@link establishesInSameInstant}); its response is a
+ * recognized state-establishment; and the established state,
  * re-atomized as a `pre` guard, matches a guard atom used by SOME OTHER
  * requirement (so the implication is not inert). The emitted formula is
  * `bridgeId ⟹ (context ⟹ stateLiteral)`, with `stateLiteral` carrying the
@@ -236,15 +267,16 @@ export function extractGuardImplications(
 
   const out: GuardImplication[] = []
   for (const r of reqs) {
-    // Must have a context to bridge FROM.
+    // An EVENT context establishes its state at the NEXT step (spec 007 AC-2-9), and this tier is
+    // one instant — so such a bridge is withheld, never asserted at the trigger step. See
+    // `establishesInSameInstant`.
+    if (!establishesInSameInstant(r)) continue
+
+    // Must have a context to bridge FROM. Only a state (`pre`) guard reaches this point.
     const contextLits: Formula[] = []
     if (r.preCondition !== undefined && r.preCondition !== '') {
       const p = atomize('pre', r.preCondition, r.systemName, false)
       contextLits.push(p.negated ? not(atom(p.atom)) : atom(p.atom))
-    }
-    if (r.trigger !== undefined && r.trigger !== '') {
-      const t = atomize('trig', r.trigger, r.systemName, false)
-      contextLits.push(t.negated ? not(atom(t.atom)) : atom(t.atom))
     }
     if (contextLits.length === 0) continue
 
