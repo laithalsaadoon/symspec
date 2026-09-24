@@ -353,6 +353,35 @@ const isModal = (t: WinkToken): boolean =>
 /** The `n't` wink splits off a contracted modal (`shan't` → `sha` + `n't`). */
 const isContractedNegator = (t: WinkToken): boolean => t.value.toLowerCase() === "n't"
 
+/** Determiners and pronouns that negate the noun phrase they open ("No request", "None of"). */
+const SUBJECT_NEGATORS: ReadonlySet<string> = new Set([
+  'no',
+  'none',
+  'neither',
+  'nobody',
+  'nothing',
+])
+
+/**
+ * True when a negating determiner OPENS the main clause's subject, so that it governs the modal
+ * ("No request shall …", "None of the requests shall …", "While offline, no request shall …"):
+ * it is the first token of the line, or it sits in the subject chunk and is not the object of a
+ * preposition ("a request with no body" names a request, it does not forbid one). A negator
+ * anywhere else left of the modal — a relative clause ("users who are not admins"), a comma-less
+ * leading clause ("when no user is signed in the …") — scopes over that phrase alone.
+ */
+function subjectNegatorGovernsModal(
+  tokens: WinkToken[],
+  chunkStart: number,
+  modalIdx: number,
+): boolean {
+  for (let i = 0; i < modalIdx; i++) {
+    if (!SUBJECT_NEGATORS.has(tokens[i]!.value.toLowerCase())) continue
+    if (i === 0 || (i >= chunkStart && tokens[i - 1]!.pos !== 'ADP')) return true
+  }
+  return false
+}
+
 /** Join token surface forms into slot text, collapsing the whitespace the join introduces. */
 function joinTokens(tokens: WinkToken[]): string {
   return (
@@ -487,11 +516,17 @@ export function repairWithWink(
   const neg = extractNegation(rawResponse)
   const modalToken = tokens[modalIdx]!
   // Only a negation that GOVERNS THE MODAL sets the flag (spec 007 AC-2-3): the modal-adjacent
-  // negator `extractNegation` reads, the `n't` wink splits off shan't/mustn't/won't, or a
-  // negation whose scope already covers the modal itself ("No request shall be dropped"). A
-  // negation flag that starts inside the response ("requests that are not cached") scopes over
-  // that phrase, not over the obligation, and the phrase keeps its "not" in the response text.
-  const negated = neg.negated || isContractedNegator(responseTokens[0]!) || modalToken.negationFlag
+  // negator `extractNegation` reads, the `n't` wink splits off shan't/mustn't/won't, or wink's
+  // negation scope over the response when a negating determiner opens the subject ("No request
+  // shall be dropped"). wink's scope runs from ANY negator to the next punctuation, so without
+  // the subject test a "not"/"no" in a relative clause, a prepositional phrase or a comma-less
+  // leading clause would flag the response too; and one that starts inside the response
+  // ("requests that are not cached") scopes over that phrase, which keeps its "not" in the text.
+  const negated =
+    neg.negated ||
+    isContractedNegator(responseTokens[0]!) ||
+    (responseTokens.some((t) => t.negationFlag) &&
+      subjectNegatorGovernsModal(tokens, chunkStart, modalIdx))
   const systemResponse = neg.response
 
   const notes = [...baseNotes]

@@ -81,9 +81,59 @@ describe('AC-2-3 controls: a negation that governs the modal still sets it, slot
     expect(r.slots.systemResponse).toBe(systemResponse)
   })
 
+  it.each([
+    ['While offline, no request shall be dropped.', 'request'],
+    // Base's subject for the comma-less form, kept as base parsed it.
+    ['While offline no request shall be dropped.', 'offline no request'],
+    ['When a request arrives no response shall be cached.', 'response'],
+  ] as const)('a negating determiner that opens the main clause still sets it — %s', async (line, systemName) => {
+    const r = await ok(line)
+    expect(r.negated).toBe(true)
+    expect(r.slots.systemName).toBe(systemName)
+  })
+
   it('a negation in the trigger clause never set it, and still does not', async () => {
     const r = await ok('When a request is not authorized, the gateway shall be notified.')
     expect(r.negated).toBe(false)
     expect(r.slots.trigger).toBe('a request is not authorized')
+  })
+})
+
+describe('AC-2-3: a negation inside the subject or a comma-less lead does not set `negated`', () => {
+  // wink's negation scope runs from the negator to the next punctuation, so a `not`/`no` left
+  // of the modal flags the modal and the response when no comma intervenes. Only a negator that
+  // OPENS the main clause ("No request shall …", "None of …", "…, no request shall …") governs
+  // the modal; one inside a relative clause, a prepositional phrase or a leading clause does not.
+  it.each([
+    ['Users who are not admins shall be able to view logs.', 'admins'],
+    ['A request with no body shall be rejected.', 'body'],
+    ['Records with no owner shall be archived.', 'owner'],
+    ['While the user is not signed in the session store shall be cleared.', 'session store'],
+    ['When no user is signed in the session store shall be cleared.', 'session store'],
+    ['If no user is signed in then the session store shall be cleared.', 'session store'],
+    ['If the token is not valid then the gateway shall be notified.', 'gateway'],
+    ['When a request is not authorized the gateway shall be notified.', 'gateway'],
+  ] as const)('%s', async (line, systemName) => {
+    const r = await ok(line)
+    expect(r.tier).toBe(2)
+    expect(r.negated).toBe(false)
+    expect(r.slots.systemName).toBe(systemName)
+  })
+
+  it('the comma and comma-less forms of one requirement agree on polarity', async () => {
+    const bare = await ok('While the user is not signed in the session store shall be cleared.')
+    const comma = await ok('While the user is not signed in, the session store shall be cleared.')
+    expect(bare.negated).toBe(comma.negated)
+    expect(bare.slots).toEqual(comma.slots)
+  })
+
+  it.each([
+    'Packets not matching a rule shall, by default, be dropped.',
+    'Accounts without MFA shall, on login, be challenged.',
+    'Records with no owner shall, nightly, be archived.',
+    'Requests not cached by the edge shall, on arrival, be forwarded to the origin.',
+    'The gateway rather than not the proxy shall, always, forward requests.',
+  ])('never sets it where base left it clear (a comma after the modal) — %s', async (line) => {
+    expect((await ok(line)).negated).toBe(false)
   })
 })
