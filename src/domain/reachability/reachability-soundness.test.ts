@@ -14,11 +14,19 @@ import { describe, expect, it } from 'vitest'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import {
   DOC_VERSION,
+  emptyDocument,
   type Requirement,
   type RequirementsDocument,
+  STATE_VAR_NAME_PATTERN,
   type StateVariable,
 } from '../requirements/document.ts'
-import { isExprError, validateEffect, validateExpression } from '../requirements/state-expr.ts'
+import { foldOps } from '../requirements/mutate.ts'
+import {
+  isExprError,
+  parseExpression,
+  validateEffect,
+  validateExpression,
+} from '../requirements/state-expr.ts'
 import { type ReachabilityReport, runReachability } from './reachability.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -142,5 +150,73 @@ describe('AC-1-1 — the validator hands the encoder members already bound to th
       right: { kind: 'member', enumOf: 'door', name: 'open' },
     })
     expect(parsed.assignments[0]?.value).toEqual({ kind: 'member', enumOf: 'valve', name: 'open' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC-1-4 — keyword-shaped names are refused under case folding; integers stay exact
+// ---------------------------------------------------------------------------
+
+describe('AC-1-4 — a name equal to an expression keyword under case folding is refused', () => {
+  /**
+   * The lexer case-folds keywords (`True` lexes as the literal `true`, `NOT` as `not`), so a
+   * variable named `True` could be DECLARED and never REFERENCED: `initial: "True"` read as
+   * the literal, the constraint `True` held trivially, and the tier certified a PROVED over
+   * a variable an effect sets to false.
+   */
+  const SHAPES = ['True', 'NOT', 'And', 'oR', 'FALSE', 'When'] as const
+
+  it.each(SHAPES)('the schema pattern refuses %s', (name) => {
+    expect(STATE_VAR_NAME_PATTERN.test(name)).toBe(false)
+  })
+
+  it.each(SHAPES)('a `state` op declaring %s is refused at the fold, naming the word', (name) => {
+    const folded = foldOps(emptyDocument(), [{ op: 'state', name, type: 'bool' }], TS)
+    expect(folded.results[0]?.ok).toBe(false)
+    expect(folded.results[0]?.code).toBe('ERR_USAGE')
+    expect(folded.results[0]?.error).toContain(JSON.stringify(name))
+  })
+
+  it('an enum MEMBER spelled like a keyword is refused the same way', () => {
+    const folded = foldOps(
+      emptyDocument(),
+      [{ op: 'state', name: 'mode', type: 'enum', domain: ['idle', 'True'] }],
+      TS,
+    )
+    expect(folded.results[0]?.ok).toBe(false)
+    expect(folded.results[0]?.error).toContain('"True"')
+  })
+
+  it('names that merely CONTAIN a keyword stay legal', () => {
+    for (const name of ['True_state', 'notified', 'android', 'whenever', 'or_count']) {
+      expect(STATE_VAR_NAME_PATTERN.test(name), name).toBe(true)
+    }
+  })
+})
+
+describe('AC-1-4 — integer literals reach Z3 as their decimal source, never through a Number', () => {
+  /** 2^53 + 1 is the first integer a JavaScript `Number` cannot represent. */
+  const BIG = '9007199254740993'
+
+  it('the parser carries the literal exactly', () => {
+    const expr = parseExpression(`x = ${BIG}`)
+    if (isExprError(expr) || expr.kind !== 'compare' || expr.right.kind !== 'int') {
+      throw new Error('expected x = <int>')
+    }
+    expect(String(expr.right.value)).toBe(BIG)
+  })
+
+  /**
+   * `x` starts at 2^53 and nothing changes it, so `x = 2^53 + 1` is false in the initial
+   * state. Through a `Number` both literals round to 2^53 and the constraint "holds".
+   */
+  it('a constraint differing from the initial value only past 2^53 is VIOLATED', async () => {
+    const report = await run(
+      docOf(
+        [{ name: 'x', type: 'int', frame: 'volatile', initial: 'x = 9007199254740992' }],
+        [effect(1, 'E1', 'x := x'), constraint(2, 'C1', `x = ${BIG}`)],
+      ),
+    )
+    expect(resultFor(report, 'C1').verdict).toBe('VIOLATED')
   })
 })

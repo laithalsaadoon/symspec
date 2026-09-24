@@ -86,6 +86,7 @@
 
 import { Effect, Schema } from 'effect'
 import { renderSentence } from './render.ts'
+import { RESERVED_WORDS } from './state-expr.ts'
 
 // ---------------------------------------------------------------------------
 // The version tag
@@ -537,8 +538,9 @@ const stateVarNameDescription = lines(
   'The variable name, as referenced by requirement predicates and by the reachability encoder.',
   'Use a stable identifier-shaped noun: letters, digits, underscore, dot. Case-sensitive.',
   'Must start with a letter or underscore, and must not be one of the reserved words',
-  '`and`, `or`, `not`, `true`, `false`, `when` — those are expression syntax, so a variable',
-  'named one of them would be unreferenceable.',
+  '`and`, `or`, `not`, `true`, `false`, `when` in ANY letter case (`True`, `NOT`) — those are',
+  'expression syntax and the lexer folds case, so a variable named one of them would be',
+  'unreferenceable.',
   "Examples: 'run_state'; 'lock_held'; 'retry_count'.",
 )
 
@@ -578,8 +580,22 @@ const frameDescription = lines(
  *
  * FLAGLESS regex, for the reason `KEY_PATTERN` documents: it is lowered into the
  * published JSON Schema as a `pattern`, and a JSON-Schema pattern carries no flags.
+ *
+ * ## Reserved UNDER CASE FOLDING (spec 007 AC-1-4)
+ *
+ * The expression lexer folds case before recognizing a keyword — `True` lexes as the
+ * literal `true`, `NOT` as the connective — so a case-sensitive exclusion let `True` be
+ * declared and never referenced: `initial "True"` read as the literal, the constraint
+ * `True` held trivially, and the tier certified a PROVED over a variable an effect sets
+ * false. With no flags available, each reserved word is spelled as per-letter classes
+ * (`[Tt][Rr][Uu][Ee]`), derived from {@link RESERVED_WORDS} so the lexer's list and this
+ * one cannot drift.
  */
-export const STATE_VAR_NAME_PATTERN = /^(?!(?:and|or|not|true|false|when)$)[A-Za-z_][A-Za-z0-9_.]*$/
+const caseFolded = (word: string): string =>
+  [...word].map((c) => `[${c.toUpperCase()}${c.toLowerCase()}]`).join('')
+export const STATE_VAR_NAME_PATTERN = new RegExp(
+  `^(?!(?:${RESERVED_WORDS.map(caseFolded).join('|')})$)[A-Za-z_][A-Za-z0-9_.]*$`,
+)
 
 /** A declared state variable's name. */
 const StateVarName = Schema.String.pipe(Schema.check(Schema.isPattern(STATE_VAR_NAME_PATTERN)))

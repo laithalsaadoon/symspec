@@ -101,8 +101,15 @@ export type CompareOp = (typeof COMPARE_OPS)[number]
 export type Expr =
   /** `true` / `false`. */
   | { readonly kind: 'bool'; readonly value: boolean }
-  /** An integer literal. */
-  | { readonly kind: 'int'; readonly value: number }
+  /**
+   * An integer literal, as an ARBITRARY-PRECISION integer (spec 007 AC-1-4).
+   *
+   * A `bigint`, never a `number`: the literal reaches Z3 as its decimal string
+   * (`String(value)`), and a `Number` would round every integer past 2^53 — measured,
+   * `x = 9007199254740993` compiled to `x = 9007199254740992`, so a constraint that the
+   * initial state violates was certified PROVED.
+   */
+  | { readonly kind: 'int'; readonly value: bigint }
   /** A bare identifier: a declared variable, or an enum member. Resolved by
    * {@link sortOf}, never by the parser. */
   | { readonly kind: 'ref'; readonly name: string }
@@ -500,12 +507,13 @@ class Parser {
     }
     if (token.type === 'int') {
       // Every integer here is a decimal run of digits (the lexer guarantees it), so
-      // `Number` cannot produce NaN. A NEGATIVE literal is not a token — it is
+      // `BigInt` cannot throw — and it is `BigInt`, never `Number`, because a `Number`
+      // silently rounds past 2^53 (AC-1-4). A NEGATIVE literal is not a token — it is
       // `0 - n` or a unary position the grammar does not admit, which is deliberate:
       // `-` is binary only, so `x = -1` must be written `x = 0 - 1`. Stated in the
       // field description rather than silently accepted, because a unary minus that
       // only sometimes parses is worse than one that never does.
-      return { kind: 'int', value: Number(token.text) }
+      return { kind: 'int', value: BigInt(token.text) }
     }
     if (token.type === 'ident') {
       const lowered = token.text.toLowerCase()
@@ -1195,15 +1203,17 @@ export const cheapInitialContradiction = (
       // checker (a non-member ref does not resolve), so only int bounds reach here.
       const variable = vars.get(name)
       if (variable?.type === 'int' && variable.domain !== undefined) {
-        const n = Number(value)
-        if (Number.isInteger(n)) {
-          if (variable.domain.min !== undefined && n < variable.domain.min) {
+        // Compared as BIGINTS: `value` is a literal's exact decimal text, and routing it
+        // through a `Number` would round past 2^53 (AC-1-4).
+        const n = /^-?[0-9]+$/.test(value) ? BigInt(value) : undefined
+        if (n !== undefined) {
+          if (variable.domain.min !== undefined && n < BigInt(variable.domain.min)) {
             return (
               `${JSON.stringify(name)} is required to equal ${value}, which is below its ` +
               `declared minimum of ${variable.domain.min} (${source})`
             )
           }
-          if (variable.domain.max !== undefined && n > variable.domain.max) {
+          if (variable.domain.max !== undefined && n > BigInt(variable.domain.max)) {
             return (
               `${JSON.stringify(name)} is required to equal ${value}, which is above its ` +
               `declared maximum of ${variable.domain.max} (${source})`
