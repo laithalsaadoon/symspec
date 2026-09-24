@@ -13,16 +13,20 @@
  * tokens Tier 2 recorded as dropped ({@link Tier2Ok.droppedLead}) — text that by construction
  * sits in no stored slot — and reports the clause only when all of these hold:
  *
- * - an unbound marker opens the dropped text, behind nothing but decoration: list numbers and
- *   letters (`(1)`, `a)`), one-word tags (`[P1]`, `(SAFETY)`), labels (`Note:`), bullets, and
- *   opening brackets or quotes;
+ * - an unbound marker introduces a clause of the dropped text: it follows a clause boundary (the
+ *   line start or any letterless token — punctuation, brackets, quotes, bullets, list and section
+ *   numbers) with at most one word between ("Moreover unless", "NOTE unless") or "<word> that".
+ *   So tags, labels and connectives Tier 2 also dropped (`[P1, SAFETY]`, `1.2.3`, `Safety
+ *   requirement:`, `However,`) never hide it, while a marker inside a phrase the lead opened with
+ *   other words ("For requests received before midnight,") is not the lead's clause;
  * - the marker is a whole word, followed by a word or by `,` / `:` / `;` — so "Until-dates" is a
  *   compound, and a bare "Until" before "dates shall …" is a noun modifier, not a clause;
  * - `In case` is the conjunction: followed by `of` or by a determiner or pronoun opening a clause
  *   ("In case the power fails"), not by a noun it compounds with ("In case studies");
  * - the clause has content, and it ENDS inside the dropped text: at a comma/colon/semicolon, at
- *   the bracket or quote that opened it, or — with no punctuation at all — exactly where a fresh
- *   subject noun phrase begins ({@link DroppedLead.subjectOpensCleanly}). Otherwise the clause
+ *   the bracket or quote that opened it, at a dash set off before the subject, or — with no
+ *   punctuation at all — exactly where a fresh subject noun phrase begins
+ *   ({@link DroppedLead.subjectOpensCleanly}). Otherwise the clause
  *   runs on into the subject: either part of it is already in `systemName` (base's "fire the
  *   sprinkler controller"), which base's parse keeps, or the marker word was modifying a noun the
  *   chunk completes ("Until dates in the form").
@@ -51,18 +55,29 @@ const MARKERS: readonly (readonly string[])[] = [
   ['even', 'if'],
 ]
 
-/**
- * A run of decoration, as {@link joinTokens} renders it: one-word bracket tags (`( 1)`, `[ P1 ]`),
- * list labels (`a)`, `ii.`), `Word:` labels, and single bullets, openers or quotes.
- */
-const DECORATION =
-  /^(?:\s*(?:[[({]\s*[\p{L}\p{N}_-]+\s*[\])}]|[\p{L}\p{N}]{1,4}\s*[.)]|\p{L}+\s*:|[[({"'•>*·–—-]))*\s*$/u
-
 const OPENERS = new Set(['(', '[', '{'])
 const CLOSERS = new Set([')', ']', '}'])
 const CLAUSE_PUNCT = new Set([',', ':', ';'])
+/** What may end a clause the lead opened: its punctuation, or a dash set off before the subject. */
+const CLAUSE_END = new Set([...CLAUSE_PUNCT, '-', '–', '—'])
 
 const isWord = (t: WinkToken): boolean => /[\p{L}\p{N}]/u.test(t.value)
+const hasLetter = (t: WinkToken): boolean => /\p{L}/u.test(t.value)
+
+/**
+ * True when the marker at token `at` introduces a clause of the lead rather than sitting inside a
+ * phrase another word opened: it follows a clause boundary — the line start, or any token with no
+ * letter in it (`,` `:` `;` `-` `_` `§`, brackets, quotes, bullets, list and section numbers) —
+ * with at most one word between ("Moreover unless", "NOTE unless"), or "<word> that" ("Note that
+ * unless"). "For requests received before midnight," has three: the `before` is inside the lead's
+ * own phrase, and base's parse is kept.
+ */
+function introducesClause(tokens: readonly WinkToken[], at: number): boolean {
+  let start = at
+  while (start > 0 && hasLetter(tokens[start - 1]!)) start--
+  const words = tokens.slice(start, at).map((t) => t.value.toLowerCase())
+  return words.length <= 1 || (words.length === 2 && words[1] === 'that')
+}
 
 /** The marker starting at token `i`, or `undefined`. */
 const markerAt = (tokens: readonly WinkToken[], i: number): readonly string[] | undefined =>
@@ -77,12 +92,18 @@ export function unboundLeadingClause(ok: Tier2Ok): string | undefined {
   if (dropped === undefined) return undefined
   const tokens = dropped.tokens
 
-  const at = tokens.findIndex((_, i) => markerAt(tokens, i) !== undefined)
-  if (at < 0) return undefined
-  const marker = markerAt(tokens, at)!
-  const prefix = joinTokens(tokens.slice(0, at))
-  if (!DECORATION.test(prefix)) return undefined
+  for (let at = 0; at < tokens.length; at++) {
+    const marker = markerAt(tokens, at)
+    if (marker === undefined || !introducesClause(tokens, at)) continue
+    const clause = clauseAt(dropped, at, marker)
+    if (clause !== undefined) return clause
+  }
+  return undefined
+}
 
+/** The clause the marker at token `at` opens, when it is one the parse dropped whole. */
+function clauseAt(dropped: DroppedLead, at: number, marker: readonly string[]): string | undefined {
+  const tokens = dropped.tokens
   const next = tokens[at + marker.length]
   if (next === undefined || !(isWord(next) || CLAUSE_PUNCT.has(next.value))) return undefined
   if (
@@ -96,7 +117,7 @@ export function unboundLeadingClause(ok: Tier2Ok): string | undefined {
 
   // The clause ends at the first bracket (or, behind an opening quote, the quote) that closes
   // something the clause itself did not open.
-  const quoted = prefix.includes('"')
+  const quoted = tokens.slice(0, at).some((t) => t.value === '"')
   let depth = 0
   let end = tokens.length
   let closed = false
@@ -111,7 +132,7 @@ export function unboundLeadingClause(ok: Tier2Ok): string | undefined {
     }
   }
   let clause = tokens.slice(at, end)
-  while (clause.length > 0 && CLAUSE_PUNCT.has(clause.at(-1)!.value)) {
+  while (clause.length > 0 && CLAUSE_END.has(clause.at(-1)!.value)) {
     clause = clause.slice(0, -1)
     closed = true
   }

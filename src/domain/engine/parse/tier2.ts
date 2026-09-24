@@ -106,8 +106,9 @@ export interface DroppedLead {
   tokens: readonly WinkToken[]
   /**
    * True when the subject chunk opens a fresh noun phrase where the dropped text ends: the chunk
-   * starts on a determiner, holds no second one, and the dropped text does not end on a
-   * preposition that opens a phrase the chunk completes. Only then does a comma-less lead end exactly where the subject begins. When it
+   * starts on a determiner (or, determiner-less, on a noun right after the lead's closing verb),
+   * holds no determiner after that, and the dropped text does not end on a preposition that opens
+   * a phrase the chunk completes. Only then does a comma-less lead end exactly where the subject begins. When it
    * is false, part of the lead may sit in `systemName` ("In case of fire the sprinkler
    * controller" → "fire the sprinkler controller"), or the chunk completes a noun phrase the
    * lead began ("Until dates in the form").
@@ -501,6 +502,18 @@ function subjectChunkStart(tokens: WinkToken[], modalIdx: number): number {
 const opensPrepositionalPhrase = (tokens: WinkToken[], i: number): boolean =>
   tokens[i]!.pos === 'ADP' && !['AUX', 'VERB'].includes(tokens[i - 1]?.pos ?? '')
 
+/**
+ * True when a determiner-less subject chunk starts right after the verb that ends a leading
+ * clause ("Unless the guard door is closed | users shall …", "Until the door closes | press
+ * controllers shall …"): a noun after a verb that is itself not a participle modifying that noun
+ * after a preposition or article ("Until dates of expired | contracts": the chunk completes the
+ * lead's own noun phrase).
+ */
+const opensBareSubject = (tokens: WinkToken[], chunkStart: number): boolean =>
+  ['NOUN', 'PROPN'].includes(tokens[chunkStart]!.pos) &&
+  tokens[chunkStart - 1]?.pos === 'VERB' &&
+  !['ADP', 'DET'].includes(tokens[chunkStart - 2]?.pos ?? '')
+
 /** Classify the leading clause (keyword before the subject) into a pattern + slot. */
 interface LeadingClause {
   patternType: EarsPattern
@@ -641,7 +654,8 @@ export function repairWithWink(
       : {
           tokens: tokens.slice(0, chunkStart),
           subjectOpensCleanly:
-            LEADING_DETERMINER_POS.has(tokens[chunkStart]!.pos) &&
+            (LEADING_DETERMINER_POS.has(tokens[chunkStart]!.pos) ||
+              opensBareSubject(tokens, chunkStart)) &&
             !subjectTokens.some((t) => t.pos === 'DET') &&
             !opensPrepositionalPhrase(tokens, chunkStart - 1),
         }

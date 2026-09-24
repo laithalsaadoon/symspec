@@ -28,6 +28,8 @@
 - The api shall reject expired tokens
 1) Unless the guard door is closed, the press controller shall start the press.
 1. When the queue drains, the worker shall commit the batch
+1.2 Unless the guard door is closed, the press controller shall not start the press.
+1.2.3 Unless the guard door is closed, the press controller shall not start the press.
 2) The api shall grant read and write access
 > Unless the guard door is closed, the press controller shall start the press.
 A human reader sees the problem, because 30 minutes cannot also be 60 minutes. A literal checker
@@ -40,9 +42,13 @@ AC-2-1 — "shall not A" plus "shall not B" is consistent
 ACCEPTS everything it cannot decide with certainty — a false positive would be worse
 Accounts with MFA shall, on login, be challenged.
 Accounts without MFA shall, on login, be challenged.
+Additionally, before startup, the gateway shall load its config.
+Additionally, the gateway shall load its config before startup.
 All payment gateways shall log requests.
 All payment requests shall be logged.
 All requests shall be logged.
+Also, Unless the guard door is closed, the press controller shall not start the press.
+Also, unless the guard door is closed, the press controller shall start the press.
 Any payment request shall be logged.
 Before deploying, read the runbook.
 Before hooks shall run in order.
@@ -52,6 +58,7 @@ Before startup, load the config.
 Before startup, the gateway shall load its config.
 Before the press starts the press controller shall lock the guard door.
 Before the press starts, the press controller shall be able to lock the guard door.
+Before the press starts, when the door opens, the press controller shall stop.
 Before-save hooks shall run in order.
 Both replicas shall be synchronized.
 CLEARS an expression through `update --clear`, since retracting must be possible
@@ -60,6 +67,7 @@ Cannot compare
 Cannot undeclare
 DISCLOSES a deadline and a duration it did not compare, so the pair cannot certify
 DISCLOSES the pair it could not decide, so a two-reading conflict cannot certify
+Data kept in case files shall be encrypted.
 Even if the network is down the logger shall persist events.
 Even if the network is down, persist events.
 Even if the network is down, the logger shall persist events.
@@ -78,6 +86,10 @@ Existing sessions shall be invalidated on logout.
 FND_CONTRADICTION is provable — but the hardened verified must DEMOTE (uncovered
 Failed login attempts shall be recorded.
 For each tenant the system shall be able to create a namespace.
+For requests received before midnight, the gateway shall batch them.
+However, Unless the guard door is closed, the press controller shall not start the press.
+However, the gateway shall be notified of cached requests.
+However, unless the guard door is closed, the press controller shall start the press.
 If T, then the S shall R
 If a cancel request targets a terminal run, then the schedule management service shall return InvalidStateTransition without altering the run.
 If a create or update request specifies zero or multiple trigger shapes, then the schedule management service shall reject the request with InvalidScheduleDefinition without persisting any change.
@@ -96,6 +108,9 @@ If the operator selects the strengthen option the pump controller shall reduce t
 If the token expires, then the auth service shall issue a session token.
 If the token is not valid then the gateway shall be notified.
 Immediately before shutdown, the gateway shall flush its logs.
+Important - Unless the guard door is closed, the press controller shall not start the press.
+Important - Unless the guard door is closed, the press controller shall start the press.
+In addition, unless the guard door is closed, the press controller shall start the press.
 In case files, the clerk shall record the verdict.
 In case management, the case worker shall close stale cases.
 In case of fire the sprinkler controller shall open the valves.
@@ -103,11 +118,18 @@ In case of fire, open the valves.
 In case of fire, the sprinkler controller shall open the valves.
 In case sensitive mode, the matcher shall compare bytes.
 In case studies, the analyst shall cite sources.
+In case studies, unless the guard door is closed, the analyst shall cite sources.
 In case the guard door opens the press controller shall stop the press.
 In case the guard door opens, the press controller shall stop the press.
 In case the power fails, the UPS shall start the generator.
 In normal operation, none of the valves shall open.
 It never produces a verdict, and these two never demote one either — a wording opinion must
+Items sold except refunds shall be counted.
+Logs rotated before midnight shall be compressed.
+Moreover unless the guard door is closed the press controller shall not start the press.
+Moreover, Unless the guard door is closed, the press controller shall not start the press.
+Moreover, unless the guard door is closed, the press controller shall start the press.
+NOTE unless the guard door is closed, the press controller shall start the press.
 Neither replica shall be promoted.
 Neither request shall be dropped.
 Neither the gateway nor the proxy shall log requests.
@@ -124,6 +146,8 @@ Not any request shall be dropped.
 Not every request shall be logged.
 Not one request shall be dropped.
 Not only the gateway but also the proxy shall log requests.
+Note that the gateway shall be notified of cached requests.
+Note that unless the guard door is closed, the press controller shall start the press.
 Note: The gateway shall be notified of cached requests.
 Note: The gateway shall log requests.
 Note: Unless the guard door is closed, the press controller shall start the press.
@@ -135,6 +159,7 @@ Only if armed the alarm shall sound.
 Only if armed, sound the alarm.
 Only if armed, the alarm shall sound.
 Only if the operator is authorized, the press controller shall start the press.
+Otherwise, unless the guard door is closed, the press controller shall start the press.
 Packets not matching a rule shall, by default, be dropped.
 Provided credentials
 Provided credentials shall match the stored hash.
@@ -158,12 +183,16 @@ Reproducers: "When a flagged purchase order is received, the procurement system 
 Reproducers: "shall not keep the door unlocked above 30 seconds" plus "shall keep the door
 Requests from none of the hosts shall be accepted.
 Requests not cached by the edge shall, on arrival, be forwarded to the origin.
+Requests received until midnight shall be batched.
 Requests shall be dropped.
 Requests shall not be logged.
 Requests shall, under no circumstances, be dropped.
 Requests with no body shall be rejected.
 SAYS it fell back — a fallback must not read like a detection
+SR-12.3: Unless the guard door is closed, the press controller shall not start the press.
 Sabotage: reintroduce the AC-1-1 defect with the BFS in place; the BFS must catch it and
+Safety requirement: Unless the guard door is closed, the press controller shall not start the press.
+Safety-critical: Unless the guard door is closed, the press controller shall not start the press.
 Safety: Unless the guard door is closed, the press controller shall start the press.
 Stored credentials shall be hashed.
 TX-C1 must be proven at one strength or the other
@@ -273,6 +302,7 @@ The postgres repository adapters shall not interpolate request values into SQL t
 The press controller shall be able to start the press.
 The press controller shall not be able to start the press.
 The press controller shall not start the press until the guard door is closed.
+The press controller shall not start the press.
 The press controller shall start the press unless the guard door is closed.
 The press controller shall start the press when the guard door is open.
 The procurement system shall accept the purchase order.
@@ -281,6 +311,7 @@ The provided credentials shall match the stored hash.
 The provided token shall be validated.
 The pump controller should log the pump speed.
 The record shall be persisted
+The report generated before startup shall be archived.
 The result is clean, and the same response says why that is worth little. One requirement cannot
 The routing table shall be flushed.
 The run management surface shall effect run status changes exclusively through transitions permitted by the domain state machine.
@@ -313,6 +344,7 @@ The until-date field shall be required.
 The user's session store shall be encrypted at rest.
 The users shall be notified of requests that are not cached.
 The users shall not be notified.
+Then, unless the guard door is closed, the press controller shall start the press.
 There is no MTL or timed-automaton layer, and the published scope shall say that timing
 These records shall be retained.
 Those two temperatures cannot both hold, so the two bounds on "temperature" are never
@@ -342,8 +374,13 @@ Unless armed the alarm shall sound.
 Unless armed, the alarm shall be sounded.
 Unless armed, the alarm shall stay silent.
 Unless the door is closed the alarm shall sound.
+Unless the guard door is closed - users shall be able to log in.
+Unless the guard door is closed PressCtl shall stop.
+Unless the guard door is closed operators shall be able to start the press.
+Unless the guard door is closed press controllers shall not start presses.
 Unless the guard door is closed the press controller shall be notified.
 Unless the guard door is closed the press controller shall start the press.
+Unless the guard door is closed users shall be able to log in.
 Unless the guard door is closed, stop the press.
 Unless the guard door is closed, the press controller is required to stop.
 Unless the guard door is closed, the press controller shall not start the press.
@@ -360,6 +397,7 @@ Until dates on invoices shall be validated.
 Until dates shall be required.
 Until further notice, keep the siren on.
 Until startup completes, the gateway shall be unavailable.
+Until the guard door closes press controllers shall hold the press.
 Until the operator acknowledges the alarm the siren shall sound.
 Until the operator acknowledges the alarm, the siren shall sound.
 Until-dates shall be required.
@@ -527,6 +565,7 @@ While the cabin temperature is −5 °C, the climate controller shall enable the
 While the cache is not warm, the gateway shall be notified of misses.
 While the display language is العربية, the text renderer shall enable the right-to-left layout.
 While the display language is 日本語, the text renderer shall disable the right-to-left layout.
+While the guard door is closed, the press controller shall start the press.
 While the guard door is closed, when the operator presses the start button, the press controller shall start the press.
 While the guard door is open, the press controller shall not start the press.
 While the invoice currency is €, the billing service shall apply the surcharge.
@@ -569,6 +608,8 @@ While valve β is open, the plant controller shall not start the pump.
 [OFFLINE] The gateway shall queue requests.
 [ONLINE] The gateway shall not queue requests.
 [Only if armed] the alarm shall sound.
+[P1 SAFETY] Unless the guard door is closed, the press controller shall not start the press.
+[P1, SAFETY] Unless the guard door is closed, the press controller shall not start the press.
 [P1, Security] The gateway shall log requests.
 [P1] Before startup, the gateway shall load its config.
 [P1] The gateway shall be notified of cached requests.
@@ -598,6 +639,8 @@ While valve β is open, the plant controller shall not start the pump.
 [V2] The API shall not accept XML.
 [When armed] [P1] the alarm shall sound.
 [[Unless the guard door is closed]] the press controller shall start the press.
+[req 12] Unless the guard door is closed, the press controller shall not start the press.
+_Unless the guard door is closed, the press controller shall start the press._
 `Inv := false` discharges all three certificate obligations — so V28 cannot catch vacuity
 `interruptibleSolve`'s canceler is not doing its job: it must call Z3_interrupt
 `symspec check`. Waiving a finding cannot discharge this — the comparison did not happen.
@@ -705,5 +748,6 @@ what budget should I use
 when T shall R
 will NOT help
 {Unless the guard door is closed} the press controller shall start the press.
+§3 Unless the guard door is closed, the press controller shall not start the press.
 • The gateway shall be notified of cached requests.
 • Unless the guard door is closed, the press controller shall start the press.

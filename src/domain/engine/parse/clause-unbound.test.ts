@@ -269,3 +269,73 @@ describe('AC-2-2 controls: every neighbouring shape keeps its base parse', () =>
     expect(r.code).toBe('ERR_PARSE_COMPOUND')
   })
 })
+
+describe('AC-2-2 round 2: the marker opens the dropped lead after any clause boundary', () => {
+  // Round 1 looked past an allowlist of decoration shapes only, so any other prefix Tier 2 also
+  // dropped still hid the marker, and the line was stored ubiquitous with its condition gone.
+  const G = 'Unless the guard door is closed'
+  const g = 'unless the guard door is closed'
+  const MAIN = 'the press controller shall start the press.'
+  const NOT = 'the press controller shall not start the press.'
+  it.each([
+    [`Safety requirement: ${G}, ${NOT}`, G],
+    [`Safety-critical: ${G}, ${NOT}`, G],
+    [`[P1, SAFETY] ${G}, ${NOT}`, G],
+    [`[P1 SAFETY] ${G}, ${NOT}`, G],
+    [`[req 12] ${G}, ${NOT}`, G],
+    [`1.2 ${G}, ${NOT}`, G],
+    [`1.2.3 ${G}, ${NOT}`, G],
+    [`§3 ${G}, ${NOT}`, G],
+    [`SR-12.3: ${G}, ${NOT}`, G],
+    [`_${G}, ${MAIN}_`, G],
+    [`Important - ${G}, ${MAIN}`, G],
+    [`NOTE ${g}, ${MAIN}`, g],
+    [`Note that ${g}, ${MAIN}`, g],
+    [`Also, ${g}, ${MAIN}`, g],
+    [`However, ${g}, ${MAIN}`, g],
+    [`Moreover, ${g}, ${MAIN}`, g],
+    [`In addition, ${g}, ${MAIN}`, g],
+    [`Otherwise, ${g}, ${MAIN}`, g],
+    [`Then, ${g}, ${MAIN}`, g],
+    [`Moreover ${g} ${NOT}`, g],
+    ['Additionally, before startup, the gateway shall load its config.', 'before startup'],
+    // A marker word used as an ordinary word first ("In case studies") does not hide a real
+    // clause after it.
+    [
+      'In case studies, unless the guard door is closed, the analyst shall cite sources.',
+      'unless the guard door is closed',
+    ],
+  ])('%s', async (line, clause) => {
+    const r = await refused(line)
+    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
+    expect(r.error).toContain(`Leading clause "${clause}"`)
+  })
+
+  it.each([
+    [`${G} press controllers shall not start presses.`, G],
+    [`${G} PressCtl shall stop.`, G],
+    [`${G} users shall be able to log in.`, G],
+    [`${G} operators shall be able to start the press.`, G],
+    [
+      'Until the guard door closes press controllers shall hold the press.',
+      'Until the guard door closes',
+    ],
+    [`${G} - users shall be able to log in.`, G],
+  ])('comma-less, the clause ending on its verb before a bare subject: %s', async (line, clause) => {
+    const r = await refused(line)
+    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
+    expect(r.error).toContain(`Leading clause "${clause}"`)
+  })
+
+  it.each([
+    // The marker sits inside a phrase the lead opened with another word: it does not introduce
+    // the leading clause, so base's parse is kept.
+    ['For requests received before midnight, the gateway shall batch them.', 'gateway'],
+    // A participle after a preposition modifies the noun that follows; the marker opened a noun
+    // phrase the subject completes.
+    ['Until dates of expired contracts shall be archived.', 'contracts'],
+    ['Note that the gateway shall be notified of cached requests.', 'gateway'],
+  ])('controls, stored as base stored them — %s', async (line, systemName) => {
+    expect((await stored(line)).slots.systemName).toBe(systemName)
+  })
+})
