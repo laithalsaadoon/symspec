@@ -83,7 +83,12 @@ import { glossaryIndex, makeAtomize, normalize, termIndex } from '../formal/atom
 import { getContext } from '../formal/backend.ts'
 import { type SolverBounds, SolverBudget } from '../formal/budget.ts'
 import { type FndCode, structuralKindToFndCode } from '../formal/codes.ts'
-import { contextAtomsOf, findContradictions } from '../formal/contradiction.ts'
+import {
+  analyzeContradictions,
+  type CheckedContextGroup,
+  contextAtomsOf,
+  type GroupSolverCheck,
+} from '../formal/contradiction.ts'
 import {
   excludedFromFormalFinding,
   noPairsCheckedFinding,
@@ -226,6 +231,15 @@ export interface CheckOptions {
    * the outcome would be a race rather than a fixture.
    */
   needsReviewCheckGroup?: GroupChecker
+  /**
+   * Injectable solver call for the contradiction tier's enumeration loop — the seam
+   * `findContradictions` exposes, threaded one level up for the same reason as
+   * {@link needsReviewCheckGroup}: the verdict consequence of an `unknown` part-way
+   * through a group (the `solver-unknown` demotion, AC-3-4) is computed here, and no
+   * `timeoutMs` can put an `unknown` in ONE group without also putting one in the
+   * needs-review tier's separate solve, whose own demotion would then hide this one.
+   */
+  contradictionCheck?: GroupSolverCheck
 }
 
 /**
@@ -339,6 +353,14 @@ export interface CoverageDemotion {
     // `FND_NEEDS_REVIEW` disclosure: suppressing "I could not decide" does not
     // decide it.
     | 'inconclusive-group'
+    // AC-3-4: a solver call INSIDE the contradiction enumeration (a group check or a
+    // core-minimization re-check) or the temporal tier's joint check returned
+    // `unknown`. The enumeration stops at an `unknown`, so any conflict after it in
+    // that group was never looked for — even when an earlier conflict in the same group
+    // was reported, and even when the needs-review tier's separate solve of the group
+    // happened to finish. Recorded where the `unknown` happened, never inferred from
+    // another tier. Discharged by raising `--timeout-ms`; there is no finding to waive.
+    | 'solver-unknown'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
   action: string
@@ -896,6 +918,13 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   // in which case every tier runs unbounded exactly as before.
   let solverBudget: SolverBudget | undefined
 
+  // AC-3-4 / AC-3-1: what the contradiction tier's solver actually decided, per planned
+  // context group. Empty when the tier was skipped (budget) or had <2 requirements.
+  let contradictionGroups: readonly CheckedContextGroup[] = []
+  // AC-3-4: `unknown`s reported by tiers that have no group structure of their own (the
+  // temporal tier's single joint check), each naming the requirements it covered.
+  const tierUnknowns: { tier: string; requirementIds: string[] }[] = []
+
   const report = await runSolvers(doc, {
     ...(options.similarityThreshold !== undefined
       ? { similarityThreshold: options.similarityThreshold }
@@ -915,6 +944,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       const bounds: SolverBounds = {
         timeoutMs,
         ...(solverBudget !== undefined ? { budget: solverBudget } : {}),
+        onUnknown: (tier, requirementIds) => {
+          tierUnknowns.push({ tier, requirementIds: [...requirementIds].sort() })
+        },
       }
       // AC-9-3: canonicalize atoms through the committed glossary so
       // agent-confirmed paraphrases collide and paraphrased contradictions
@@ -925,7 +957,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // #6: committed noun-phrase terms are substituted inside every slot body, so one entry
       // aligns a noun document-wide. Empty ⇒ identical to a term-free run.
       const atomize = pipelineAtomize(doc)
-      const contradictionOpts = { atomize, timeoutMs }
+      const contradictionOpts = {
+        atomize,
+        timeoutMs,
+        ...(options.contradictionCheck !== undefined ? { check: options.contradictionCheck } : {}),
+      }
 
       // Whole-spec checks (contradiction / vacuity / completeness / review)
       // and pairwise checks (subsumption / redundancy) share one encoding.
@@ -966,9 +1002,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // demotes `verified`. Deliberately NOT a mid-loop cut inside
       // `findContradictions`: its per-context-group discipline is load-bearing
       // (the reachability lesson), and this task must not restructure it.
-      const contradictions = budgetSpent(solverBudget, 'contradiction', encodable.length)
-        ? []
-        : await findContradictions(encodable, contradictionOpts)
+      const contradictionRun = budgetSpent(solverBudget, 'contradiction', encodable.length)
+        ? { findings: [], groups: [] }
+        : await analyzeContradictions(encodable, contradictionOpts)
+      const contradictions = contradictionRun.findings
+      contradictionGroups = contradictionRun.groups
       const subsumption = await checkSubsumption(ctx, encodedById, includedPairs, bounds)
       const subsumptions = subsumption.findings
       const vacuities = await checkVacuity(ctx, encoded, bounds)
@@ -1662,6 +1700,39 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         'this run compared less than it would have. Raise --solver-budget-ms (or reduce the ' +
         'document / raise --similarity-threshold to shrink the candidate-pair set), then re-run ' +
         '`symspec check`. Waiving a finding cannot discharge this — the comparison did not happen.',
+    })
+  }
+  // AC-3-4 — an `unknown` INSIDE the contradiction enumeration, or in the temporal
+  // tier's joint check. Recorded at the call that returned it rather than inferred from
+  // the needs-review tier: that tier runs its OWN solve of each group, and a group whose
+  // enumeration stopped at an `unknown` after one reported conflict (or whose second
+  // check timed out where the first did not) is decided there just often enough to hide
+  // the gap. Outside the ≥2-requirement guard for the reason truncation is: it is a
+  // statement about the RUN. Not waiver-discharged: there is no finding behind it.
+  for (const g of contradictionGroups.filter((g) => g.outcome === 'unknown')) {
+    const where =
+      g.contextAtoms.length === 0
+        ? 'the unconditional (baseline) context group'
+        : `the context group asserting ${g.contextAtoms.join(' ∧ ')}`
+    demotions.push({
+      reason: 'solver-unknown',
+      requirementIds: [...g.liveIds],
+      action:
+        `The contradiction tier's solver returned unknown inside ${where}` +
+        (g.liveIds.length > 0 ? ` (live: ${g.liveIds.join(', ')})` : '') +
+        ', so its enumeration stopped there and any conflict it had not yet reached was never ' +
+        'looked for — an unknown is never read as "no conflict", and a conflict already reported ' +
+        'for this group does not mean it was the only one. Raise --timeout-ms and re-run `symspec check`.',
+    })
+  }
+  for (const u of tierUnknowns) {
+    demotions.push({
+      reason: 'solver-unknown',
+      requirementIds: [...u.requirementIds],
+      action:
+        `The ${u.tier} tier's solver returned unknown for its check over ` +
+        `${u.requirementIds.join(', ')}, so that check decided nothing — an unknown is never read ` +
+        'as "no conflict". Raise --timeout-ms and re-run `symspec check`.',
     })
   }
   const verified = demotions.length === 0

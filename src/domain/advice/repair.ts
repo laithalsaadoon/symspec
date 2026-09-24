@@ -252,6 +252,7 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       }
 
     case 'inconclusive-group':
+    case 'solver-unknown':
       // The solver said `unknown` for this group. NO OPS, and that is the honest
       // shape: no document edit decides an undecidable group, and a waiver of the
       // raising FND_NEEDS_REVIEW would hide the disclosure while leaving the group

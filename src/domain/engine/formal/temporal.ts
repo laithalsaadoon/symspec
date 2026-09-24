@@ -369,6 +369,8 @@ export async function findTemporalContradictions(
   const solver = buildBoundedSolver(ctx, ordered, k, bounds)
   const guards = ids.map((id) => ctx.Bool.const(id))
   const res = await solver.check(...guards)
+  // AC-3-4: an `unknown` decided nothing, so it is disclosed rather than read as consistent.
+  if (res === 'unknown') bounds.onUnknown?.('temporal', ids)
   if (res !== 'unsat') return []
 
   const coreIds = dequoteCore(solver.unsatCore(), new Set(ids))

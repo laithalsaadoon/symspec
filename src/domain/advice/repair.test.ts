@@ -197,6 +197,7 @@ const EVERY_REASON: readonly CoverageDemotion['reason'][] = [
   'relational-reasoning-not-attempted',
   'solver-budget-exhausted',
   'inconclusive-group',
+  'solver-unknown',
 ]
 
 const CONTEXT: RepairContext = {
