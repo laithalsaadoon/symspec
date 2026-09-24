@@ -40,23 +40,26 @@
  *   or one step from a reachable state has that many distinct successors, or a variable
  *   takes infinitely many values. Spec 007 AC-1-5 requires a cross-check only up to the
  *   cap, so the proof stands on the Horn tier and its certificate.
- * - `beyondCap: false`: the search stopped WITHOUT showing that. It used up the
- *   {@link REACHABILITY_BFS_WORK_CAP} safety valve, or it met an initial predicate it cannot
- *   enumerate. The model may be small, so the tier WITHHOLDS the proof. Otherwise a proof
- *   the second checker never examined would be reported as if it had been.
+ * - `beyondCap: false`: the search stopped WITHOUT showing that. It used up a safety valve
+ *   ({@link REACHABILITY_BFS_WORK_CAP} for the initial search,
+ *   {@link REACHABILITY_BFS_SUCCESSOR_CAP} for the steps), or it met an initial predicate it
+ *   cannot enumerate. The model may be small, so the tier WITHHOLDS the proof. Otherwise a
+ *   proof the second checker never examined would be reported as if it had been.
  *
  * The caps measure what the search VISITS, never what the declarations multiply out to:
  *
  * - A bounded int's range is a pair of bounds, sized before any value is produced.
  * - The initial states are found by backtracking, and a branch is pruned as soon as its
  *   assigned prefix refutes an initial predicate. A variable that a top-level `x = e`
- *   defines is COMPUTED as soon as `e`'s variables are assigned, never branched on. So N
- *   bools initialised `fi = g` are one initial state in whatever order they are declared.
+ *   defines is COMPUTED as soon as `e`'s variables are assigned, never branched on, and kept
+ *   only if it lies in the declared range, a lone `min` or `max` included. So N bools
+ *   initialised `fi = g` are one initial state in whatever order they are declared.
  *   An int's candidates are narrowed to the interval its top-level literal comparisons leave.
  * - A step's successor set depends only on the post-state's values for the variables the
  *   step does not leave free. The search expands each distinct such projection ONCE, so
- *   every successor it generates is a distinct state, and a volatile sensor free on every
- *   step costs its range once per projection, not once per reachable state.
+ *   the successors it generates under one free set are distinct states, and a volatile
+ *   sensor free on every step costs its range once per projection, not once per reachable
+ *   state. A successor is built as a state only when its key is new.
  */
 
 import type { StateVariable } from '../requirements/document.ts'
@@ -78,19 +81,33 @@ import type { Expr, StateEffect } from '../requirements/state-expr.ts'
 export const REACHABILITY_BFS_STATE_CAP = 10_000
 
 /**
- * THE SAFETY VALVE: the most units of work (candidate initial assignments examined, plus
- * successors generated) the cross-check spends before it gives up.
+ * THE INITIAL-SEARCH SAFETY VALVE: the most candidate initial assignments the backtracking
+ * search examines before it gives up.
  *
- * It is a count, not a clock, so the same document always gets the same answer. The step
- * phase needs little of it. Each projection is expanded once, so the successors generated
- * are at most the number of distinct free-variable sets among the effects times the
- * reachable states. The valve exists for the initial predicates, where a constraint that
- * no prefix refutes (a sum, say) can take exponentially many candidates to find a handful
- * of states. When it trips, the search has NOT shown the model is beyond
- * {@link REACHABILITY_BFS_STATE_CAP}, so the verdict carries `beyondCap: false` and the
- * proof is withheld.
+ * It is a count, not a clock, so the same document always gets the same answer. It exists
+ * for initial predicates that no prefix refutes (a sum, say), which can take exponentially
+ * many candidates to find a handful of states. When it trips, the search has NOT shown the
+ * model is beyond {@link REACHABILITY_BFS_STATE_CAP}, so the verdict carries
+ * `beyondCap: false` and the proof is withheld.
  */
 export const REACHABILITY_BFS_WORK_CAP = 200_000
+
+/**
+ * THE STEP-PHASE SAFETY VALVE: the most successors the breadth-first expansion generates,
+ * duplicates included, before it gives up.
+ *
+ * The step phase's work is bounded by the model without it. Each (free set, fixed
+ * projection) is expanded once, so the successors generated under ONE free set are
+ * pairwise distinct reachable states, and no more than {@link REACHABILITY_BFS_STATE_CAP}
+ * plus one of them can be generated before the state cap trips. The work is therefore at
+ * most the number of distinct free sets among the effects times that, and the only waste is
+ * a state that several free sets reach. So this valve can trip only on a document with more
+ * than `REACHABILITY_BFS_SUCCESSOR_CAP / REACHABILITY_BFS_STATE_CAP` distinct free sets.
+ * Such a model may still be small, so tripping it carries `beyondCap: false` and the proof
+ * is withheld. Sized from the measured cost: a model that spends it gives up in under a
+ * second.
+ */
+export const REACHABILITY_BFS_SUCCESSOR_CAP = 2_000_000
 
 /** A variable's value: bool, arbitrary-precision int, or enum member name. */
 type Value = boolean | bigint | string
@@ -231,6 +248,20 @@ const declaredDomain = (variable: StateVariable): Domain | undefined => {
   const max = variable.domain?.max
   if (min === undefined || max === undefined) return undefined
   return interval(BigInt(min), BigInt(max))
+}
+
+/**
+ * Whether `value` lies in the variable's declared type and range. An int bounded on ONE side
+ * is checked against that side: the Horn tier applies a lone bound (`rangeConstraints`
+ * emits `x >= min` without a max), so an initial state lies within it too.
+ */
+const admits = (variable: StateVariable, value: Value): boolean => {
+  if (variable.type === 'bool') return typeof value === 'boolean'
+  if (variable.type === 'enum') return typeof value === 'string' && variable.domain.includes(value)
+  if (typeof value !== 'bigint') return false
+  const min = variable.domain?.min
+  const max = variable.domain?.max
+  return (min === undefined || BigInt(min) <= value) && (max === undefined || value <= BigInt(max))
 }
 
 /** The top-level conjuncts of the initial predicates: what EVERY initial state satisfies. */
@@ -390,32 +421,6 @@ const partial = (expr: Expr, state: State): Value | undefined => {
 // The search
 // ---------------------------------------------------------------------------
 
-const keyOf = (variables: readonly StateVariable[], state: State): string =>
-  variables.map((v) => String(state.get(v.name))).join('\u0000')
-
-const render = (
-  variables: readonly StateVariable[],
-  state: State,
-): Readonly<Record<string, string>> =>
-  Object.fromEntries(variables.map((v) => [v.name, String(state.get(v.name))]))
-
-/** Every assignment to `names` drawn from `domains`, extending `base`. Lazy: a caller
- * that stops early never pays for the assignments it did not take. */
-function* assignments(
-  base: State,
-  names: readonly string[],
-  domains: ReadonlyMap<string, Domain>,
-): Generator<State> {
-  if (names.length === 0) {
-    yield base
-    return
-  }
-  const [first, ...rest] = names as [string, ...string[]]
-  for (const value of domains.get(first)?.values() ?? []) {
-    yield* assignments(new Map(base).set(first, value), rest, domains)
-  }
-}
-
 type NotApplicable = Extract<ExplicitVerdict, { status: 'not-applicable' }>
 
 /** The search SHOWED the model has more reachable states than the cap: out of scope. */
@@ -518,10 +523,10 @@ const initialPlan = (model: ExplicitModel): readonly InitialStep[] | NotApplicab
  */
 const initialStates = (
   model: ExplicitModel,
-  declared: ReadonlyMap<string, Domain>,
-): { readonly states: readonly State[]; readonly work: number } | NotApplicable => {
+): { readonly states: readonly State[] } | NotApplicable => {
   const plan = initialPlan(model)
   if ('status' in plan) return plan
+  const byName = new Map(model.variables.map((v) => [v.name, v]))
   const found: State[] = []
   let examined = 0
   const extend = (index: number, state: Map<string, Value>): NotApplicable | undefined => {
@@ -540,9 +545,9 @@ const initialStates = (
           `more than ${REACHABILITY_BFS_WORK_CAP} candidate initial assignments examined`,
         )
       }
-      // A computed value must still lie in the declared domain. A branched one does,
-      // because its candidates were drawn from it.
-      if ('define' in step && declared.get(step.name)?.has(value) === false) continue
+      // A computed value must still lie in the declared range, a lone bound included. A
+      // branched one does, because its candidates were drawn from within it.
+      if ('define' in step && !admits(byName.get(step.name) as StateVariable, value)) continue
       state.set(step.name, value)
       if (model.initial.every((p) => partial(p, state) !== false)) {
         const stop = extend(index + 1, state)
@@ -552,20 +557,101 @@ const initialStates = (
     state.delete(step.name)
     return undefined
   }
-  return extend(0, new Map()) ?? { states: found, work: examined }
+  return extend(0, new Map()) ?? { states: found }
 }
 
 /** What one effect does to the variables, fixed for the whole search. */
 interface StepPlan {
   readonly label: string
   readonly effect: StateEffect
-  /** The variables it leaves free: neither written nor pinned by the frame. */
-  readonly free: readonly string[]
+  /** Each assignment's target, as a position in the state row. */
+  readonly writes: readonly { readonly at: number; readonly value: Expr }[]
+  /** The positions it leaves free: neither written nor pinned by the frame. */
+  readonly free: readonly number[]
   /** The rest, whose post-state values decide the whole successor set. */
-  readonly fixed: readonly string[]
-  /** The free set, as a key: effects that free the same variables share expansions. */
-  readonly freeKey: string
+  readonly fixed: readonly number[]
+  /** The fixed projections already expanded, shared by every effect with the same free
+   * set. Their successors are already in `seen`, so expanding one again would only
+   * regenerate duplicates. */
+  readonly expanded: Set<Key>
 }
+
+/**
+ * A state's identity. A NUMBER when every value lies in its declared domain and the
+ * domains' product fits a double exactly: the mixed-radix index of the state, which a step
+ * updates by one addition per successor. A STRING, the rendered values, otherwise (an
+ * unbounded int, or a write that left its range). A state has exactly one key either way,
+ * and a number never equals a string.
+ */
+type Key = number | string
+
+/** A visited state: its values by declaration position, and how it was first reached. */
+interface Node {
+  readonly state: State
+  readonly row: readonly Value[]
+  readonly parent?: Key
+  readonly via?: string
+}
+
+/** How states are keyed in one search. See {@link Key}. */
+interface Keying {
+  /** The place value of each position, or `undefined` when keys are strings. */
+  readonly weight: readonly number[] | undefined
+  /** A value's index in its position's declared domain, or `undefined` outside it. */
+  readonly digit: (at: number, value: Value) => number | undefined
+  readonly keyOf: (row: readonly Value[]) => Key
+}
+
+const keying = (
+  variables: readonly StateVariable[],
+  domains: ReadonlyMap<string, Domain>,
+): Keying => {
+  const digits = variables.map((variable): ((value: Value) => number | undefined) => {
+    if (variable.type === 'bool')
+      return (value) => (value === true ? 1 : value === false ? 0 : undefined)
+    if (variable.type === 'enum') {
+      const index = new Map<Value, number>(variable.domain.map((member, i) => [member, i]))
+      return (value) => index.get(value)
+    }
+    const domain = domains.get(variable.name)
+    const lo = variable.domain?.min
+    if (domain === undefined || lo === undefined) return () => undefined
+    const min = BigInt(lo)
+    return (value) => (domain.has(value) ? Number((value as bigint) - min) : undefined)
+  })
+  let product = 1n
+  for (const variable of variables) product *= domains.get(variable.name)?.size ?? 0n
+  const exact =
+    variables.every((v) => domains.has(v.name)) && product <= BigInt(Number.MAX_SAFE_INTEGER)
+  let place = 1
+  const weight = exact
+    ? variables.map((v) => {
+        const here = place
+        place *= Number((domains.get(v.name) as Domain).size)
+        return here
+      })
+    : undefined
+  const digit = (at: number, value: Value): number | undefined =>
+    (digits[at] as (value: Value) => number | undefined)(value)
+  const rendered = (row: readonly Value[]): string => row.map(String).join('\u0000')
+  const keyOf = (row: readonly Value[]): Key => {
+    if (weight === undefined) return rendered(row)
+    let code = 0
+    for (let at = 0; at < row.length; at += 1) {
+      const d = digit(at, row[at] as Value)
+      if (d === undefined) return rendered(row)
+      code += d * (weight[at] as number)
+    }
+    return code
+  }
+  return { weight, digit, keyOf }
+}
+
+const render = (
+  variables: readonly StateVariable[],
+  state: State,
+): Readonly<Record<string, string>> =>
+  Object.fromEntries(variables.map((v) => [v.name, String(state.get(v.name))]))
 
 /**
  * Decide, by explicit breadth-first enumeration, whether any reachable state of `model`
@@ -581,48 +667,68 @@ export const explicitCheck = (
 ): ExplicitVerdict => {
   const variables = model.variables
   const names = variables.map((v) => v.name)
+  const position = new Map(names.map((name, i) => [name, i]))
   const domains = new Map<string, Domain>()
   for (const variable of variables) {
     const domain = declaredDomain(variable)
     if (domain !== undefined) domains.set(variable.name, domain)
   }
+  const { weight, digit, keyOf } = keying(variables, domains)
+  const stateOf = (row: readonly Value[]): State =>
+    new Map(names.map((n, i) => [n, row[i] as Value]))
 
   // --- The initial states ---------------------------------------------------
-  const initial = initialStates(model, domains)
+  const initial = initialStates(model)
   if ('status' in initial) return initial
-  let work = initial.work
-  const seen = new Map<string, { state: State; parent?: string; via?: string }>()
-  let frontier: string[] = []
+  const seen = new Map<Key, Node>()
+  let frontier: Key[] = []
   for (const state of initial.states) {
     // Every predicate is decided on a complete assignment; `partial` only pruned.
     if (!model.initial.every((p) => truth(p, state))) continue
-    const key = keyOf(variables, state)
+    const row = names.map((n) => state.get(n) as Value)
+    const key = keyOf(row)
     if (seen.has(key)) continue
-    seen.set(key, { state })
+    seen.set(key, { state, row })
     frontier.push(key)
   }
 
   const pinnedByFrame = new Set(frame === 'none' ? [] : frame === 'full' ? names : model.stableVars)
+  const expansions = new Map<string, Set<Key>>()
   const steps: readonly StepPlan[] = model.effects.map(({ label, effect }) => {
     const written = new Set(effect.assignments.map((a) => a.target))
-    const free = names.filter((name) => !written.has(name) && !pinnedByFrame.has(name))
-    const freeSet = new Set(free)
+    const isFree = (name: string): boolean => !written.has(name) && !pinnedByFrame.has(name)
+    const free = names.flatMap((name, i) => (isFree(name) ? [i] : []))
+    const freeKey = free.join(',')
+    const expanded = expansions.get(freeKey) ?? new Set<Key>()
+    expansions.set(freeKey, expanded)
     return {
       label,
       effect,
+      writes: effect.assignments.map((a) => ({
+        at: position.get(a.target) as number,
+        value: a.value,
+      })),
       free,
-      fixed: names.filter((name) => !freeSet.has(name)),
-      freeKey: free.join('\u0001'),
+      fixed: names.flatMap((name, i) => (isFree(name) ? [] : [i])),
+      expanded,
     }
   })
-  // Every (free set, fixed projection) already expanded. Its successors are already in
-  // `seen`, so expanding it again would only regenerate duplicates.
-  const expanded = new Set<string>()
+  /** A free position's values in domain order, so a value's index is its digit. */
+  const choices = new Map<number, readonly Value[]>()
+  const choicesAt = (at: number): readonly Value[] => {
+    let found = choices.get(at)
+    if (found === undefined) {
+      found = [...(domains.get(names[at] as string) as Domain).values()]
+      choices.set(at, found)
+    }
+    return found
+  }
+  let work = 0
 
-  const violation = (key: string): ExplicitVerdict => {
+  const violation = (key: Key): ExplicitVerdict => {
     const trace: string[] = []
     const path: Readonly<Record<string, string>>[] = []
-    let cursor: string | undefined = key
+    let cursor: Key | undefined = key
     while (cursor !== undefined) {
       const node = seen.get(cursor)
       if (node === undefined) break
@@ -640,27 +746,33 @@ export const explicitCheck = (
 
   // --- Breadth-first expansion ------------------------------------------------
   while (frontier.length > 0) {
-    const next: string[] = []
+    const next: Key[] = []
     for (const key of frontier) {
-      const pre = (seen.get(key) as { state: State }).state
-      for (const { label, effect, free, fixed, freeKey } of steps) {
-        if (effect.guard !== undefined && !truth(effect.guard, pre)) continue
-        const post = new Map(pre)
-        for (const assignment of effect.assignments) {
-          post.set(assignment.target, evaluate(assignment.value, pre))
+      const pre = seen.get(key) as Node
+      for (const { label, effect, writes, free, fixed, expanded } of steps) {
+        if (effect.guard !== undefined && !truth(effect.guard, pre.state)) continue
+        const post = [...pre.row]
+        for (const { at, value } of writes) post[at] = evaluate(value, pre.state)
+        // The fixed part of the post-state, as a number when every fixed value lies in its
+        // domain (the successors' keys are then this plus the free digits), else rendered.
+        let base: number | undefined = weight === undefined ? undefined : 0
+        for (const at of fixed) {
+          if (base === undefined) break
+          const d = digit(at, post[at] as Value)
+          base = d === undefined ? undefined : base + d * ((weight as number[])[at] as number)
         }
-        const projection = `${freeKey}\u0002${fixed.map((n) => String(post.get(n))).join('\u0000')}`
+        const projection: Key = base ?? fixed.map((at) => String(post[at])).join('\u0000')
         if (expanded.has(projection)) continue
         expanded.add(projection)
         // Sized BEFORE generating. The successors of one projection are pairwise distinct
         // (they differ on a free variable) and all reachable, because this step fires from
         // a reachable state. So a fan-out past the state cap SHOWS the model is past it.
         let fanOut = 1n
-        for (const name of free) {
-          const domain = domains.get(name)
+        for (const at of free) {
+          const domain = domains.get(names[at] as string)
           if (domain === undefined) {
             return beyondCap(
-              `the unbounded int ${name} is free in a step, so a step has infinitely many successors`,
+              `the unbounded int ${names[at]} is free in a step, so a step has infinitely many successors`,
             )
           }
           fanOut *= domain.size
@@ -670,19 +782,54 @@ export const explicitCheck = (
             `a step from a reachable state has more than ${REACHABILITY_BFS_STATE_CAP} distinct successors`,
           )
         }
-        if (BigInt(work) + fanOut > BigInt(REACHABILITY_BFS_WORK_CAP)) {
-          return undetermined(`more than ${REACHABILITY_BFS_WORK_CAP} successors to generate`)
+        if (fanOut === 0n) continue
+        // The valve bounds time, not the model: the successors of ONE free set are distinct
+        // states, so the step phase generates at most (distinct free sets) x (state cap + 1)
+        // of them before the state cap trips. A document with more free sets than the valve
+        // affords may still be small, so tripping it withholds the proof.
+        if (BigInt(work) + fanOut > BigInt(REACHABILITY_BFS_SUCCESSOR_CAP)) {
+          return undetermined(`more than ${REACHABILITY_BFS_SUCCESSOR_CAP} successors to generate`)
         }
-        for (const successor of assignments(post, free, domains)) {
+        // An odometer over the free positions, the LAST fastest, so successors come in the
+        // same order as nested loops over the declarations. A successor is built as a state
+        // only when its key is new: a duplicate costs one key, and a numeric key costs one
+        // addition per step of the odometer.
+        const odometer = free.map(choicesAt)
+        const digits = free.map(() => 0)
+        const row = [...post]
+        free.forEach((at, k) => {
+          row[at] = (odometer[k] as readonly Value[])[0] as Value
+        })
+        let code = base
+        for (;;) {
           work += 1
-          const successorKey = keyOf(variables, successor)
-          if (seen.has(successorKey)) continue
-          seen.set(successorKey, { state: successor, parent: key, via: label })
-          if (seen.size > REACHABILITY_BFS_STATE_CAP) {
-            return beyondCap(`more than ${REACHABILITY_BFS_STATE_CAP} reachable states`)
+          const successorKey: Key = code ?? keyOf(row)
+          if (!seen.has(successorKey)) {
+            const successor = stateOf(row)
+            seen.set(successorKey, { state: successor, row: [...row], parent: key, via: label })
+            if (seen.size > REACHABILITY_BFS_STATE_CAP) {
+              return beyondCap(`more than ${REACHABILITY_BFS_STATE_CAP} reachable states`)
+            }
+            if (!truth(constraint, successor)) return violation(successorKey)
+            next.push(successorKey)
           }
-          if (!truth(constraint, successor)) return violation(successorKey)
-          next.push(successorKey)
+          let k = free.length - 1
+          for (; k >= 0; k -= 1) {
+            const at = free[k] as number
+            const values = odometer[k] as readonly Value[]
+            const place = weight?.[at] ?? 0
+            const d = (digits[k] as number) + 1
+            if (d < values.length) {
+              digits[k] = d
+              row[at] = values[d] as Value
+              if (code !== undefined) code += place
+              break
+            }
+            if (code !== undefined) code -= (d - 1) * place
+            digits[k] = 0
+            row[at] = values[0] as Value
+          }
+          if (k < 0) break
         }
       }
     }

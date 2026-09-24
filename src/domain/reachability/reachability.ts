@@ -1698,8 +1698,9 @@ export interface ConstraintResult {
  * - `not-applicable` — the search did not finish. With `beyondCap: true` it SHOWED the model
  *   has more reachable states than the cross-check covers, and the proof stands on the Horn
  *   tier and its certificate alone. With `beyondCap: false` it stopped without showing that
- *   (the work safety valve, or an initial predicate it cannot enumerate), so the model may
- *   be one AC-1-5 requires it to cover. The proof is then WITHHELD: the verdict is `UNKNOWN`.
+ *   (a safety valve on the initial search or the steps, or an initial predicate it cannot
+ *   enumerate), so the model may be one AC-1-5 requires it to cover. The proof is then
+ *   WITHHELD: the verdict is `UNKNOWN`.
  */
 export type CrossCheck =
   | { readonly status: 'agrees'; readonly states: number }

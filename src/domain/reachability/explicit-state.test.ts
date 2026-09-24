@@ -22,6 +22,7 @@ import { isExprError, validateExpression } from '../requirements/state-expr.ts'
 import {
   explicitCheck,
   REACHABILITY_BFS_STATE_CAP,
+  REACHABILITY_BFS_SUCCESSOR_CAP,
   REACHABILITY_BFS_WORK_CAP,
 } from './explicit-state.ts'
 import {
@@ -649,6 +650,291 @@ describe('a cross-check that runs out of work WITHHOLDS the proof', () => {
     expect(
       explicitCheck(prepareModel(independent), predicateOf(independent, 'y <= 3'), 'none'),
     ).toMatchObject({ status: 'not-applicable', beyondCap: true })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 1d. Many distinct free sets: duplicates across them never withhold a small model
+// ---------------------------------------------------------------------------
+
+/**
+ * The verifier's many-free-sets reproducer: {@link PAIR_BITS} bools, and one effect per PAIR
+ * of them that flips that pair and writes the mode variables. Under the `none` frame each
+ * effect leaves the other bools free, so every effect has a different free set. The
+ * reachable space is every assignment of the bools with the valve ajar, plus the one state
+ * OPEN reaches. The successors of ONE free set are distinct states, but the same state is a
+ * successor under many free sets: the search generates about {@link PAIR_SUCCESSORS}
+ * successors to find {@link PAIRS_STATES} states. That exceeded the single work valve the
+ * search used to share between its phases, so a proof over a model under the state cap was
+ * withheld, and a valve reported as `beyondCap` would have let a false proof through.
+ * `opens` is what OPEN writes: `open` violates C1, `shut` keeps it. The verifier's version
+ * also wrote a bounded int `c := c`, which only adds a range obligation per effect to the
+ * solver's bill, so it is left out.
+ */
+const PAIR_BITS = Array.from({ length: 13 }, (_, i) => `b${i}`)
+const PAIR_EFFECTS = PAIR_BITS.flatMap((bi, i) => PAIR_BITS.slice(i + 1).map((bj) => [bi, bj]))
+const PAIRS_STATES = 2 ** PAIR_BITS.length + 1
+/** Per free set: four post-state projections of the flipped pair, times 2^11 free values. */
+const PAIR_SUCCESSORS = PAIR_EFFECTS.length * 4 * 2 ** (PAIR_BITS.length - 2)
+const PAIRS = (opens: 'open' | 'shut' = 'open'): RequirementsDocument =>
+  docOf(
+    [
+      {
+        name: 'door',
+        type: 'enum',
+        frame: 'volatile',
+        domain: ['open', 'closed'],
+        initial: 'door = closed',
+      },
+      {
+        name: 'valve',
+        type: 'enum',
+        frame: 'volatile',
+        domain: ['shut', 'ajar', 'open'],
+        initial: 'valve = ajar',
+      },
+      ...PAIR_BITS.map(
+        (name): StateVariable => ({
+          name,
+          type: 'bool',
+          frame: 'volatile',
+          initial: `${name} = false`,
+        }),
+      ),
+    ],
+    [
+      ...PAIR_EFFECTS.map(([bi, bj], n) =>
+        effect(
+          n + 1,
+          `E${bi}x${bj}`,
+          `when valve = ajar: valve := valve, door := door, ${bi} := not ${bi}, ${bj} := not ${bj}`,
+        ),
+      ),
+      effect(
+        100,
+        'OPEN',
+        `when valve = ajar and ${PAIR_BITS.join(' and ')}: valve := ${opens}, door := door, ${PAIR_BITS.map((b) => `${b} := ${b}`).join(', ')}`,
+      ),
+      constraint(101, 'C1', 'valve = shut or valve = ajar'),
+    ],
+  )
+
+describe('many distinct free sets under the state cap are cross-checked, not withheld', () => {
+  const C1 = 'valve = shut or valve = ajar'
+
+  it('sizes the pairs reproducer under the state cap, its duplicates past the initial-search valve, and inside the successor valve', () => {
+    expect(PAIRS_STATES).toBeLessThanOrEqual(REACHABILITY_BFS_STATE_CAP)
+    expect(PAIR_SUCCESSORS).toBeGreaterThan(REACHABILITY_BFS_WORK_CAP)
+    expect(PAIR_SUCCESSORS).toBeLessThanOrEqual(REACHABILITY_BFS_SUCCESSOR_CAP)
+  })
+
+  it('enumerates every pairs state and proves C1 when OPEN shuts the valve', () => {
+    const document = PAIRS('shut')
+    expect(explicitCheck(prepareModel(document), predicateOf(document, C1), 'none')).toEqual({
+      status: 'holds',
+      states: PAIRS_STATES,
+    })
+  })
+
+  it('finds the pairs violation two steps deep: one pair flip frees the rest, then OPEN', () => {
+    const document = PAIRS()
+    const verdict = explicitCheck(prepareModel(document), predicateOf(document, C1), 'none')
+    expect(verdict.status).toBe('violated')
+    if (verdict.status === 'violated') {
+      expect(verdict.trace).toHaveLength(2)
+      expect(verdict.trace[1]).toBe('OPEN')
+      expect(verdict.path.at(-1)?.valve).toBe('open')
+    }
+  })
+
+  it('the tier reports the shut-valve pairs proof PROVED with the cross-check AGREEING', async () => {
+    const result = (await run(PAIRS('shut'))).results[0]
+    expect(result?.verdict).toBe('PROVED')
+    expect(result?.crossCheck).toEqual({ status: 'agrees', states: PAIRS_STATES })
+  })
+
+  it('the pairs reproducer yields no PROVED and no disagreement', async () => {
+    // Spacer spends its budget without a verdict here (measured: UNKNOWN at 20s too), so
+    // this is the spec's sabotage gate: an encoder that reads `valve := open` as `shut`
+    // proves C1, and only the explicit search, finishing, can refuse that proof.
+    const codes = projectReachability(await run(PAIRS()), 'doc.json').findings.map((f) => f.code)
+    expect(codes).not.toContain('FND_REACHABILITY_PROVED')
+    expect(codes).not.toContain('FND_CERTIFICATE_DISAGREES')
+  })
+})
+
+/**
+ * THE STEP VALVE's fixture: the pairs model with one effect per TRIPLE of bools, each
+ * flipping its three and leaving the other ten free. Its reachable space is the
+ * {@link TRIPLES_STATES} assignments of the bools, under the state cap. But it has so many
+ * distinct free sets that the successors generated with duplicates,
+ * {@link TRIPLE_SUCCESSORS}, pass {@link REACHABILITY_BFS_SUCCESSOR_CAP} (with the valve
+ * raised, the search finishes and proves C1: measured). So the valve trips on a SMALL
+ * model, which is exactly when it must withhold the proof rather than call the model large.
+ */
+const TRIPLE_EFFECTS = PAIR_BITS.flatMap((bi, i) =>
+  PAIR_BITS.slice(i + 1).flatMap((bj, j) =>
+    PAIR_BITS.slice(i + j + 2).map((bk) => [bi, bj, bk] as const),
+  ),
+)
+const TRIPLES_STATES = 2 ** PAIR_BITS.length
+/** Per free set: eight post-state projections of the flipped triple, times 2^10 free values. */
+const TRIPLE_SUCCESSORS = TRIPLE_EFFECTS.length * 8 * 2 ** (PAIR_BITS.length - 3)
+const TRIPLES = (): RequirementsDocument =>
+  docOf(
+    [
+      {
+        name: 'valve',
+        type: 'enum',
+        frame: 'volatile',
+        domain: ['shut', 'ajar', 'open'],
+        initial: 'valve = ajar',
+      },
+      ...PAIR_BITS.map(
+        (name): StateVariable => ({
+          name,
+          type: 'bool',
+          frame: 'volatile',
+          initial: `${name} = false`,
+        }),
+      ),
+    ],
+    [
+      ...TRIPLE_EFFECTS.map(([bi, bj, bk], n) =>
+        effect(
+          n + 1,
+          `E${bi}x${bj}x${bk}`,
+          `when valve = ajar: valve := valve, ${bi} := not ${bi}, ${bj} := not ${bj}, ${bk} := not ${bk}`,
+        ),
+      ),
+      constraint(1000, 'C1', 'valve = shut or valve = ajar'),
+    ],
+  )
+
+describe('the step valve trips only as a safety valve, and then WITHHOLDS the proof', () => {
+  const C1 = 'valve = shut or valve = ajar'
+
+  it('sizes the triples model under the state cap and its duplicates past the step valve', () => {
+    expect(TRIPLES_STATES).toBeLessThanOrEqual(REACHABILITY_BFS_STATE_CAP)
+    expect(TRIPLE_SUCCESSORS).toBeGreaterThan(REACHABILITY_BFS_SUCCESSOR_CAP)
+  })
+
+  it('trips the step valve on the triples model, without claiming the model is large', () => {
+    const document = TRIPLES()
+    expect(explicitCheck(prepareModel(document), predicateOf(document, C1), 'none')).toEqual({
+      status: 'not-applicable',
+      reason: `more than ${REACHABILITY_BFS_SUCCESSOR_CAP} successors to generate`,
+      beyondCap: false,
+    })
+  })
+
+  it('the tier withholds the triples proof instead of reporting it unchecked', async () => {
+    const report = await run(TRIPLES())
+    expect(report.results[0]?.verdict).toBe('UNKNOWN')
+    expect(report.results[0]?.crossCheck).toMatchObject({
+      status: 'not-applicable',
+      beyondCap: false,
+    })
+    const projection = projectReachability(report, 'doc.json')
+    const codes = projection.findings.map((f) => f.code)
+    expect(codes).not.toContain('FND_REACHABILITY_PROVED')
+    expect(codes).toContain('FND_REACHABILITY_UNKNOWN')
+    expect(projection.demotions.map((d) => d.reason)).toContain(
+      'reachability-cross-check-incomplete',
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 1e. A computed initial value obeys whichever bound is declared
+// ---------------------------------------------------------------------------
+
+/**
+ * `x` is defined by `x = y - 5` and declares ONE bound. The Horn tier applies a lone bound
+ * (`rangeConstraints` emits `x >= min` without a max), so the initial states are y in 5..10
+ * for `{ min: 0 }`, and y in 0..5 for `{ max: 0 }`. A computed value outside the lone bound
+ * is not an initial state: counting one would fabricate a violation of a valid proof.
+ */
+const HALF_BOUNDED = (bound: { readonly min: number } | { readonly max: number }, c: string) =>
+  docOf(
+    [
+      {
+        name: 'y',
+        type: 'int',
+        frame: 'volatile',
+        domain: { min: 0, max: 10 },
+        initial: 'y <= 10',
+      },
+      { name: 'x', type: 'int', frame: 'volatile', domain: bound, initial: 'x = y - 5' },
+    ],
+    [effect(1, 'NEVER', 'when y > 100: x := x, y := y'), constraint(2, 'C', c)],
+  )
+
+/**
+ * The verifier's ledger reproducer, a consistent document: `remaining >= 0` (a lone bound)
+ * and `remaining = budget - spent` force `spent <= budget` initially, and AUDIT writes every
+ * variable. 51 initial states (spent 0..50), each audited or not.
+ */
+const LEDGER = (): RequirementsDocument =>
+  docOf(
+    [
+      {
+        name: 'budget',
+        type: 'int',
+        frame: 'volatile',
+        domain: { min: 0, max: 100 },
+        initial: 'budget = 50',
+      },
+      {
+        name: 'spent',
+        type: 'int',
+        frame: 'volatile',
+        domain: { min: 0, max: 100 },
+        initial: 'spent <= 100',
+      },
+      {
+        name: 'remaining',
+        type: 'int',
+        frame: 'volatile',
+        domain: { min: 0 },
+        initial: 'remaining = budget - spent',
+      },
+      { name: 'audited', type: 'bool', frame: 'volatile', initial: 'audited = false' },
+    ],
+    [
+      effect(
+        1,
+        'AUDIT',
+        'when audited = false: audited := true, budget := budget, spent := spent, remaining := remaining',
+      ),
+      constraint(2, 'C1', 'spent <= budget'),
+    ],
+  )
+
+describe('a computed initial value obeys a lone declared bound, as in the Horn encoding', () => {
+  it('drops a defined value below a lone min', () => {
+    const document = HALF_BOUNDED({ min: 0 }, 'x >= 0')
+    expect(explicitCheck(prepareModel(document), predicateOf(document, 'x >= 0'), 'none')).toEqual({
+      status: 'holds',
+      states: 6,
+    })
+  })
+
+  it('drops a defined value above a lone max', () => {
+    const document = HALF_BOUNDED({ max: 0 }, 'x <= 0')
+    expect(explicitCheck(prepareModel(document), predicateOf(document, 'x <= 0'), 'none')).toEqual({
+      status: 'holds',
+      states: 6,
+    })
+  })
+
+  it('the ledger proof is PROVED with the cross-check AGREEING, and nothing is an error', async () => {
+    const report = await run(LEDGER())
+    expect(report.results[0]?.verdict).toBe('PROVED')
+    expect(report.results[0]?.crossCheck).toEqual({ status: 'agrees', states: 102 })
+    const findings = projectReachability(report, 'doc.json').findings
+    expect(findings.map((f) => f.code)).not.toContain('FND_CERTIFICATE_DISAGREES')
+    expect(findings.filter((f) => f.severity === 'error')).toEqual([])
   })
 })
 
