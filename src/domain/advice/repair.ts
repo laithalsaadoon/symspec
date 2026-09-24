@@ -220,6 +220,11 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // finding, not a guess.
       return fromFindingMessage(demotion, context, 'FND_OPPOSITION_CANDIDATE')
 
+    case 'opposite-polarity-near-duplicate':
+      // The FND_SIMILAR_SEMANTIC message carries the exact `glossary add` merge and the
+      // scoped waiver; the op is the always-safe waiver, the commands the merge first.
+      return fromFindingMessage(demotion, context, 'FND_SIMILAR_SEMANTIC')
+
     case 'quantity-alias-candidate':
       return fromFindingMessage(demotion, context, 'FND_QUANTITY_ALIAS_CANDIDATE')
 

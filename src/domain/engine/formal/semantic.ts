@@ -29,6 +29,15 @@ export interface SimilarSemanticFinding {
   readonly requirementIds: [string, string]
   /** The cosine similarity that triggered the finding, rounded to 3 dp. */
   readonly cosine: number
+  /**
+   * AC-3-6: the two responses sit at OPPOSITE polarity and are the same words up to
+   * inflection or number ({@link differsOnlyByInflection}) — "open the door" vs "shall
+   * not open the doors". If they mean one thing, the pair is a contradiction the solver
+   * cannot see (two atoms), so the pipeline DEMOTES on it until the pair is aliased
+   * (`glossary add`, after which the solver decides it) or declared distinct (a waiver of
+   * this finding). A demotion, never a verdict: the fold below never reaches an atom.
+   */
+  readonly oppositePolarityVariant: boolean
   readonly message: string
 }
 
@@ -121,6 +130,34 @@ function responseAtom(req: SemanticRequirement, glossary?: ReadonlyMap<string, s
 }
 
 const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
+
+/**
+ * True when two response texts are the same token sequence up to inflection or number:
+ * equal length after {@link normalize}, and every token pair either equal or equal once
+ * both are passed through {@link deInflectHead} (irregular past forms, 3sg `-s`/`-es`/
+ * `-ies`, which is also the regular plural). At least one token must differ, or the two
+ * would already share an atom.
+ *
+ * This is a lenient fold applied to EVERY token, which is exactly what the decide key
+ * must never do (`normalization-for-a-propose-signal-must-not-touch-the-decide-key`). It
+ * is safe here because it only ever selects a pair to DEMOTE on — it names no atom and
+ * asserts nothing, so a false match costs an author one triage and can fabricate no
+ * finding.
+ */
+export function differsOnlyByInflection(a: string, b: string): boolean {
+  const ta = normalize(a).split('_')
+  const tb = normalize(b).split('_')
+  if (ta.length !== tb.length || ta.length === 0) return false
+  let differs = false
+  for (let i = 0; i < ta.length; i++) {
+    const x = ta[i] as string
+    const y = tb[i] as string
+    if (x === y) continue
+    if (deInflectHead(x) !== deInflectHead(y)) return false
+    differs = true
+  }
+  return differs
+}
 const round3 = (n: number): number => Math.round(n * 1000) / 1000
 
 /**
@@ -198,17 +235,30 @@ export async function findSimilarSemantic(
               'synonyms, register an antonym instead (see `symspec antonym add`).'
       }
 
+      // AC-3-6: opposite polarity (read off the atoms, so an antonym-flipped response
+      // counts) over the same words up to inflection/number.
+      const oppositePolarityVariant =
+        atomA.negated !== atomB.negated &&
+        differsOnlyByInflection(a.systemResponse, b.systemResponse)
+      const variantNote = oppositePolarityVariant
+        ? ` These two differ only in inflection or number and sit at OPPOSITE polarity, so if ` +
+          'they mean the same thing they contradict each other — this DEMOTES `verified` until ' +
+          'you commit the glossary merge above (the solver then decides the pair) or declare ' +
+          `them distinct with \`symspec waive add FND_SIMILAR_SEMANTIC --ref ${hi} --reason "…"\`.`
+        : ''
+
       findings.push({
         code: 'FND_SIMILAR_SEMANTIC',
         severity: 'info',
         requirementIds: [lo, hi],
         cosine: round3(score),
+        oppositePolarityVariant,
         message:
           `${lo} and ${hi} have semantically similar responses (cosine ${round3(score)} ≥ ` +
           `${threshold}) under the same system, but atomized to different atoms. If they mean ` +
           `the same thing, run \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\` ` +
           'so the formal tier treats them as one atom, then re-run `symspec check` to surface any ' +
-          `conflict the shared atom exposes.${antonymHint} This is a suggestion, not a verdict.`,
+          `conflict the shared atom exposes.${antonymHint}${variantNote} This is a suggestion, not a verdict.`,
       })
     }
   }

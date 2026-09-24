@@ -385,6 +385,12 @@ export interface CoverageDemotion {
     // detector could not find what the pinned model would. A statement about the RUN, not
     // the document: discharged by re-running without the stub, never by waiving.
     | 'run-weakened'
+    // AC-3-6: a kept FND_SIMILAR_SEMANTIC pair whose responses sit at OPPOSITE polarity
+    // and differ only in inflection or number ("open the door" / "shall not open the
+    // doors"). If they mean one thing it is a contradiction on two atoms the solver
+    // cannot see. Discharged by the glossary merge (the solver then decides it) or by
+    // waiving the finding (declared distinct) — the finding is the triage record.
+    | 'opposite-polarity-near-duplicate'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
   action: string
@@ -1102,6 +1108,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   // AC-3-4: `unknown`s reported by tiers that have no group structure of their own (the
   // temporal tier's single joint check), each naming the requirements it covered.
   const tierUnknowns: { tier: string; requirementIds: string[] }[] = []
+  // AC-3-6: the FND_SIMILAR_SEMANTIC pairs that are opposite-polarity inflection variants,
+  // keyed `lo|hi`. The demotion reads the KEPT findings, so a waiver discharges it.
+  const oppositeVariantPairs = new Set<string>()
 
   const report = await runSolvers(doc, {
     ...(options.similarityThreshold !== undefined
@@ -1413,6 +1422,10 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
                 : {}),
             })
           : []
+
+      for (const f of semantic) {
+        if (f.oppositePolarityVariant) oppositeVariantPairs.add(f.requirementIds.join('|'))
+      }
 
       // #6: opt-in opposition-candidate proposals. Same embedder, propose-only —
       // emits FND_OPPOSITION_CANDIDATE for same-system responses that share an
@@ -1828,6 +1841,24 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           '(the numeric tier is pairwise same-quantity only). Verify any shared-resource sum or ' +
           'cross-entity relation by hand and waive this finding, or restate the constraint as a ' +
           'same-quantity numeric bound the solver can check.',
+      })
+    }
+    // AC-3-6: an untriaged opposite-polarity inflection variant is a possible
+    // contradiction on two atoms, so it demotes exactly like an opposition candidate:
+    // off the KEPT set, so the waiver that declares the pair distinct discharges it.
+    for (const f of kept) {
+      if (f.code !== 'FND_SIMILAR_SEMANTIC') continue
+      if (!oppositeVariantPairs.has(f.requirementIds.join('|'))) continue
+      demotions.push({
+        reason: 'opposite-polarity-near-duplicate',
+        requirementIds: [...f.requirementIds],
+        action:
+          `${f.requirementIds.join(' and ')} respond with the same words up to inflection or ` +
+          'number at OPPOSITE polarity, on two different atoms, so if they mean one thing they ' +
+          'contradict each other and the solver cannot see it. Commit the `symspec glossary add` ' +
+          "merge from the finding's message if they are the same (the solver then decides the " +
+          'pair), or waive FND_SIMILAR_SEMANTIC for the pair if they are genuinely distinct. ' +
+          'Then re-run `symspec check`.',
       })
     }
     for (const f of openOppositionFindings) {

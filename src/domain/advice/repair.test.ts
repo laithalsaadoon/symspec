@@ -200,6 +200,7 @@ const EVERY_REASON: readonly CoverageDemotion['reason'][] = [
   'solver-unknown',
   'conditional-conflict-unchecked',
   'run-weakened',
+  'opposite-polarity-near-duplicate',
 ]
 
 const CONTEXT: RepairContext = {

@@ -15,6 +15,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Embedder } from '../formal/embed.ts'
+import { differsOnlyByInflection } from '../formal/semantic.ts'
 import { type CheckOptions, runCheck } from './check.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -473,5 +474,131 @@ describe('AC-3-2: opposite polarity on one response atom under guards no checked
       SEMANTIC(),
     )
     expect(conditional(report)).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC-3-6 — an opposite-polarity pair that differs only in inflection or number
+// ---------------------------------------------------------------------------
+
+/**
+ * A hand-authored vector table: texts listed in the same group embed to one unit vector
+ * (cosine 1), every other text is orthogonal. The stub's cosines are a hash, so a
+ * threshold-crossing case has to state its cosines rather than hope for them.
+ */
+const tableEmbedder = (groups: readonly (readonly string[])[]): Embedder => {
+  const DIM = 64
+  const groupOf = new Map<string, number>()
+  groups.forEach((g, i) => {
+    for (const t of g) groupOf.set(t, i)
+  })
+  const fresh = new Map<string, number>()
+  return async (texts) =>
+    texts.map((t) => {
+      const v = new Float32Array(DIM)
+      const g = groupOf.get(t)
+      if (g !== undefined) v[g] = 1
+      else {
+        if (!fresh.has(t)) fresh.set(t, groups.length + fresh.size)
+        v[(fresh.get(t) as number) % DIM] = 1
+      }
+      return v
+    })
+}
+
+const P1 = 'para-1-open-door'
+const P2 = 'para-2-not-open-doors'
+const paraDoc = (o: { second?: string; negated?: boolean } = {}) =>
+  docOf([
+    { id: P1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door' },
+    {
+      id: P2,
+      systemName: 'door controller',
+      trigger: PRESS,
+      systemResponse: o.second ?? 'open the doors',
+      negated: o.negated ?? true,
+    },
+  ])
+const nearDuplicate = (report: Awaited<ReturnType<typeof runCheck>>) =>
+  report.coverage.demotions.filter((d) => d.reason === 'opposite-polarity-near-duplicate')
+
+describe('AC-3-6: opposite polarity, same words up to inflection or number', () => {
+  const embedder = () =>
+    tableEmbedder([
+      ['open the door', 'open the doors'],
+      ['open the door ', 'unlock the door'],
+    ])
+
+  it('demotes until the pair is aliased or declared distinct', async () => {
+    const report = await runCheck(paraDoc(), { semantic: { embedder: embedder() } })
+    // Premise: the semantic tier proposed the merge, and nothing else demotes — the two
+    // are co-live under one trigger, so without this demotion the run certifies.
+    expect(report.findings.map((f) => f.code)).toContain('FND_SIMILAR_SEMANTIC')
+    expect(report.findings.map((f) => f.code)).not.toContain('FND_CONTRADICTION')
+    expect(nearDuplicate(report).map((d) => d.requirementIds)).toEqual([[P1, P2]])
+    expect(reasons(report)).toEqual(['opposite-polarity-near-duplicate'])
+    expect(report.verified).toBe(false)
+  })
+
+  it('control: the SAME polarity pair proposes the merge but does not demote', async () => {
+    const report = await runCheck(paraDoc({ negated: false }), {
+      semantic: { embedder: embedder() },
+    })
+    expect(report.findings.map((f) => f.code)).toContain('FND_SIMILAR_SEMANTIC')
+    expect(nearDuplicate(report)).toEqual([])
+  })
+
+  it('control: opposite polarity over DIFFERENT words does not demote on this rule', async () => {
+    const report = await runCheck(
+      docOf([
+        { id: P1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door ' },
+        {
+          id: P2,
+          systemName: 'door controller',
+          trigger: PRESS,
+          systemResponse: 'unlock the door',
+          negated: true,
+        },
+      ]),
+      { semantic: { embedder: embedder() } },
+    )
+    expect(report.findings.map((f) => f.code)).toContain('FND_SIMILAR_SEMANTIC')
+    expect(nearDuplicate(report)).toEqual([])
+  })
+
+  it('is discharged by the alias, which turns the pair into a proof', async () => {
+    const doc = paraDoc() as unknown as { glossary: unknown[] }
+    doc.glossary = [{ canonical: 'open the door', aliases: ['open the doors'] }]
+    const report = await runCheck(doc as never, { semantic: { embedder: embedder() } })
+    expect(report.findings.map((f) => f.code)).toContain('FND_CONTRADICTION')
+    expect(nearDuplicate(report)).toEqual([])
+  })
+
+  it('is discharged by a waiver of the proposal (declared distinct)', async () => {
+    const doc = paraDoc() as unknown as { waivers: unknown[] }
+    doc.waivers = [
+      {
+        code: 'FND_SIMILAR_SEMANTIC',
+        requirementId: P2,
+        reason: 'distinct: a single door vs the whole set',
+        createdAt: TS,
+      },
+    ]
+    const report = await runCheck(doc as never, { semantic: { embedder: embedder() } })
+    expect(nearDuplicate(report)).toEqual([])
+  })
+})
+
+describe('differsOnlyByInflection', () => {
+  it.each([
+    ['open the door', 'open the doors', true],
+    ['opens the valve', 'open the valves', true],
+    ['empty the battery', 'empty the batteries', true],
+    ['open the door', 'open the door', false],
+    ['open the door', 'unlock the door', false],
+    ['open the door', 'open the front door', false],
+    ['open the gas valve', 'open the gap valve', false],
+  ] as const)('%s / %s -> %s', (a, b, expected) => {
+    expect(differsOnlyByInflection(a, b)).toBe(expected)
   })
 })
