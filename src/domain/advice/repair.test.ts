@@ -405,3 +405,98 @@ describe('no source string hand-types a count of the tool`s own surface', () => 
     expect(HAND_TYPED_COUNT.test(`\`\${'$'}{catalogCounts().total} codes\``)).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// A pair demotion's waiver op discharges THAT pair, not every pair of its code
+// ---------------------------------------------------------------------------
+
+/**
+ * `check` suppresses a finding under a waiver when the codes match and either the waiver
+ * is unscoped or the finding names its `ref`. Mirrored here so the property is asserted
+ * against the rule the pipeline applies, not against the op's shape.
+ */
+const suppresses = (op: { code?: string; ref?: string }, finding: CheckFinding): boolean =>
+  op.code === finding.code && (op.ref === undefined || finding.requirementIds.includes(op.ref))
+
+const pairFinding = (code: string, ids: [string, string], message: string): CheckFinding => ({
+  code,
+  severity: 'info',
+  tier: 'formal',
+  requirementIds: ids,
+  message,
+})
+
+describe('a pair demotion repair is scoped to its own pair', () => {
+  const PAIRS: readonly [CoverageDemotion['reason'], string, string][] = [
+    ['opposite-polarity-near-duplicate', 'FND_SIMILAR_SEMANTIC', 'merge'],
+    ['open-opposition-candidate', 'FND_OPPOSITION_CANDIDATE', OPPOSITION_MESSAGE],
+    ['quantity-alias-candidate', 'FND_QUANTITY_ALIAS_CANDIDATE', QUANTITY_ALIAS_MESSAGE],
+  ]
+
+  it.each(PAIRS)('%s: applying the op leaves an untriaged pair demoting', (reason, code, msg) => {
+    const door = pairFinding(code, ['door-lo', 'door-hi'], msg)
+    const brake = pairFinding(code, ['brake-lo', 'brake-hi'], msg)
+    const context: RepairContext = { ...CONTEXT, findings: [door, brake] }
+    const repair = repairForDemotion(
+      { reason, requirementIds: ['door-lo', 'door-hi'], action: 'x' } as CoverageDemotion,
+      context,
+    )
+    expect(repair.ops).toEqual([expect.objectContaining({ op: 'waive', code })])
+    const waive = repair.ops[0] as { code?: string; ref?: string }
+    expect(suppresses(waive, door)).toBe(true)
+    expect(suppresses(waive, brake)).toBe(false)
+  })
+
+  it('scopes to the id the finding message names (the higher one)', () => {
+    const door = pairFinding('FND_SIMILAR_SEMANTIC', ['door-lo', 'door-hi'], 'merge')
+    const repair = repairForDemotion(
+      {
+        reason: 'opposite-polarity-near-duplicate',
+        requirementIds: ['door-lo', 'door-hi'],
+        action: 'x',
+      } as CoverageDemotion,
+      { ...CONTEXT, findings: [door] },
+    )
+    expect(repair.ops).toEqual([expect.objectContaining({ ref: 'door-hi' })])
+  })
+
+  it('avoids an id a SIBLING pair shares, when the pair has one of its own', () => {
+    // [a, c] and [b, c]: scoping to c would discharge both, scoping to a only its own.
+    const ac = pairFinding('FND_SIMILAR_SEMANTIC', ['a', 'c'], 'merge a c')
+    const bc = pairFinding('FND_SIMILAR_SEMANTIC', ['b', 'c'], 'merge b c')
+    const repair = repairForDemotion(
+      {
+        reason: 'opposite-polarity-near-duplicate',
+        requirementIds: ['a', 'c'],
+        action: 'x',
+      } as CoverageDemotion,
+      { ...CONTEXT, findings: [bc, ac] },
+    )
+    const waive = repair.ops[0] as { code?: string; ref?: string }
+    expect(suppresses(waive, ac)).toBe(true)
+    expect(suppresses(waive, bc)).toBe(false)
+  })
+
+  it("reads its commands from ITS pair's finding, not the first one sharing an id", () => {
+    const ab = pairFinding(
+      'FND_SIMILAR_SEMANTIC',
+      ['a', 'b'],
+      'run `symspec glossary add "one" "two"`',
+    )
+    const ac = pairFinding(
+      'FND_SIMILAR_SEMANTIC',
+      ['a', 'c'],
+      'run `symspec glossary add "one" "three"`',
+    )
+    const repair = repairForDemotion(
+      {
+        reason: 'opposite-polarity-near-duplicate',
+        requirementIds: ['a', 'c'],
+        action: 'x',
+      } as CoverageDemotion,
+      { ...CONTEXT, findings: [ab, ac] },
+    )
+    expect(repair.commands).toContain('symspec glossary "one" "three"')
+    expect(repair.commands).not.toContain('symspec glossary "one" "two"')
+  })
+})

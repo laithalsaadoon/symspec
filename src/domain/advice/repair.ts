@@ -347,6 +347,24 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
 }
 
 /**
+ * The requirement a waiver of `finding` should be scoped to.
+ *
+ * Waiver scope is per requirement, so a pair finding cannot be waived for exactly its pair:
+ * the ref suppresses every same-code finding that names it. The pick keeps that blast
+ * radius to this pair where the ids allow — the HIGHER id first (the one each pair
+ * finding's own message recommends as `--ref`), then the lower, taking the first that no
+ * other same-code finding names. When both are shared, the higher id is still the
+ * narrowest scope a waiver can express.
+ */
+const scopeFor = (finding: CheckFinding, sameCode: readonly CheckFinding[]): string | undefined => {
+  const candidates = [...finding.requirementIds].reverse()
+  const others = sameCode.filter((f) => f !== finding)
+  return (
+    candidates.find((id) => !others.some((f) => f.requirementIds.includes(id))) ?? candidates[0]
+  )
+}
+
+/**
  * Build the repair for a PROPOSE-ONLY candidate, from the finding that raised it.
  *
  * The semantic/quantity-alias findings BUILD their suggested invocation into their
@@ -379,20 +397,25 @@ const fromFindingMessage = (
   code: string,
 ): Repair => {
   const ids = new Set(demotion.requirementIds)
-  const finding = context.findings.find(
-    (f) => f.code === code && f.requirementIds.some((id) => ids.has(id)),
-  )
+  const sameCode = context.findings.filter((f) => f.code === code)
+  // The finding that raised THIS demotion names exactly its ids; one that merely shares an
+  // id belongs to another pair, and reading its message would hand out the wrong merge.
+  const finding =
+    sameCode.find(
+      (f) => f.requirementIds.length === ids.size && f.requirementIds.every((id) => ids.has(id)),
+    ) ?? sameCode.find((f) => f.requirementIds.some((id) => ids.has(id)))
   if (finding === undefined) return NO_REPAIR
 
-  // The always-safe discharge, as a real op. Scoped to the requirements the candidate
-  // names when there is exactly one, document-wide otherwise — a waiver scoped to the
-  // wrong requirement would suppress nothing.
-  const scoped = demotion.requirementIds.length === 1 ? demotion.requirementIds[0] : undefined
+  // The always-safe discharge, as a real op, scoped to one requirement the finding names —
+  // never document-wide. `check` suppresses a finding under a scoped waiver when the finding
+  // names the ref, so an unscoped waiver would discharge EVERY candidate of this code,
+  // including pairs nobody triaged, and certify the document.
+  const ref = scopeFor(finding, sameCode)
   const waive: DocumentOp = {
     op: 'waive',
     code,
     reason: 'triaged: <why this candidate is not a conflict>',
-    ...(scoped !== undefined ? { ref: scoped } : {}),
+    ...(ref !== undefined ? { ref } : {}),
   }
 
   const advice = extractSymspecCommands(finding.message)
