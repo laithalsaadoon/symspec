@@ -16,11 +16,12 @@
  *
  * ## Why it is narrow, and who it blames
  *
- * `kind` is part of atom identity — `renderAtom` writes `sys__<scope>__<kind>__<body>` — so a
- * RESPONSE atom is never a PRECONDITION atom, and no response can contradict a guard by naming
+ * The namespace is part of atom identity — `renderAtom` writes `sys__<scope>__<ns>__<body>`, with
+ * `resp` apart from the shared `guard` namespace — so a RESPONSE atom is never a GUARD atom, and no response can contradict a guard by naming
  * the same condition. One shape is left: two OTHER requirements force a single `resp` atom at
- * OPPOSITE polarity, and each of their context sets is a subset of the target's, so asserting
- * the target's guard activates both and the conjunction goes `unsat`.
+ * OPPOSITE polarity (or two `resp` atoms a contrary axiom relates, AC-2-1), and each of their
+ * context sets is a subset of the target's, so asserting the target's guard activates both and
+ * the conjunction goes `unsat`.
  *
  * The finding therefore names the requirement whose guard was asserted, while the contradiction
  * lives entirely in the other two — a bystander, told its rule can never fire. Findings are
@@ -36,7 +37,14 @@
 
 import type { Z3Context } from './backend.ts'
 import type { SolverBounds } from './budget.ts'
-import { and, atom, type EncodedRequirement, type Formula, materialize } from './encode.ts'
+import {
+  and,
+  atom,
+  contraryAxioms,
+  type EncodedRequirement,
+  type Formula,
+  materialize,
+} from './encode.ts'
 
 /** A relational vacuity finding (Appendix B `FND_VACUITY`, warn, low confidence). */
 export interface VacuityFinding {
@@ -95,6 +103,10 @@ export async function checkVacuityOf(
     if (other.id === target.id) continue
     solver.add(materialize(ctx, other.body))
   }
+  // AC-2-1: the contrary axioms are vocabulary, not a requirement, so they hold here too — two
+  // other rules demanding `accept` and `reject` under this guard make it unreachable exactly as
+  // `accept` and `¬accept` would.
+  for (const axiom of contraryAxioms(all)) solver.add(materialize(ctx, axiom))
   // Assert this requirement's guard holds. unsat ⇒ unreachable ⇒ vacuous.
   solver.add(materialize(ctx, guard))
 

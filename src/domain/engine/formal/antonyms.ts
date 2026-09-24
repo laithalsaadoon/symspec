@@ -1,11 +1,16 @@
 /**
  * Curated seed antonym table for the formal atomizer (AC-4-2a).
  *
- * The single load-bearing purpose: unify polar-opposite response verbs onto ONE
- * Boolean atom with opposite polarity, so the SMT tier can actually detect the
- * common "grant vs revoke" style contradiction. Without this table that whole
- * class of conflict is a false negative and the minimal-unsat-core finding
- * (AC-4-4) is nearly vacuous (research-smt.md §4.2 rule 2; spec AC-4-2a).
+ * The single load-bearing purpose: relate polar-opposite response verbs by a
+ * CONTRARY axiom, `¬(grant_x ∧ revoke_x)` over two distinct atoms (spec 007
+ * AC-2-1), so the SMT tier can actually detect the common "grant vs revoke" style
+ * contradiction. Without this table that whole class of conflict is a false
+ * negative and the minimal-unsat-core finding (AC-4-4) is nearly vacuous
+ * (research-smt.md §4.2 rule 2; spec AC-4-2a).
+ *
+ * A contrary, never the rename `revoke ≡ ¬grant`: the rename asserted that one of
+ * the two always happens, so "shall not grant" plus "shall not revoke" — a
+ * document that says "do neither" — was an error-severity contradiction.
  *
  * Scope and conservatism (research-smt.md §4.2, §4.3):
  *   - This is a small, HIGH-PRECISION, curated resource — NOT a thesaurus and
@@ -17,29 +22,36 @@
  *     pairs cover only 13 of the 32 pairs this table needs, contain odd
  *     polarity cycles that break the signed union-find, and merge classes this
  *     table deliberately keeps apart — curation IS the architecture here.
- *   - Unification requires the (de-inflected) leading verb to match AND the
- *     object remainder to be identical after normalization + the antonym-hit
- *     preposition drop (see atomize.ts): "grant access" unifies with
- *     "revoke access" but not with "revoke permission".
+ *   - A contrary requires the (de-inflected) leading verbs to sit on opposite
+ *     sides of one class AND the object remainder to be identical after
+ *     normalization + the antonym-hit preposition drop (see atomize.ts): "grant
+ *     access" is a contrary of "revoke access" but not of "revoke permission".
  *
  * Shared-member semantics (why a signed union-find, not a flat pair map):
  *   Some seed pairs share a member — `accept↔reject`, `approve↔reject`, and
- *   `accept↔decline` all touch `accept`/`reject`. A naive "verb → its pair's
- *   canonical" map would make `reject` ambiguous. Instead we treat each pair as
- *   an equality-up-to-sign constraint (`a` and `b` are opposite polarity) and
- *   compute signed equivalence classes: `accept`, `approve` (positive) and
- *   `reject`, `decline` (negative) collapse into one class whose canonical atom
- *   is the lexicographically smallest member (`accept`). This is the only
- *   deterministic, conflict-free way to resolve shared members, and it has the
- *   sensible consequence that near-synonyms on the same polarity side
- *   (`accept`/`approve`) unify too.
+ *   `accept↔decline` all touch `accept`/`reject`. We treat each pair as an
+ *   edge between opposite polarity SIDES and compute signed classes: `accept`,
+ *   `approve` (positive) and `reject`, `decline` (negative) form one class named
+ *   after its lexicographically smallest member (`accept`). Every positive-side
+ *   atom is a contrary of every negative-side atom over the same remainder, so
+ *   the deliberate class merges below keep working.
+ *
+ * Same-side members are ONE atom: every member on one polarity side of a class
+ * resolves to that side's lexicographically smallest member (`approve` → `accept`,
+ * `rollback` → `roll_back`, `grant` → `allow`). That is the table's deliberate
+ * merge, not a side effect: the authorization verbs are interchangeable in the
+ * EARS response idiom, and `roll back`/`rollback` are one verb spelled two ways.
+ * An equality is a strengthening move (spec 007 I-1), so the merge can only add
+ * findings; AC-2-1 retires only the cross-side rename `A ≡ ¬B`. Split, "shall
+ * grant X" plus "shall not allow X" was two unrelated atoms and a clean
+ * `verified: true` over a real conflict, with no finding pointing at it.
  */
 
 /**
  * The seed antonym pairs (AC-4-2a; original 15 from the spec plus the
  * adversarial-eval expansion). Each `[a, b]` asserts that `a` and `b` are polar
  * opposites — a response led by `a` and one led by `b` (with the same object
- * remainder) resolve to the same atom with opposite polarity. Multiword heads
+ * remainder) are contraries: they cannot both hold. Multiword heads
  * are underscore-joined in normalized form (`roll_back`); the atomizer probes
  * two-token heads before one.
  *
@@ -49,18 +61,17 @@
  * re-canonicalizes classes fails loudly.
  *
  * Deliberate class merges (adversarial-eval driven, each a judgment call):
- *   - grant/allow/permit/authorize collapse into ONE positive authorization
- *     class against revoke/deny/forbid (via grant↔deny, permit↔deny,
- *     authorize↔deny): in the EARS response idiom these are interchangeable
- *     authorization verbs over an identical object remainder, and the
- *     remainder-must-match rule bounds the over-unification risk. The eval's
- *     grant-vs-deny blind spot (grant/revoke and allow/deny were disjoint
+ *   - grant/allow/permit/authorize share ONE positive authorization side
+ *     against revoke/deny/forbid (via grant↔deny, permit↔deny, authorize↔deny):
+ *     in the EARS response idiom these are interchangeable authorization verbs
+ *     over an identical object remainder, so each positive verb is a contrary of
+ *     each negative one, and the remainder-must-match rule bounds the risk. The
+ *     eval's grant-vs-deny blind spot (grant/revoke and allow/deny were disjoint
  *     classes) is closed by exactly this merge.
- *   - publish/extend transitively share a class via retract/withdraw
- *     (publish↔retract, extend↔retract, insert↔withdraw): acceptable under
- *     remainder-match ("publish the report" vs "extend the report" colliding
- *     requires identical remainders AND opposite intent — no observed case);
- *     kept because both pairs are eval-confirmed real-world conflicts.
+ *   - publish/extend share a class via retract (publish↔retract,
+ *     extend↔retract): both are on the positive side, so they are never related
+ *     to EACH OTHER — only each to `retract`. Kept because both pairs are
+ *     eval-confirmed real-world conflicts.
  *   - The accept/approve/reject/decline class is deliberately NOT merged into
  *     the authorization class (proposal-acceptance ≠ access-authorization).
  */
@@ -102,10 +113,19 @@ export const SEED_ANTONYM_PAIRS: ReadonlyArray<readonly [string, string]> = [
 
 /** A resolved antonym-class membership for one verb. */
 export interface AntonymEntry {
-  /** The lexicographically-smallest member of the verb's signed equivalence class. */
+  /**
+   * The lexicographically-smallest member of the verb's signed class — the class NAME, used in
+   * the atom's opposition key (`atomize.ts` `Opposition`), never as the atom's head.
+   */
   canonical: string
   /** True when this verb sits on the OPPOSITE polarity side of `canonical`. */
   negated: boolean
+  /**
+   * The lexicographically-smallest member on THIS verb's polarity side — the head of the atom it
+   * resolves to, so every same-side member of a class is one atom (`approve` → `accept`). Equal to
+   * `canonical` on the positive side.
+   */
+  side: string
 }
 
 /**
@@ -169,7 +189,8 @@ export function buildAntonymIndex(
     const canonical = [...members].sort()[0] as string
     // Re-base sign relative to the canonical (which we pin to positive).
     const negated = (sign.get(verb) as boolean) !== (sign.get(canonical) as boolean)
-    index.set(verb, { canonical, negated })
+    const side = members.filter((m) => sign.get(m) === sign.get(verb)).sort()[0] as string
+    index.set(verb, { canonical, negated, side })
   }
   return index
 }

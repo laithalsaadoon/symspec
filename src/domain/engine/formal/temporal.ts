@@ -382,6 +382,7 @@ export async function findTemporalContradictions(
   reqTemporals: readonly RequirementTemporal[],
   k = 10,
   bounds: SolverBounds = {},
+  axioms: readonly TemporalFormula[] = [],
 ): Promise<TemporalFinding[]> {
   if (reqTemporals.length < 2) return []
 
@@ -407,7 +408,7 @@ export async function findTemporalContradictions(
   // is a MISS, the honest direction. Which one it is must not be a line number.
   const ordered = [...reqTemporals].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   const ids = ordered.map((r) => r.id)
-  const solver = buildBoundedSolver(ctx, ordered, k, bounds)
+  const solver = buildBoundedSolver(ctx, ordered, k, bounds, axioms)
   const guards = ids.map((id) => ctx.Bool.const(id))
   const res = await solver.check(...guards)
   const evidence: Evidence = { atomTable: [], temporal: { bound: k, complete: false } }
@@ -428,10 +429,10 @@ export async function findTemporalContradictions(
   if (res !== 'unsat') return []
 
   const coreIds = dequoteCore(solver.unsatCore(), new Set(ids))
-  const minimal = await minimizeTemporalCore(ctx, ordered, coreIds, k, bounds)
+  const minimal = await minimizeTemporalCore(ctx, ordered, coreIds, k, bounds, axioms)
   const culprits = (minimal.length > 0 ? minimal : ids).slice().sort()
   const core = ordered.filter((r) => culprits.includes(r.id))
-  const premise = await premiseIndependent(ctx, core, k, bounds)
+  const premise = await premiseIndependent(ctx, core, k, bounds, axioms)
 
   if (premise.independent) {
     return [
@@ -497,6 +498,7 @@ async function premiseIndependent(
   core: readonly RequirementTemporal[],
   k: number,
   bounds: SolverBounds,
+  axioms: readonly TemporalFormula[],
 ): Promise<{ readonly independent: boolean; readonly antecedents: number }> {
   const antecedents = distinctAntecedents(core)
   const count = antecedents.length
@@ -506,7 +508,7 @@ async function premiseIndependent(
   if (count <= 1) return { independent: true, antecedents: count }
   const guards = core.map(({ id }) => ctx.Bool.const(id))
   for (const ante of antecedents) {
-    const solver = buildBoundedSolver(ctx, core, k, bounds, [ante])
+    const solver = buildBoundedSolver(ctx, core, k, bounds, axioms, [ante])
     if ((await solver.check(...guards)) === 'unsat') {
       return { independent: true, antecedents: count }
     }
@@ -591,6 +593,7 @@ function buildBoundedSolver(
   reqTemporals: readonly RequirementTemporal[],
   k: number,
   bounds: SolverBounds = {},
+  axioms: readonly TemporalFormula[] = [],
   reachable: readonly TemporalFormula[] = distinctAntecedents(reqTemporals),
 ): InstanceType<Z3Context['Solver']> {
   const solver = new ctx.Solver()
@@ -598,12 +601,16 @@ function buildBoundedSolver(
   for (const { id, formula } of reqTemporals) {
     solver.add(ctx.Implies(ctx.Bool.const(id), lowerInitial(ctx, formula, k)))
   }
+  // Spec 007 AC-2-1: the vocabulary's contrary axioms, `G ¬(A ∧ B)`, UNGUARDED — they belong to
+  // no requirement, so they never enter a core. They also join the tail-state `G` bodies below,
+  // or a pending eventuality could discharge past the horizon into a state the axiom forbids.
+  for (const axiom of axioms) solver.add(lowerInitial(ctx, axiom, k))
   for (const ante of reachable) {
     const disj: Z3Bool[] = []
     for (let i = 0; i <= k; i++) disj.push(lowerAt(ctx, ante, i, k))
     if (disj.length > 0) solver.add(ctx.Or(...disj))
   }
-  addPendingTailStates(ctx, solver, reqTemporals)
+  addPendingTailStates(ctx, solver, reqTemporals, axioms)
   return solver
 }
 
@@ -626,12 +633,13 @@ function addPendingTailStates(
   ctx: Z3Context,
   solver: InstanceType<Z3Context['Solver']>,
   reqTemporals: readonly RequirementTemporal[],
+  axioms: readonly TemporalFormula[] = [],
 ): void {
   // Every top-level `G` body in the surviving subset — legitimate at any step,
-  // therefore legitimate at any tail step.
-  const globalBodies = reqTemporals
-    .filter(({ formula }) => formula.op === 'G')
-    .map(({ formula }) => (formula as TemporalFormula & { op: 'G' }).arg)
+  // therefore legitimate at any tail step. The contrary axioms (AC-2-1) hold at every step too.
+  const globalBodies = [...reqTemporals.map(({ formula }) => formula), ...axioms]
+    .filter((formula) => formula.op === 'G')
+    .map((formula) => (formula as TemporalFormula & { op: 'G' }).arg)
   const bodySymbols = globalBodies.map((body) => {
     const syms = new Set<string>()
     collectTailSymbols(body, syms)
@@ -766,13 +774,14 @@ async function minimizeTemporalCore(
   core: string[],
   k: number,
   bounds: SolverBounds = {},
+  axioms: readonly TemporalFormula[] = [],
 ): Promise<string[]> {
   let current = [...new Set(core)].sort()
   for (const candidate of [...current]) {
     const trial = current.filter((id) => id !== candidate)
     if (trial.length < 2) continue
     const subset = reqTemporals.filter((r) => trial.includes(r.id))
-    const solver = buildBoundedSolver(ctx, subset, k, bounds)
+    const solver = buildBoundedSolver(ctx, subset, k, bounds, axioms)
     if ((await solver.check(...trial.map((id) => ctx.Bool.const(id)))) === 'unsat') current = trial
   }
   return current

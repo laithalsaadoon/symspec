@@ -226,9 +226,9 @@ when NOTHING was cross-compared at all.
    only those. Paraphrase is the enemy here, not repetition — a spec that reads
    repetitively is a spec whose conflicts are provable.
 4. **Commit oppositions you rely on.** If the conflict you care about is
-   "start" vs "halt", run \`symspec antonym add start halt\` so the atomizer collapses
-   them to one atom at opposite polarity. Until you do, the solver sees two unrelated
-   facts and proves nothing.
+   "start" vs "halt", run \`symspec antonym add start halt\` so the solver treats them
+   as contraries — two actions that cannot both hold. Until you do, the solver sees two
+   unrelated facts and proves nothing.
 5. **Commit synonyms you could not avoid.** Where two teams genuinely use different
    words for one thing, \`symspec glossary add "<canonical>" "<alias>"\` unifies them.
 6. **Only then \`check\`.** The propose-only tier will suggest what you missed
@@ -546,7 +546,7 @@ progress.atomsUncompared: 0    progress.openFindings: 1
 **What changed, and what did not.** The document is byte-identical apart from one
 antonym entry. No requirement was edited. The conflict was always there; committing the
 vocabulary is what made it PROVABLE. \`atomsUncompared\` fell from 2 to 0 because the
-two responses now collapse to one atom at opposite polarity.
+two responses are now contraries, so the solver compares them.
 
 **Read \`verified\` correctly.** It is \`true\` in BOTH runs, and that is not a bug —
 \`verified\` answers "was consistency actually CHECKED", not "is the document clean". A

@@ -175,9 +175,9 @@ when NOTHING was cross-compared at all.
    only those. Paraphrase is the enemy here, not repetition — a spec that reads
    repetitively is a spec whose conflicts are provable.
 4. **Commit oppositions you rely on.** If the conflict you care about is
-   "start" vs "halt", run `symspec antonym add start halt` so the atomizer collapses
-   them to one atom at opposite polarity. Until you do, the solver sees two unrelated
-   facts and proves nothing.
+   "start" vs "halt", run `symspec antonym add start halt` so the solver treats them
+   as contraries — two actions that cannot both hold. Until you do, the solver sees two
+   unrelated facts and proves nothing.
 5. **Commit synonyms you could not avoid.** Where two teams genuinely use different
    words for one thing, `symspec glossary add "<canonical>" "<alias>"` unifies them.
 6. **Only then `check`.** The propose-only tier will suggest what you missed
@@ -413,7 +413,7 @@ progress.atomsUncompared: 0    progress.openFindings: 1
 **What changed, and what did not.** The document is byte-identical apart from one
 antonym entry. No requirement was edited. The conflict was always there; committing the
 vocabulary is what made it PROVABLE. `atomsUncompared` fell from 2 to 0 because the
-two responses now collapse to one atom at opposite polarity.
+two responses are now contraries, so the solver compares them.
 
 **Read `verified` correctly.** It is `true` in BOTH runs, and that is not a bug —
 `verified` answers "was consistency actually CHECKED", not "is the document clean". A
@@ -753,7 +753,7 @@ an error-severity finding also excludes its requirement from the formal tier.
 | `FND_AMBIGUITY_NEEDS_JUDGMENT` | info | lint | pragmatic/contextual ambiguity was not assessed deterministically; a structured prompt to hand the requirement to an LLM/agent review. Never a verdict, never in the reproducibility hash. |
 | `FND_TEMPORAL_CONTRADICTION` | error | formal | a set of requirements is temporally inconsistent under bounded LTL→SMT (no trace of length ≤ k satisfies them jointly); sound-for-UNSAT, evidence carries {bound,complete:false}. Reported at warn instead when the conflict needs two or more guarded triggers to all occur within k steps (it vanishes with the reachability premise reduced to any single trigger), since that can be an artifact of the bound; re-check at a larger --temporal-bound. Opt-in via `check --temporal`. |
 | `FND_NO_PAIRS_CHECKED` | info | formal | the formal tier evaluated 0 candidate pairs (no two requirements shared an atom), so no cross-requirement conflict/subsumption analysis actually ran. Silence here is not a consistency certificate; consider glossary entries to align vocabulary so related requirements share atoms. |
-| `FND_OPPOSITION_CANDIDATE` | info | formal | two same-system responses share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified. Propose-only: if the verbs are truly opposite, run `symspec antonym add <verbA> <verbB>` so the formal tier collapses them to one atom at opposite polarity and can prove any conflict. Never a verdict. |
+| `FND_OPPOSITION_CANDIDATE` | info | formal | two same-system responses share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified. Propose-only: if the verbs are truly opposite, run `symspec antonym add <verbA> <verbB>` so the formal tier treats them as contraries (two atoms that cannot both hold) and can prove any conflict. Never a verdict. |
 | `FND_EXCLUDED_FROM_FORMAL` | info | structural | a requirement was excluded from the formal (SMT) tier because an error-severity lint or parse finding blocked its surface, so no cross-requirement analysis covered it. A LOUD coverage signal that DEMOTES `verified` (silence over an unchecked requirement is not a consistency certificate); discharge by fixing the blocking finding (rephrase) — waiving the finding alone does NOT restore formal coverage. |
 | `FND_QUANTITY_ALIAS_CANDIDATE` | info | formal | two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "run the infusion for ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary add` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict. |
 | `FND_RELATIONAL_UNCHECKED` | info | formal | requirements under one shared guard carry numeric bounds alongside unmatched (singleton) atoms — the shape where aggregate/conservation or cross-quantity relational conflicts hide. symspec's numeric tier is pairwise same-quantity only and does NOT attempt aggregate sums or cross-quantity arithmetic, so this reasoning was not attempted. DEMOTES `verified` so it never outruns what was compared; never a verdict. |

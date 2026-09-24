@@ -28,6 +28,7 @@ import { solverServiceLayer } from '../adapters/z3/solver-service.ts'
 import { type CheckPayload, checkOp } from '../app/operations/check.ts'
 import { runOperation } from '../app/runtime/operation.ts'
 import { toEngineDoc } from '../domain/compat.ts'
+import { contraryPairs } from '../domain/engine/formal/atomize.ts'
 import { contextAtomsOf, liveIn, planContextGroups } from '../domain/engine/formal/contradiction.ts'
 import type { Embedder } from '../domain/engine/formal/embed.ts'
 import { encodeIncluded } from '../domain/engine/pipeline/check.ts'
@@ -411,11 +412,17 @@ describe('what a GUARD merge would cost, without booting the solver', () => {
       `aligning ${JSON.stringify(guards)} should have put both requirements in one group`,
     ).toBeGreaterThan(0)
 
-    // And the other half of the antecedent: one response atom, opposite polarities.
+    // And the other half of the antecedent: the two responses cannot both hold — one atom at
+    // opposite polarities, or (spec 007 AC-2-1) two positive atoms a contrary axiom relates.
     const responses = encodeIncluded(toEngineDoc(merged)).flatMap((e) =>
-      e.atoms.filter((a) => a.kind === 'resp').map((a) => ({ atom: a.atom, negated: a.negated })),
+      e.atoms.filter((a) => a.kind === 'resp'),
     )
-    expect(new Set(responses.map((r) => r.atom)).size, JSON.stringify(responses)).toBe(1)
-    expect(new Set(responses.map((r) => r.negated))).toEqual(new Set([true, false]))
+    const shown = JSON.stringify(responses.map((r) => ({ atom: r.atom, negated: r.negated })))
+    const oneAtomOpposed =
+      new Set(responses.map((r) => r.atom)).size === 1 &&
+      new Set(responses.map((r) => r.negated)).size === 2
+    const contraries =
+      contraryPairs(responses).length === 1 && responses.every((r) => r.negated === false)
+    expect(oneAtomOpposed || contraries, shown).toBe(true)
   })
 })

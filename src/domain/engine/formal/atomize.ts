@@ -18,10 +18,13 @@
  *      IDs" contradiction test (AC-4-4) rely on this.
  *
  *   2. CONSERVATIVE, NEAR-EXACT NORMALIZATION. The pipeline is EXACTLY:
- *        lowercase → strip leading articles (a|an|the) → strip punctuation
- *        → collapse whitespace → underscore-join → glossary rewrite →
+ *        strip leading articles (a|an|the) → spell comparison and sign symbols →
+ *        strip identity-free punctuation, keep every other symbol as a token →
+ *        fold case (not unit tokens) → underscore-join → glossary rewrite →
  *        copula strip (guard slots only) → leading-verb de-inflection +
- *        antonym rewrite (response slots only).
+ *        antonym-class lookup (response slots only; it sets the atom's
+ *        {@link Opposition} and names the head after its class SIDE, never its
+ *        polarity).
  *      It MUST NOT stem, lemmatize, or strip stopwords from the REMAINDER of a
  *      slot. Three closed, deterministic head/token rules are the whole
  *      exception surface (each below, each tested):
@@ -31,15 +34,19 @@
  *        - GUARD slots ({@link GUARD_KINDS}: pre/trig/feat) drop a single copula
  *          token ({@link stripCopula}), so "the session is authenticated" and
  *          "the session authenticated" name one guard state;
- *        - when (and only when) an ANTONYM head-flip fires, one preposition
- *          token is dropped from the remainder ({@link canonicalizeAntonymRest}),
- *          so "include X in the view" / "exclude X from the view" unify.
+ *        - when (and only when) the head is in an ANTONYM class, it is replaced by
+ *          the smallest member on its polarity side (`approve` → `accept`,
+ *          `rollback` → `roll_back`), and one preposition token is dropped from
+ *          the remainder ({@link canonicalizeAntonymRest}), so "include X in the
+ *          view" / "exclude X from the view" share one opposition key and are
+ *          contraries.
  *      Everything else stays near-exact: aggressive normalization is the one
  *      false-positive risk class (AC-4-11), so we buy only what closed rules
  *      can honestly deliver.
  *
- *   3. PER-systemName SCOPING. Every atom is prefixed `sys__<system>__<kind>__`
- *      (rendered by {@link renderAtom}, the one place that format is written).
+ *   3. PER-systemName SCOPING. Every atom is prefixed `sys__<system>__<namespace>__`
+ *      (rendered by {@link renderAtom}, the one place that format is written; trigger and
+ *      precondition share the `guard` namespace — {@link atomNamespace}).
  *      Identical response text under two different systems therefore yields two
  *      distinct atoms and can never unify into a spurious cross-system
  *      contradiction (spec AC-4-2a; research-smt.md §4.1 — "scope atoms per
@@ -52,9 +59,14 @@
  *      solver sees `R` vs `¬R` and can find the conflict — the whole point of
  *      extracting negation as a flag rather than leaving "not" in the string.
  *      The curated seed antonym table (antonyms.ts) extends this to lexical
- *      opposites: "grant access" / "revoke access" unify to one atom, opposite
- *      polarity, so the common grant-vs-revoke conflict is detectable rather
- *      than a false negative (spec AC-4-2a; research-smt.md §4.2).
+ *      opposites — as a CONTRARY, not a negation (spec 007 AC-2-1): "grant
+ *      access" / "revoke access" are two atoms (`allow_access`, `deny_access`: each
+ *      named after its side of the class) plus the axiom
+ *      `¬(allow_access ∧ deny_access)` ({@link contraryPairs}), so "shall grant"
+ *      plus "shall revoke" is still unsatisfiable while "shall not grant" plus
+ *      "shall not revoke" — do neither — is not. The rename `revoke ≡ ¬grant` this
+ *      replaced asserted that one of the two always happens, and fabricated an
+ *      error-severity contradiction on exactly that consistent document.
  *
  * ## ONE atomizer for BOTH tiers (AC-2-7)
  *
@@ -115,10 +127,11 @@ export type AtomKind = 'trig' | 'pre' | 'resp' | 'feat'
  * **Open semantic question, deliberately NOT resolved here (AC-2-7 note (a)).**
  * Whether `feat` should exist at all: one slot yielding two different atom
  * namespaces depending on `patternType` is arguably wrong, and collapsing
- * `feat` → `pre` is arguably more correct. It is NOT a refactor — collapsing it
- * makes an `optional-feature` precondition share an atom with a `state-driven`
- * precondition of the same text, which can only INCREASE unification and
- * therefore increase error-severity findings. The conservative choice (keep the
+ * `feat` into the shared `guard` namespace `pre` and `trig` render into (spec 007
+ * AC-3-3, {@link atomNamespace}) is arguably more correct. It is NOT a refactor —
+ * collapsing it makes an `optional-feature` precondition share an atom with a
+ * `state-driven` precondition of the same text, which can only INCREASE
+ * unification and therefore increase error-severity findings. The conservative choice (keep the
  * namespaces separate, exactly as shipped) is what is implemented, because the
  * other direction moves in the false-positive direction and needs a human.
  */
@@ -140,7 +153,11 @@ export const GUARD_KINDS: ReadonlySet<AtomKind> = new Set<AtomKind>(['pre', 'tri
 export interface AtomRef {
   /** The normalized `systemName` the atom is scoped under (invariant 3). */
   readonly scope: string
-  /** Which EARS slot the atom came from. */
+  /**
+   * Which EARS slot the atom came from. NOT the name's namespace: `trig` and `pre` render into the
+   * one `guard` namespace ({@link atomNamespace}), so two refs that differ only in this field name
+   * one atom.
+   */
   readonly kind: AtomKind
   /**
    * The normalized slot body, post-glossary / copula / antonym rewriting. Empty
@@ -152,21 +169,43 @@ export interface AtomRef {
 }
 
 /**
+ * The NAMESPACE an atom of each slot kind is named in — the `<ns>` of `sys__<scope>__<ns>__<body>`.
+ *
+ * Trigger and precondition share ONE namespace, `guard` (spec 007 AC-3-3). They used to be named
+ * by slot (`trig` / `pre`), which made "When the train is moving" and "While the train is moving"
+ * two unrelated Booleans: the contradiction tier keys a context group on the exact guard-atom set,
+ * so a requirement guarded one way never met one guarded the other way, and a real conflict went
+ * uncompared while the document counted as verified. Every propositional tier evaluates a single
+ * snapshot, in which both clauses assert the same thing — the condition holds now — so they are
+ * one atom. The SLOT is not forgotten: it stays on {@link AtomRef.kind} and on every atom-table
+ * row, which is where `incomplete.ts` reads trigger-versus-precondition.
+ *
+ * `resp` stays its own namespace, so a response can never be a guard by naming the same words
+ * (the subsumption lemma and the vacuity blame analysis both rest on that). `feat` stays its own
+ * namespace too: whether an optional-feature precondition should share the guard namespace is the
+ * open question recorded on {@link GUARD_KINDS}, and this AC does not decide it.
+ */
+export function atomNamespace(kind: AtomKind): string {
+  return kind === 'trig' || kind === 'pre' ? 'guard' : kind
+}
+
+/**
  * Render an {@link AtomRef} to its scoped atom name. The ONE place the name
- * format `sys__<system>__<kind>__<body>` is written down, so both tiers'
- * atom names are byte-identical by construction rather than by comment.
+ * format `sys__<system>__<namespace>__<body>` is written down ({@link atomNamespace}), so both
+ * tiers' atom names are byte-identical by construction rather than by comment.
  */
 export function renderAtom(ref: AtomRef): string {
   // POSTCONDITIONS, not comments. An empty scope makes `sys____<kind>__<body>`, which merges every
   // system whose name normalizes away into ONE namespace — two unrelated systems' responses then
   // land on one atom and, at opposite polarity, prove a contradiction neither document contains.
-  // A scope carrying anything outside `[a-z0-9_]` makes the rendered name ambiguous to parse, and
-  // the format is parsed: `catalog.ts` and the atom-corpus gate both split on `__`.
+  // A scope that is not `_`-joined non-empty tokens (whitespace, a leading or trailing `_`, or a
+  // `__`) makes the rendered name ambiguous to parse, and the format is parsed: `catalog.ts` and
+  // the atom-corpus gate both split on `__`.
   if (ref.scope === '') throw new Error('renderAtom: empty scope — see normalizeScope')
-  if (!/^[a-z0-9_]+$/.test(ref.scope)) {
-    throw new Error(`renderAtom: scope outside [a-z0-9_]: ${JSON.stringify(ref.scope)}`)
+  if (!/^[^\s_]+(?:_[^\s_]+)*$/u.test(ref.scope)) {
+    throw new Error(`renderAtom: scope is not normalized tokens: ${JSON.stringify(ref.scope)}`)
   }
-  return `sys__${ref.scope}__${ref.kind}__${ref.body}`
+  return `sys__${ref.scope}__${atomNamespace(ref.kind)}__${ref.body}`
 }
 
 /** A single Boolean atom: its fully-scoped name plus the polarity to assert. */
@@ -181,14 +220,41 @@ export interface Atom {
   negated: boolean
   /** The structured identity `name` renders from (see {@link AtomRef}). */
   ref: AtomRef
+  /**
+   * Present exactly when the response's leading verb is in an antonym class (seed or
+   * doc-committed): which class-and-remainder the atom belongs to, and which side of it. Two
+   * atoms with one `key` and opposite `negative` are CONTRARIES — see {@link contraryPairs}.
+   */
+  opposition?: Opposition
+}
+
+/**
+ * An atom's place in an antonym class (spec 007 AC-2-1).
+ *
+ * Opposition is a CONTRARY relation between two distinct atoms, `¬(A ∧ B)`, and never the rename
+ * `A ≡ ¬B`. The rename asserted that one of the two actions always happens, so "shall not accept
+ * the order" plus "shall not reject the order" — a document that only says "do neither" — was
+ * `¬A ∧ A` and an error-severity FND_CONTRADICTION. The contrary axiom says only what the table
+ * means: both cannot happen at once.
+ */
+export interface Opposition {
+  /**
+   * The class-and-remainder identity: the atom name the pre-AC-2-1 rename would have produced
+   * (`sys__<scope>__resp__<class canonical>_<remainder>`). Two atoms share a key exactly when the
+   * rename used to collapse them onto one atom, so the axioms relate exactly the pairs the rename
+   * related, and nothing else.
+   */
+  readonly key: string
+  /** Which polarity side of the class the head verb sits on (`reject`, `decline` vs `accept`). */
+  readonly negative: boolean
 }
 
 /**
  * A Boolean atom paired with its polarity, as the injected {@link Atomize}
- * contract returns it. `negated: true` means the requirement asserts `¬atom` (an
- * explicit `shall not` per AC-2-4, or a polar-opposite unified via the antonym
- * table). The atom name is the *positive* atom in both cases, so `shall X` and
- * `shall not X` share one atom with opposite polarity.
+ * contract returns it. `negated: true` means the requirement asserts `¬atom` — an
+ * explicit `shall not` per AC-2-4, and nothing else (an antonym is a contrary
+ * axiom, never a polarity flip — AC-2-1). The atom name is the *positive* atom,
+ * so `shall X` and `shall not X` share one atom with opposite polarity.
  *
  * Declared HERE rather than in `encode.ts` (AC-2-7): the atomization contract
  * belongs to the atomizer, and having the encoder own a second copy of the atom
@@ -204,6 +270,8 @@ export interface AtomLit {
    * than fall back to parsing `atom` (see {@link AtomRef}).
    */
   ref?: AtomRef
+  /** The atom's antonym-class membership, when it has one (see {@link Opposition}). */
+  opposition?: Opposition
 }
 
 /**
@@ -231,7 +299,7 @@ export type Atomize = (
  * Build the injected {@link Atomize} both tiers consume, closing over an optional
  * glossary index (AC-9-2) so agent-confirmed synonyms canonicalize to one atom,
  * and an optional doc-augmented antonym index (#1) so agent-confirmed opposites
- * collapse to one atom at opposite polarity. With neither, behavior is
+ * become contraries ({@link Opposition}). With neither, behavior is
  * byte-identical to the pre-feature run.
  *
  * This lives here rather than in the pipeline (AC-2-7) precisely so the temporal
@@ -254,8 +322,69 @@ export function makeAtomize(
       ...(antonyms !== undefined ? { antonyms } : {}),
       ...(terms !== undefined ? { terms } : {}),
     })
-    return { atom: a.name, negated: a.negated, ref: a.ref }
+    return {
+      atom: a.name,
+      negated: a.negated,
+      ref: a.ref,
+      ...(a.opposition !== undefined ? { opposition: a.opposition } : {}),
+    }
   }
+}
+
+/**
+ * Whether two atoms are contraries (spec 007 AC-2-1): distinct atoms on opposite sides of one
+ * antonym class over one remainder. For the PROPOSE tiers, which used to skip such a pair because
+ * the rename gave both one atom name; now the names differ, and without this they would propose
+ * `accept X` and `reject X` as synonyms to merge.
+ */
+export function areContrary(
+  a: { readonly name: string; readonly opposition?: Opposition },
+  b: { readonly name: string; readonly opposition?: Opposition },
+): boolean {
+  return (
+    a.name !== b.name &&
+    a.opposition !== undefined &&
+    b.opposition !== undefined &&
+    a.opposition.key === b.opposition.key &&
+    a.opposition.negative !== b.opposition.negative
+  )
+}
+
+/**
+ * The contrary pairs among a set of atoms (spec 007 AC-2-1): every two DISTINCT atoms that share
+ * an {@link Opposition.key} and sit on opposite sides of it. Each pair `[a, b]` is the axiom
+ * `¬(a ∧ b)`, which every solver-driving tier asserts as a plain (unguarded) background fact —
+ * it is part of the vocabulary, not of any requirement, so it never appears in an unsat core.
+ *
+ * Same-side members of one class (`accept`, `approve`) need no axiom: they already share one atom,
+ * named after the side's smallest member ({@link AntonymEntry.side}).
+ *
+ * Pure; the output is sorted and deduplicated, so it is a function of the atom SET.
+ */
+export function contraryPairs(
+  lits: Iterable<{ readonly atom: string; readonly opposition?: Opposition }>,
+): Array<readonly [string, string]> {
+  const sides = new Map<string, { pos: Set<string>; neg: Set<string> }>()
+  for (const lit of lits) {
+    if (lit.opposition === undefined) continue
+    let entry = sides.get(lit.opposition.key)
+    if (entry === undefined) {
+      entry = { pos: new Set(), neg: new Set() }
+      sides.set(lit.opposition.key, entry)
+    }
+    ;(lit.opposition.negative ? entry.neg : entry.pos).add(lit.atom)
+  }
+  const pairs = new Map<string, readonly [string, string]>()
+  for (const { pos, neg } of sides.values()) {
+    for (const p of pos) {
+      for (const n of neg) {
+        if (p === n) continue
+        const pair = (p < n ? [p, n] : [n, p]) as readonly [string, string]
+        pairs.set(`${pair[0]}\u0000${pair[1]}`, pair)
+      }
+    }
+  }
+  return [...pairs.entries()].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)).map(([, v]) => v)
 }
 
 /** Arguments to {@link atomize}. */
@@ -290,8 +419,8 @@ export interface AtomizeArgs {
    * seed table ({@link ANTONYM_INDEX}) is used, so behavior is byte-identical to
    * the pre-feature path. Callers that have doc-committed antonym pairs pass a
    * merged index (built by `buildAntonymIndexWithDoc`) so an agent-confirmed
-   * pair like open/shut unifies exactly like a seed pair. Consulted only for
-   * `resp` slots, after the glossary rewrite.
+   * pair like open/shut becomes a contrary exactly like a seed pair. Consulted only
+   * for `resp` slots, after the glossary rewrite.
    */
   antonyms?: ReadonlyMap<string, AntonymEntry>
   /**
@@ -460,33 +589,139 @@ export const SYMBOL_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/=/g, ' equal to '],
   // SIGN, not arithmetic: only a `+`/`-` that leads a number, so `de-duplicate` and `roll-back`
   // (letter-preceded) and `1-2` (digit-preceded) are untouched. Without the guard, every hyphenated
-  // word in the corpus would gain a `minus` token.
-  [/(?<![a-z0-9])\+(?=\d)/g, ' plus '],
-  [/(?<![a-z0-9])-(?=\d)/g, ' minus '],
+  // word in the corpus would gain a `minus` token. The Unicode MINUS SIGN (U+2212) is the same
+  // sign and spells the same word (spec 007 AC-2-4): deleting it as punctuation read `−5 °C` as
+  // `5 °C`. Letters and digits of every script count as the preceding word, so `α-2` stays a
+  // hyphenated name.
+  [/(?<![\p{L}\p{N}])\+(?=\p{N})/gu, ' plus '],
+  [/(?<![\p{L}\p{N}])[-\u2212](?=\p{N})/gu, ' minus '],
 ]
+
+/**
+ * The punctuation {@link normalize} deletes: the characters that carry no identity (spec 007
+ * AC-2-4). Each becomes a token boundary. The set is closed:
+ *   - connectors, dashes, brackets and quotes (`\p{Pc}` `\p{Pd}` `\p{Ps}` `\p{Pe}` `\p{Pi}`
+ *     `\p{Pf}`, `\p{Quotation_Mark}`), so `response-cache`, `(warm)` and `"x"` keep only words;
+ *   - sentence and clause punctuation in every script (`\p{Terminal_Punctuation}`: `. , ; : ! ?`,
+ *     `。`, `،`, `।` and the rest);
+ *   - separators and emphasis that join or decorate words and name nothing: `/ \ | * \` ´ … ‥ • ‣ ⁃ ¡ ¿`
+ *     (`input/output` is two words, `**bold**` is one). `|` and `\` also cannot appear inside a
+ *     quoted SMT-LIB symbol, and atom names are Z3 symbols;
+ *   - control and format characters (`\p{Cc}` `\p{Cf}`) and variation selectors, which change how
+ *     a character is drawn, not which character it is.
+ * Every other character outside letters, marks and digits is kept ({@link IDENTITY_SYMBOL}).
+ */
+const IDENTITY_FREE =
+  /[\s\p{Pc}\p{Pd}\p{Ps}\p{Pe}\p{Pi}\p{Pf}\p{Quotation_Mark}\p{Terminal_Punctuation}\p{Cc}\p{Cf}\p{Variation_Selector}/\\|*`´…‥•‣⁃¡¿]+/gu
+
+/**
+ * A character {@link normalize} KEEPS although it is neither a letter, a mark nor a digit: a
+ * symbol with identity, with any combining marks that follow it. Currency (`$` vs `€`), the `#`
+ * and `+` of `C#` and `C++`, `%` and `‰`, `°`, `&`, `@`, `§`, primes, and every emoji are
+ * different things. Deleting them merged `the invoice currency is $` with `… €` into one guard, and
+ * two exclusive conditions then proved a contradiction the document does not contain. Each one
+ * becomes its OWN token, so `$5` and `$ 5`, or `50%` and `50 %`, stay one phrase.
+ */
+const IDENTITY_SYMBOL = /[^\p{L}\p{M}\p{N}\s]\p{M}*/gu
+
+/** Delete {@link IDENTITY_FREE} punctuation and split every {@link IDENTITY_SYMBOL} into its own token. */
+function tokenize(text: string): string[] {
+  return text
+    .replace(IDENTITY_FREE, ' ')
+    .replace(IDENTITY_SYMBOL, (symbol) => ` ${symbol} `)
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+/**
+ * Whether a raw token is a NUMBER, the position after which a token is a unit (AC-2-4). Digits in
+ * any script, because `normalize` keeps every script's digits.
+ */
+const NUMBER_TOKEN = /^\p{N}+$/u
+
+/**
+ * A token a unit may follow: a {@link NUMBER_TOKEN}, or the degree sign that {@link tokenize} splits
+ * off `5 °C`, so the `C` after it is read as a unit exactly as it was when `°` was deleted.
+ */
+const UNIT_POSITION = new RegExp(`${NUMBER_TOKEN.source}|^°$`, 'u')
+
+/** A token that OPENS with a number and continues with a unit: `100Mbps`, `5G`. */
+const NUMBER_THEN_UNIT = /^(\p{N}+)(.+)$/u
+
+/**
+ * A UNIT token, the closed grammar whose case is kept (spec 007 AC-2-4): an optional SI or binary
+ * prefix, then an optional base symbol, then an optional `ps` rate suffix, and at least one of the
+ * first two. Matched case-SENSITIVELY. That is the point: `mW` (milliwatt) and `MW` (megawatt)
+ * both match, and each keeps its own spelling. `Times`, `Seconds` and `Drains` match nothing, so
+ * they fold like any other word. A bare prefix letter counts too (`5 G`, `5 M`, `3 K`), because a
+ * single letter after a number is a unit or a scale, not a word.
+ */
+const UNIT_TOKEN = new RegExp(
+  '^(?=.)' +
+    '(?:da|[KMGTPEZY]i|[qryzafpnµμumcdhkKMGTPEZYRQ])?' +
+    '(?:bit|Bit|Byte|b|B|Hz|Wh|W|VA|var|V|Ah|A|Ω|ohm|eV|J|Pa|bar|N|mol|cd|lm|lx|Bq|Gy|Sv|Wb|' +
+    'rad|sr|rpm|dBm|dBA|dB|K|C|F|H|S|T|g|m|s|t|l|L)?' +
+    '(?:ps)?$',
+  'u',
+)
+
+/** Whether `token` is a unit in the {@link UNIT_TOKEN} grammar and not the bare rate suffix. */
+function isUnitToken(token: string): boolean {
+  return token !== 'ps' && UNIT_TOKEN.test(token)
+}
+
+/**
+ * Fold one surviving token's case, keeping it where case IS the identity (spec 007 AC-2-4).
+ *
+ * A unit token is the one place ordinary text carries meaning in case: `Mbps` is megabits and
+ * `MBps` megabytes, `mW` a milliwatt and `MW` a megawatt. So a {@link UNIT_TOKEN} that directly
+ * follows a number keeps its case, as does a unit tail of a token that opens with digits
+ * (`100MBps`). Every other token is lowercased, including an ordinary word after a number:
+ * `3 Times` and `3 times` are one phrase, and keeping them apart hid a real contradiction. The
+ * rule can only SPLIT relative to full lowercasing, and only over unit spellings.
+ */
+function foldCase(token: string, previous: string | undefined): string {
+  if (previous !== undefined && UNIT_POSITION.test(previous) && isUnitToken(token)) return token
+  const unit = NUMBER_THEN_UNIT.exec(token)
+  if (unit !== null && isUnitToken(unit[2] as string)) return token
+  return token.toLowerCase()
+}
 
 /**
  * The conservative, near-exact normalization pipeline (AC-4-2a). Pure.
  *
  * Order is normative and load-bearing:
- *   1. lowercase
- *   2. strip a single LEADING article (`a`/`an`/`the`) — internal articles
+ *   1. strip a single LEADING article (`a`/`an`/`the`, any case) — internal articles
  *      ("issue a session token") are preserved deliberately
- *   3. spell out the {@link SYMBOL_PHRASES} symbols — BEFORE step 4, which would otherwise
- *      delete them, and before it strips non-ASCII so `≥` and `≤` are still present
- *   4. strip punctuation (any non-alphanumeric, non-space char → space); this
- *      also normalizes input underscores so `auth_service` is idempotent
- *   5. collapse whitespace and underscore-join the surviving word tokens
+ *   2. spell out the {@link SYMBOL_PHRASES} symbols — BEFORE step 3, which would otherwise
+ *      delete them
+ *   3. {@link tokenize}: {@link IDENTITY_FREE} punctuation becomes a space, which also normalizes
+ *      input underscores so `auth_service` is idempotent; every other character that is not a
+ *      letter, combining mark or digit IN ANY SCRIPT is an {@link IDENTITY_SYMBOL} and becomes its
+ *      own token
+ *   4. split on whitespace and fold each token's case ({@link foldCase}: lowercase, except a
+ *      {@link UNIT_TOKEN} after a number, whose case is its identity)
+ *   5. underscore-join the surviving tokens
+ *
+ * ## What it may delete (spec 007 AC-2-4)
+ *
+ * Only punctuation that carries no identity. It used to delete everything outside
+ * `[a-z0-9\s]` after lowercasing, which is a MERGE rule: `العربية` and `日本語` both normalized to
+ * the empty body, `valve α` and `valve β` to one guard, `−5 °C` to `5 °C`, and `100 Mbps` to
+ * `100 MBps`. A merged guard puts two requirements into one context group, so two exclusive
+ * conditions could prove a contradiction the document does not contain. The same held for every
+ * symbol: `$` and `€`, `C#` and `C++`, `🔴` and `🟢`, `50%` and `50`. Keeping a symbol as its own
+ * token only refines that partition. The one exception is a variation selector, which changes how
+ * a character is drawn and not which character it is.
  *
  * No stemming, no lemmatization, no stopword removal beyond the leading article.
  */
 export function normalize(text: string): string {
-  const lowered = text.toLowerCase()
-  const deArticled = lowered.replace(/^(?:a|an|the)\s+/, '')
+  const deArticled = text.replace(/^(?:a|an|the)\s+/i, '')
   let spelled = deArticled
   for (const [pattern, phrase] of SYMBOL_PHRASES) spelled = spelled.replace(pattern, phrase)
-  const dePunct = spelled.replace(/[^a-z0-9\s]+/g, ' ')
-  return dePunct.split(/\s+/).filter(Boolean).join('_')
+  const tokens = tokenize(spelled)
+  return tokens.map((token, i) => foldCase(token, tokens[i - 1])).join('_')
 }
 
 /**
@@ -498,22 +733,23 @@ export function normalize(text: string): string {
  *    carries no meaning inside a slot phrase. In a system NAME it is part of the identifier:
  *    without this, `A Gateway` and `Gateway` are one system, and two products whose names differ
  *    only by an article share every atom they own.
- * 2. **Never empty.** `normalize` deletes every character outside `[a-z0-9\s]`, so an entirely
- *    non-Latin name vanishes: `normalize('ゲートウェイ') === ''` and `normalize('认证服务') === ''`.
- *    Measured before this function existed, those two systems produced
- *    `sys____resp__allow_access` at OPPOSITE polarity for `grant access` and `revoke access` —
- *    one atom, two systems, a provable contradiction across documents that share nothing.
+ * 2. **Never empty.** A name made only of identity-free punctuation (`—`, `( … )`) has nothing
+ *    to keep. Measured when the keep-set was still `[a-z0-9]`, `ゲートウェイ` and `认证服务` both
+ *    vanished and produced one atom for two systems — `grant access` and `revoke access` at
+ *    OPPOSITE polarity, a provable contradiction across documents that share nothing.
+ *
+ * It keeps letters, combining marks and digits in EVERY script, and every identity-bearing
+ * symbol, through the same {@link tokenize} as {@link normalize} (spec 007 AC-2-4): with the
+ * ASCII-only set, `α valve controller` and `β valve controller` were one namespace, and so were
+ * `C# compiler` and `C++ compiler`. Unlike `normalize` it folds ALL case — a system name has no unit token.
  *
  * The fallback is a 32-bit FNV-1a over the name's code points, spelled out here rather than taken
  * from `node:crypto`, so the engine tier gains no import and stays byte-reproducible on any host.
- * It is a LAST resort: any name with one surviving Latin character keeps its readable scope, and a
- * hashed scope is deliberately ugly so it reads as "this name did not survive normalization" in an
- * atom table rather than as a normal identifier.
+ * It is a LAST resort, and a hashed scope is deliberately ugly so it reads as "this name did not
+ * survive normalization" in an atom table rather than as a normal identifier.
  */
 export function normalizeScope(systemName: string): string {
-  const lowered = systemName.toLowerCase()
-  const dePunct = lowered.replace(/[^a-z0-9\s]+/g, ' ')
-  const scope = dePunct.split(/\s+/).filter(Boolean).join('_')
+  const scope = tokenize(systemName.toLowerCase()).join('_')
   if (scope !== '') return scope
   let hash = 0x811c9dc5
   for (const ch of systemName) {
@@ -554,16 +790,18 @@ function stripCopula(body: string): string {
 }
 
 /**
- * Prepositions dropped from an antonym-flipped response remainder (A4). Fires
+ * Prepositions dropped from an antonym-class response remainder (A4). Fires
  * ONLY after an antonym head hit, and drops exactly ONE token — the first
  * preposition appearing after at least one non-preposition token — so
  * "exclude that tile from the default gallery view" and "include that tile in
- * the default gallery view" unify at opposite polarity. Direction within an
+ * the default gallery view" share one opposition key and are contraries. Direction within an
  * antonym class is carried by the HEAD (include vs exclude), never by the
  * preposition, which is what makes this sound; verbs outside the antonym
  * table ("move X to A" / "move X from A") are never touched, and differing
  * landing sites ("…gallery A" vs "…gallery B") still produce distinct atoms
  * because only the preposition itself is dropped, never the noun phrase.
+ * It applies to the atom BODY as well as the key, so the partition is exactly the
+ * pre-AC-2-1 one refined by head: nothing that was two atoms became one.
  */
 const REST_PREPOSITIONS: ReadonlySet<string> = new Set([
   'in',
@@ -593,17 +831,18 @@ function canonicalizeAntonymRest(rest: string): string {
 /**
  * Turn one EARS slot into a scoped Boolean {@link Atom}. Pure and deterministic.
  *
- * For `resp` slots, the leading verb is checked against the seed antonym table:
- * on a hit the verb is rewritten to its class canonical and the polarity is
- * flipped, so polar-opposite responses land on one atom. The AC-2-4 `negated`
- * flag and any antonym flip compose by XOR.
+ * For `resp` slots, the leading verb is checked against the antonym index: on a
+ * hit the head becomes its class SIDE's smallest member (so same-side members are one atom) and
+ * the atom gains an {@link Opposition}, which is what makes it a contrary of the class's
+ * other-side atom. Polarity is the AC-2-4 `negated` flag, unmodified.
  */
 export function atomize(args: AtomizeArgs): Atom {
   const scope = normalizeScope(args.systemName)
   let body = normalize(args.text)
-  let negated = args.negated ?? false
+  const negated = args.negated ?? false
+  let opposition: Opposition | undefined
 
-  // Glossary canonicalization (AC-9-2) runs FIRST, before antonym unification,
+  // Glossary canonicalization (AC-9-2) runs FIRST, before the antonym lookup,
   // so an agent-confirmed synonym is rewritten to its canonical phrasing and
   // then participates in the same antonym/atom logic as any native phrase.
   // A no-op when no glossary is supplied or the body is not an alias.
@@ -642,16 +881,15 @@ export function atomize(args: AtomizeArgs): Atom {
     body = stripCopula(body)
   }
 
-  // Antonym unification applies only to responses (spec AC-4-2a: "polar-opposite
+  // The antonym lookup applies only to responses (spec AC-4-2a: "polar-opposite
   // responses"). The leading verb is de-inflected (closed 3sg rule) and looked
   // up longest-prefix-first — two tokens ("roll_back") before one ("roll") — so
-  // multiword opposites like commit/roll-back resolve. On a hit the head is
-  // rewritten to the class canonical, polarity flips, and one remainder
-  // preposition is dropped (see canonicalizeAntonymRest); the rest of the
-  // remainder must still be byte-identical, so "grant access"/"revoke access"
-  // unify but "grant access"/"revoke permission" do not. On a miss the
-  // de-inflected head still replaces the surface head, so "opens the valve"
-  // and "open the valve" collide even outside any antonym class.
+  // multiword opposites like commit/roll-back resolve. On a hit one remainder
+  // preposition is dropped (see canonicalizeAntonymRest) and the atom records its
+  // class-and-remainder key; the rest of the remainder must still be
+  // byte-identical, so "grant access"/"revoke access" are contraries but "grant
+  // access"/"revoke permission" are unrelated. Either way the de-inflected head
+  // replaces the surface head, so "opens the valve" and "open the valve" collide.
   if (args.kind === 'resp' && body.length > 0) {
     const tokens = body.split('_')
     const tok1 = deInflectHead(tokens[0] as string)
@@ -668,8 +906,17 @@ export function atomize(args: AtomizeArgs): Atom {
     if (entry) {
       const rest = tokens.slice(headLen).join('_')
       const canonRest = canonicalizeAntonymRest(rest)
-      body = canonRest === '' ? entry.canonical : `${entry.canonical}_${canonRest}`
-      negated = negated !== entry.negated // XOR: compose AC-2-4 negation with the antonym flip
+      // The atom's head is its SIDE's smallest member, so `reject the order` is the negative
+      // side's own atom rather than `accept the order` at flipped polarity (AC-2-1), while
+      // `approve` and `accept` — one side — stay one atom, as `rollback` and `roll back` do. The
+      // class canonical goes into the opposition KEY only, and polarity is the parse's `negated`
+      // and nothing else.
+      body = canonRest === '' ? entry.side : `${entry.side}_${canonRest}`
+      const classBody = canonRest === '' ? entry.canonical : `${entry.canonical}_${canonRest}`
+      opposition = {
+        key: renderAtom({ scope, kind: 'resp', body: classBody }),
+        negative: entry.negated,
+      }
     } else if (tok1 !== tokens[0]) {
       tokens[0] = tok1
       body = tokens.join('_')
@@ -677,5 +924,10 @@ export function atomize(args: AtomizeArgs): Atom {
   }
 
   const ref: AtomRef = { scope, kind: args.kind, body }
-  return { name: renderAtom(ref), negated, ref }
+  return {
+    name: renderAtom(ref),
+    negated,
+    ref,
+    ...(opposition !== undefined ? { opposition } : {}),
+  }
 }

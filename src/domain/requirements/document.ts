@@ -1080,7 +1080,8 @@ export const RequirementsDocument = Schema.Struct({
     [],
     lines(
       'Committed antonym pairs. Extends the code-committed seed table so opposite response verbs',
-      'collapse to one atom at opposite polarity and a contradiction is provable. Defaults to [].',
+      'become contraries (two atoms that cannot both hold) and a contradiction is provable.',
+      'Defaults to [].',
     ),
   ),
   waivers: withDefault(

@@ -167,9 +167,8 @@ const req = (
 const demotedDocument = (): RequirementsDocument => ({
   ...emptyDocument(),
   requirements: {
-    // A COVERING pair: `grant`/`revoke` are seed antonyms, so both atomize to
-    // `sys__auth_service__resp__allow_access_the_vault` and the decide tier compares
-    // them (verified by probe).
+    // A COVERING pair: `grant`/`revoke` are seed antonyms, so the two atoms are
+    // contraries (spec 007 AC-2-1) and the decide tier compares them.
     'aaaaaaaa-0000-4000-8000-000000000001': req(
       'aaaaaaaa-0000-4000-8000-000000000001',
       'grant access to the vault',
