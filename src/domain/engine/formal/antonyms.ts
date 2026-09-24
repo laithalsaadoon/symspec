@@ -34,10 +34,17 @@
  *   `approve` (positive) and `reject`, `decline` (negative) form one class named
  *   after its lexicographically smallest member (`accept`). Every positive-side
  *   atom is a contrary of every negative-side atom over the same remainder, so
- *   the deliberate class merges below keep working. Same-side members are NOT
- *   related: `accept` and `approve` are two atoms with no axiom between them —
- *   contraries do not entail synonymy, and the rename's side effect of merging
- *   them asserted one nobody committed. A synonym is a `glossary` entry.
+ *   the deliberate class merges below keep working.
+ *
+ * Same-side members are ONE atom: every member on one polarity side of a class
+ * resolves to that side's lexicographically smallest member (`approve` → `accept`,
+ * `rollback` → `roll_back`, `grant` → `allow`). That is the table's deliberate
+ * merge, not a side effect: the authorization verbs are interchangeable in the
+ * EARS response idiom, and `roll back`/`rollback` are one verb spelled two ways.
+ * An equality is a strengthening move (spec 007 I-1), so the merge can only add
+ * findings; AC-2-1 retires only the cross-side rename `A ≡ ¬B`. Split, "shall
+ * grant X" plus "shall not allow X" was two unrelated atoms and a clean
+ * `verified: true` over a real conflict, with no finding pointing at it.
  */
 
 /**
@@ -113,6 +120,12 @@ export interface AntonymEntry {
   canonical: string
   /** True when this verb sits on the OPPOSITE polarity side of `canonical`. */
   negated: boolean
+  /**
+   * The lexicographically-smallest member on THIS verb's polarity side — the head of the atom it
+   * resolves to, so every same-side member of a class is one atom (`approve` → `accept`). Equal to
+   * `canonical` on the positive side.
+   */
+  side: string
 }
 
 /**
@@ -176,7 +189,8 @@ export function buildAntonymIndex(
     const canonical = [...members].sort()[0] as string
     // Re-base sign relative to the canonical (which we pin to positive).
     const negated = (sign.get(verb) as boolean) !== (sign.get(canonical) as boolean)
-    index.set(verb, { canonical, negated })
+    const side = members.filter((m) => sign.get(m) === sign.get(verb)).sort()[0] as string
+    index.set(verb, { canonical, negated, side })
   }
   return index
 }

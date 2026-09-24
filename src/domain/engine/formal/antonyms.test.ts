@@ -34,7 +34,9 @@ const SEED_VERBS = [...new Set(SEED_ANTONYM_PAIRS.flat())].sort()
 
 /** One row per member: `<canonical>  <polarity>  <verb>`, sorted, so a diff names the verb. */
 const render = (index: ReadonlyMap<string, AntonymEntry>): string => {
-  const rows = [...index].map(([verb, e]) => `${e.canonical}\t${e.negated ? '-' : '+'}\t${verb}`)
+  const rows = [...index].map(
+    ([verb, e]) => `${e.canonical}\t${e.negated ? '-' : '+'}\t${e.side}\t${verb}`,
+  )
   return `${rows.sort().join('\n')}\n`
 }
 
@@ -75,12 +77,21 @@ describe('the resolved seed index', () => {
   it('resolves a shared member into ONE class rather than an ambiguous pair', () => {
     // `accept↔reject`, `approve↔reject` and `accept↔decline` all touch the same two verbs. A
     // flat pair map would make `reject` ambiguous; the signed union-find puts all four in one
-    // class, with the two same-side near-synonyms unified as a documented consequence.
+    // class, and each SIDE resolves to its smallest member, so the same-side near-synonyms are
+    // one atom (spec 007 AC-2-1 retires only the cross-side rename).
     for (const verb of ['accept', 'approve']) {
-      expect(ANTONYM_INDEX.get(verb)).toEqual({ canonical: 'accept', negated: false })
+      expect(ANTONYM_INDEX.get(verb)).toEqual({
+        canonical: 'accept',
+        negated: false,
+        side: 'accept',
+      })
     }
     for (const verb of ['reject', 'decline']) {
-      expect(ANTONYM_INDEX.get(verb)).toEqual({ canonical: 'accept', negated: true })
+      expect(ANTONYM_INDEX.get(verb)).toEqual({
+        canonical: 'accept',
+        negated: true,
+        side: 'decline',
+      })
     }
   })
 })
@@ -111,17 +122,21 @@ describe('a document pair that touches a seed class', () => {
     // `abort ↔ commit` makes `abort` the smallest member, so `commit` becomes the NEGATIVE side
     // of a class named after a verb no requirement used.
     const merged = buildAntonymIndexWithDoc([['abort', 'commit']])
-    expect(ANTONYM_INDEX.get('commit')).toEqual({ canonical: 'commit', negated: false })
-    expect(merged.get('commit')).toEqual({ canonical: 'abort', negated: true })
-    expect(merged.get('roll_back')).toEqual({ canonical: 'abort', negated: false })
+    expect(ANTONYM_INDEX.get('commit')).toEqual({
+      canonical: 'commit',
+      negated: false,
+      side: 'commit',
+    })
+    expect(merged.get('commit')).toEqual({ canonical: 'abort', negated: true, side: 'commit' })
+    expect(merged.get('roll_back')).toEqual({ canonical: 'abort', negated: false, side: 'abort' })
   })
 
   it('moves only the opposition KEY — never an atom NAME or a polarity (AC-2-1)', () => {
     // Under the pre-AC-2-1 rename this commit renamed `commit the transaction` to
     // `abort_the_transaction` and inverted its sign, so a document consistent under the seed
     // table could report a contradiction under the merged one with no requirement edited. With
-    // opposition as a contrary axiom the index decides only which atoms are CONTRARIES; the atom
-    // and its polarity are the author's.
+    // opposition as a contrary axiom the index decides only which atoms are CONTRARIES; `commit`
+    // is still alone on its side, so its atom and its polarity are unchanged.
     const seeded = atomize({ kind: 'resp', text: 'commit the transaction', systemName: 'ledger' })
     expect(seeded).toMatchObject({
       name: 'sys__ledger__resp__commit_the_transaction',
@@ -139,5 +154,15 @@ describe('a document pair that touches a seed class', () => {
       negated: false,
       opposition: { key: 'sys__ledger__resp__abort_the_transaction', negative: true },
     })
+  })
+
+  it('merges a doc member into the seed side it joins — an equality, which only adds findings', () => {
+    // `abort` joins `roll_back`/`rollback` on the side opposite `commit`, and is now that side's
+    // smallest member, so the three are one atom. Merging names is strengthening (spec 007 I-1).
+    const antonyms = buildAntonymIndexWithDoc([['abort', 'commit']])
+    const name = (text: string) =>
+      atomize({ kind: 'resp', text, systemName: 'ledger', antonyms }).name
+    expect(name('roll back the transaction')).toBe('sys__ledger__resp__abort_the_transaction')
+    expect(name('rollback the transaction')).toBe(name('abort the transaction'))
   })
 })

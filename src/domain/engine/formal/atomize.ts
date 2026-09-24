@@ -22,7 +22,8 @@
  *        → collapse whitespace → underscore-join → glossary rewrite →
  *        copula strip (guard slots only) → leading-verb de-inflection +
  *        antonym-class lookup (response slots only; it sets the atom's
- *        {@link Opposition}, never its name's head or its polarity).
+ *        {@link Opposition} and names the head after its class SIDE, never its
+ *        polarity).
  *      It MUST NOT stem, lemmatize, or strip stopwords from the REMAINDER of a
  *      slot. Three closed, deterministic head/token rules are the whole
  *      exception surface (each below, each tested):
@@ -32,10 +33,12 @@
  *        - GUARD slots ({@link GUARD_KINDS}: pre/trig/feat) drop a single copula
  *          token ({@link stripCopula}), so "the session is authenticated" and
  *          "the session authenticated" name one guard state;
- *        - when (and only when) the head is in an ANTONYM class, one preposition
- *          token is dropped from the remainder ({@link canonicalizeAntonymRest}),
- *          so "include X in the view" / "exclude X from the view" share one
- *          opposition key and are contraries.
+ *        - when (and only when) the head is in an ANTONYM class, it is replaced by
+ *          the smallest member on its polarity side (`approve` → `accept`,
+ *          `rollback` → `roll_back`), and one preposition token is dropped from
+ *          the remainder ({@link canonicalizeAntonymRest}), so "include X in the
+ *          view" / "exclude X from the view" share one opposition key and are
+ *          contraries.
  *      Everything else stays near-exact: aggressive normalization is the one
  *      false-positive risk class (AC-4-11), so we buy only what closed rules
  *      can honestly deliver.
@@ -56,8 +59,9 @@
  *      extracting negation as a flag rather than leaving "not" in the string.
  *      The curated seed antonym table (antonyms.ts) extends this to lexical
  *      opposites — as a CONTRARY, not a negation (spec 007 AC-2-1): "grant
- *      access" / "revoke access" are two atoms plus the axiom
- *      `¬(grant_access ∧ revoke_access)` ({@link contraryPairs}), so "shall grant"
+ *      access" / "revoke access" are two atoms (`allow_access`, `deny_access`: each
+ *      named after its side of the class) plus the axiom
+ *      `¬(allow_access ∧ deny_access)` ({@link contraryPairs}), so "shall grant"
  *      plus "shall revoke" is still unsatisfiable while "shall not grant" plus
  *      "shall not revoke" — do neither — is not. The rename `revoke ≡ ¬grant` this
  *      replaced asserted that one of the two always happens, and fabricated an
@@ -351,9 +355,8 @@ export function areContrary(
  * `¬(a ∧ b)`, which every solver-driving tier asserts as a plain (unguarded) background fact —
  * it is part of the vocabulary, not of any requirement, so it never appears in an unsat core.
  *
- * Same-side members of one class (`accept`, `approve`) get NO axiom and stay distinct atoms. The
- * rename used to merge them as a side effect — two verbs opposite to one third verb were forced
- * equal — which contraries do not entail, and which asserted a synonymy nobody committed.
+ * Same-side members of one class (`accept`, `approve`) need no axiom: they already share one atom,
+ * named after the side's smallest member ({@link AntonymEntry.side}).
  *
  * Pure; the output is sorted and deduplicated, so it is a function of the atom SET.
  */
@@ -765,9 +768,9 @@ function canonicalizeAntonymRest(rest: string): string {
  * Turn one EARS slot into a scoped Boolean {@link Atom}. Pure and deterministic.
  *
  * For `resp` slots, the leading verb is checked against the antonym index: on a
- * hit the atom keeps its own de-inflected head and gains an {@link Opposition},
- * which is what makes it a contrary of the class's other-side members. Polarity is
- * the AC-2-4 `negated` flag, unmodified.
+ * hit the head becomes its class SIDE's smallest member (so same-side members are one atom) and
+ * the atom gains an {@link Opposition}, which is what makes it a contrary of the class's
+ * other-side atom. Polarity is the AC-2-4 `negated` flag, unmodified.
  */
 export function atomize(args: AtomizeArgs): Atom {
   const scope = normalizeScope(args.systemName)
@@ -839,11 +842,12 @@ export function atomize(args: AtomizeArgs): Atom {
     if (entry) {
       const rest = tokens.slice(headLen).join('_')
       const canonRest = canonicalizeAntonymRest(rest)
-      // The atom keeps ITS OWN head (de-inflected), so `reject the order` is its own atom rather
-      // than `accept the order` at flipped polarity (AC-2-1). The class canonical goes into the
-      // opposition KEY only, and polarity is the parse's `negated` and nothing else.
-      const head = twoEntry !== undefined ? (twoTok as string) : tok1
-      body = canonRest === '' ? head : `${head}_${canonRest}`
+      // The atom's head is its SIDE's smallest member, so `reject the order` is the negative
+      // side's own atom rather than `accept the order` at flipped polarity (AC-2-1), while
+      // `approve` and `accept` — one side — stay one atom, as `rollback` and `roll back` do. The
+      // class canonical goes into the opposition KEY only, and polarity is the parse's `negated`
+      // and nothing else.
+      body = canonRest === '' ? entry.side : `${entry.side}_${canonRest}`
       const classBody = canonRest === '' ? entry.canonical : `${entry.canonical}_${canonRest}`
       opposition = {
         key: renderAtom({ scope, kind: 'resp', body: classBody }),

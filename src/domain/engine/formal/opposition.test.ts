@@ -134,6 +134,70 @@ describe('AC-2-1 — "shall A" plus "shall B" is still a contradiction', () => {
   })
 })
 
+describe('AC-2-1 — members on ONE side of a class stay one atom', () => {
+  // The contrary replaced the rename `A ≡ ¬B` ACROSS a class. It must not also split the
+  // members on one side of it: the table merges grant/allow/permit/authorize on purpose, and
+  // `roll back`/`rollback` are one verb spelled two ways. Split, each pair below was two
+  // unrelated atoms with no axiom between them — verified: true over a real conflict, with no
+  // finding at all (the lexical tier only sees near-duplicate-sentence candidates, and a pair
+  // sharing a trigger is a different rule's candidate).
+  const AUDIT = 'When the audit completes, the auth service shall'
+  const cases: ReadonlyArray<readonly [string, string, string]> = [
+    [
+      'grant / not allow',
+      `${AUDIT} grant access to the vault.`,
+      `${AUDIT} not allow access to the vault.`,
+    ],
+    [
+      'permit / not authorize',
+      `${AUDIT} permit access to the vault.`,
+      `${AUDIT} not authorize access to the vault.`,
+    ],
+    ['revoke / not deny', `${AUDIT} revoke access.`, `${AUDIT} not deny access.`],
+    ['accept / not approve', `${PO} accept the order.`, `${PO} not approve the order.`],
+    [
+      'roll back / not rollback',
+      `${CONVEYOR} roll back the deployment.`,
+      `${CONVEYOR} not rollback the deployment.`,
+    ],
+    [
+      'rollback / not roll back',
+      `${CONVEYOR} rollback the deployment.`,
+      `${CONVEYOR} not roll back the deployment.`,
+    ],
+  ]
+  for (const [name, a, b] of cases) {
+    it(`${name} under one context is FND_CONTRADICTION naming both`, async () => {
+      const report = await runCheck(await docOf([a, b]))
+      const found = report.findings.filter((f) => f.code === 'FND_CONTRADICTION')
+      expect(found.map((f) => f.requirementIds)).toEqual([[idOf(1), idOf(2)]])
+    })
+  }
+
+  it('a doc-committed pair joins a seed side: close / not shut is FND_CONTRADICTION', async () => {
+    const doc = (await docOf([
+      `${CONVEYOR} close the valve.`,
+      `${CONVEYOR} not shut the valve.`,
+    ])) as unknown as {
+      antonyms: unknown[]
+    }
+    doc.antonyms = [{ a: 'open', b: 'shut' }]
+    const report = await runCheck(doc as never)
+    const found = report.findings.filter((f) => f.code === 'FND_CONTRADICTION')
+    expect(found.map((f) => f.requirementIds)).toEqual([[idOf(1), idOf(2)]])
+  })
+
+  it('names each side after its smallest member, and the two sides stay distinct', () => {
+    const name = (text: string) => atomize({ kind: 'resp', text, systemName: 'vault' }).name
+    expect(name('grant access')).toBe(name('allow access'))
+    expect(name('authorize access')).toBe(name('permit access'))
+    expect(name('grant access')).toBe('sys__vault__resp__allow_access')
+    expect(name('revoke access')).toBe('sys__vault__resp__deny_access')
+    expect(name('rolls back the batch')).toBe(name('rollback the batch'))
+    expect(name('grant access')).not.toBe(name('deny access'))
+  })
+})
+
 describe('AC-2-1 — the axioms reach every solver-driving tier', () => {
   it('temporal: an unconditional accept against a triggered reject is still inconsistent', async () => {
     const report = await runCheck(
@@ -218,13 +282,9 @@ describe('AC-2-1 — the propose tiers never offer two contraries as synonyms', 
     expect(findSimilarUnunified(reqs as never, { similarityThreshold: 0.5 })).toEqual([])
   })
 
-  it('FND_SIMILAR_UNUNIFIED still fires on a same-side pair the rename used to merge', () => {
-    // `accept` and `approve` sit on one polarity side of one class: distinct atoms and NO axiom,
-    // so they are no longer silently one atom — the lexical tier is what surfaces them now.
+  it('FND_SIMILAR_UNUNIFIED has nothing to propose for a same-side pair: it is already one atom', () => {
     const sameSide = [reqOf('a', 'accept the ledger entry'), reqOf('b', 'approve the ledger entry')]
-    expect(
-      findSimilarUnunified(sameSide as never, { similarityThreshold: 0.5 }).map((f) => f.code),
-    ).toEqual(['FND_SIMILAR_UNUNIFIED'])
+    expect(findSimilarUnunified(sameSide as never, { similarityThreshold: 0.5 })).toEqual([])
   })
 
   it('FND_SIMILAR_SEMANTIC skips a seed-antonym pair even at cosine 1', async () => {

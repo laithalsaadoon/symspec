@@ -1,53 +1,53 @@
-accept	+	accept
-accept	+	approve
-accept	-	decline
-accept	-	reject
-activate	+	activate
-activate	-	deactivate
-add	+	add
-add	-	remove
-allow	+	allow
-allow	+	authorize
-allow	+	grant
-allow	+	permit
-allow	-	deny
-allow	-	forbid
-allow	-	revoke
-close	+	close
-close	-	open
-commit	+	commit
-commit	-	roll_back
-commit	-	rollback
-conceal	+	conceal
-conceal	+	seal
-conceal	-	expose
-conceal	-	unseal
-connect	+	connect
-connect	-	disconnect
-de_energize	+	de_energize
-de_energize	-	energize
-disable	+	disable
-disable	-	enable
-disengage	+	disengage
-disengage	-	engage
-drain	+	drain
-drain	-	flood
-exclude	+	exclude
-exclude	-	include
-extend	+	extend
-extend	+	publish
-extend	-	retract
-hide	+	hide
-hide	-	show
-insert	+	insert
-insert	-	withdraw
-lock	+	lock
-lock	-	unlock
-lower	+	lower
-lower	-	raise
-quarantine	+	quarantine
-quarantine	-	release
-resume	+	resume
-resume	-	suspend
-start	+	start
-start	-	stop
+accept	+	accept	accept
+accept	+	accept	approve
+accept	-	decline	decline
+accept	-	decline	reject
+activate	+	activate	activate
+activate	-	deactivate	deactivate
+add	+	add	add
+add	-	remove	remove
+allow	+	allow	allow
+allow	+	allow	authorize
+allow	+	allow	grant
+allow	+	allow	permit
+allow	-	deny	deny
+allow	-	deny	forbid
+allow	-	deny	revoke
+close	+	close	close
+close	-	open	open
+commit	+	commit	commit
+commit	-	roll_back	roll_back
+commit	-	roll_back	rollback
+conceal	+	conceal	conceal
+conceal	+	conceal	seal
+conceal	-	expose	expose
+conceal	-	expose	unseal
+connect	+	connect	connect
+connect	-	disconnect	disconnect
+de_energize	+	de_energize	de_energize
+de_energize	-	energize	energize
+disable	+	disable	disable
+disable	-	enable	enable
+disengage	+	disengage	disengage
+disengage	-	engage	engage
+drain	+	drain	drain
+drain	-	flood	flood
+exclude	+	exclude	exclude
+exclude	-	include	include
+extend	+	extend	extend
+extend	+	extend	publish
+extend	-	retract	retract
+hide	+	hide	hide
+hide	-	show	show
+insert	+	insert	insert
+insert	-	withdraw	withdraw
+lock	+	lock	lock
+lock	-	unlock	unlock
+lower	+	lower	lower
+lower	-	raise	raise
+quarantine	+	quarantine	quarantine
+quarantine	-	release	release
+resume	+	resume	resume
+resume	-	suspend	suspend
+start	+	start	start
+start	-	stop	stop
