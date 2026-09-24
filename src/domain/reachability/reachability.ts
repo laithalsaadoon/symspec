@@ -724,17 +724,17 @@ const compile = (
     case 'ref': {
       const bound = binding.get(expr.name)
       if (bound !== undefined) return bound
-      // An enum member: compiled to its INDEX in the declared domain, which is the
-      // same encoding `sortFor` gives the variable.
-      const index = enumMemberIndex(expr.name, vars)
-      if (index !== undefined) {
-        return Z3.mk_numeral(ctx, String(index), Z3.mk_int_sort(ctx))
-      }
+      // A bare ref that is not a bound variable. The validator rewrites every enum member
+      // to a `member` node, so reaching here is a validator defect, never a document one.
       throw new Error(
-        `reachability: "${expr.name}" resolved to neither a declared variable nor an enum member. ` +
-          'The expression should have been refused by core/state-expr.ts before reaching the encoder.',
+        `reachability: "${expr.name}" is not a declared variable, and an enum member reaches the encoder only as a resolved \`member\` node. ` +
+          'The expression should have been resolved by requirements/state-expr.ts before reaching the encoder.',
       )
     }
+    case 'member':
+      // An enum member: compiled to its INDEX in the domain of the enum the TYPE CHECKER
+      // assigned to this position — the same encoding `sortFor` gives that variable.
+      return Z3.mk_numeral(ctx, String(memberIndex(expr, vars)), Z3.mk_int_sort(ctx))
     case 'not':
       return Z3.mk_not(ctx, go(expr.operand))
     case 'and':
@@ -766,15 +766,25 @@ const compile = (
   }
 }
 
-/** The index of an enum member in its owning variable's declared domain, or
- * `undefined` when the name is not a member of any declared enum. */
-const enumMemberIndex = (name: string, vars: DeclaredVars): number | undefined => {
-  for (const variable of vars.values()) {
-    if (variable.type !== 'enum') continue
-    const index = variable.domain.indexOf(name)
-    if (index >= 0) return index
+/**
+ * The index of a RESOLVED enum member in the domain of its owning enum (spec 007 AC-1-1).
+ *
+ * Looked up in `member.enumOf` and nowhere else. A member name may belong to several
+ * enums at different indices (`open` is index 0 of `door{open,closed}` and index 2 of
+ * `valve{shut,ajar,open}`); the first-match search this replaced encoded `valve = open`
+ * as `valve = shut` and certified a PROVED over a constraint the initial state violates.
+ * Throws on a miss because the validator guarantees membership — a miss is a validator
+ * defect, and a silent fallback would hide it.
+ */
+const memberIndex = (member: Extract<Expr, { kind: 'member' }>, vars: DeclaredVars): number => {
+  const owner = vars.get(member.enumOf)
+  const index = owner?.type === 'enum' ? owner.domain.indexOf(member.name) : -1
+  if (index < 0) {
+    throw new Error(
+      `reachability: "${member.name}" is not a member of enum ${member.enumOf}; the validator should have refused it.`,
+    )
   }
-  return undefined
+  return index
 }
 
 /** The range constraint a variable's declared domain imposes, if any. Applied to both
