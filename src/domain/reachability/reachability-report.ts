@@ -30,6 +30,7 @@
  */
 
 import type { Repair } from '../../ports/repair.ts'
+import type { StateVariable } from '../requirements/document.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
 import type { ConstraintResult, ReachabilityReport } from './reachability.ts'
 import type { ReachabilityFndCode } from './reachability-codes.ts'
@@ -94,9 +95,55 @@ export const REACHABILITY_DEMOTION_REASONS = [
   // was withdrawn. Its own reason because the remedy is neither a budget nor a bound — it
   // is a tool defect to report.
   'reachability-certificate-disagrees',
+  // APPENDED for spec 007 AC-1-6: the proof needs a frame the document does not declare.
+  // Its own reason because its discharge is a frame DECLARATION (or requirements), where
+  // `reachability-frame-relied-upon`'s is the opposite — releasing one.
+  'reachability-frame-undeclared',
 ] as const
 
 export type ReachabilityDemotionReason = (typeof REACHABILITY_DEMOTION_REASONS)[number]
+
+/** The hypothesis list as prose: each variable with the requirements that write it. */
+const reliedOn = (hypotheses: NonNullable<ConstraintResult['hypotheses']>): string =>
+  hypotheses
+    .map(
+      (h) =>
+        `${h.variable} (written by ${h.writers.length > 0 ? h.writers.join(', ') : 'NO requirement'})`,
+    )
+    .join('; ')
+
+/**
+ * The `state` op that re-declares `variable` EXACTLY as declared, with only `frame` changed.
+ *
+ * `state` is a full redeclaration (see `StateOp`), so this carries the variable's own type,
+ * enum domain or int bounds, and initial. The first implementation emitted `type: 'bool'`
+ * for every variable, which for an int is a type change the fold refuses — the repair a
+ * check handed out could not be applied (spec 007 AC-1-6).
+ */
+const redeclare = (variable: StateVariable, frame: 'stable' | 'volatile'): DocumentOp => {
+  const initial = variable.initial !== undefined ? { initial: variable.initial } : {}
+  if (variable.type === 'bool')
+    return { op: 'state', name: variable.name, type: 'bool', frame, ...initial }
+  if (variable.type === 'enum') {
+    return {
+      op: 'state',
+      name: variable.name,
+      type: 'enum',
+      domain: [...variable.domain],
+      frame,
+      ...initial,
+    }
+  }
+  return {
+    op: 'state',
+    name: variable.name,
+    type: 'int',
+    ...(variable.domain?.min !== undefined ? { min: variable.domain.min } : {}),
+    ...(variable.domain?.max !== undefined ? { max: variable.domain.max } : {}),
+    frame,
+    ...initial,
+  }
+}
 
 /** Render one state as `a = 1, b = true`, in declaration order. */
 const renderState = (state: Readonly<Record<string, string>>): string =>
@@ -406,30 +453,25 @@ export const projectReachability = (
         // shipped by SPARK/GNATprove in its assumptions report). Never "P is
         // unreachable" — the claim is about the requirement-sanctioned transition
         // relation, and the sentence has to carry that.
-        const relied = hypotheses
-          .map(
-            (h) =>
-              `${h.variable} (written by ${h.writers.length > 0 ? h.writers.join(', ') : 'NO requirement'})`,
-          )
-          .join('; ')
+        const relied = reliedOn(hypotheses)
         findings.push({
           code: 'FND_REACHABILITY_UNDER_HYPOTHESES',
           severity: 'info',
           requirementIds: ids,
           message:
             `${result.label}: PROVED_UNDER_HYPOTHESES — no reachable state violates this ` +
-            'constraint, ASSUMING these variables change only when a requirement changes ' +
-            `them: ${relied}. THE DOCUMENT DOES NOT STATE THAT. With nothing assumed the ` +
-            'constraint IS violable, so this is a proof about the requirement-sanctioned ' +
-            'transition relation and not about the system as specified — `verified` is demoted ' +
-            'accordingly. A variable written by NO requirement is the sharpest case: nothing in ' +
-            'the document keeps it from changing.',
+            'constraint, ASSUMING these variables, which the document declares `frame: stable`, ' +
+            `change only when a requirement changes them: ${relied}. That is a HYPOTHESIS: no ` +
+            'requirement establishes it, and with the frame released the constraint IS violable, ' +
+            'so this is a proof about the declared model and not about the system as specified ' +
+            '— `verified` is demoted accordingly. A variable written by NO requirement is the ' +
+            'sharpest case: nothing in the document keeps it from changing.',
           evidence: {
             invariant: result.invariant?.invariant ?? '',
             certificateVerified: result.invariant?.certificateVerified === true,
             hypotheses: hypotheses.map((h) => ({ variable: h.variable, writers: h.writers })),
             strictRun: result.strict,
-            framedRun: result.framed ?? 'unreachable',
+            declaredRun: result.declared ?? 'unreachable',
           },
         })
         demotions.push({
@@ -438,21 +480,15 @@ export const projectReachability = (
           action:
             `The proof for ${result.label} depends on the declared frame: ${relied}. Discharge it ` +
             'either by adding the requirements that make those variables genuinely written only ' +
-            'where intended, or by declaring them `volatile` and accepting the weaker (honest) ' +
-            'claim that the constraint can be violated.',
+            'where intended, or by releasing the frame (the ops below re-declare each variable ' +
+            '`volatile` with its own type, range, and initial) and accepting the weaker, honest ' +
+            'verdict: the proof then needs a hypothesis the document does not state.',
           repair: {
-            ops: hypotheses.map(
-              (h) =>
-                ({
-                  op: 'state',
-                  name: h.variable,
-                  // A concrete, applicable op: RELEASE the frame. That is the one
-                  // mechanical discharge — the other (author more requirements) is
-                  // content this must not invent.
-                  type: 'bool',
-                  frame: 'volatile',
-                }) satisfies DocumentOp,
-            ),
+            // A concrete, applicable op per hypothesis: RELEASE the frame, re-declaring the
+            // variable EXACTLY as declared otherwise — `state` is a full redeclaration, so an
+            // op that dropped the type, range, or initial would change the model (or be
+            // refused) rather than release a frame (spec 007 AC-1-6).
+            ops: hypotheses.map((h) => redeclare(h.declaration, 'volatile')),
             commands: [`symspec show ${result.label} ${docPath}`, `symspec check ${docPath}`],
           },
         })
@@ -460,6 +496,44 @@ export const projectReachability = (
       }
 
       case 'UNKNOWN': {
+        if (result.unknownReason === 'frame-undeclared') {
+          const hypotheses = result.hypotheses ?? []
+          const needed = reliedOn(hypotheses)
+          findings.push({
+            code: 'FND_REACHABILITY_UNKNOWN',
+            severity: 'info',
+            requirementIds: ids,
+            message:
+              `${result.label}: NOT PROVED, and not violated by any requirement — it holds only ` +
+              `if these variables keep their value whenever no requirement writes them: ${needed}. ` +
+              'THE DOCUMENT DOES NOT STATE THAT: they are declared `volatile` (the default), and ' +
+              'with them free the constraint IS violable through a change no requirement makes. ' +
+              'Nothing is claimed either way. State the hypothesis by declaring them ' +
+              '`frame: stable` (the verdict becomes PROVED_UNDER_HYPOTHESES, still demoted), or ' +
+              'author the requirements that make it true.',
+            evidence: {
+              unknownReason: 'frame-undeclared',
+              hypotheses: hypotheses.map((h) => ({ variable: h.variable, writers: h.writers })),
+              strictRun: result.strict,
+              ...(result.declared !== undefined ? { declaredRun: result.declared } : {}),
+              framedRun: result.framed ?? 'unreachable',
+            },
+          })
+          demotions.push({
+            reason: 'reachability-frame-undeclared' satisfies ReachabilityDemotionReason,
+            requirementIds: ids,
+            action:
+              `${result.label} holds only under a frame the document does not declare: ${needed}. ` +
+              'Either author the requirements that keep those variables fixed, or state the ' +
+              'hypothesis — the ops below re-declare each variable `frame: stable` with its own ' +
+              'type, range, and initial — and accept PROVED_UNDER_HYPOTHESES, which still demotes.',
+            repair: {
+              ops: hypotheses.map((h) => redeclare(h.declaration, 'stable')),
+              commands: [`symspec show ${result.label} ${docPath}`, `symspec check ${docPath}`],
+            },
+          })
+          break
+        }
         const budget = result.unknownReason === 'budget-exhausted'
         findings.push({
           code: 'FND_REACHABILITY_UNKNOWN',

@@ -586,11 +586,13 @@ describe('the state-model section`s transcript is REAL', () => {
         {
           name: 'held',
           type: 'int',
-          frame: 'volatile',
+          // `stable`, exactly as the section's plan declares them — the hypothesis the TX-C1
+          // proof is reported under (spec 007 AC-1-6).
+          frame: 'stable',
           initial: 'held = 0',
           domain: { min: 0, max: 3 },
         },
-        { name: 'queued', type: 'bool', frame: 'volatile', initial: 'queued = false' },
+        { name: 'queued', type: 'bool', frame: 'stable', initial: 'queued = false' },
       ],
     },
   })
@@ -727,9 +729,26 @@ describe('the state-model section`s transcript is REAL', () => {
     // And the finding NAMES the hypothesis with its writers, which is the sentence the
     // section quotes verbatim.
     const proof = payload.findings.find((f) => f.code === 'FND_REACHABILITY_UNDER_HYPOTHESES')
-    expect(proof?.message).toContain('THE DOCUMENT DOES NOT STATE THAT')
-    expect(proof?.message).toContain('held')
-    expect(proof?.message).toContain('TX-A1')
+    expect(proof?.message).toContain('declares `frame: stable`')
+    expect(proof?.message).toContain('held (written by TX-A1, TX-A2)')
+    expect(proof?.message).toContain('queued (written by TX-A1, TX-A3)')
+  }, 60_000)
+
+  it('the SAME model with the frames left volatile is UNKNOWN (frame-undeclared), as the section says', async () => {
+    const base = lockDoc()
+    const volatile: RequirementsDocument = {
+      ...base,
+      stateModel: {
+        variables: base.stateModel.variables.map((v) => ({ ...v, frame: 'volatile' as const })),
+      },
+    }
+    const payload = await runCheck(volatile)
+    expect(payload.reachability?.provedUnderHypotheses).toBe(0)
+    expect(payload.reachability?.unknown).toBe(1)
+    const open = payload.findings.find(
+      (f) => f.code === 'FND_REACHABILITY_UNKNOWN' && f.message.startsWith('TX-C1:'),
+    )
+    expect(open?.message).toContain('THE DOCUMENT DOES NOT STATE THAT')
   }, 60_000)
 
   it('STEP 2: TX-C2 is VIOLATED, with the trace the section prints', async () => {

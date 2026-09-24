@@ -543,19 +543,24 @@ whose `alarm` variable is written by NO requirement, the framed run returns UNRE
 back a certificate for it. A frame-by-default tool would therefore certify fictions, so
 `volatile` is the default and the safe direction is the one that proves less.
 
-What that means in practice is the verdict you will actually see most often:
+What that means in practice — the three verdicts a multi-variable model actually produces:
 
 - **`FND_REACHABILITY_PROVED`** — proved with nothing assumed. Frame-closed, and the
   strongest thing the tier says. Realistically a property of single-variable models.
-- **`FND_REACHABILITY_UNDER_HYPOTHESES`** — proved only once the unwritten variables are
-  held fixed. The message NAMES the variables relied upon together with the requirements
-  that write them, says **THE DOCUMENT DOES NOT STATE THAT**, and DEMOTES `verified`. With
+- **`FND_REACHABILITY_UNDER_HYPOTHESES`** — proved once the variables YOU declared
+  `stable` are held fixed. The message NAMES them together with the requirements that
+  write them, says no requirement establishes the hypothesis, and DEMOTES `verified`. With
   more than one state variable this is the honest common outcome, not a failure.
+- **`FND_REACHABILITY_UNKNOWN`, reason `frame-undeclared`** — the same proof when the
+  variables it needs held are left `volatile`: it holds only if they stay put, and
+  **THE DOCUMENT DOES NOT STATE THAT**. Its repair is the `state` ops that declare them
+  `stable`, and applying them moves the verdict to PROVED_UNDER_HYPOTHESES. Releasing the
+  frame again moves it back. Both demote.
 
-So do not chase `PROVED`. Declaring everything `stable` does not upgrade the verdict —
-it TIGHTENS the disclosed hypothesis, because the tier re-runs with your declared set and
-names exactly what you wrote down instead of all N variables. The discharge is to author the
-requirements that justify the assumption, which is spec work rather than a flag.
+So do not chase `PROVED`. Declaring a variable `stable` does not upgrade a verdict to
+proven — it STATES a hypothesis, which the tier then names instead of leaving the question
+open. The discharge is to author the requirements that justify the assumption, which is spec
+work rather than a flag.
 
 ### The worked example: the real TX-C1, proved and then broken
 
@@ -565,15 +570,16 @@ Measured on the built CLI, on the hex-bonk `agent-run-triggers` production requi
 > lock keyed on the conversation id so they execute sequentially.
 
 That is a mutual-exclusion invariant. Two variables and three effects express the lock's
-lifecycle.
+lifecycle, and both variables are declared `stable`: the lock count and the waiting flag
+change only when a requirement changes them.
 
 **Step 1 — declare, classify, and PROVE.**
 
 ```bash
 symspec init ./requirements.json
 cat > plan.jsonl <<'OPS'
-{"op":"state","name":"held","type":"int","min":0,"max":3,"initial":"held = 0"}
-{"op":"state","name":"queued","type":"bool","initial":"queued = false"}
+{"op":"state","name":"held","type":"int","min":0,"max":3,"initial":"held = 0","frame":"stable"}
+{"op":"state","name":"queued","type":"bool","initial":"queued = false","frame":"stable"}
 {"op":"add","key":"TX-A1","patternType":"event-driven","trigger":"an agent worker claims a run","systemName":"run service","systemResponse":"acquire the conversation lock"}
 {"op":"add","key":"TX-A2","patternType":"event-driven","trigger":"a run reaches a terminal state","systemName":"run service","systemResponse":"release the conversation lock"}
 {"op":"add","key":"TX-A3","patternType":"event-driven","trigger":"a run for a locked conversation is queued","systemName":"run service","systemResponse":"mark the run waiting"}
@@ -589,7 +595,7 @@ symspec check --field data.reachability
 
 ```json
 {"variables":2,"effects":3,"constraints":1,"proved":0,
- "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":337,"timeoutMs":2000}
+ "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":148,"timeoutMs":2000}
 ```
 
 TX-C1 holds — and the verdict is `PROVED_UNDER_HYPOTHESES`, not `PROVED`, exactly as
@@ -597,8 +603,9 @@ the frame section predicts. The finding says so and names the hypothesis:
 
 ```
 TX-C1: PROVED_UNDER_HYPOTHESES — no reachable state violates this constraint, ASSUMING
-these variables change only when a requirement changes them: held (written by TX-A1,
-TX-A2); queued (written by TX-A1, TX-A3). THE DOCUMENT DOES NOT STATE THAT.
+these variables, which the document declares `frame: stable`, change only when a
+requirement changes them: held (written by TX-A1, TX-A2); queued (written by TX-A1, TX-A3).
+That is a HYPOTHESIS: no requirement establishes it.
 ```
 
 **Step 2 — add a second invariant that sounds obviously true, and watch it FAIL.**
@@ -612,7 +619,7 @@ symspec check --field data.reachability
 
 ```json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":537,"timeoutMs":2000}
+ "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":324,"timeoutMs":2000}
 ```
 
 Exit **1**, through the existing contract — the error-severity finding lands in
@@ -643,7 +650,7 @@ symspec check --field data.reachability
 
 ```json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":350,"timeoutMs":2000}
+ "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":228,"timeoutMs":2000}
 ```
 
 Exit **0**. Both invariants now hold, and the change was to the requirement the trace
@@ -686,7 +693,7 @@ All 8 claims, verbatim:
 >
 > Numeric conflicts are checked over linear integer/real arithmetic (LIA/LRA): requirements placing jointly unsatisfiable bounds on the same per-system quantity (unit-normalized) are reported as FND_NUMERIC_CONTRADICTION. Nonlinear-integer arithmetic remains out of scope (undecidable).
 >
-> The unbounded reachability tier proves a declared constraint over EVERY reachable state with no bound on path length (Z3 Spacer), every proof is independently re-verified by three plain-SMT obligations so a claim never rests on trusting the solver, and a violation carries the counterexample trace naming which requirements fired, in order. But the claim is about the STATE MODEL you declared, not about the requirement text: the `classify` expressions ARE the model, so a mis-declared effect yields a sound proof of the wrong thing. It runs only when a state model is committed (otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not run), its common success is FND_REACHABILITY_UNDER_HYPOTHESES — proved only once variables no requirement writes are held fixed, a hypothesis the document does not state, which demotes verified — and an unsatisfiable initial state makes every constraint hold vacuously, reported at error severity because it MASKS violations rather than merely failing to prove one.
+> The unbounded reachability tier proves a declared constraint over EVERY reachable state with no bound on path length (Z3 Spacer), every proof is independently re-verified by three plain-SMT obligations so a claim never rests on trusting the solver, and a violation carries the counterexample trace naming which requirements fired, in order. But the claim is about the STATE MODEL you declared, not about the requirement text: the `classify` expressions ARE the model, so a mis-declared effect yields a sound proof of the wrong thing. It runs only when a state model is committed (otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not run), every proof over a small model is ALSO re-decided by an independent explicit-state search (a disagreement is FND_CERTIFICATE_DISAGREES and withdraws the proof), a proof that needs variables held fixed is FND_REACHABILITY_UNDER_HYPOTHESES only when the document DECLARES them `frame: stable` — and demotes verified — while one that needs undeclared frames is FND_REACHABILITY_UNKNOWN naming them, a write outside a declared range is FND_RANGE_VIOLATION rather than a silently disabled step, and an unsatisfiable initial state makes every constraint hold vacuously, reported at error severity because it MASKS violations rather than merely failing to prove one.
 >
 > `data.verified` is a COVERAGE claim about the whole document, not a verdict on it: it is true only when every requirement that COULD be cross-compared was (each participates in a comparison with a peer), every opposition candidate has been triaged (committed via `symspec antonym` / `symspec glossary`, or waived), and a decide-tier comparison actually ran. Two things it therefore does NOT mean. It does not account for proven findings: a document with a proven FND_CONTRADICTION reports `verified: true` and exits 1, because "I compared enough to certify" and "the spec is correct" are different claims and the exit codes are what keep them apart. And a document with fewer than two requirements is vacuously verified — there is no peer to share vocabulary with, so the absence of any cross-comparison is disclosed in `data.coverage.pairsCheckedNote` and `data.residualRisk` rather than as a demotion that could never be discharged. Propose-only findings and coverage statistics can only demote verified, never promote it. Each demotion is listed in `data.coverage.demotions` with the concrete command that discharges it, so an agent can iterate: `check --strict` (exit 3 on demotion) -> apply the listed ops or rewrite the named requirements -> re-check -> exit 0.
 
@@ -759,8 +766,8 @@ an error-severity finding also excludes its requirement from the formal tier.
 | `FND_RELATIONAL_UNCHECKED` | info | formal | requirements under one shared guard carry numeric bounds alongside unmatched (singleton) atoms — the shape where aggregate/conservation or cross-quantity relational conflicts hide. symspec's numeric tier is pairwise same-quantity only and does NOT attempt aggregate sums or cross-quantity arithmetic, so this reasoning was not attempted. DEMOTES `verified` so it never outruns what was compared; never a verdict. |
 | `FND_REACHABILITY_VIOLATED` | error | formal | a REACHABLE state violates a declared constraint, and the evidence carries the counterexample trace naming which requirements fired, in order, to get there. Proven over ALL reachable states with no bound (Z3 Spacer), and proven in BOTH the strict and the framed configuration, so it is a genuine defect rather than an artifact of assuming nothing about unwritten variables. |
 | `FND_REACHABILITY_PROVED` | info | formal | a declared constraint holds in EVERY reachable state, proven with no bound and with nothing assumed beyond the document (frame-closed). The evidence carries the inductive invariant the solver inferred, which was then INDEPENDENTLY re-checked by three plain-SMT obligations (Init implies Inv, Inv and the transition relation imply Inv-prime, Inv implies not-Bad) — so the claim does not rest on trusting the solver. Reported rather than left silent because a proof the tool performed and did not mention is a proof the reader cannot rely on. |
-| `FND_REACHABILITY_UNDER_HYPOTHESES` | info | formal | a declared constraint holds only WHEN the declared frame assumptions are granted: it is reachable-violating with nothing assumed, and unreachable once the variables declared `frame: stable` are held fixed except where a requirement writes them. That is a proof given a hypothesis THE DOCUMENT DOES NOT STATE, so it DEMOTES `verified` and names the exact variables relied upon together with the requirements that write them. Never rendered as proven-unconditionally. |
-| `FND_REACHABILITY_UNKNOWN` | info | formal | the solver did not decide whether a declared constraint can be violated, so nothing is claimed either way and `verified` is DEMOTED. The message states which of the two causes applies, because they need different remedies and the solver cannot be asked: a timed-out Spacer query reports its reason as the literal string "ok", so the distinction is derived out-of-band from measured elapsed time against the budget that was set. |
+| `FND_REACHABILITY_UNDER_HYPOTHESES` | info | formal | a declared constraint holds only WHEN the declared frame assumptions are granted: it is reachable-violating with nothing assumed, and unreachable once the variables declared `frame: stable` are held fixed except where a requirement writes them. That is a proof given a hypothesis NO REQUIREMENT ESTABLISHES, so it DEMOTES `verified` and names the exact variables relied upon together with the requirements that write them. Never rendered as proven-unconditionally. |
+| `FND_REACHABILITY_UNKNOWN` | info | formal | whether a declared constraint (or a declared range) can be violated was not decided, so nothing is claimed either way and `verified` is DEMOTED. The message states which of three causes applies, because they need different remedies. Two are solver limits the solver cannot be asked about: a timed-out Spacer query reports its reason as the literal string "ok", so budget exhaustion is told from undecidability out-of-band, by measured elapsed time against the budget that was set. The third, frame-undeclared, is not a solver limit: the constraint holds once every unwritten variable is held fixed and is violable when the variables the document declares `volatile` change on their own, which the document does not rule out. |
 | `FND_REACHABILITY_NOT_CHECKED` | info | formal | the unbounded reachability tier did NOT cover part or all of this document, and `verified` is DEMOTED accordingly. Emitted when no state model is committed, when no requirement carries a constraint to check, when a classified requirement could not be read, or when the model admits no transitions at all (in which case only the initial state exists and any invariant over it holds almost vacuously). This is a coverage DISCLOSURE, not a defect: silence over a question that was never asked reads exactly like a pass, which is the one thing this tool must never do. |
 | `FND_REACHABILITY_VACUOUS_INITIAL` | error | formal | the INITIAL STATE is UNSATISFIABLE: the model-wide `initial` predicate, the per-variable `initial` predicates, and the declared integer/enum ranges cannot all hold at once, so the model has NO initial state, the reachable-state set is EMPTY, and every constraint holds VACUOUSLY. Nothing is proven about anything and every constraint is DEMOTED. Error severity rather than a disclosure because a vacuous model does not merely fail to prove — it MASKS proven violations: measured, adding a contradictory initial predicate to a document with a genuine reachable violation turned an error-severity FND_REACHABILITY_VIOLATED into a confident "PROVED with nothing assumed" and flipped the exit code from 1 to 0. The independent certificate check cannot catch this, because an unsatisfiable Init makes `Inv := false` discharge all three obligations validly. |
 | `FND_RANGE_VIOLATION` | error | formal | an EFFECT writes a value OUTSIDE its target variable`s declared --min/--max range from a REACHABLE state, so the declared range is false of the system as specified. The evidence names the effect, the variable, the value written, the reachable pre-state, and the trace that reaches it (every step requirement-sanctioned). The step is NOT disabled: enforcing the range by conjoining it into the transition relation made an overflowing step silently never fire, which "proved" everything downstream of it impossible. |

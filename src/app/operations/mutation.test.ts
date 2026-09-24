@@ -24,6 +24,7 @@ import {
 import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
+import { hasErrorSeverityFinding } from '../runtime/exit.ts'
 import {
   type AnyOperation,
   fieldMetadata,
@@ -271,6 +272,33 @@ describe('the two failure contracts', () => {
     expect(data.abortedAt).toBe(1)
     expect(data.results[1]?.code).toBe('ERR_NOT_FOUND')
     expect(fs.saves).toHaveLength(0)
+    // …and the refused op is an ERROR-severity finding, so the process exits NON-ZERO
+    // (spec 007 AC-1-6). An aborted atomic apply used to exit 0 with `abortedAt` set.
+    expect(data.findings).toEqual([
+      expect.objectContaining({ code: 'ERR_NOT_FOUND', severity: 'error', index: 1, op: 'derive' }),
+    ])
+    expect(hasErrorSeverityFinding(data)).toBe(true)
+  })
+
+  it('a refused op exits non-zero in continue-on-error mode too, while the rest applies', async () => {
+    const fs = await seeded()
+    const stream = [
+      '{"op":"add","key":"S1","patternType":"ubiquitous","systemName":"s","systemResponse":"do a"}',
+      '{"op":"derive","from":"S1","to":"MISSING"}',
+    ].join('\n')
+    const data = await ok(APPLY, { file: 'doc.json', continueOnError: true }, fs, stream)
+    expect(data.written).toBe(true)
+    expect(data.findings?.map((f) => f.index)).toEqual([1])
+    expect(hasErrorSeverityFinding(data)).toBe(true)
+  })
+
+  it('a batch where every op applies carries no findings and exits 0', async () => {
+    const fs = await seeded()
+    const stream =
+      '{"op":"add","key":"S1","patternType":"ubiquitous","systemName":"s","systemResponse":"do a"}'
+    const data = await ok(APPLY, { file: 'doc.json' }, fs, stream)
+    expect(data.findings).toBeUndefined()
+    expect(hasErrorSeverityFinding(data)).toBe(false)
   })
 
   it('a BULK update is not `single` — a partial outcome is data, not a failure', async () => {

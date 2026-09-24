@@ -146,22 +146,30 @@ export const ReachabilityFndCodeMeta: Record<
       'info — a declared constraint holds only WHEN the declared frame assumptions are granted: it ' +
       'is reachable-violating with nothing assumed, and unreachable once the variables declared ' +
       '`frame: stable` are held fixed except where a requirement writes them. That is a proof given ' +
-      'a hypothesis THE DOCUMENT DOES NOT STATE, so it DEMOTES `verified` and names the exact ' +
+      'a hypothesis NO REQUIREMENT ESTABLISHES, so it DEMOTES `verified` and names the exact ' +
       'variables relied upon together with the requirements that write them. Never rendered as ' +
       'proven-unconditionally. Suggestion: either add the requirements that justify the stable ' +
-      'declaration, or drop `--frame stable` on those variables and accept the weaker claim.',
+      'declaration, or apply the repair ops, which re-declare those variables `volatile` with their ' +
+      'own type, range, and initial — the verdict then becomes FND_REACHABILITY_UNKNOWN with reason ' +
+      'frame-undeclared, the honest weaker claim.',
   },
   FND_REACHABILITY_UNKNOWN: {
     code: 'FND_REACHABILITY_UNKNOWN',
     description:
-      'info — the solver did not decide whether a declared constraint can be violated, so nothing ' +
-      'is claimed either way and `verified` is DEMOTED. The message states which of the two causes ' +
-      'applies, because they need different remedies and the solver cannot be asked: a timed-out ' +
-      'Spacer query reports its reason as the literal string "ok", so the distinction is derived ' +
-      'out-of-band from measured elapsed time against the budget that was set. Suggestion: for ' +
-      'budget exhaustion raise --reachability-timeout-ms (this tier`s own per-query bound, which ' +
-      'defaults to --timeout-ms when absent); for genuine undecidability bound the integer domains ' +
-      'in the state model instead, since more time will not help.',
+      'info — whether a declared constraint (or a declared range) can be violated was not decided, ' +
+      'so nothing is claimed either way and `verified` is DEMOTED. The message states which of three ' +
+      'causes applies, because they need different remedies. Two are solver limits the solver ' +
+      'cannot be asked about: a timed-out Spacer query reports its reason as the literal string ' +
+      '"ok", so budget exhaustion is told from undecidability out-of-band, by measured elapsed time ' +
+      'against the budget that was set. The third, frame-undeclared, is not a solver limit: the ' +
+      'constraint holds once every unwritten variable is held fixed and is violable when the ' +
+      'variables the document declares `volatile` change on their own, which the document does not ' +
+      'rule out. Suggestion: for budget exhaustion raise --reachability-timeout-ms (this tier`s own ' +
+      'per-query bound, which defaults to --timeout-ms when absent); for genuine undecidability bound ' +
+      'the integer domains in the state model instead, since more time will not help; for ' +
+      'frame-undeclared either author the requirements that keep the named variables fixed or apply ' +
+      'the repair ops, which declare them `frame: stable` (the verdict becomes ' +
+      'FND_REACHABILITY_UNDER_HYPOTHESES, still demoted).',
   },
   FND_REACHABILITY_NOT_CHECKED: {
     code: 'FND_REACHABILITY_NOT_CHECKED',

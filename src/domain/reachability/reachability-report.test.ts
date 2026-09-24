@@ -47,6 +47,25 @@ const reportOf = (over: Partial<ReachabilityReport> = {}): ReachabilityReport =>
   ...over,
 })
 
+/**
+ * One frame hypothesis. `granted` is the int lock count (0..4, initial `granted = 0`); any
+ * other name is a bool — so a repair op can be asserted against a declared TYPE.
+ */
+const hyp = (variable: string, writers: readonly string[]) => ({
+  variable,
+  writers,
+  declaration:
+    variable === 'granted'
+      ? ({
+          name: 'granted',
+          type: 'int',
+          frame: 'stable',
+          domain: { min: 0, max: 4 },
+          initial: 'granted = 0',
+        } as const)
+      : ({ name: variable, type: 'bool', frame: 'stable' } as const),
+})
+
 /** One constraint result, defaulted to the PROVED shape. */
 const resultOf = (over: Partial<ConstraintResult> = {}): ConstraintResult => ({
   label: 'TX-C1',
@@ -89,7 +108,7 @@ describe('the tier may DEMOTE and may never promote', () => {
         verdict: 'PROVED_UNDER_HYPOTHESES',
         strict: 'reachable',
         framed: 'unreachable',
-        hypotheses: [{ variable: 'granted', writers: ['TX-A1'] }],
+        hypotheses: [hyp('granted', ['TX-A1'])],
       },
     ],
     ['UNKNOWN', { verdict: 'UNKNOWN', strict: 'unknown', unknownReason: 'undecidable' }],
@@ -141,7 +160,7 @@ describe('the tier may DEMOTE and may never promote', () => {
             verdict: 'PROVED_UNDER_HYPOTHESES',
             strict: 'reachable',
             framed: 'unreachable',
-            hypotheses: [{ variable: 'x', writers: [] }],
+            hypotheses: [hyp('x', [])],
           }),
         ],
       }),
@@ -213,7 +232,7 @@ describe('only a genuine violation reaches error severity', () => {
             verdict: 'PROVED_UNDER_HYPOTHESES',
             strict: 'reachable',
             framed: 'unreachable',
-            hypotheses: [{ variable: 'x', writers: [] }],
+            hypotheses: [hyp('x', [])],
           }),
         ],
       }),
@@ -285,10 +304,7 @@ describe('PROVED_UNDER_HYPOTHESES discloses what the proof leaned on', () => {
             verdict: 'PROVED_UNDER_HYPOTHESES',
             strict: 'reachable',
             framed: 'unreachable',
-            hypotheses: [
-              { variable: 'granted', writers: ['TX-A1', 'TX-A2'] },
-              { variable: 'alarm', writers: [] },
-            ],
+            hypotheses: [hyp('granted', ['TX-A1', 'TX-A2']), hyp('alarm', [])],
           }),
         ],
       }),
@@ -311,13 +327,16 @@ describe('PROVED_UNDER_HYPOTHESES discloses what the proof leaned on', () => {
             verdict: 'PROVED_UNDER_HYPOTHESES',
             strict: 'reachable',
             framed: 'unreachable',
-            hypotheses: [{ variable: 'granted', writers: ['TX-A1'] }],
+            hypotheses: [hyp('granted', ['TX-A1'])],
           }),
         ],
       }),
       DOC,
     ).findings[0]
-    expect(finding?.message).toContain('THE DOCUMENT DOES NOT STATE THAT')
+    // The hypothesis is one the document DECLARES (`frame: stable`) and no requirement
+    // establishes — the message says both, and what releasing it would mean.
+    expect(finding?.message).toContain('declares `frame: stable`')
+    expect(finding?.message).toContain('HYPOTHESIS')
     expect(finding?.message).toContain('IS violable')
     expect(finding?.message).toContain('demoted')
   })
@@ -332,15 +351,26 @@ describe('PROVED_UNDER_HYPOTHESES discloses what the proof leaned on', () => {
             verdict: 'PROVED_UNDER_HYPOTHESES',
             strict: 'reachable',
             framed: 'unreachable',
-            hypotheses: [{ variable: 'granted', writers: ['TX-A1'] }],
+            hypotheses: [hyp('granted', ['TX-A1'])],
           }),
         ],
       }),
       DOC,
     ).demotions[0]
     expect(demotion?.reason).toBe('reachability-frame-relied-upon')
+    // The variable RE-DECLARED with its own type, range, and initial — only the frame
+    // changes. The op this replaced said `type: 'bool'` for this int, which the fold refuses
+    // (spec 007 AC-1-6).
     expect(demotion?.repair?.ops).toEqual([
-      { op: 'state', name: 'granted', type: 'bool', frame: 'volatile' },
+      {
+        op: 'state',
+        name: 'granted',
+        type: 'int',
+        min: 0,
+        max: 4,
+        frame: 'volatile',
+        initial: 'granted = 0',
+      },
     ])
   })
 })
@@ -584,7 +614,7 @@ describe('every reachability demotion names the command that supplies what is mi
             verdict: 'PROVED_UNDER_HYPOTHESES',
             strict: 'reachable',
             framed: 'unreachable',
-            hypotheses: [{ variable: 'granted', writers: ['TX-A1'] }],
+            hypotheses: [hyp('granted', ['TX-A1'])],
           }),
         ],
       }),
@@ -616,6 +646,22 @@ describe('every reachability demotion names the command that supplies what is mi
         initialPredicates: ['held = 0', 'held = 2'],
         results: [
           resultOf({ verdict: 'UNKNOWN', strict: 'unknown', unknownReason: 'undecidable' }),
+        ],
+      }),
+    ],
+    // The proof needs a frame the document does not declare (spec 007 AC-1-6): the repair
+    // STATES the hypothesis with a `state` op per variable, and re-checking is the command.
+    [
+      'reachability-frame-undeclared',
+      reportOf({
+        results: [
+          resultOf({
+            verdict: 'UNKNOWN',
+            strict: 'reachable',
+            framed: 'unreachable',
+            unknownReason: 'frame-undeclared',
+            hypotheses: [hyp('granted', ['TX-A1'])],
+          }),
         ],
       }),
     ],

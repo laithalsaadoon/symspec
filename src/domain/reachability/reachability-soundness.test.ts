@@ -9,25 +9,27 @@
  * solver under test.
  */
 
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import {
   DOC_VERSION,
   emptyDocument,
+  FRAME_VERDICT_TABLE,
   type Requirement,
-  type RequirementsDocument,
+  RequirementsDocument,
   STATE_VAR_NAME_PATTERN,
   type StateVariable,
 } from '../requirements/document.ts'
 import { foldOps } from '../requirements/mutate.ts'
+import { type DocumentOp, decodeOp } from '../requirements/ops.ts'
 import {
   isExprError,
   parseExpression,
   validateEffect,
   validateExpression,
 } from '../requirements/state-expr.ts'
-import { type ReachabilityReport, runReachability } from './reachability.ts'
+import { decideFrameVerdict, type ReachabilityReport, runReachability } from './reachability.ts'
 import { projectReachability } from './reachability-report.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -368,5 +370,114 @@ describe('AC-1-4 — integer literals reach Z3 as their decimal source, never th
       ),
     )
     expect(resultFor(report, 'C1').verdict).toBe('VIOLATED')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC-1-6 — `frame` does what it says, and the frame repair moves the verdict
+// ---------------------------------------------------------------------------
+
+describe('AC-1-6 — the `frame` field documents exactly the lattice the tier implements', () => {
+  it.each(
+    FRAME_VERDICT_TABLE.map((row) => [row.verdict, row] as const),
+  )('the documented %s row is what decideFrameVerdict returns', (_verdict, row) => {
+    expect(decideFrameVerdict(row.none, row.declared ?? undefined, row.full ?? undefined)).toBe(
+      row.verdict,
+    )
+    // A `reachable` declared run also stands for "not run" (nothing declared stable).
+    if (row.declared === 'reachable') {
+      expect(decideFrameVerdict(row.none, undefined, row.full ?? undefined)).toBe(row.verdict)
+    }
+  })
+
+  it('the published field description renders every row of that table', () => {
+    // Read from the JSON Schema the manifest publishes, so this is the text an agent reads.
+    const description = JSON.stringify(Schema.toJsonSchemaDocument(RequirementsDocument))
+    for (const row of FRAME_VERDICT_TABLE) {
+      expect(description).toContain(`-> ${row.verdict}: ${row.reads}`)
+    }
+    // The stale sentence that described a DIFFERENT second run is gone.
+    expect(description).not.toContain('once with the declared')
+  })
+})
+
+describe('AC-1-6 — the frame repair is an op `apply` accepts, and it moves the verdict', () => {
+  /**
+   * `level` is an INT that no requirement writes; `tick` is the only thing that changes.
+   * With `level` free, `level = 0` is violable by a change no requirement makes; with it
+   * held, it holds. So the verdict is decided by the frame declaration alone:
+   * `stable` -> PROVED_UNDER_HYPOTHESES (the document states the hypothesis), `volatile`
+   * -> UNKNOWN (the proof needs a hypothesis the document does not state).
+   */
+  const LEVEL = (frame: 'stable' | 'volatile'): RequirementsDocument =>
+    docOf(
+      [
+        {
+          name: 'level',
+          type: 'int',
+          frame,
+          domain: { min: 0, max: 3 },
+          initial: 'level = 0',
+        },
+        { name: 'tick', type: 'bool', frame: 'volatile', initial: 'tick = false' },
+      ],
+      [effect(1, 'TICK', 'tick := not tick'), constraint(2, 'LEVEL_ZERO', 'level = 0')],
+    )
+
+  const decodeAll = (ops: readonly object[]): Promise<readonly DocumentOp[]> =>
+    Effect.runPromise(Effect.forEach(ops, (op) => decodeOp(op)))
+
+  /** The single demotion for LEVEL_ZERO, and its repair ops. */
+  const repairOf = async (document: RequirementsDocument) => {
+    const report = await run(document)
+    const projection = projectReachability(report, 'doc.json')
+    const demotion = projection.demotions.find((d) => d.requirementIds.includes(uuid(2)))
+    return { verdict: resultFor(report, 'LEVEL_ZERO').verdict, projection, demotion }
+  }
+
+  it('stable -> PROVED_UNDER_HYPOTHESES naming the DECLARED variable', async () => {
+    const report = await run(LEVEL('stable'))
+    const result = resultFor(report, 'LEVEL_ZERO')
+    expect(result.verdict).toBe('PROVED_UNDER_HYPOTHESES')
+    expect(result.hypotheses?.map((h) => h.variable)).toEqual(['level'])
+  })
+
+  it('volatile -> UNKNOWN, because the proof needs a frame the document does not declare', async () => {
+    const report = await run(LEVEL('volatile'))
+    const result = resultFor(report, 'LEVEL_ZERO')
+    expect(result.verdict).toBe('UNKNOWN')
+    expect(result.unknownReason).toBe('frame-undeclared')
+  })
+
+  it('ROUND TRIP: apply the PUH repair, re-check, and the verdict moves', async () => {
+    const before = LEVEL('stable')
+    const { verdict, demotion } = await repairOf(before)
+    expect(verdict).toBe('PROVED_UNDER_HYPOTHESES')
+    const ops = demotion?.repair?.ops ?? []
+    expect(ops.length).toBeGreaterThan(0)
+    // The op REDECLARES the variable with its OWN declared type and range.
+    expect(ops[0]).toMatchObject({ op: 'state', name: 'level', type: 'int', min: 0, max: 3 })
+
+    // Decoded through the SAME schema `apply` uses (excess properties refused), so an op
+    // `apply` would reject cannot pass here.
+    const folded = foldOps(before, await decodeAll(ops), TS)
+    expect(folded.results.map((r) => r.ok)).toEqual(ops.map(() => true))
+    const after = await repairOf(folded.document)
+    expect(after.verdict).not.toBe('PROVED_UNDER_HYPOTHESES')
+  })
+
+  it('ROUND TRIP the other way: apply the frame-undeclared repair, and the verdict moves', async () => {
+    const before = LEVEL('volatile')
+    const { verdict, demotion } = await repairOf(before)
+    expect(verdict).toBe('UNKNOWN')
+    const ops = demotion?.repair?.ops ?? []
+    expect(ops).toContainEqual(expect.objectContaining({ op: 'state', name: 'level', type: 'int' }))
+
+    // Decoded through the SAME schema `apply` uses (excess properties refused), so an op
+    // `apply` would reject cannot pass here.
+    const folded = foldOps(before, await decodeAll(ops), TS)
+    expect(folded.results.map((r) => r.ok)).toEqual(ops.map(() => true))
+    const after = await repairOf(folded.document)
+    expect(after.verdict).toBe('PROVED_UNDER_HYPOTHESES')
   })
 })

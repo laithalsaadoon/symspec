@@ -550,17 +550,68 @@ const stateVarNameDescription = lines(
  * documentation carries the measurement rather than deferring to a design doc an
  * author will not read.
  */
+/**
+ * THE FRAME LATTICE, as data — the ONE statement of what `frame` does to a verdict.
+ *
+ * Rendered into the `frame` field's description (and so into the manifest and every
+ * `--help`), and asserted row-by-row against the reachability tier's `decideFrameVerdict`
+ * (spec 007 AC-1-6), so the documented behavior and the implemented one cannot drift
+ * apart. They had: the prose said the second run used the DECLARED frames, the code pinned
+ * every variable and read the declaration only to word the disclosure, and the repair the
+ * tool handed out (release the frame) could not change the verdict it was offered for.
+ *
+ * Each run's outcome is `unreachable` / `reachable`; `null` means "not consulted". The
+ * `declared` run pins only the `stable` variables and is skipped when none is declared (it
+ * would be the unpinned run again), so a `reachable` there also stands for "not run".
+ */
+export const FRAME_VERDICT_TABLE = [
+  {
+    none: 'unreachable',
+    declared: null,
+    full: null,
+    verdict: 'PROVED',
+    reads: 'holds with NOTHING assumed (frame-closed). Not demoted.',
+  },
+  {
+    none: 'reachable',
+    declared: 'unreachable',
+    full: null,
+    verdict: 'PROVED_UNDER_HYPOTHESES',
+    reads:
+      'holds under the frames this document declares `stable`, named with their writers. DEMOTED: a declaration is a hypothesis no requirement establishes.',
+  },
+  {
+    none: 'reachable',
+    declared: 'reachable',
+    full: 'reachable',
+    verdict: 'VIOLATED',
+    reads:
+      'reachable using only changes some requirement makes: a counterexample trace at error severity.',
+  },
+  {
+    none: 'reachable',
+    declared: 'reachable',
+    full: 'unreachable',
+    verdict: 'UNKNOWN',
+    reads:
+      'holds only if VOLATILE variables keep their value, which the document does not state (reason `frame-undeclared`). DEMOTED; declaring them `stable` states the hypothesis and gives PROVED_UNDER_HYPOTHESES.',
+  },
+] as const
+
 const frameDescription = lines(
   'Whether this variable PERSISTS across a step that does not write it. Defaults to `volatile`.',
   '  - volatile: the variable may change freely in any step. Nothing is assumed. THE DEFAULT.',
   '  - stable:   the variable changes ONLY when some requirement`s effect changes it.',
-  'Declaring `stable` is opting in to a HYPOTHESIS the document does not otherwise state, so',
-  '`check` runs the reachability query TWICE — once with no frame at all, once with the declared',
-  'frames — and reports the strongest HONEST verdict:',
-  '  - unreachable with NO frame        -> PROVED (frame-closed). Not demoted.',
-  '  - reachable both ways              -> a real counterexample trace at error severity.',
-  '  - reachable strict, unreachable framed -> PROVED_UNDER_HYPOTHESES, naming the variables the',
-  '    proof leaned on, and DEMOTED — the proof is conditional on a choice, not on the document.',
+  'Declaring `stable` is opting in to a HYPOTHESIS the requirements do not establish. `check` asks',
+  'each constraint up to three times — with NOTHING pinned; with only the `stable` variables pinned',
+  '(the DECLARED run, skipped when none is declared); with EVERY unwritten variable pinned (the FULL',
+  'run) — and reports the strongest HONEST verdict (none / declared / full -> verdict):',
+  ...FRAME_VERDICT_TABLE.map(
+    (row) =>
+      `  - ${row.none} / ${row.declared ?? '-'} / ${row.full ?? '-'} -> ${row.verdict}: ${row.reads}`,
+  ),
+  'So declaring or releasing a frame MOVES the verdict: `stable` turns an UNKNOWN (frame-undeclared)',
+  'into PROVED_UNDER_HYPOTHESES, and `volatile` turns it back.',
   'Why the default is `volatile`: measured on this solver, a 3-variable model whose `alarm` is',
   'written by no requirement returns UNREACHABLE *with an inductive invariant* under a frame and',
   'REACHABLE without one. `alarm` is genuinely reachable, so the framed run proves a false answer',

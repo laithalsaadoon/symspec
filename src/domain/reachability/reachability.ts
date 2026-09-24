@@ -223,10 +223,17 @@ export const verdictOfLbool = (lbool: number): ReachabilityVerdict => {
  * - `'undecidable'` — the solver gave up well inside its budget. Raising the budget
  *   will NOT help; the model needs bounding or simplifying.
  *
- * Two reasons rather than one because they need different remedies, and conflating
- * them would send an agent into a loop raising a budget that was never the problem.
+ * - `'frame-undeclared'` — NOT a solver limitation (spec 007 AC-1-6): the constraint holds
+ *   once every unwritten variable is held fixed, and is violable when the variables the
+ *   document declares `volatile` change on their own. Whether they can is a fact about the
+ *   system the document does not state, so neither a proof nor a defect is claimed. The
+ *   remedy is to state it (declare them `frame: stable`) or to author the requirements that
+ *   make it true — never a budget or a bound.
+ *
+ * Distinct reasons because they need different remedies, and conflating them would send
+ * an agent into a loop raising a budget that was never the problem.
  */
-export type UnknownReason = 'budget-exhausted' | 'undecidable'
+export type UnknownReason = 'budget-exhausted' | 'undecidable' | 'frame-undeclared'
 
 /**
  * Classify an `unknown` from the CLOCK, never from `reason_unknown` (V15).
@@ -295,54 +302,57 @@ export type FrameVerdict =
   /** Unreachable with NOTHING framed. The strongest available answer: it holds under
    * the document's own transition relation, with no assumption added. */
   | 'PROVED'
-  /** Unreachable only WITH the declared frames. True given a hypothesis the document
-   * does not state, so it is disclosed and DEMOTES. */
+  /** Unreachable only WITH the frames the document DECLARES (`frame: stable`). True given
+   * a hypothesis the requirements do not establish, so it is disclosed and DEMOTES. */
   | 'PROVED_UNDER_HYPOTHESES'
   /** Reachable both ways: a genuine defect, reported at error severity with a trace. */
   | 'VIOLATED'
-  /** Either run failed to decide. Demotes; never reported as proven. */
+  /** Nothing is claimed either way: a run failed to decide, or the answer turns on a
+   * frame the document does not declare (see {@link UnknownReason}). Demotes; never
+   * reported as proven. */
   | 'UNKNOWN'
 
 /**
- * Decide the frame lattice (AC-2-5, binding) from the runs that were performed.
+ * Decide the frame lattice from the runs that were performed — THE implementation of the
+ * table the `frame` field documents ({@link FRAME_VERDICT_TABLE}, rendered into the
+ * field's description), and asserted row-by-row against it (spec 007 AC-1-6).
  *
- * | `none` run | framed run | verdict | reasoning |
+ * Three runs, ordered by how much they pin, so each is sound for what it licenses:
+ *
+ * | `none` | `declared` (pins `stable`) | `full` (pins all unwritten) | verdict |
  * |---|---|---|---|
- * | unreachable | (not needed) | `PROVED` | holds with NOTHING assumed |
- * | reachable | reachable | `VIOLATED` | reachable using only sanctioned changes |
- * | reachable | unreachable | `PROVED_UNDER_HYPOTHESES` | the frame is load-bearing |
- * | unknown (either) | | `UNKNOWN` | never reported as proven |
+ * | unreachable | — | — | `PROVED` — holds with NOTHING assumed |
+ * | reachable | unreachable | — | `PROVED_UNDER_HYPOTHESES` — holds under the frames the document declares |
+ * | reachable | reachable (or not run) | reachable | `VIOLATED` — reachable using only requirement-sanctioned changes |
+ * | reachable | reachable (or not run) | unreachable | `UNKNOWN` (frame-undeclared) — holds only if VOLATILE variables stay put |
+ * | any `unknown` on the path | | | `UNKNOWN` |
  *
- * This is the decision doc's table verbatim. What the doc leaves open — and what the first
- * implementation got wrong — is WHICH frame the second run applies.
+ * `declared` is `undefined` when nothing is declared `stable`: that run would pin nothing
+ * and be the `none` run again.
  *
- * ## Why the framed run pins EVERY unwritten variable, not just the declared ones
+ * ## Why the undeclared case is UNKNOWN and not PROVED_UNDER_HYPOTHESES
  *
- * Pinning only the variables declared `frame: stable` makes the framed run identical to
- * the unpinned one whenever nothing is declared, so `reachable` in both is trivially true
- * and every such constraint reports `VIOLATED` at error severity. The worked lock/grant
- * fixture caught exactly that: a lock-count constraint reported violated by a requirement
- * that only touches `idle`, because with nothing pinned `granted` may jump spontaneously.
- * A confident error-severity finding about a defect the document does not contain.
- *
- * So the framed run pins every variable an effect does not write — the maximal frame — and
- * the DECLARED set is then used to make the disclosed hypothesis as TIGHT as possible (see
- * {@link decideConstraint}). That keeps both directions sound: nothing-pinned is the sound
- * direction for proving unreachable, fully-pinned is the sound direction for reporting a
- * counterexample, and the divergence between them is still the detector for "the frame was
- * load-bearing here".
+ * An earlier lattice reported `PROVED_UNDER_HYPOTHESES` whenever the FULL run was
+ * unreachable, and used the declared set only to word the disclosure. The `frame` field's
+ * documentation said the second run used the DECLARED frames, so the documented behavior
+ * and the implemented one disagreed — and the disagreement had teeth: the suggested repair
+ * (release the frame) could not change the verdict, because the verdict never read the
+ * declaration. Now a proof under hypotheses is a proof under hypotheses the document
+ * STATES, and declaring or releasing a frame moves the verdict between the two rows.
  */
 export const decideFrameVerdict = (
   none: ReachabilityVerdict,
-  framed: ReachabilityVerdict | undefined,
+  declared: ReachabilityVerdict | undefined,
+  full: ReachabilityVerdict | undefined,
 ): FrameVerdict => {
   if (none === 'unknown') return 'UNKNOWN'
   if (none === 'unreachable') return 'PROVED'
-  // `none === 'reachable'`. On its own that is NOT evidence of a defect — with nothing
-  // pinned a variable may change spontaneously, so the witness may use a transition the
-  // document never licensed. The framed run is what distinguishes the two.
-  if (framed === undefined || framed === 'unknown') return 'UNKNOWN'
-  return framed === 'reachable' ? 'VIOLATED' : 'PROVED_UNDER_HYPOTHESES'
+  if (declared === 'unknown') return 'UNKNOWN'
+  if (declared === 'unreachable') return 'PROVED_UNDER_HYPOTHESES'
+  // Reachable under the document's own frames. The FULL run decides whether that is a
+  // requirement-sanctioned defect.
+  if (full === undefined || full === 'unknown') return 'UNKNOWN'
+  return full === 'reachable' ? 'VIOLATED' : 'UNKNOWN'
 }
 
 // ---------------------------------------------------------------------------
@@ -542,6 +552,8 @@ export const writeSetOf = (prepared: PreparedModel): ReadonlyMap<string, readonl
       writers.get(target)?.push(effect.label)
     }
   }
+  // In LABEL order, so a disclosure reads the same whatever ids the requirements carry.
+  for (const list of writers.values()) list.sort()
   return writers
 }
 
@@ -1624,7 +1636,10 @@ export interface ConstraintResult {
   /** The strict (no-frame) run's raw verdict — retained because the two runs' verdicts
    * ARE the frame-was-load-bearing detector, so both belong in the record. */
   readonly strict: ReachabilityVerdict
-  /** The framed run's verdict, when a framed run was performed. */
+  /** The DECLARED run's verdict (only the `stable` variables pinned), when one was
+   * performed — i.e. when the document declares anything `stable`. */
+  readonly declared?: ReachabilityVerdict
+  /** The FULL-frame run's verdict (every unwritten variable pinned), when performed. */
   readonly framed?: ReachabilityVerdict
   /** Present on a PROVED / PROVED_UNDER_HYPOTHESES verdict. */
   readonly invariant?: InvariantEvidence
@@ -1643,11 +1658,20 @@ export interface ConstraintResult {
    * {@link ReachabilityReport}.
    */
   readonly refusedParams: readonly string[]
-  /** The stable variables the proof relied on, on PROVED_UNDER_HYPOTHESES. Named with
-   * their writers, so the disclosure is actionable. */
+  /**
+   * The frame hypotheses, named with their writers so the disclosure is actionable, and
+   * carrying each variable's DECLARATION so a repair can re-declare it with its own type,
+   * range, and initial (spec 007 AC-1-6):
+   *
+   * - on PROVED_UNDER_HYPOTHESES, the variables the document declares `stable` — the
+   *   hypotheses the proof rests on;
+   * - on UNKNOWN with reason `frame-undeclared`, the `volatile` variables the proof would
+   *   need held — the hypotheses the document does not state.
+   */
   readonly hypotheses?: readonly {
     readonly variable: string
     readonly writers: readonly string[]
+    readonly declaration: StateVariable
   }[]
   /** Wall-clock ms for every query this constraint needed. Reported, never gated on. */
   readonly elapsedMs: number
@@ -1887,56 +1911,86 @@ const decideBySpacer = (
       }
     }
 
-    // (2) Reachable with nothing pinned. The FRAMED run — every unwritten variable pinned
-    // — decides whether that is a real defect or an artifact of assuming nothing.
-    const framedRun = yield* runQuery(Z3, ctx, prepared, target, 'full', timeoutMs)
-    elapsedMs += framedRun.elapsedMs
-    let refusedParams = [...new Set([...openRun.refusedParams, ...framedRun.refusedParams])]
-    const verdict = decideFrameVerdict(openRun.verdict, framedRun.verdict)
-
-    if (verdict === 'PROVED_UNDER_HYPOTHESES') {
-      const writers = writeSetOf(prepared)
-      // MINIMIZE THE FRAME SET (decision-doc design rule 3), so the disclosure names what
-      // the proof actually needs rather than everything that happened to be pinned.
-      //
-      // One extra query, and only when the document declared something: if the DECLARED
-      // stable set alone carries the proof, the hypothesis is exactly what the author
-      // wrote down — a far more actionable disclosure than "all 6 variables". When it does
-      // not (or nothing was declared), the honest hypothesis is every variable the maximal
-      // frame pinned, and saying so is the point.
-      let hypothesisVars = prepared.variables.map((v) => v.name)
-      if (prepared.stableVars.length > 0) {
-        const declaredRun = yield* runQuery(Z3, ctx, prepared, target, 'declared', timeoutMs)
-        elapsedMs += declaredRun.elapsedMs
-        refusedParams = [...new Set([...refusedParams, ...declaredRun.refusedParams])]
-        if (declaredRun.verdict === 'unreachable') hypothesisVars = [...prepared.stableVars]
+    // (2) Reachable with nothing pinned. First the DOCUMENT'S OWN hypotheses: the run that
+    // pins exactly the variables declared `frame: stable`. Skipped when nothing is declared,
+    // because that run would then be the unpinned one again.
+    let refusedParams = [...openRun.refusedParams]
+    const writers = writeSetOf(prepared)
+    let declaredRun: typeof openRun | undefined
+    if (prepared.stableVars.length > 0) {
+      declaredRun = yield* runQuery(Z3, ctx, prepared, target, 'declared', timeoutMs)
+      elapsedMs += declaredRun.elapsedMs
+      refusedParams = [...new Set([...refusedParams, ...declaredRun.refusedParams])]
+      if (declaredRun.verdict === 'unreachable') {
+        return {
+          ...base,
+          verdict: 'PROVED_UNDER_HYPOTHESES' as const,
+          strict: openRun.verdict,
+          declared: declaredRun.verdict,
+          invariant: yield* invariantOf(declaredRun),
+          // EXACTLY the variables the document declared `stable` — the hypotheses it states —
+          // each with its writers, which is what turns "this is conditional" into "this
+          // depends on granted changing only via TX-A1, TX-A2". A variable written by NO
+          // requirement is the V16 shape, and an empty writer list is how that shows.
+          hypotheses: prepared.stableVars.map((variable) => ({
+            variable,
+            writers: writers.get(variable) ?? [],
+            declaration: prepared.vars.get(variable) as StateVariable,
+          })),
+          elapsedMs,
+          refusedParams,
+          proofFrame: 'declared' as const,
+        }
       }
-      return {
-        ...base,
-        verdict,
-        strict: openRun.verdict,
-        framed: framedRun.verdict,
-        invariant: yield* invariantOf(framedRun),
-        // The variables the proof LEANED ON, each with its writers — which is what turns
-        // "this is conditional" into "this depends on granted changing only via TX-A1,
-        // TX-A2". A variable written by NO requirement is the V16 shape, and showing an
-        // empty writer list is how that becomes visible.
-        hypotheses: hypothesisVars.map((variable) => ({
-          variable,
-          writers: writers.get(variable) ?? [],
-        })),
-        elapsedMs,
-        refusedParams,
-        proofFrame: 'full' as const,
+      if (declaredRun.verdict === 'unknown') {
+        return {
+          ...base,
+          verdict: 'UNKNOWN' as const,
+          strict: openRun.verdict,
+          declared: declaredRun.verdict,
+          unknownReason: classifyUnknown(declaredRun.elapsedMs, timeoutMs),
+          elapsedMs,
+          refusedParams,
+        }
       }
     }
 
+    // (3) Reachable under the document's own frames. The FULL run — every unwritten variable
+    // pinned — decides whether that is a real defect or needs a change no requirement makes.
+    const framedRun = yield* runQuery(Z3, ctx, prepared, target, 'full', timeoutMs)
+    elapsedMs += framedRun.elapsedMs
+    refusedParams = [...new Set([...refusedParams, ...framedRun.refusedParams])]
+    const verdict = decideFrameVerdict(openRun.verdict, declaredRun?.verdict, framedRun.verdict)
+    const runs = {
+      strict: openRun.verdict,
+      ...(declaredRun !== undefined ? { declared: declaredRun.verdict } : {}),
+      framed: framedRun.verdict,
+    }
+
     if (verdict === 'UNKNOWN') {
+      if (framedRun.verdict === 'unreachable') {
+        // FRAME-UNDECLARED: holds once every unwritten variable is held fixed, violable when
+        // the variables the document declares VOLATILE move on their own. Neither a defect
+        // (no requirement gets there) nor a proof (the document never says they stay put).
+        // The hypotheses it would need are the volatile variables, named with their writers
+        // so the repair can state them.
+        const stable = new Set(prepared.stableVars)
+        return {
+          ...base,
+          verdict,
+          ...runs,
+          unknownReason: 'frame-undeclared' as const,
+          hypotheses: prepared.variables
+            .filter((v) => !stable.has(v.name))
+            .map((v) => ({ variable: v.name, writers: writers.get(v.name) ?? [], declaration: v })),
+          elapsedMs,
+          refusedParams,
+        }
+      }
       return {
         ...base,
         verdict,
-        strict: openRun.verdict,
-        framed: framedRun.verdict,
+        ...runs,
         unknownReason: classifyUnknown(framedRun.elapsedMs, timeoutMs),
         elapsedMs,
         refusedParams,
@@ -1953,8 +2007,7 @@ const decideBySpacer = (
     return {
       ...base,
       verdict: 'VIOLATED' as const,
-      strict: openRun.verdict,
-      framed: framedRun.verdict,
+      ...runs,
       trace,
       elapsedMs,
       refusedParams,

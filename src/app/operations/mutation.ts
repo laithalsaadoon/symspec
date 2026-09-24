@@ -135,6 +135,14 @@ const refDescription = (what: string): string =>
 export interface MutationPayload extends Omit<FoldResult, 'document'> {
   /** The resolved document path. */
   readonly path: string
+  /**
+   * One ERROR-severity entry per op the fold REFUSED, present only when one was (spec 007
+   * AC-1-6). This is what makes a batch with a refused op exit non-zero through the
+   * ordinary exit contract (`1`: an error-severity finding is present), the same contract
+   * `check` and `parse` use — before it, an aborted atomic `apply` exited 0 and an agent
+   * reading only the exit code saw a success that wrote nothing.
+   */
+  readonly findings?: readonly RefusedOpFinding[]
   /** Whether the document was actually WRITTEN. False on a dry run, on an atomic
    * abort, and on an all-no-op run — three different reasons, each visible in the
    * fields beside it rather than conflated into one flag. */
@@ -262,9 +270,9 @@ const toCatalogError = (
  *
  * A batch is different: 40 ops of which one failed is a partially-successful run whose
  * per-op results ARE the payload, and failing the whole invocation would throw away
- * the report an agent needs to fix line 12. So `apply` reports failures as data and
- * lets the ERROR-severity count drive the exit code, exactly as `check` and `parse`
- * do.
+ * the report an agent needs to fix line 12. So `apply` reports failures as data — each
+ * refused op is ALSO an error-severity entry in `findings`, which is what drives the exit
+ * code to `1`, exactly as `check` and `parse` do (spec 007 AC-1-6).
  *
  * `single` selects which contract applies. It is not a style choice — it is the
  * difference between "your command was wrong" and "here is what happened to each of
@@ -318,6 +326,24 @@ const runFold = (args: {
       })
     }
 
+    // EVERY refused op becomes an error-severity finding, in atomic mode (where it aborted
+    // the batch) and in continue-on-error mode (where the rest was applied) alike: either
+    // way something the caller asked for did not happen, and the exit code must say so.
+    const refused: readonly RefusedOpFinding[] = result.results
+      .filter((r) => !r.ok)
+      .map((r) => ({
+        code: r.code ?? 'ERR_USAGE',
+        severity: 'error',
+        index: r.index,
+        op: r.op,
+        message:
+          `op ${r.index} (${r.op}) was refused: ${r.error ?? 'the operation failed'}` +
+          (result.abortedAt !== undefined
+            ? ' — the batch was aborted and nothing was written.'
+            : ''),
+        suggestions: r.suggestions ?? [],
+      }))
+
     return {
       path,
       written,
@@ -326,8 +352,21 @@ const runFold = (args: {
       summary: result.summary,
       write: result.write,
       ...(result.abortedAt !== undefined ? { abortedAt: result.abortedAt } : {}),
+      ...(refused.length > 0 ? { findings: refused } : {}),
     }
   })
+
+/** A refused op, projected as an error-severity finding (see {@link MutationPayload}). */
+export interface RefusedOpFinding {
+  /** The op's own failure code (`ERR_NOT_FOUND`, `ERR_USAGE`, …). */
+  readonly code: string
+  readonly severity: 'error'
+  /** The 0-based index of the refused op in the batch. */
+  readonly index: number
+  readonly op: string
+  readonly message: string
+  readonly suggestions: readonly string[]
+}
 
 /** Emit a mutation payload under the operation's own envelope type. */
 const emitMutation = <T extends string>(type: T, payload: MutationPayload) => ok(type, payload)
@@ -1076,9 +1115,11 @@ export const stateOp = defineOperation({
         '  - volatile: the variable may change freely in any step. Nothing is assumed.',
         '  - stable:   it changes ONLY when some requirement`s effect changes it — a HYPOTHESIS the',
         '    document does not otherwise state.',
-        'Declaring `stable` makes `check` prove the question TWICE (once with no frame, once with the',
-        'declared frames) and report the strongest honest verdict: a property that needs the frame is',
-        'reported as PROVED_UNDER_HYPOTHESES naming the variables relied on, and DEMOTES `verified`.',
+        'A property that holds only with the DECLARED `stable` variables held fixed is reported as',
+        'PROVED_UNDER_HYPOTHESES naming them, and DEMOTES `verified`. One that needs variables held',
+        'that the document leaves volatile is UNKNOWN (reason frame-undeclared), also demoted — so',
+        'declaring or releasing a frame moves the verdict. The full lattice is on the `frame` field',
+        'of the document schema.',
         'Why volatile by default: measured on this solver, a model whose variable is written by no',
         'requirement returns UNREACHABLE *with an inductive invariant* under a frame and REACHABLE',
         'without one — so a frame-by-default would make the tool prove a false answer and certify it.',

@@ -44,7 +44,7 @@
  */
 
 import { execFile, execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1254,4 +1254,127 @@ describe('install through the real process', () => {
     expect(existsSync(join(home, '.claude', 'skills', 'symspec', 'SKILL.md'))).toBe(true)
     expect(existsSync(join(cwd, '.claude'))).toBe(false)
   })
+})
+
+// ---------------------------------------------------------------------------
+// Spec 007 AC-1-6 — a refused batch op exits non-zero; the frame repair round-trips
+// ---------------------------------------------------------------------------
+
+describe('spec 007 AC-1-6 — `apply` and the frame repair, through the real process', () => {
+  const dirs: string[] = []
+  afterAll(async () => {
+    const { rm } = await import('node:fs/promises')
+    await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+  })
+
+  /** A fresh document plus a helper that applies a list of ops through a real JSONL file. */
+  const workspace = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'symspec-ac16-'))
+    dirs.push(dir)
+    const doc = join(dir, 'requirements.json')
+    run('init', doc)
+    let n = 0
+    const apply = (ops: readonly object[]) => {
+      n += 1
+      const plan = join(dir, `plan-${n}.jsonl`)
+      writeFileSync(plan, `${ops.map((op) => JSON.stringify(op)).join('\n')}\n`)
+      return runJson('apply', '--file', doc, '--ops', plan)
+    }
+    return { doc, apply }
+  }
+
+  it('a batch with a REFUSED op exits 1, reports it as a finding, and writes nothing', () => {
+    const { apply } = workspace()
+    const { envelope, code } = apply([
+      { op: 'add', key: 'K1', patternType: 'ubiquitous', systemName: 's', systemResponse: 'lock' },
+      { op: 'state', name: 'lock_held', type: 'bool' },
+      // A typo'd variable: the classify fold refuses it.
+      { op: 'classify', ref: 'K1', kind: 'constraint', expression: 'not lock_hled' },
+    ])
+    expect(code).toBe(1)
+    const data = envelope.data as {
+      written: boolean
+      abortedAt?: number
+      findings?: { code: string; severity: string; index: number }[]
+    }
+    expect(data.written).toBe(false)
+    expect(data.abortedAt).toBe(2)
+    expect(data.findings).toEqual([
+      expect.objectContaining({ severity: 'error', index: 2, code: 'ERR_USAGE' }),
+    ])
+  })
+
+  it('check hands back a PUH repair that apply ACCEPTS, and re-checking MOVES the verdict', () => {
+    const { doc, apply } = workspace()
+    // `level` is an INT no requirement writes, declared stable; only `tick` ever changes.
+    expect(
+      apply([
+        {
+          op: 'add',
+          key: 'TICK',
+          patternType: 'ubiquitous',
+          systemName: 'clock',
+          systemResponse: 'toggle the tick',
+        },
+        {
+          op: 'add',
+          key: 'LEVEL',
+          patternType: 'ubiquitous',
+          systemName: 'clock',
+          systemResponse: 'keep the level at zero',
+        },
+        {
+          op: 'state',
+          name: 'level',
+          type: 'int',
+          min: 0,
+          max: 3,
+          initial: 'level = 0',
+          frame: 'stable',
+        },
+        { op: 'state', name: 'tick', type: 'bool', initial: 'tick = false' },
+        { op: 'classify', ref: 'TICK', kind: 'effect', expression: 'tick := not tick' },
+        { op: 'classify', ref: 'LEVEL', kind: 'constraint', expression: 'level = 0' },
+      ]).code,
+    ).toBe(0)
+
+    type Check = {
+      findings: { code: string; message: string }[]
+      coverage: { demotions: { reason: string; repair?: { ops: object[] } }[] }
+    }
+    const check = () => runJson('check', doc, '--semantic=false').envelope.data as Check
+    const codesFor = (data: Check) =>
+      data.findings.filter((f) => f.message.startsWith('LEVEL:')).map((f) => f.code)
+
+    const before = check()
+    expect(codesFor(before)).toEqual(['FND_REACHABILITY_UNDER_HYPOTHESES'])
+    const repair = before.coverage.demotions.find(
+      (d) => d.reason === 'reachability-frame-relied-upon',
+    )
+    const ops = repair?.repair?.ops ?? []
+    expect(ops).toEqual([
+      {
+        op: 'state',
+        name: 'level',
+        type: 'int',
+        min: 0,
+        max: 3,
+        frame: 'volatile',
+        initial: 'level = 0',
+      },
+    ])
+
+    const applied = apply(ops)
+    expect(applied.code).toBe(0)
+    expect((applied.envelope.data as { written: boolean }).written).toBe(true)
+
+    // THE VERDICT MOVED: the proof no longer rests on a declared frame.
+    const after = check()
+    expect(codesFor(after)).toEqual(['FND_REACHABILITY_UNKNOWN'])
+
+    // And the frame-undeclared repair moves it straight back.
+    const back = after.coverage.demotions.find((d) => d.reason === 'reachability-frame-undeclared')
+    expect(apply(back?.repair?.ops ?? []).code).toBe(0)
+    expect(codesFor(check())).toEqual(['FND_REACHABILITY_UNDER_HYPOTHESES'])
+  }, 60_000)
 })

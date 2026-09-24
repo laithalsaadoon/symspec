@@ -413,12 +413,14 @@ is measured on this build.
 > lock keyed on the conversation id so they execute sequentially.
 
 That is a mutual-exclusion invariant, meaning at most one run holds the lock. Two variables and
-three guarded effects express the lock's lifecycle.
+three guarded effects express the lock's lifecycle. Both variables are declared `frame: stable`:
+the lock count and the waiting flag change only when a requirement changes them, and saying so is
+a hypothesis the verdict will name.
 
 ```bash
 cat > plan.jsonl <<'OPS'
-{"op":"state","name":"held","type":"int","min":0,"max":3,"initial":"held = 0"}
-{"op":"state","name":"queued","type":"bool","initial":"queued = false"}
+{"op":"state","name":"held","type":"int","min":0,"max":3,"initial":"held = 0","frame":"stable"}
+{"op":"state","name":"queued","type":"bool","initial":"queued = false","frame":"stable"}
 {"op":"classify","ref":"TX-A1","kind":"effect","expression":"when held = 0: held := held + 1, queued := false"}
 {"op":"classify","ref":"TX-A2","kind":"effect","expression":"when held = 1: held := held - 1"}
 {"op":"classify","ref":"TX-A3","kind":"effect","expression":"when held = 1: queued := true"}
@@ -430,7 +432,7 @@ symspec check --field data.reachability
 
 ```json
 {"variables":2,"effects":3,"constraints":1,"proved":0,
- "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":337,"timeoutMs":2000}
+ "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":148,"timeoutMs":2000}
 ```
 
 TX-C1 holds. Now add a second invariant that sounds obviously true.
@@ -442,7 +444,7 @@ symspec check --field data.reachability
 
 ```json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":537,"timeoutMs":2000}
+ "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":324,"timeoutMs":2000}
 ```
 
 The exit code is 1, and the response includes the path that reaches the violation.
@@ -465,9 +467,14 @@ it is worth understanding before you read a verdict.
 
 - **`FND_REACHABILITY_PROVED`** means proved with nothing assumed. In practice this happens for
   single-variable models.
-- **`FND_REACHABILITY_UNDER_HYPOTHESES`** means proved once the variables that no requirement
-  writes are held fixed. The finding names those variables and their writers, states that the
-  document does not say they are fixed, and demotes `verified`.
+- **`FND_REACHABILITY_UNDER_HYPOTHESES`** means proved once the variables the document declares
+  `frame: stable` are held fixed. The finding names those variables and their writers, says that
+  no requirement establishes the hypothesis, and demotes `verified`.
+- **`FND_REACHABILITY_UNKNOWN`** with reason `frame-undeclared` is the same proof when the
+  variables are left `volatile`, the default: it holds only if they stay put, and the document
+  does not say they do. Remove `"frame":"stable"` from the plan above and TX-C1 reports exactly
+  that, with the `state` ops that declare the frame as its repair. Declaring or releasing a frame
+  moves the verdict between those two rows, and both demote.
 
 The weaker default comes from a measurement rather than a preference. On a model whose variable
 is written by no requirement, assuming persistence returns UNREACHABLE together with an inductive

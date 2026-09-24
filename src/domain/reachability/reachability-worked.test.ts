@@ -155,15 +155,20 @@ const conversationLockDoc = (): RequirementsDocument => ({
     ),
   },
   stateModel: {
+    // Both declared `frame: stable` — the author's statement that the lock count and the
+    // waiting flag change only when a requirement changes them. Every variable here IS
+    // written by some requirement, so this is the honest reading of the lifecycle, and it is
+    // the hypothesis the TX-C1 proof is reported under (spec 007 AC-1-6: without the
+    // declaration the proof needs a frame the document does not state, and is UNKNOWN).
     variables: [
       {
         name: 'held',
         type: 'int',
-        frame: 'volatile',
+        frame: 'stable',
         initial: 'held = 0',
         domain: { min: 0, max: 3 },
       },
-      { name: 'queued', type: 'bool', frame: 'volatile', initial: 'queued = false' },
+      { name: 'queued', type: 'bool', frame: 'stable', initial: 'queued = false' },
     ],
   },
   glossary: [],

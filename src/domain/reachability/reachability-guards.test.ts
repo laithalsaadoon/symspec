@@ -153,9 +153,10 @@ describe('V13 GUARD — the lbool→verdict polarity, at ONE chokepoint', () => 
   it('reaches NO proof verdict from an unknown, at the lattice level too', () => {
     // Belt and braces: even if the chokepoint were wrong, an `unknown` cannot become a
     // proof through the frame lattice.
-    expect(decideFrameVerdict('unknown', undefined)).toBe('UNKNOWN')
-    expect(decideFrameVerdict('unknown', 'unreachable')).toBe('UNKNOWN')
-    expect(decideFrameVerdict('reachable', 'unknown')).toBe('UNKNOWN')
+    expect(decideFrameVerdict('unknown', undefined, undefined)).toBe('UNKNOWN')
+    expect(decideFrameVerdict('unknown', 'unreachable', 'unreachable')).toBe('UNKNOWN')
+    expect(decideFrameVerdict('reachable', 'unknown', undefined)).toBe('UNKNOWN')
+    expect(decideFrameVerdict('reachable', undefined, 'unknown')).toBe('UNKNOWN')
   })
 })
 
@@ -241,10 +242,13 @@ describe('V16 GUARD — the frame defaults VOLATILE and can never fabricate a pr
     // Exhaustive over the second run's outcomes: none of them yields `PROVED`. Only an
     // unreachable result with NOTHING pinned does, which is the whole content of
     // "frame-closed".
-    for (const framed of ['reachable', 'unreachable', 'unknown', undefined] as const) {
-      expect(decideFrameVerdict('reachable', framed)).not.toBe('PROVED')
+    const outcomes = ['reachable', 'unreachable', 'unknown', undefined] as const
+    for (const declared of outcomes) {
+      for (const full of outcomes) {
+        expect(decideFrameVerdict('reachable', declared, full)).not.toBe('PROVED')
+      }
     }
-    expect(decideFrameVerdict('unreachable', undefined)).toBe('PROVED')
+    expect(decideFrameVerdict('unreachable', undefined, undefined)).toBe('PROVED')
   })
 })
 
