@@ -83,6 +83,19 @@ describe('AC-2-4 — each reproducer pair lands on two distinct atoms', () => {
     expect(guard('the link carries 100Mbps')).not.toBe(guard('the link carries 100MBps'))
   })
 
+  it('case is kept for UNIT tokens only, never for an ordinary word after a number', () => {
+    // A unit is where case is identity (`mW` milliwatt, `MW` megawatt); a word is not. Keeping
+    // the case of EVERY token after a numeral split `3 Times` from `3 times`, so "retry 3 Times"
+    // plus "shall not retry 3 times" stopped being a contradiction.
+    expect(resp('retry 3 Times')).toBe(resp('retry 3 times'))
+    expect(resp('close the valve within 5 Seconds')).toBe(resp('close the valve within 5 seconds'))
+    expect(resp('run 2 Drains')).toBe(resp('run 2 drains'))
+    expect(resp('retry 3TIMES')).toBe(resp('retry 3times'))
+    expect(guard('the output is 5 mW')).not.toBe(guard('the output is 5 MW'))
+    expect(guard('the probe reads 3 ms')).not.toBe(guard('the probe reads 3 Ms'))
+    expect(guard('the store holds 8 GiB')).not.toBe(guard('the store holds 8 Gib'))
+  })
+
   it('the system scope keeps every script too', () => {
     expect(normalizeScope('α valve controller')).not.toBe(normalizeScope('β valve controller'))
     expect(normalizeScope('ゲートウェイ')).not.toBe(normalizeScope('认证服务'))
@@ -99,6 +112,26 @@ describe('AC-2-4 — what normalization still does', () => {
     for (const text of ['100 MBps', '−5 °C', 'valve α', 'العربية', '100Mbps link']) {
       expect(normalize(normalize(text))).toBe(normalize(text))
     }
+  })
+})
+
+describe('AC-2-4 — a word after a number still folds, so its conflict is still proved', () => {
+  const MAILER = 'When the batch closes, the mailer shall'
+  it('"retry 3 Times" plus "shall not retry 3 times" is FND_CONTRADICTION', async () => {
+    const report = await runCheck(
+      await docOf([`${MAILER} retry 3 Times.`, `${MAILER} not retry 3 times.`]),
+    )
+    expect(report.findings.map((f) => f.code)).toContain('FND_CONTRADICTION')
+  })
+
+  it('"within 5 Seconds" plus "shall not ... within 5 seconds" is FND_CONTRADICTION', async () => {
+    const report = await runCheck(
+      await docOf([
+        `${MAILER} close the valve within 5 Seconds.`,
+        `${MAILER} not close the valve within 5 seconds.`,
+      ]),
+    )
+    expect(report.findings.map((f) => f.code)).toContain('FND_CONTRADICTION')
   })
 })
 

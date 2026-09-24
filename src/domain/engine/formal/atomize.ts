@@ -606,18 +606,41 @@ const NUMBER_TOKEN = /^\p{N}+$/u
 const NUMBER_THEN_UNIT = /^(\p{N}+)(.+)$/u
 
 /**
+ * A UNIT token, the closed grammar whose case is kept (spec 007 AC-2-4): an optional SI or binary
+ * prefix, then an optional base symbol, then an optional `ps` rate suffix, and at least one of the
+ * first two. Matched case-SENSITIVELY. That is the point: `mW` (milliwatt) and `MW` (megawatt)
+ * both match, and each keeps its own spelling. `Times`, `Seconds` and `Drains` match nothing, so
+ * they fold like any other word. A bare prefix letter counts too (`5 G`, `5 M`, `3 K`), because a
+ * single letter after a number is a unit or a scale, not a word.
+ */
+const UNIT_TOKEN = new RegExp(
+  '^(?=.)' +
+    '(?:da|[KMGTPEZY]i|[qryzafpnµμumcdhkKMGTPEZYRQ])?' +
+    '(?:bit|Bit|Byte|b|B|Hz|Wh|W|VA|var|V|Ah|A|Ω|ohm|eV|J|Pa|bar|N|mol|cd|lm|lx|Bq|Gy|Sv|Wb|' +
+    'rad|sr|rpm|dBm|dBA|dB|K|C|F|H|S|T|g|m|s|t|l|L)?' +
+    '(?:ps)?$',
+  'u',
+)
+
+/** Whether `token` is a unit in the {@link UNIT_TOKEN} grammar and not the bare rate suffix. */
+function isUnitToken(token: string): boolean {
+  return token !== 'ps' && UNIT_TOKEN.test(token)
+}
+
+/**
  * Fold one surviving token's case, keeping it where case IS the identity (spec 007 AC-2-4).
  *
  * A unit token is the one place ordinary text carries meaning in case: `Mbps` is megabits and
- * `MBps` megabytes, `mW` a milliwatt and `MW` a megawatt. So a token that directly follows a
- * number keeps its case, as does the unit tail of a token that opens with digits (`100MBps`).
- * Everything else is lowercased as before. The rule can only SPLIT: every pair it keeps apart was
- * one token under full lowercasing, and nothing it produces could have been two tokens before.
+ * `MBps` megabytes, `mW` a milliwatt and `MW` a megawatt. So a {@link UNIT_TOKEN} that directly
+ * follows a number keeps its case, as does a unit tail of a token that opens with digits
+ * (`100MBps`). Every other token is lowercased, including an ordinary word after a number:
+ * `3 Times` and `3 times` are one phrase, and keeping them apart hid a real contradiction. The
+ * rule can only SPLIT relative to full lowercasing, and only over unit spellings.
  */
 function foldCase(token: string, previous: string | undefined): string {
-  if (previous !== undefined && NUMBER_TOKEN.test(previous)) return token
+  if (previous !== undefined && NUMBER_TOKEN.test(previous) && isUnitToken(token)) return token
   const unit = NUMBER_THEN_UNIT.exec(token)
-  if (unit !== null) return `${unit[1] as string}${unit[2] as string}`
+  if (unit !== null && isUnitToken(unit[2] as string)) return token
   return token.toLowerCase()
 }
 
@@ -633,7 +656,7 @@ function foldCase(token: string, previous: string | undefined): string {
  *      SCRIPT, and not whitespace, becomes a space; this also normalizes input underscores so
  *      `auth_service` is idempotent
  *   4. split on whitespace and fold each token's case ({@link foldCase}: lowercase, except a
- *      unit token, whose case is its identity)
+ *      {@link UNIT_TOKEN} after a number, whose case is its identity)
  *   5. underscore-join the surviving tokens
  *
  * ## What it may delete (spec 007 AC-2-4)
