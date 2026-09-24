@@ -152,8 +152,9 @@ describe('AC-2-7 — the temporal tier reads every EARS pattern as the propositi
     ),
   )
 
-  // `optional-feature` mints its guard under the `feat` kind while `encode` uses `pre`
-  // (temporal-patterns.ts, AC-2-7 note (a)) — a naming difference, not a reading one. And
+  // `optional-feature` mints its guard under the `feat` kind while `encode` uses the shared
+  // `guard` namespace (spec 007 AC-3-3), per temporal-patterns.ts AC-2-7 note (a) — a
+  // naming difference, not a reading one. And
   // ubiquitous / state-driven / optional-feature ignore the slot their template does not
   // have, which is the parser's contract; the parity claim is about the slots each
   // template reads.
@@ -174,7 +175,7 @@ describe('AC-2-7 — the temporal tier reads every EARS pattern as the propositi
       }
       const temporal = temporalParts(earsToTemporal(read, atomize))
       const propositional = propositionalParts(encode(read, atomize).body)
-      const unfeat = (atoms: string[]) => atoms.map((a) => a.replace('__feat__', '__pre__'))
+      const unfeat = (atoms: string[]) => atoms.map((a) => a.replace('__feat__', '__guard__'))
       expect(unfeat(temporal.ante).sort()).toEqual(propositional.ante.slice().sort())
       expect(temporal.resp).toEqual(propositional.resp)
     })
