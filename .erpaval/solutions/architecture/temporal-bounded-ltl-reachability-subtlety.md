@@ -2,7 +2,7 @@
 title: Bounded LTL→SMT conflict checks need an F(antecedent) reachability assertion, or every G(trig→…) is vacuously SAT
 track: knowledge
 category: architecture
-module: src/formal/temporal.ts, src/formal/temporal-patterns.ts
+module: src/domain/engine/formal/temporal.ts, src/domain/engine/formal/temporal-patterns.ts
 component: z3-solver
 severity: high
 tags: [temporal, ltl, smt, z3, bounded-model-checking, reachability, vacuity, fret, dwyer]
@@ -11,8 +11,9 @@ applies_when:
   - a temporal contradiction check returns SAT (no conflict) when you expect UNSAT
   - requirements are guarded implications G(trigger → response)
 pattern: |
-  symspec's temporal tier maps EARS to LTL (event-driven → G(T → F R), unwanted →
-  G(T → ¬R)) and lowers to a bounded finite-trace SMT encoding on Z3-WASM. The
+  symspec's temporal tier maps EARS to LTL (event-driven AND unwanted-behavior →
+  G((P ∧ T) → F R), the same obligation the propositional tier's (P ∧ T) ⇒ R
+  encodes) and lowers to a bounded finite-trace SMT encoding on Z3-WASM. The
   first working version returned SAT for an obvious "eventually R" vs "never R"
   pair — no conflict found — because a `G(ante → cons)` obligation is VACUOUSLY
   satisfiable by keeping `ante` false at every step. The solver just sets the
@@ -29,21 +30,44 @@ pattern: |
   trigger at once."
 
   Also load-bearing for temporal correctness:
-  - Two-way polarity trap: unwanted-behavior maps to G(T → ¬resp) — the pattern
-    ITSELF supplies the prohibition. If the requirement ALSO carries negated:true
-    the response literal double-negates (¬¬R = R) and the conflict silently
-    cancels. A genuine temporal-conflict fixture uses a POSITIVE response on the
-    unwanted-behavior pattern, or a ubiquitous G(¬R) global absence.
-  - A response obligation G(T → F R) does NOT conflict with a trigger-scoped
-    absence G(T → ¬R): respond after the trigger clears is a valid trace. A real
+  - Unwanted-behavior is an OBLIGATION, not an absence. This lesson used to
+    record G(T → ¬resp) (SPS Absence) as the intended reading, with a "two-way
+    polarity trap" note about double negation. That reading was a DEFECT (spec
+    007 AC-2-7): "If a disk write error occurs, then the audit logger shall
+    record the event" demands the recording, and reading it as a prohibition
+    made it an error-severity FND_TEMPORAL_CONTRADICTION against "The audit
+    logger shall record the event." — a fabricated verdict on a consistent
+    document. Every tier is a projection of ONE reading of the sentence (I-3):
+    the template contributes no ¬; a prohibition is `negated: true` and threads
+    onto the response literal exactly as for every other pattern. The
+    precondition is part of the antecedent for event-driven and
+    unwanted-behavior too (EARS complex `While P, when T`); dropping it made the
+    obligation fire on T alone. `temporal.test.ts` pins antecedent = context and
+    consequent = response for every pattern × slot combination.
+  - A response obligation G(T → F R) does NOT conflict with a state-scoped
+    prohibition G(P → ¬R) (a negated `While`) even when P = T: respond after the
+    guard clears is a valid trace. A real
     temporal contradiction needs a GLOBAL absence G(¬R) (ubiquitous, negated) vs
     the eventual response. Trigger-scoped clashes are propositional, not temporal.
-  - The encoding is loop-free (sound-for-UNSAT): UNSAT is a real contradiction;
-    SAT-at-k is NOT a consistency certificate. Report {bound, complete:false}.
+  - The encoding is loop-free (sound-for-UNSAT): UNSAT is a real contradiction
+    RELATIVE TO THE PREMISE; SAT-at-k is NOT a consistency certificate. Report
+    {bound, complete:false}.
+  - The premise is "every antecedent occurs WITHIN k steps", and that is only a
+    standing assumption for ONE antecedent: every obligation is G(…), G is
+    suffix-closed, so a trace where `a` first happens at step 1000 shifts to one
+    where it happens at step 0. For two or more mutually exclusive antecedents it
+    is a pigeonhole — three modes cannot each occur in two steps (k=1) — and the
+    UNSAT is a statement about k, not about the document (spec 007 AC-2-8). So on
+    UNSAT the tier re-checks the minimal core with the premise reduced to each
+    single antecedent: if any stays UNSAT the finding keeps `error`; otherwise it
+    is `warn`, states the bound, and must not claim "not a truncation artifact".
+  - A solver `unknown` is not a verdict and not silence: the tier reports
+    FND_NEEDS_REVIEW over the ids it checked, which check.ts demotes on.
 example_files:
-  - src/formal/temporal.ts
-  - src/formal/__tests__/temporal.test.ts
-  - src/formal/contradiction.ts
+  - src/domain/engine/formal/temporal.ts
+  - src/domain/engine/formal/temporal-patterns.ts
+  - src/domain/engine/formal/temporal.test.ts
+  - src/domain/engine/formal/contradiction.ts
 ---
 
 # Why this matters
@@ -59,5 +83,7 @@ real `G(T → …)` guarded formulas exposes it.
 
 Do not assert all antecedents true at once (manufactures conflicts between
 mutually-exclusive triggers). Do not read SAT-at-bound-k as "consistent" — it is
-only "no conflict within k steps." Do not thread a `negated` flag onto a pattern
-that already encodes the negation (unwanted-behavior).
+only "no conflict within k steps." Do not report a multi-antecedent bounded
+UNSAT at error: asserting several exclusive antecedents reachable inside k+1
+steps manufactures the same conflict at small k. Do not give any EARS template
+its own polarity — the template's reading must equal the propositional tier's.
