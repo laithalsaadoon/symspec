@@ -258,7 +258,7 @@ export const FndCodeMeta = {
   FND_TEMPORAL_CONTRADICTION: {
     code: 'FND_TEMPORAL_CONTRADICTION',
     description:
-      'error — a set of requirements is temporally inconsistent under bounded LTL→SMT (no trace of length ≤ k satisfies them jointly); sound-for-UNSAT, evidence carries {bound,complete:false}. Opt-in via `check --temporal`.',
+      'error — a set of requirements is temporally inconsistent under bounded LTL→SMT (no trace of length ≤ k satisfies them jointly); sound-for-UNSAT, evidence carries {bound,complete:false}. Reported at warn instead when the conflict needs two or more guarded triggers to all occur within k steps (it vanishes with the reachability premise reduced to any single trigger), since that can be an artifact of the bound; re-check at a larger --temporal-bound. Opt-in via `check --temporal`.',
   },
   FND_NO_PAIRS_CHECKED: {
     code: 'FND_NO_PAIRS_CHECKED',

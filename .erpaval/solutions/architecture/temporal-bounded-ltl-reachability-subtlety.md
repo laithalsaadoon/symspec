@@ -49,8 +49,20 @@ pattern: |
     guard clears is a valid trace. A real
     temporal contradiction needs a GLOBAL absence G(¬R) (ubiquitous, negated) vs
     the eventual response. Trigger-scoped clashes are propositional, not temporal.
-  - The encoding is loop-free (sound-for-UNSAT): UNSAT is a real contradiction;
-    SAT-at-k is NOT a consistency certificate. Report {bound, complete:false}.
+  - The encoding is loop-free (sound-for-UNSAT): UNSAT is a real contradiction
+    RELATIVE TO THE PREMISE; SAT-at-k is NOT a consistency certificate. Report
+    {bound, complete:false}.
+  - The premise is "every antecedent occurs WITHIN k steps", and that is only a
+    standing assumption for ONE antecedent: every obligation is G(…), G is
+    suffix-closed, so a trace where `a` first happens at step 1000 shifts to one
+    where it happens at step 0. For two or more mutually exclusive antecedents it
+    is a pigeonhole — three modes cannot each occur in two steps (k=1) — and the
+    UNSAT is a statement about k, not about the document (spec 007 AC-2-8). So on
+    UNSAT the tier re-checks the minimal core with the premise reduced to each
+    single antecedent: if any stays UNSAT the finding keeps `error`; otherwise it
+    is `warn`, states the bound, and must not claim "not a truncation artifact".
+  - A solver `unknown` is not a verdict and not silence: the tier reports
+    FND_NEEDS_REVIEW over the ids it checked, which check.ts demotes on.
 example_files:
   - src/domain/engine/formal/temporal.ts
   - src/domain/engine/formal/temporal-patterns.ts
@@ -71,5 +83,7 @@ real `G(T → …)` guarded formulas exposes it.
 
 Do not assert all antecedents true at once (manufactures conflicts between
 mutually-exclusive triggers). Do not read SAT-at-bound-k as "consistent" — it is
-only "no conflict within k steps." Do not give any EARS template
+only "no conflict within k steps." Do not report a multi-antecedent bounded
+UNSAT at error: asserting several exclusive antecedents reachable inside k+1
+steps manufactures the same conflict at small k. Do not give any EARS template
 its own polarity — the template's reading must equal the propositional tier's.

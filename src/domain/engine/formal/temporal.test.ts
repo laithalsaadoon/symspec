@@ -28,7 +28,9 @@ import type { Requirement } from '../core/schema.ts'
 import { runCheck } from '../pipeline/check.ts'
 import type { ReqView } from '../solvers/types.ts'
 import { makeAtomize } from './atomize.ts'
+import { getContext, type Z3Context } from './backend.ts'
 import { encode, type Formula } from './encode.ts'
+import { findTemporalContradictions, type RequirementTemporal } from './temporal.ts'
 import {
   earsToTemporal,
   F,
@@ -37,6 +39,7 @@ import {
   tAnd,
   tAtom,
   tImplies,
+  tNot,
 } from './temporal-patterns.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -201,5 +204,118 @@ describe('AC-2-7 — the temporal tier reads every EARS pattern as the propositi
     const [ubiquitous, unwanted] = AUDIT_LOGGER as [ReqView, ReqView]
     const findings = await temporalFindings([{ ...ubiquitous, negated: true }, unwanted], 10)
     expect(findings.map((f) => [f.severity, f.requirementIds])).toEqual([['error', [id(1), id(2)]]])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC-2-8
+// ---------------------------------------------------------------------------
+
+/**
+ * The AC-2-8 reproducer: a consistent three-mode machine, six `While` rules. Each mode's pair
+ * of rules makes it exclusive with the other two (idle runs nothing, heating runs only the
+ * heater, cooling only the cooler), so all three modes cannot share a step — and at
+ * `--temporal-bound 1` there are only two steps for the reachability premise to place three
+ * modes in. At `k = 2` it is satisfiable; the document never changed.
+ */
+const THREE_MODES: readonly ReqView[] = (
+  [
+    ['idle', 'run the heater', true],
+    ['idle', 'run the cooler', true],
+    ['heating', 'run the heater', false],
+    ['heating', 'run the cooler', true],
+    ['cooling', 'run the cooler', false],
+    ['cooling', 'run the heater', true],
+  ] as const
+).map(([mode, systemResponse, negated], i) =>
+  view(10 + i, {
+    patternType: 'state-driven',
+    systemName: 'climate controller',
+    preCondition: `the thermostat is ${mode}`,
+    systemResponse,
+    negated,
+  }),
+)
+
+/** The canonical one-trigger conflict: `G(t → F p)` against `G(¬p)`. */
+const ONE_TRIGGER: readonly RequirementTemporal[] = [
+  { id: 'req-a', formula: G(tImplies(tAtom('t'), F(tAtom('p')))) },
+  { id: 'req-b', formula: G(tNot(tAtom('p'))) },
+]
+
+/** A context whose FIRST `check()` answers `unknown` — what a `--timeout-ms` cut-off returns. */
+const unknownOnFirstCheck = (ctx: Z3Context): Z3Context => {
+  let checks = 0
+  const Solver = ctx.Solver
+  const build = () =>
+    new Proxy(new Solver(), {
+      get(target, prop) {
+        if (prop === 'check') {
+          return async (...args: never[]) => {
+            checks += 1
+            return checks === 1 ? 'unknown' : await target.check(...args)
+          }
+        }
+        const value = Reflect.get(target, prop)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+  const StubSolver = new Proxy(Solver, { construct: () => build() })
+  return new Proxy(ctx, {
+    get: (target, prop) => (prop === 'Solver' ? StubSolver : Reflect.get(target, prop)),
+  })
+}
+
+describe('AC-2-8 — a bounded unsat that rests on the within-k premise is warn, and says so', () => {
+  it('reproducer: the consistent three-mode machine at --temporal-bound 1 is not an error', async () => {
+    const findings = await temporalFindings(THREE_MODES, 1)
+    // The finding is kept — the bounded check really was unsat, and deleting a finding is
+    // itself a change a gate must see (I-5) — but at warn, naming the bound.
+    expect(findings.map((f) => f.severity)).toEqual(['warn'])
+    const [finding] = findings
+    expect(finding?.message).toContain('k=1')
+    expect(finding?.message).toContain('--temporal-bound')
+    // Negative guard: the claim the old message made, which is false for this finding.
+    expect(finding?.message).not.toMatch(/not a truncation artifact/i)
+    expect(finding?.evidence?.temporal).toEqual({ bound: 1, complete: false })
+  })
+
+  it('the same machine at --temporal-bound 2 has no finding at all', async () => {
+    expect(await temporalFindings(THREE_MODES, 2)).toEqual([])
+  })
+
+  it('an unsat that persists with the within-k premise removed keeps error', async () => {
+    const ctx = await getContext('symspec-temporal-ac-2-8-persists')
+    const findings = await findTemporalContradictions(ctx, ONE_TRIGGER, 1)
+    expect(findings.map((f) => [f.code, f.severity, f.requirementIds])).toEqual([
+      ['FND_TEMPORAL_CONTRADICTION', 'error', ['req-a', 'req-b']],
+    ])
+  })
+
+  it('the abstract pigeonhole: three exclusive antecedents in two steps is warn, in three is sat', async () => {
+    const ctx = await getContext('symspec-temporal-ac-2-8-pigeonhole')
+    const a = tAtom('a')
+    const b = tAtom('b')
+    const c = tAtom('c')
+    const x = tAtom('x')
+    const y = tAtom('y')
+    const rules: RequirementTemporal[] = [
+      { id: 'r1', formula: G(tImplies(a, x)) },
+      { id: 'r2', formula: G(tImplies(a, y)) },
+      { id: 'r3', formula: G(tImplies(b, tNot(x))) },
+      { id: 'r4', formula: G(tImplies(b, y)) },
+      { id: 'r5', formula: G(tImplies(c, tNot(y))) },
+    ]
+    const at1 = await findTemporalContradictions(ctx, rules, 1)
+    expect(at1.map((f) => [f.code, f.severity])).toEqual([['FND_TEMPORAL_CONTRADICTION', 'warn']])
+    expect(await findTemporalContradictions(ctx, rules, 2)).toEqual([])
+  })
+
+  it('a solver unknown is not discarded: the tier reports FND_NEEDS_REVIEW over every id it checked', async () => {
+    const ctx = unknownOnFirstCheck(await getContext('symspec-temporal-unknown'))
+    const findings = await findTemporalContradictions(ctx, ONE_TRIGGER, 1)
+    expect(findings.map((f) => [f.code, f.severity, f.requirementIds])).toEqual([
+      ['FND_NEEDS_REVIEW', 'info', ['req-a', 'req-b']],
+    ])
   })
 })
