@@ -19,10 +19,11 @@
  * never remove. New codes go at the END of {@link REACHABILITY_FND_CODES}. The count is
  * pinned in `catalog.test.ts` so growing the vocabulary is a visible edit in review.
  *
- * ## Why exactly six, and why each severity
+ * ## Why each code exists, and why each severity
  *
  * Each code answers a question with a DIFFERENT remedy, which is the test for whether a
- * code deserves to exist:
+ * code deserves to exist. The list is {@link REACHABILITY_FND_CODES}; the paragraphs below
+ * are the reasons, not a count:
  *
  * - `FND_REACHABILITY_VIOLATED` — **error**. A reachable state violates a declared
  *   constraint, with a trace naming the requirements that get there. This is the only
@@ -54,6 +55,11 @@
  *   fixture, adding `held = 0 and held = 2` to the model flipped a genuine
  *   `FND_REACHABILITY_VIOLATED` into `PROVED ... with nothing assumed` and the exit code
  *   from 1 to 0.
+ * - `FND_RANGE_VIOLATION` — **error** (spec 007 AC-1-2). An effect writes outside its
+ *   target's declared `--min`/`--max` from a reachable state, under the full frame. Its own
+ *   code because the remedy is about the EFFECT or the RANGE, not about any constraint —
+ *   and because the alternative, conjoining the range into the transition relation,
+ *   silently disabled the overflowing step and "proved" its consequences impossible.
  *
  * `FND_REACHABILITY_CERTIFICATE_FAILED` is deliberately NOT here. When the three
  * obligations do not discharge, the tier does not report a weaker proof — it reports
@@ -88,6 +94,9 @@ export const REACHABILITY_FND_CODES = [
   'FND_REACHABILITY_NOT_CHECKED',
   // APPENDED at the HARDENING wave, never inserted — see the append-only rule above.
   'FND_REACHABILITY_VACUOUS_INITIAL',
+  // APPENDED for spec 007 Story 1. Named by the spec rather than by the family prefix:
+  // a range overflow is a defect in the declared MODEL, not a verdict about a constraint.
+  'FND_RANGE_VIOLATION',
 ] as const
 
 export type ReachabilityFndCode = (typeof REACHABILITY_FND_CODES)[number]
@@ -178,5 +187,17 @@ export const ReachabilityFndCodeMeta: Record<
       '`symspec state <name> --type <type> --initial "<predicate>"` for a per-variable one, or ' +
       '`symspec state-initial --clear` to drop the model-wide constraint entirely. Also check ' +
       'the declared --min/--max bounds do not exclude the initial value.',
+  },
+  FND_RANGE_VIOLATION: {
+    code: 'FND_RANGE_VIOLATION',
+    description:
+      'error — an EFFECT writes a value OUTSIDE its target variable`s declared --min/--max range ' +
+      'from a REACHABLE state, so the declared range is false of the system as specified. The ' +
+      'evidence names the effect, the variable, the value written, the reachable pre-state, and ' +
+      'the trace that reaches it (every step requirement-sanctioned). The step is NOT disabled: ' +
+      'enforcing the range by conjoining it into the transition relation made an overflowing ' +
+      'step silently never fire, which "proved" everything downstream of it impossible. ' +
+      'Suggestion: guard the effect so it cannot fire at the bound, clamp the value it writes, or ' +
+      'widen the declared range if the overflow is intended.',
   },
 }

@@ -94,6 +94,12 @@ export const REACHABILITY_DEMOTION_REASONS = [
 
 export type ReachabilityDemotionReason = (typeof REACHABILITY_DEMOTION_REASONS)[number]
 
+/** Render one state as `a = 1, b = true`, in declaration order. */
+const renderState = (state: Readonly<Record<string, string>>): string =>
+  Object.entries(state)
+    .map(([name, value]) => `${name} = ${value}`)
+    .join(', ')
+
 /** Render a trace as an arrow-joined path, which is how a human reads a counterexample. */
 const renderTrace = (result: ConstraintResult): string => {
   const steps = result.trace?.steps ?? []
@@ -468,6 +474,85 @@ export const projectReachability = (
         })
         break
       }
+    }
+  }
+
+  // --- THE DECLARED-RANGE OBLIGATIONS (spec 007 AC-1-2) --------------------------
+  for (const check of report.rangeChecks) {
+    const bounds = [
+      check.range.min !== undefined ? `min ${check.range.min}` : undefined,
+      check.range.max !== undefined ? `max ${check.range.max}` : undefined,
+    ]
+      .filter((b) => b !== undefined)
+      .join(', ')
+    if (check.verdict === 'reachable') {
+      const states = check.trace?.states ?? []
+      const preState = states.length >= 2 ? states[states.length - 2] : undefined
+      const value = states.length >= 1 ? states[states.length - 1]?.[check.variable] : undefined
+      const steps = (check.trace?.steps ?? []).map((s) => s.rule)
+      findings.push({
+        code: 'FND_RANGE_VIOLATION',
+        // ERROR: the declared range is false of the system as specified, and every step of
+        // the witness is a change some requirement makes (full frame).
+        severity: 'error',
+        requirementIds: [check.requirementId],
+        message:
+          `${check.label}: writes ${check.variable} OUTSIDE its declared range (${bounds}) from a ` +
+          'reachable state' +
+          (preState !== undefined && value !== undefined
+            ? ` — from ${renderState(preState)} it sets ${check.variable} := ${value}`
+            : '') +
+          `. Reached by firing: ${steps.length > 0 ? steps.join(' -> ') : '(the trace was not recovered)'}. ` +
+          'The step is not disabled by the range: it is a transition the document describes, and ' +
+          'any constraint it breaks is reported against it.',
+        evidence: {
+          variable: check.variable,
+          range: { ...check.range },
+          ...(value !== undefined ? { value } : {}),
+          ...(preState !== undefined ? { preState } : {}),
+          trace: steps,
+          states,
+        },
+        // NO ops: guarding the effect, clamping the value, or widening the range are three
+        // different statements about the system, and choosing one is the author's call.
+        repair: {
+          ops: [],
+          commands: [`symspec show ${check.label} ${docPath}`, `symspec list ${docPath}`],
+        },
+      })
+    } else if (check.verdict === 'unknown') {
+      const budget = check.unknownReason === 'budget-exhausted'
+      findings.push({
+        code: 'FND_REACHABILITY_UNKNOWN',
+        severity: 'info',
+        requirementIds: [check.requirementId],
+        message:
+          `${check.label}: the solver did not decide whether this effect can write ` +
+          `${check.variable} outside its declared range (${bounds}). Nothing is claimed either way.`,
+        evidence: {
+          variable: check.variable,
+          unknownReason: check.unknownReason ?? 'undecidable',
+          elapsedMs: check.elapsedMs,
+          timeoutMs: report.timeoutMs,
+        },
+      })
+      demotions.push({
+        reason: (budget
+          ? 'reachability-budget-exhausted'
+          : 'reachability-undecidable') satisfies ReachabilityDemotionReason,
+        requirementIds: [check.requirementId],
+        action: budget
+          ? `Whether ${check.label} keeps ${check.variable} in range was not decided within the ${report.timeoutMs}ms budget. Raise it: \`symspec check ${docPath} --reachability-timeout-ms ${report.timeoutMs * 4}\`.`
+          : `Whether ${check.label} keeps ${check.variable} in range was undecidable within its budget; more time will not help. Bound the integer domains in the state model.`,
+        repair: budget
+          ? {
+              ops: [],
+              commands: [
+                `symspec check ${docPath} --reachability-timeout-ms ${report.timeoutMs * 4}`,
+              ],
+            }
+          : { ops: [], commands: [`symspec show ${check.label} ${docPath}`] },
+      })
     }
   }
 

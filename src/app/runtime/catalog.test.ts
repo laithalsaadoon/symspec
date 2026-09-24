@@ -36,16 +36,16 @@ import {
 } from './catalog.ts'
 
 // ---------------------------------------------------------------------------
-// Coverage: all 83, in family order
+// Coverage: all 84, in family order
 // ---------------------------------------------------------------------------
 
 describe('the unified catalog spans all three code families', () => {
-  it('holds exactly 21 ERR_* / 38 FND_* / 24 GTWR_* = 83', () => {
-    // 38 FND_*: the transplanted 30, plus 6 `FND_REACHABILITY_*` and 2 `FND_TERM_*` /
+  it('holds exactly 21 ERR_* / 39 FND_* / 24 GTWR_* = 84', () => {
+    // 39 FND_*: the transplanted 30, plus 7 reachability-tier (`FND_REACHABILITY_*`, `FND_RANGE_VIOLATION`, `FND_CERTIFICATE_DISAGREES`) and 2 `FND_TERM_*` /
     // `FND_ACRONYM_*`. The three live in different files because codes live with the tier
     // that emits them. They report the same `family`, because an agent switches on a code and
     // not on provenance.
-    expect(catalogCounts()).toEqual({ ERR: 21, FND: 38, GTWR: 24, total: 83 })
+    expect(catalogCounts()).toEqual({ ERR: 21, FND: 39, GTWR: 24, total: 84 })
   })
 
   it('resolves EVERY code in every catalog', () => {
@@ -56,7 +56,7 @@ describe('the unified catalog spans all three code families', () => {
       ...TERMINOLOGY_FND_CODES,
       ...GTWR_CODES,
     ] as readonly string[]
-    expect(codes).toHaveLength(83)
+    expect(codes).toHaveLength(84)
     for (const code of codes) {
       const entry = lookupCode(code)
       expect(entry, `${code} must resolve`).toBeDefined()
@@ -69,16 +69,16 @@ describe('the unified catalog spans all three code families', () => {
   it('lists the families in order, each in its own append-only order', () => {
     const rows = allCodes()
     expect(rows.slice(0, 21).map((r) => r.family)).toEqual(Array(21).fill('ERR'))
-    // 38 FND rows: v4's 30, then the reachability 6, then the terminology 2 — all reporting
+    // 39 FND rows: v4's 30, then the reachability 7, then the terminology 2 — all reporting
     // `family: 'FND'`.
-    expect(rows.slice(21, 59).map((r) => r.family)).toEqual(Array(38).fill('FND'))
-    expect(rows.slice(59).map((r) => r.family)).toEqual(Array(24).fill('GTWR'))
+    expect(rows.slice(21, 60).map((r) => r.family)).toEqual(Array(39).fill('FND'))
+    expect(rows.slice(60).map((r) => r.family)).toEqual(Array(24).fill('GTWR'))
     // The per-family order is the shipped append-only order, unreordered — and WITHIN the
     // FND family, provenance order: the transplanted list, then the greenfield's.
     expect(rows.slice(21, 51).map((r) => r.code)).toEqual([...FND_CODES])
-    expect(rows.slice(51, 57).map((r) => r.code)).toEqual([...REACHABILITY_FND_CODES])
-    expect(rows.slice(57, 59).map((r) => r.code)).toEqual([...TERMINOLOGY_FND_CODES])
-    expect(rows.slice(59).map((r) => r.code)).toEqual([...GTWR_CODES])
+    expect(rows.slice(51, 58).map((r) => r.code)).toEqual([...REACHABILITY_FND_CODES])
+    expect(rows.slice(58, 60).map((r) => r.code)).toEqual([...TERMINOLOGY_FND_CODES])
+    expect(rows.slice(60).map((r) => r.code)).toEqual([...GTWR_CODES])
   })
 
   it('publishes the description VERBATIM — the manifest`s own bytes', () => {
@@ -116,9 +116,9 @@ describe('severity is derived, and null where it genuinely is not per-code', () 
    * would report `null` for every code — which reads as "no severity" rather than
    * as a bug. Asserting every one parses is what makes the derivation trustworthy.
    */
-  it('parses a severity for ALL 38 FND_* codes', () => {
+  it('parses a severity for ALL 39 FND_* codes', () => {
     const fnd = allCodes().filter((r) => r.family === 'FND')
-    expect(fnd).toHaveLength(38)
+    expect(fnd).toHaveLength(39)
     for (const row of fnd) {
       expect(row.severity, `${row.code} severity must parse`).not.toBeNull()
       expect(['error', 'warn', 'info', 'warn/info']).toContain(row.severity)
@@ -159,6 +159,9 @@ describe('severity is derived, and null where it genuinely is not per-code', () 
       // decide" must never fail a build the way a proof does.
       'FND_REACHABILITY_VIOLATED',
       'FND_REACHABILITY_VACUOUS_INITIAL',
+      // RANGE_VIOLATION (spec 007 AC-1-2): a reachable, requirement-sanctioned step writes
+      // outside a declared range, so the declared model is false of itself.
+      'FND_RANGE_VIOLATION',
     ])
   })
 
@@ -398,8 +401,8 @@ describe('nearestCodesAll ranks across all three families', () => {
     expect(nearestCodesAll('FND_', 5)).toHaveLength(5)
   })
 
-  it('draws from all 83 code strings', () => {
-    expect(allCodeStrings()).toHaveLength(83)
-    expect(new Set(allCodeStrings()).size, 'no duplicate codes across families').toBe(83)
+  it('draws from all 84 code strings', () => {
+    expect(allCodeStrings()).toHaveLength(84)
+    expect(new Set(allCodeStrings()).size, 'no duplicate codes across families').toBe(84)
   })
 })

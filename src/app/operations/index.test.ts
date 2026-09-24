@@ -214,7 +214,7 @@ describe('explain — AC-A-3: every code through the operation', () => {
     const published = [...manifest.errorCodes, ...manifest.findingCodes, ...manifest.lintCodes].map(
       (row) => row.code,
     )
-    expect(published).toHaveLength(83)
+    expect(published).toHaveLength(84)
 
     for (const code of published) {
       const env = await Effect.runPromise(runOperation(explainOp, { code }))
@@ -276,7 +276,7 @@ describe('explain — AC-A-3: every code through the operation', () => {
       // the engine's transplanted 30 plus the 6 `FND_REACHABILITY_*`. Read from
       // `catalogCounts()` at runtime rather than hardcoded in the message, which is why
       // this number moves on its own when the vocabulary grows.
-      expect(env.suggestions.join(' ')).toContain('38 FND_*')
+      expect(env.suggestions.join(' ')).toContain('39 FND_*')
     }
   })
 
@@ -292,8 +292,8 @@ describe('explain — AC-A-3: every code through the operation', () => {
    * what an agent does about a reachability finding is whether it gates the build, and the
    * ONE fact that decides how it fixes it is which knob the remedy names.
    */
-  it('explains all six FND_REACHABILITY_* codes with the right severity', async () => {
-    expect(REACHABILITY_FND_CODES).toHaveLength(6)
+  it('explains every reachability-tier code with the right severity', async () => {
+    expect(REACHABILITY_FND_CODES).toHaveLength(7)
     for (const code of REACHABILITY_FND_CODES) {
       const env = await Effect.runPromise(runOperation(explainOp, { code }))
       expect(env.data.code, code).toBe(code)
@@ -303,7 +303,13 @@ describe('explain — AC-A-3: every code through the operation', () => {
       // vacuous initial state earns error severity because it MASKS proven violations —
       // every constraint holds over an empty reachable set — rather than merely failing
       // to prove one.
-      const gating = ['FND_REACHABILITY_VIOLATED', 'FND_REACHABILITY_VACUOUS_INITIAL']
+      // FND_RANGE_VIOLATION (spec 007 AC-1-2) gates too: a reachable, requirement-sanctioned
+      // step writes outside a declared range, so the declared model is false of itself.
+      const gating = [
+        'FND_REACHABILITY_VIOLATED',
+        'FND_REACHABILITY_VACUOUS_INITIAL',
+        'FND_RANGE_VIOLATION',
+      ]
       expect(env.data.severity, code).toBe(gating.includes(code) ? 'error' : 'info')
       expect(env.data.meaning.length, code).toBeGreaterThan(80)
       expect(exitCodeForEnvelope(env), code).toBe(0)

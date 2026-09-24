@@ -30,6 +30,7 @@ const DOC = './requirements.json'
 /** A report with sensible defaults, so each case states only what it is about. */
 const reportOf = (over: Partial<ReachabilityReport> = {}): ReachabilityReport => ({
   results: [],
+  rangeChecks: [],
   skipped: [],
   effects: 1,
   variables: 1,

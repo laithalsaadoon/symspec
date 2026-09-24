@@ -876,12 +876,13 @@ const effectBody = (
       Z3.mk_eq(ctx, target, compile(Z3, ctx, assignment.value, preBinding, prepared.vars)),
     )
   }
-  const pinned =
+  const pinned = new Set(
     frame === 'none'
       ? []
       : frame === 'full'
         ? prepared.variables.map((v) => v.name)
-        : prepared.stableVars
+        : prepared.stableVars,
+  )
   for (const name of pinned) {
     // A variable this effect WRITES is never pinned — the write is the point.
     if (written.has(name)) continue
@@ -889,7 +890,17 @@ const effectBody = (
     const after = postBinding.get(name)
     if (before !== undefined && after !== undefined) updates.push(Z3.mk_eq(ctx, after, before))
   }
-  return andOf(Z3, ctx, [...updates, ...rangeConstraints(Z3, ctx, prepared.variables, postBinding)])
+  // THE DECLARED RANGE CONSTRAINS ONLY A FREE VARIABLE (spec 007 AC-1-2) — one the effect
+  // neither writes nor pins, whose next value the environment chooses within its type.
+  //
+  // A WRITTEN variable's next value is whatever the effect computes. Conjoining its range
+  // here made an out-of-range write UNSATISFIABLE, which silently DISABLED the step: a
+  // `queue_len := queue_len + 1` at the declared maximum simply never fired, so anything
+  // it would have caused was "proved" impossible. The overflow is now a real transition,
+  // and {@link checkRanges} reports it as `FND_RANGE_VIOLATION`. A PINNED variable keeps
+  // its value, in range or not.
+  const free = prepared.variables.filter((v) => !written.has(v.name) && !pinned.has(v.name))
+  return andOf(Z3, ctx, [...updates, ...rangeConstraints(Z3, ctx, free, postBinding)])
 }
 
 /** One built Horn system, ready to query, plus what is needed to re-check its answer. */
@@ -953,7 +964,7 @@ const buildSystem = (
   Z3: LowLevelZ3,
   ctx: Ast,
   prepared: PreparedModel,
-  constraint: ConstraintRule,
+  target: BadTarget,
   frame: FrameMode,
   timeoutMs: number,
 ): { readonly system: HornSystem; readonly refusedParams: readonly string[] } => {
@@ -1017,14 +1028,25 @@ const buildSystem = (
         : Z3.mk_or(ctx, transitions)
 
   // --- THE BAD STATE ---------------------------------------------------------
-  // `Inv(x) ∧ ¬C(x) ⇒ Bad()`. Named after the constraint's OWN requirement, so a trace
-  // ends with the requirement whose property was violated.
-  const badTerm = Z3.mk_not(ctx, compile(Z3, ctx, constraint.predicate, preBinding, prepared.vars))
+  // A STATE target: `Inv(x) ∧ ¬C(x) ⇒ Bad()`, named after the constraint's own
+  // requirement. A STEP target (a range overflow, AC-1-2): `Inv(x) ∧ Tₑ(x, x') ∧ ¬R(x') ⇒
+  // Bad()`, named after the effect — "from some reachable state, effect e writes outside
+  // the declared range".
+  const badTerm =
+    target.kind === 'state'
+      ? target.bad(preBinding)
+      : and([
+          effectBody(Z3, ctx, prepared, target.effect.effect, frame, preBinding, postBinding),
+          target.bad(preBinding, postBinding),
+        ])
   Z3.fixedpoint_add_rule(
     ctx,
     fp,
-    forall(pre, Z3.mk_implies(ctx, and([app(invRelation, pre), badTerm]), app(badRelation, []))),
-    sym(constraint.label),
+    forall(
+      target.kind === 'state' ? pre : [...pre, ...post],
+      Z3.mk_implies(ctx, and([app(invRelation, pre), badTerm]), app(badRelation, [])),
+    ),
+    sym(target.kind === 'state' ? target.label : target.effect.label),
   )
 
   return {
@@ -1417,8 +1439,8 @@ const checkCertificate = (
  */
 const TRACE_DEPTH_CAP = 128
 
-/** What a reconstructed trace must END at. */
-type TraceTarget =
+/** What a query (and a reconstructed trace) is looking for: a bad STATE, or a bad STEP. */
+type BadTarget =
   /** A state violating a constraint: `bad` over the final state. */
   | {
       readonly kind: 'state'
@@ -1475,7 +1497,7 @@ const reconstructTrace = (
   Z3: LowLevelZ3,
   ctx: Ast,
   prepared: PreparedModel,
-  target: TraceTarget,
+  target: BadTarget,
   frame: FrameMode,
   timeoutMs: number,
 ): Effect.Effect<TraceEvidence, never, SolverService> =>
@@ -1635,7 +1657,7 @@ const runQuery = (
   Z3: LowLevelZ3,
   ctx: Ast,
   prepared: PreparedModel,
-  constraint: ConstraintRule,
+  target: BadTarget,
   frame: FrameMode,
   timeoutMs: number,
 ): Effect.Effect<
@@ -1651,7 +1673,7 @@ const runQuery = (
 > =>
   Effect.gen(function* () {
     const solver = yield* SolverService
-    const { system, refusedParams } = buildSystem(Z3, ctx, prepared, constraint, frame, timeoutMs)
+    const { system, refusedParams } = buildSystem(Z3, ctx, prepared, target, frame, timeoutMs)
     const query = Z3.mk_app(ctx, system.badRelation, [])
 
     const startedAt = Date.now()
@@ -1688,6 +1710,18 @@ const runQuery = (
       refusedParams,
     }
   })
+
+/** A constraint as a query target: a reachable state where its predicate is FALSE. */
+const constraintTarget = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  constraint: ConstraintRule,
+): BadTarget => ({
+  kind: 'state',
+  label: constraint.label,
+  bad: (at) => Z3.mk_not(ctx, compile(Z3, ctx, constraint.predicate, at, prepared.vars)),
+})
 
 /**
  * Decide ONE constraint, running the prove-twice protocol (AC-2-5).
@@ -1728,7 +1762,8 @@ export const decideConstraint = (
   timeoutMs: number,
 ): Effect.Effect<ConstraintResult, never, SolverService> =>
   Effect.gen(function* () {
-    const openRun = yield* runQuery(Z3, ctx, prepared, constraint, 'none', timeoutMs)
+    const target = constraintTarget(Z3, ctx, prepared, constraint)
+    const openRun = yield* runQuery(Z3, ctx, prepared, target, 'none', timeoutMs)
     let elapsedMs = openRun.elapsedMs
 
     /** Assemble the invariant evidence for a run that proved unreachable. */
@@ -1778,7 +1813,7 @@ export const decideConstraint = (
 
     // (2) Reachable with nothing pinned. The FRAMED run — every unwritten variable pinned
     // — decides whether that is a real defect or an artifact of assuming nothing.
-    const framedRun = yield* runQuery(Z3, ctx, prepared, constraint, 'full', timeoutMs)
+    const framedRun = yield* runQuery(Z3, ctx, prepared, target, 'full', timeoutMs)
     elapsedMs += framedRun.elapsedMs
     let refusedParams = [...new Set([...openRun.refusedParams, ...framedRun.refusedParams])]
     const verdict = decideFrameVerdict(openRun.verdict, framedRun.verdict)
@@ -1795,7 +1830,7 @@ export const decideConstraint = (
       // frame pinned, and saying so is the point.
       let hypothesisVars = prepared.variables.map((v) => v.name)
       if (prepared.stableVars.length > 0) {
-        const declaredRun = yield* runQuery(Z3, ctx, prepared, constraint, 'declared', timeoutMs)
+        const declaredRun = yield* runQuery(Z3, ctx, prepared, target, 'declared', timeoutMs)
         elapsedMs += declaredRun.elapsedMs
         refusedParams = [...new Set([...refusedParams, ...declaredRun.refusedParams])]
         if (declaredRun.verdict === 'unreachable') hypothesisVars = [...prepared.stableVars]
@@ -1836,18 +1871,7 @@ export const decideConstraint = (
     // witness is a real behavior of the described system. The unpinned run's witness may
     // include a spontaneous change, which is exactly what would make the trace fiction.
     const traceStarted = Date.now()
-    const trace = yield* reconstructTrace(
-      Z3,
-      ctx,
-      prepared,
-      {
-        kind: 'state',
-        label: constraint.label,
-        bad: (at) => Z3.mk_not(ctx, compile(Z3, ctx, constraint.predicate, at, prepared.vars)),
-      },
-      'full',
-      timeoutMs,
-    )
+    const trace = yield* reconstructTrace(Z3, ctx, prepared, target, 'full', timeoutMs)
     elapsedMs += Date.now() - traceStarted
     return {
       ...base,
@@ -1861,6 +1885,101 @@ export const decideConstraint = (
   })
 
 // ---------------------------------------------------------------------------
+// Declared ranges (spec 007 AC-1-2)
+// ---------------------------------------------------------------------------
+
+/** The result of asking whether ONE effect can write ONE bounded variable out of range. */
+export interface RangeCheckResult {
+  /** The EFFECT's label — the requirement whose write is in question. */
+  readonly label: string
+  readonly requirementId: string
+  /** The bounded int variable it writes. */
+  readonly variable: string
+  /** The declared inclusive bounds, as written. */
+  readonly range: { readonly min?: number; readonly max?: number }
+  /**
+   * `reachable` — from some reachable state (under the full frame, so every step is
+   * requirement-sanctioned) the effect writes a value outside the range. `unreachable` —
+   * it never does. `unknown` — undecided; demotes.
+   */
+  readonly verdict: ReachabilityVerdict
+  /** On `reachable`: the path to the overflowing step. Its LAST state is the out-of-range
+   * post-state and the one before it is the reachable pre-state. */
+  readonly trace?: TraceEvidence
+  readonly unknownReason?: UnknownReason
+  readonly elapsedMs: number
+}
+
+/**
+ * Ask, for every effect and every bounded int variable it WRITES, whether the write can
+ * leave the declared range from a reachable state (spec 007 AC-1-2).
+ *
+ * A declared range is a claim about every reachable state. Enforcing it by conjoining it
+ * into the transition relation made an overflowing step unsatisfiable, so the step
+ * silently never fired and everything downstream of it was "proved" impossible — measured:
+ * a queue declared `0..2` whose ENQ_FULL writes 3 reported `not dropped` proved with exit
+ * 0. The range is now a CHECKED obligation instead: the transition admits the write
+ * ({@link effectBody}), and this query reports it.
+ *
+ * Asked under the FULL frame, the sound direction for reporting a reachable defect: the
+ * witness then uses only requirement-sanctioned changes. Enum targets need no check — the
+ * type checker admits only members of the target's own domain, and a bool has no range.
+ */
+const checkRanges = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  timeoutMs: number,
+): Effect.Effect<readonly RangeCheckResult[], never, SolverService> =>
+  Effect.gen(function* () {
+    const results: RangeCheckResult[] = []
+    const int = (n: number) => Z3.mk_numeral(ctx, String(n), Z3.mk_int_sort(ctx))
+    for (const effect of prepared.effects) {
+      for (const target of writesOf(effect.effect.assignments)) {
+        const variable = prepared.vars.get(target)
+        if (variable?.type !== 'int' || variable.domain === undefined) continue
+        const { min, max } = variable.domain
+        if (min === undefined && max === undefined) continue
+        const outOfRange: BadTarget = {
+          kind: 'step',
+          effect,
+          bad: (_pre, post) => {
+            const term = post.get(target)
+            const escapes: Ast[] = []
+            if (min !== undefined) escapes.push(Z3.mk_lt(ctx, term, int(min)))
+            if (max !== undefined) escapes.push(Z3.mk_gt(ctx, term, int(max)))
+            return orOf(Z3, ctx, escapes)
+          },
+        }
+        const run = yield* runQuery(Z3, ctx, prepared, outOfRange, 'full', timeoutMs)
+        let elapsedMs = run.elapsedMs
+        const base = {
+          label: effect.label,
+          requirementId: effect.requirementId,
+          variable: target,
+          range: { ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}) },
+        }
+        if (run.verdict === 'reachable') {
+          const startedAt = Date.now()
+          const trace = yield* reconstructTrace(Z3, ctx, prepared, outOfRange, 'full', timeoutMs)
+          elapsedMs += Date.now() - startedAt
+          results.push({ ...base, verdict: 'reachable', trace, elapsedMs })
+        } else if (run.verdict === 'unknown') {
+          results.push({
+            ...base,
+            verdict: 'unknown',
+            unknownReason: classifyUnknown(run.elapsedMs, timeoutMs),
+            elapsedMs,
+          })
+        } else {
+          results.push({ ...base, verdict: 'unreachable', elapsedMs })
+        }
+      }
+    }
+    return results
+  })
+
+// ---------------------------------------------------------------------------
 // The tier
 // ---------------------------------------------------------------------------
 
@@ -1868,6 +1987,9 @@ export const decideConstraint = (
 export interface ReachabilityReport {
   /** One entry per encodable constraint, in stable requirement order. */
   readonly results: readonly ConstraintResult[]
+  /** One entry per (effect, bounded int variable it writes) — the declared-range
+   * obligations (spec 007 AC-1-2). Empty on a vacuous model, where nothing was asked. */
+  readonly rangeChecks: readonly RangeCheckResult[]
   /** Requirements the tier could not read, each with why. Never silently dropped. */
   readonly skipped: readonly { readonly label: string; readonly reason: string }[]
   /** How many requirements contributed a transition. */
@@ -1982,8 +2104,14 @@ export const runReachability = (
       for (const name of result.refusedParams) refused.add(name)
     }
 
+    // THE DECLARED-RANGE OBLIGATIONS. Not asked on a vacuous model, for the same reason no
+    // constraint query is: with no states, "never overflows" would be a vacuous answer.
+    const rangeChecks = vacuous ? [] : yield* checkRanges(Z3, ctx, prepared, timeoutMs)
+    for (const check of rangeChecks) elapsedMs += check.elapsedMs
+
     return {
       results,
+      rangeChecks,
       skipped: prepared.skipped,
       effects: prepared.effects.length,
       variables: prepared.variables.length,

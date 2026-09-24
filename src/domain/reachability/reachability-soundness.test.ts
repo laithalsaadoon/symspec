@@ -28,6 +28,7 @@ import {
   validateExpression,
 } from '../requirements/state-expr.ts'
 import { type ReachabilityReport, runReachability } from './reachability.ts'
+import { projectReachability } from './reachability-report.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
 
@@ -150,6 +151,63 @@ describe('AC-1-1 — the validator hands the encoder members already bound to th
       right: { kind: 'member', enumOf: 'door', name: 'open' },
     })
     expect(parsed.assignments[0]?.value).toEqual({ kind: 'member', enumOf: 'valve', name: 'open' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC-1-2 — a write outside a declared range is a finding, never a disabled step
+// ---------------------------------------------------------------------------
+
+describe('AC-1-2 — an effect that writes outside its target`s declared range is reported', () => {
+  const intVar = (name: string, max: number, initial: string): StateVariable => ({
+    name,
+    type: 'int',
+    frame: 'volatile',
+    domain: { min: 0, max },
+    initial,
+  })
+  /**
+   * `queue_len` is declared 0..2, and ENQ_FULL fires exactly at 2 and writes 3. Conjoining
+   * the range into the transition relation made that step UNSATISFIABLE — so ENQ_FULL never
+   * fired, `dropped` never became true, and `not dropped` came back proved under hypotheses
+   * with exit 0. By hand: ENQ, ENQ reaches queue_len = 2; ENQ_FULL then writes 3.
+   */
+  const QUEUE = (max: number): RequirementsDocument =>
+    docOf(
+      [
+        intVar('queue_len', max, 'queue_len = 0'),
+        { name: 'dropped', type: 'bool', frame: 'volatile', initial: 'dropped = false' },
+      ],
+      [
+        effect(1, 'ENQ', 'when queue_len < 2: queue_len := queue_len + 1'),
+        effect(2, 'ENQ_FULL', 'when queue_len = 2: queue_len := queue_len + 1, dropped := true'),
+        effect(3, 'DEQ', 'when queue_len > 0: queue_len := queue_len - 1'),
+        constraint(4, 'NO_DROP', 'not dropped'),
+      ],
+    )
+
+  it('reports FND_RANGE_VIOLATION (error) naming ENQ_FULL and its reachable pre-state', async () => {
+    const projection = projectReachability(await run(QUEUE(2)), 'doc.json')
+    const found = projection.findings.filter((f) => f.code === 'FND_RANGE_VIOLATION')
+    expect(found).toHaveLength(1)
+    const [finding] = found
+    expect(finding?.severity).toBe('error')
+    expect(finding?.requirementIds).toEqual([uuid(2)])
+    expect(finding?.message).toContain('ENQ_FULL')
+    expect(finding?.evidence?.variable).toBe('queue_len')
+    expect(finding?.evidence?.preState).toEqual({ queue_len: '2', dropped: 'false' })
+    expect(finding?.evidence?.value).toBe('3')
+    expect(finding?.evidence?.trace).toEqual(['init', 'ENQ', 'ENQ', 'ENQ_FULL'])
+  })
+
+  it('does not disable the step: the constraint it breaks is reported VIOLATED', async () => {
+    const report = await run(QUEUE(2))
+    expect(resultFor(report, 'NO_DROP').verdict).toBe('VIOLATED')
+  })
+
+  it('the in-range control (max 3) reports no range violation', async () => {
+    const projection = projectReachability(await run(QUEUE(3)), 'doc.json')
+    expect(projection.findings.filter((f) => f.code === 'FND_RANGE_VIOLATION')).toEqual([])
   })
 })
 
