@@ -55,6 +55,11 @@
  *   fixture, adding `held = 0 and held = 2` to the model flipped a genuine
  *   `FND_REACHABILITY_VIOLATED` into `PROVED ... with nothing assumed` and the exit code
  *   from 1 to 0.
+ * - `FND_CERTIFICATE_DISAGREES` — **error** (spec 007 AC-1-5). The independent
+ *   explicit-state search refuted a proof. The V28 certificate re-checks the SAME encoding,
+ *   so an encoder that asks the wrong question passes it; only a second route to the answer
+ *   sees that. Error, and the proof is withdrawn, because the tool cannot tell which
+ *   checker is wrong and must not publish a claim one of its own checkers refutes.
  * - `FND_RANGE_VIOLATION` — **error** (spec 007 AC-1-2). An effect writes outside its
  *   target's declared `--min`/`--max` from a reachable state, under the full frame. Its own
  *   code because the remedy is about the EFFECT or the RANGE, not about any constraint —
@@ -97,6 +102,7 @@ export const REACHABILITY_FND_CODES = [
   // APPENDED for spec 007 Story 1. Named by the spec rather than by the family prefix:
   // a range overflow is a defect in the declared MODEL, not a verdict about a constraint.
   'FND_RANGE_VIOLATION',
+  'FND_CERTIFICATE_DISAGREES',
 ] as const
 
 export type ReachabilityFndCode = (typeof REACHABILITY_FND_CODES)[number]
@@ -199,5 +205,18 @@ export const ReachabilityFndCodeMeta: Record<
       'step silently never fire, which "proved" everything downstream of it impossible. ' +
       'Suggestion: guard the effect so it cannot fire at the bound, clamp the value it writes, or ' +
       'widen the declared range if the overflow is intended.',
+  },
+  FND_CERTIFICATE_DISAGREES: {
+    code: 'FND_CERTIFICATE_DISAGREES',
+    description:
+      'error — the unbounded solver PROVED a constraint (or proved it under hypotheses), and an ' +
+      'INDEPENDENT explicit-state search of the same model found a reachable state that violates ' +
+      'it. The search shares nothing with the SMT encoder beyond the parsed expression, and it ' +
+      'runs on every proof over a model whose reachable state space is small enough to ' +
+      'enumerate, so a disagreement means one of the two checkers is wrong about THIS model. ' +
+      'The proof is WITHDRAWN rather than reported, and `verified` is demoted. The evidence ' +
+      'carries the explicit witness: the path of states and the requirements that fired. ' +
+      'Suggestion: this is a tool defect, not a document defect — read the witness against the ' +
+      'model to see which checker is right, and report it with the document attached.',
   },
 }

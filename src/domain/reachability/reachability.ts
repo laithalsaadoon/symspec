@@ -172,6 +172,7 @@ import {
   validateExpression,
   writesOf,
 } from '../requirements/state-expr.ts'
+import { type ExplicitVerdict, explicitCheck } from './explicit-state.ts'
 
 // ---------------------------------------------------------------------------
 // The verdict vocabulary
@@ -1650,6 +1651,68 @@ export interface ConstraintResult {
   }[]
   /** Wall-clock ms for every query this constraint needed. Reported, never gated on. */
   readonly elapsedMs: number
+  /**
+   * The frame the proof holds under, on PROVED (`none`) and PROVED_UNDER_HYPOTHESES — the
+   * relation the explicit-state cross-check re-decides.
+   */
+  readonly proofFrame?: FrameMode
+  /**
+   * The explicit-state cross-check of a PROVED / PROVED_UNDER_HYPOTHESES (spec 007
+   * AC-1-5). `disagrees` WITHDRAWS the proof: the verdict is then `UNKNOWN` and the
+   * projection reports `FND_CERTIFICATE_DISAGREES`.
+   */
+  readonly crossCheck?: CrossCheck
+}
+
+/**
+ * What the independent explicit-state search said about a proof.
+ *
+ * - `agrees` — it enumerated every reachable state (`states` of them) and the constraint
+ *   holds in each.
+ * - `disagrees` — it found a reachable violating state, with the path. One of the two
+ *   checkers is wrong, and a proof is never reported over a disagreement.
+ * - `not-applicable` — the state space is not finite-and-small; the proof stands on the Horn
+ *   tier and its certificate alone.
+ */
+export type CrossCheck =
+  | { readonly status: 'agrees'; readonly states: number }
+  | {
+      readonly status: 'disagrees'
+      readonly frame: FrameMode
+      readonly trace: readonly string[]
+      readonly path: readonly Readonly<Record<string, string>>[]
+    }
+  | { readonly status: 'not-applicable'; readonly reason: string }
+
+/**
+ * Cross-check a PROVED / PROVED_UNDER_HYPOTHESES by explicit-state search (AC-1-5), and
+ * WITHDRAW the proof when the two checkers disagree.
+ *
+ * The search ({@link explicitCheck}) shares nothing with the Horn encoder beyond the parsed
+ * expression AST, which is what makes its agreement evidence: an encoder defect that makes
+ * Spacer prove the wrong question (the AC-1-1 enum defect did) is invisible to the V28
+ * certificate, which re-checks that same wrong question, and visible here.
+ */
+const crossChecked = (
+  prepared: PreparedModel,
+  constraint: ConstraintRule,
+  result: ConstraintResult,
+): ConstraintResult => {
+  if (result.verdict !== 'PROVED' && result.verdict !== 'PROVED_UNDER_HYPOTHESES') return result
+  const frame: FrameMode = result.proofFrame ?? (result.verdict === 'PROVED' ? 'none' : 'full')
+  const verdict: ExplicitVerdict = explicitCheck(prepared, constraint.predicate, frame)
+  if (verdict.status === 'holds') {
+    return { ...result, crossCheck: { status: 'agrees', states: verdict.states } }
+  }
+  if (verdict.status === 'not-applicable') {
+    return { ...result, crossCheck: { status: 'not-applicable', reason: verdict.reason } }
+  }
+  const { invariant: _withdrawn, hypotheses: _moot, ...rest } = result
+  return {
+    ...rest,
+    verdict: 'UNKNOWN',
+    crossCheck: { status: 'disagrees', frame, trace: verdict.trace, path: verdict.path },
+  }
 }
 
 /** Run ONE query on a freshly built system, returning its verdict and evidence. */
@@ -1761,6 +1824,18 @@ export const decideConstraint = (
   constraint: ConstraintRule,
   timeoutMs: number,
 ): Effect.Effect<ConstraintResult, never, SolverService> =>
+  decideBySpacer(Z3, ctx, prepared, constraint, timeoutMs).pipe(
+    Effect.map((result) => crossChecked(prepared, constraint, result)),
+  )
+
+/** The prove-twice protocol itself, before the explicit-state cross-check. */
+const decideBySpacer = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  constraint: ConstraintRule,
+  timeoutMs: number,
+): Effect.Effect<ConstraintResult, never, SolverService> =>
   Effect.gen(function* () {
     const target = constraintTarget(Z3, ctx, prepared, constraint)
     const openRun = yield* runQuery(Z3, ctx, prepared, target, 'none', timeoutMs)
@@ -1795,6 +1870,7 @@ export const decideConstraint = (
         invariant: yield* invariantOf(openRun),
         elapsedMs,
         refusedParams: openRun.refusedParams,
+        proofFrame: 'none' as const,
       }
     }
 
@@ -1851,6 +1927,7 @@ export const decideConstraint = (
         })),
         elapsedMs,
         refusedParams,
+        proofFrame: 'full' as const,
       }
     }
 

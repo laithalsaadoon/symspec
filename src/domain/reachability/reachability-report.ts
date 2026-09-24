@@ -90,6 +90,10 @@ export const REACHABILITY_DEMOTION_REASONS = [
   // predicate". Collapsing them would send an agent to add bounds to a document whose
   // bounds are already the problem.
   'reachability-vacuous-initial-state',
+  // APPENDED for spec 007 AC-1-5: the explicit-state search refuted a proof, so the proof
+  // was withdrawn. Its own reason because the remedy is neither a budget nor a bound — it
+  // is a tool defect to report.
+  'reachability-certificate-disagrees',
 ] as const
 
 export type ReachabilityDemotionReason = (typeof REACHABILITY_DEMOTION_REASONS)[number]
@@ -269,6 +273,46 @@ export const projectReachability = (
 
   for (const result of report.vacuousInitialState ? [] : report.results) {
     const ids = [result.requirementId]
+    // A PROOF THE EXPLICIT SEARCH REFUTED (AC-1-5). Checked BEFORE the verdict switch: the
+    // tier has already withdrawn the proof (verdict UNKNOWN), and reporting that as an
+    // ordinary "the solver did not decide" would hide that a checker is wrong.
+    if (result.crossCheck?.status === 'disagrees') {
+      const witness = result.crossCheck
+      findings.push({
+        code: 'FND_CERTIFICATE_DISAGREES',
+        severity: 'error',
+        requirementIds: ids,
+        message:
+          `${result.label}: the unbounded solver PROVED this constraint, but an independent ` +
+          'explicit-state search of the same model reaches a state that VIOLATES it' +
+          (witness.trace.length > 0
+            ? `, by firing: ${witness.trace.join(' -> ')}`
+            : ' — the initial state itself') +
+          '. The proof is WITHDRAWN. The two checkers share nothing beyond the parsed ' +
+          'expression, so one of them is wrong about this model; this is a tool defect, not a ' +
+          'document defect.',
+        evidence: {
+          frame: witness.frame,
+          trace: [...witness.trace],
+          path: [...witness.path],
+          strictRun: result.strict,
+        },
+        repair: {
+          ops: [],
+          commands: [`symspec show ${result.label} ${docPath}`, `symspec list ${docPath}`],
+        },
+      })
+      demotions.push({
+        reason: 'reachability-certificate-disagrees' satisfies ReachabilityDemotionReason,
+        requirementIds: ids,
+        action:
+          `The proof for ${result.label} was refuted by the explicit-state cross-check and ` +
+          'withdrawn. Nothing about this constraint is claimed. Read the witness path against ' +
+          'the state model; report the document if the solver was the one that was wrong.',
+        repair: { ops: [], commands: [`symspec check ${docPath}`] },
+      })
+      continue
+    }
     switch (result.verdict) {
       case 'VIOLATED': {
         findings.push({

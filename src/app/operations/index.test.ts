@@ -214,7 +214,7 @@ describe('explain — AC-A-3: every code through the operation', () => {
     const published = [...manifest.errorCodes, ...manifest.findingCodes, ...manifest.lintCodes].map(
       (row) => row.code,
     )
-    expect(published).toHaveLength(84)
+    expect(published).toHaveLength(85)
 
     for (const code of published) {
       const env = await Effect.runPromise(runOperation(explainOp, { code }))
@@ -276,7 +276,7 @@ describe('explain — AC-A-3: every code through the operation', () => {
       // the engine's transplanted 30 plus the 6 `FND_REACHABILITY_*`. Read from
       // `catalogCounts()` at runtime rather than hardcoded in the message, which is why
       // this number moves on its own when the vocabulary grows.
-      expect(env.suggestions.join(' ')).toContain('39 FND_*')
+      expect(env.suggestions.join(' ')).toContain('40 FND_*')
     }
   })
 
@@ -293,7 +293,7 @@ describe('explain — AC-A-3: every code through the operation', () => {
    * ONE fact that decides how it fixes it is which knob the remedy names.
    */
   it('explains every reachability-tier code with the right severity', async () => {
-    expect(REACHABILITY_FND_CODES).toHaveLength(7)
+    expect(REACHABILITY_FND_CODES).toHaveLength(8)
     for (const code of REACHABILITY_FND_CODES) {
       const env = await Effect.runPromise(runOperation(explainOp, { code }))
       expect(env.data.code, code).toBe(code)
@@ -309,6 +309,8 @@ describe('explain — AC-A-3: every code through the operation', () => {
         'FND_REACHABILITY_VIOLATED',
         'FND_REACHABILITY_VACUOUS_INITIAL',
         'FND_RANGE_VIOLATION',
+        // CERTIFICATE_DISAGREES (AC-1-5): an independent search refuted a proof.
+        'FND_CERTIFICATE_DISAGREES',
       ]
       expect(env.data.severity, code).toBe(gating.includes(code) ? 'error' : 'info')
       expect(env.data.meaning.length, code).toBeGreaterThan(80)

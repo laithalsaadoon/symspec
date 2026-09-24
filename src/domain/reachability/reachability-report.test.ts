@@ -619,6 +619,19 @@ describe('every reachability demotion names the command that supplies what is mi
         ],
       }),
     ],
+    // The explicit-state search refuted a proof (spec 007 AC-1-5): the proof is withdrawn,
+    // and the runnable step is re-running the check once the witness has been read.
+    [
+      'reachability-certificate-disagrees',
+      reportOf({
+        results: [
+          resultOf({
+            verdict: 'UNKNOWN',
+            crossCheck: { status: 'disagrees', frame: 'none', trace: [], path: [] },
+          }),
+        ],
+      }),
+    ],
   ]
 
   it('covers every reason in the CLOSED list — a new reason fails here', () => {
