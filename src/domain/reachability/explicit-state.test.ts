@@ -188,6 +188,182 @@ describe('explicitCheck decides small models on its own', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 1b. The caps bound the states VISITED, never the declared domains
+// ---------------------------------------------------------------------------
+
+/** Eleven reachable states inside a billion-value declared range. */
+const METER = (initial = 'count = 0'): RequirementsDocument =>
+  docOf(
+    [
+      {
+        name: 'count',
+        type: 'int',
+        frame: 'volatile',
+        domain: { min: 0, max: 1_000_000_000 },
+        initial,
+      },
+    ],
+    [effect(1, 'INC', 'when count < 10: count := count + 1'), constraint(2, 'CAP', 'count <= 10')],
+  )
+
+/**
+ * Enough initialised bools that their declared product, 2^FLAGS.length, exceeds the
+ * work cap on its own: an initial search that only filtered complete assignments would
+ * have to decline, so these fixtures gate the PRUNING, not just the answer.
+ */
+const FLAGS = Array.from({ length: 20 }, (_, i) => `f${i}`)
+
+/**
+ * The AC-1-1 reproducer widened by {@link FLAGS} initialised bools. The declared product is
+ * millions of assignments; the initial predicates pin every variable, and the one
+ * effect writes every variable, so the reachable space is exactly ONE state.
+ */
+const WIDE_SHARED_MEMBER = (): RequirementsDocument =>
+  docOf(
+    [
+      {
+        name: 'door',
+        type: 'enum',
+        frame: 'volatile',
+        domain: ['open', 'closed'],
+        initial: 'door = closed',
+      },
+      {
+        name: 'valve',
+        type: 'enum',
+        frame: 'volatile',
+        domain: ['shut', 'ajar', 'open'],
+        initial: 'valve = open',
+      },
+      ...FLAGS.map(
+        (name): StateVariable => ({
+          name,
+          type: 'bool',
+          frame: 'volatile',
+          initial: `${name} = false`,
+        }),
+      ),
+    ],
+    [
+      effect(
+        1,
+        'E1',
+        `when valve = open: valve := open, door := door, ${FLAGS.map((f) => `${f} := ${f}`).join(', ')}`,
+      ),
+      constraint(2, 'C1', 'valve = shut'),
+    ],
+  )
+
+describe('the caps bound the states the search visits, not the declared domains', () => {
+  it('cross-checks eleven reachable states inside a billion-value declared range', () => {
+    const document = METER()
+    const verdict = explicitCheck(
+      prepareModel(document),
+      predicateOf(document, 'count <= 10'),
+      'none',
+    )
+    expect(verdict).toEqual({ status: 'holds', states: 11 })
+  })
+
+  it('the tier reports that meter PROVED with the cross-check AGREEING', async () => {
+    const result = (await run(METER())).results[0]
+    expect(result?.verdict).toBe('PROVED')
+    expect(result?.crossCheck).toEqual({ status: 'agrees', states: 11 })
+  })
+
+  it('narrows an int initial to the interval its top-level comparisons bound', () => {
+    const document = METER('count > 2 and 4 >= count')
+    const verdict = explicitCheck(
+      prepareModel(document),
+      predicateOf(document, 'count <= 10'),
+      'none',
+    )
+    expect(verdict).toEqual({ status: 'holds', states: 8 })
+  })
+
+  it('declines an initial predicate that admits more states than the cap, without enumerating the range', () => {
+    const document = METER('count >= 0')
+    const verdict = explicitCheck(
+      prepareModel(document),
+      predicateOf(document, 'count <= 10'),
+      'none',
+    )
+    expect(verdict).toEqual({
+      status: 'not-applicable',
+      reason: `more than ${REACHABILITY_BFS_STATE_CAP} initial states`,
+    })
+  })
+
+  it('declines a step that leaves a billion-value int free, without enumerating the range', () => {
+    const document = docOf(
+      [
+        {
+          name: 'count',
+          type: 'int',
+          frame: 'volatile',
+          domain: { min: 0, max: 1_000_000_000 },
+          initial: 'count = 0',
+        },
+        { name: 'b', type: 'bool', frame: 'volatile', initial: 'b = false' },
+      ],
+      [effect(1, 'FLIP', 'b := not b'), constraint(2, 'C', 'count >= 0')],
+    )
+    const verdict = explicitCheck(
+      prepareModel(document),
+      predicateOf(document, 'count >= 0'),
+      'none',
+    )
+    expect(verdict).toEqual({
+      status: 'not-applicable',
+      reason: `more than ${REACHABILITY_BFS_WORK_CAP} successors to generate`,
+    })
+  })
+
+  it('sizes FLAGS past the work cap, so the pruning is what the next cases exercise', () => {
+    expect(2 ** FLAGS.length).toBeGreaterThan(REACHABILITY_BFS_WORK_CAP)
+  })
+
+  it('prunes the initial search by predicate: every bool initialised is ONE initial state', () => {
+    const document = WIDE_SHARED_MEMBER()
+    const verdict = explicitCheck(
+      prepareModel(document),
+      predicateOf(document, 'valve = shut'),
+      'none',
+    )
+    expect(verdict.status).toBe('violated')
+    if (verdict.status === 'violated') {
+      expect(verdict.states).toBe(1)
+      expect(verdict.path[0]?.valve).toBe('open')
+    }
+  })
+
+  it('the widened AC-1-1 reproducer yields no PROVED and no disagreement', async () => {
+    const codes = projectReachability(await run(WIDE_SHARED_MEMBER()), 'doc.json').findings.map(
+      (f) => f.code,
+    )
+    expect(codes).not.toContain('FND_REACHABILITY_PROVED')
+    expect(codes).not.toContain('FND_CERTIFICATE_DISAGREES')
+  })
+
+  it('cross-checks a proof over many stable bools with two reachable states', async () => {
+    const document = docOf(
+      FLAGS.map(
+        (name): StateVariable => ({
+          name,
+          type: 'bool',
+          frame: 'stable',
+          initial: `${name} = false`,
+        }),
+      ),
+      [effect(1, 'TOGGLE', 'f0 := not f0'), constraint(2, 'QUIET', 'not f1')],
+    )
+    const result = (await run(document)).results[0]
+    expect(['PROVED', 'PROVED_UNDER_HYPOTHESES']).toContain(result?.verdict)
+    expect(result?.crossCheck).toEqual({ status: 'agrees', states: 2 })
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 2. The tier cross-checks its proofs, and a disagreement withdraws the proof
 // ---------------------------------------------------------------------------
 

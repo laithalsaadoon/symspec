@@ -34,11 +34,19 @@
  * ## When it does not run
  *
  * Only when the answer is finite and small: every variable a step leaves free, and every
- * variable the initial predicates leave unpinned, must have a finite domain, and the
+ * variable the initial predicates leave unbounded, must have a finite domain, and the
  * enumeration must stay within {@link REACHABILITY_BFS_STATE_CAP} states and
  * {@link REACHABILITY_BFS_WORK_CAP} generated successors. Otherwise it returns
  * `not-applicable` with the reason, and the proof stands on the Horn tier and its
  * certificate alone — which is what it stood on before this module existed.
+ *
+ * The caps measure what the search VISITS, never what the declarations multiply out to. A
+ * bounded int's range is a pair of bounds, sized before any value is produced; the initial
+ * states are found by backtracking that prunes a branch as soon as its assigned prefix
+ * refutes an initial predicate, so N bools each initialised `= false` are one initial
+ * state reached in 2N steps, not 2^N candidates; an int's initial candidates
+ * are narrowed to the interval its top-level literal comparisons leave; and a step's free
+ * fan-out is sized from the domain sizes before a single successor is built.
  */
 
 import type { StateVariable } from '../requirements/document.ts'
@@ -128,24 +136,29 @@ const evaluate = (expr: Expr, state: State): Value => {
       const right = integer(expr.right, state)
       return expr.op === '+' ? left + right : left - right
     }
-    case 'compare': {
-      const left = evaluate(expr.left, state)
-      const right = evaluate(expr.right, state)
-      switch (expr.op) {
-        case '=':
-          return left === right
-        case '!=':
-          return left !== right
-        case '<':
-          return (left as bigint) < (right as bigint)
-        case '<=':
-          return (left as bigint) <= (right as bigint)
-        case '>':
-          return (left as bigint) > (right as bigint)
-        case '>=':
-          return (left as bigint) >= (right as bigint)
-      }
-    }
+    case 'compare':
+      return compare(expr.op, evaluate(expr.left, state), evaluate(expr.right, state))
+  }
+}
+
+const compare = (
+  op: Extract<Expr, { kind: 'compare' }>['op'],
+  left: Value,
+  right: Value,
+): boolean => {
+  switch (op) {
+    case '=':
+      return left === right
+    case '!=':
+      return left !== right
+    case '<':
+      return (left as bigint) < (right as bigint)
+    case '<=':
+      return (left as bigint) <= (right as bigint)
+    case '>':
+      return (left as bigint) > (right as bigint)
+    case '>=':
+      return (left as bigint) >= (right as bigint)
   }
 }
 
@@ -165,42 +178,139 @@ const integer = (expr: Expr, state: State): bigint => {
 // Domains
 // ---------------------------------------------------------------------------
 
+/**
+ * A set of values, SIZED before any value is produced. A bounded int's range is a pair of
+ * bounds, never an array: `0..86400000` is a legitimate millisecond timeout, and building
+ * it as a list would cost gigabytes before a single cap was consulted.
+ */
+interface Domain {
+  readonly size: bigint
+  readonly values: () => Iterable<Value>
+}
+
+const listed = (values: readonly Value[]): Domain => ({
+  size: BigInt(values.length),
+  values: () => values,
+})
+
+const interval = (lo: bigint, hi: bigint): Domain => ({
+  size: hi < lo ? 0n : hi - lo + 1n,
+  *values() {
+    for (let n = lo; n <= hi; n += 1n) yield n
+  },
+})
+
 /** Every value a variable's declared type admits, or `undefined` when that is infinite. */
-const finiteDomain = (variable: StateVariable): readonly Value[] | undefined => {
-  if (variable.type === 'bool') return [false, true]
-  if (variable.type === 'enum') return variable.domain
+const declaredDomain = (variable: StateVariable): Domain | undefined => {
+  if (variable.type === 'bool') return listed([false, true])
+  if (variable.type === 'enum') return listed(variable.domain)
   const min = variable.domain?.min
   const max = variable.domain?.max
   if (min === undefined || max === undefined) return undefined
-  const values: bigint[] = []
-  for (let n = BigInt(min); n <= BigInt(max); n += 1n) values.push(n)
-  return values
+  return interval(BigInt(min), BigInt(max))
 }
 
-/** Whether a value lies within a variable's declared range. */
-const inRange = (variable: StateVariable, value: Value): boolean => {
-  if (variable.type !== 'int' || typeof value !== 'bigint') return true
-  const min = variable.domain?.min
-  const max = variable.domain?.max
-  return (min === undefined || value >= BigInt(min)) && (max === undefined || value <= BigInt(max))
-}
-
-/** The integer literals an unbounded int is pinned to by a TOP-LEVEL `x = n` conjunct of
- * some initial predicate — the only way this module enumerates an unbounded initial. */
-const pinnedLiterals = (name: string, initial: readonly Expr[]): readonly bigint[] => {
-  const found: bigint[] = []
+/** The top-level conjuncts of the initial predicates: what EVERY initial state satisfies. */
+const conjuncts = (initial: readonly Expr[]): readonly Expr[] => {
+  const found: Expr[] = []
   const walk = (expr: Expr): void => {
-    if (expr.kind === 'and') {
-      for (const operand of expr.operands) walk(operand)
-      return
-    }
-    if (expr.kind !== 'compare' || expr.op !== '=') return
-    const { left, right } = expr
-    if (left.kind === 'ref' && left.name === name && right.kind === 'int') found.push(right.value)
-    if (right.kind === 'ref' && right.name === name && left.kind === 'int') found.push(left.value)
+    if (expr.kind === 'and') for (const operand of expr.operands) walk(operand)
+    else found.push(expr)
   }
   for (const predicate of initial) walk(predicate)
-  return found.slice(0, 1)
+  return found
+}
+
+/** `x op n` for an int literal `n`, read with `x` on the left whichever side it was written. */
+const boundOn = (
+  name: string,
+  expr: Expr,
+): { readonly op: Extract<Expr, { kind: 'compare' }>['op']; readonly n: bigint } | undefined => {
+  if (expr.kind !== 'compare') return undefined
+  const { left, right, op } = expr
+  if (left.kind === 'ref' && left.name === name && right.kind === 'int') {
+    return { op, n: right.value }
+  }
+  if (right.kind === 'ref' && right.name === name && left.kind === 'int') {
+    const mirrored = { '=': '=', '!=': '!=', '<': '>', '<=': '>=', '>': '<', '>=': '<=' } as const
+    return { op: mirrored[op], n: left.value }
+  }
+  return undefined
+}
+
+/**
+ * The values a variable can take in SOME initial state.
+ *
+ * A bool or enum keeps its declared domain: it is at most a handful of values, and the
+ * backtracking search refutes a wrong one (`f0 = true` against `f0 = false`) the moment it
+ * is assigned. An int is narrowed to the interval its declared range and the top-level
+ * `=`, `<`, `<=`, `>`, `>=` conjuncts against a literal leave it — which is what makes an
+ * unbounded int enumerable at all, and a billion-value range cost one value. Sound because
+ * every initial state satisfies every top-level conjunct; the full predicates are still
+ * evaluated on every candidate, so an over-wide interval costs work, never a verdict.
+ * `undefined` when the interval is unbounded on either side.
+ */
+const initialCandidates = (variable: StateVariable, facts: readonly Expr[]): Domain | undefined => {
+  if (variable.type !== 'int') return declaredDomain(variable)
+  let lo = variable.domain?.min === undefined ? undefined : BigInt(variable.domain.min)
+  let hi = variable.domain?.max === undefined ? undefined : BigInt(variable.domain.max)
+  const atLeast = (n: bigint): void => {
+    if (lo === undefined || n > lo) lo = n
+  }
+  const atMost = (n: bigint): void => {
+    if (hi === undefined || n < hi) hi = n
+  }
+  for (const fact of facts) {
+    const bound = boundOn(variable.name, fact)
+    if (bound === undefined) continue
+    const { op, n } = bound
+    if (op === '=' || op === '>=') atLeast(n)
+    if (op === '=' || op === '<=') atMost(n)
+    if (op === '>') atLeast(n + 1n)
+    if (op === '<') atMost(n - 1n)
+  }
+  return lo === undefined || hi === undefined ? undefined : interval(lo, hi)
+}
+
+/**
+ * Evaluate on a PARTIAL state: `undefined` where the answer depends on an unassigned
+ * variable. `and` is false as soon as one operand is, `or` true as soon as one is, so the
+ * initial-state search prunes a branch the moment an assigned prefix refutes a predicate.
+ */
+const partial = (expr: Expr, state: State): Value | undefined => {
+  switch (expr.kind) {
+    case 'ref':
+      return state.get(expr.name)
+    case 'not': {
+      const value = partial(expr.operand, state)
+      return value === undefined ? undefined : !value
+    }
+    case 'and':
+    case 'or': {
+      const decisive = expr.kind === 'or'
+      let open = false
+      for (const operand of expr.operands) {
+        const value = partial(operand, state)
+        if (value === decisive) return decisive
+        if (value === undefined) open = true
+      }
+      return open ? undefined : !decisive
+    }
+    case 'arith': {
+      const left = partial(expr.left, state)
+      const right = partial(expr.right, state)
+      if (typeof left !== 'bigint' || typeof right !== 'bigint') return undefined
+      return expr.op === '+' ? left + right : left - right
+    }
+    case 'compare': {
+      const left = partial(expr.left, state)
+      const right = partial(expr.right, state)
+      if (left === undefined || right === undefined) return undefined
+      return compare(expr.op, left, right)
+    }
+    default:
+      return evaluate(expr, state)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -216,20 +326,84 @@ const render = (
 ): Readonly<Record<string, string>> =>
   Object.fromEntries(variables.map((v) => [v.name, String(state.get(v.name))]))
 
-/** Every assignment to `names` drawn from `domains`, extending `base`. */
+/** Every assignment to `names` drawn from `domains`, extending `base`. Lazy: a caller
+ * that stops early never pays for the assignments it did not take. */
 function* assignments(
   base: State,
   names: readonly string[],
-  domains: ReadonlyMap<string, readonly Value[]>,
+  domains: ReadonlyMap<string, Domain>,
 ): Generator<State> {
   if (names.length === 0) {
     yield base
     return
   }
   const [first, ...rest] = names as [string, ...string[]]
-  for (const value of domains.get(first) ?? []) {
+  for (const value of domains.get(first)?.values() ?? []) {
     yield* assignments(new Map(base).set(first, value), rest, domains)
   }
+}
+
+type NotApplicable = Extract<ExplicitVerdict, { status: 'not-applicable' }>
+
+/**
+ * The initial states, found by BACKTRACKING over each variable's narrowed candidates and
+ * pruning a branch as soon as its assigned prefix refutes an initial predicate. The caps
+ * apply to what the search actually visits — the initial states found, and the partial
+ * assignments examined — never to the product of the declared domains, which N pinned
+ * bools inflate to 2^N without adding a single initial state.
+ */
+const initialStates = (model: ExplicitModel): readonly State[] | NotApplicable => {
+  const facts = conjuncts(model.initial)
+  const candidates = new Map<string, Domain>()
+  for (const variable of model.variables) {
+    const domain = initialCandidates(variable, facts)
+    if (domain === undefined) {
+      return {
+        status: 'not-applicable',
+        reason: `the initial value of the unbounded int ${variable.name} is not bounded by a literal`,
+      }
+    }
+    candidates.set(variable.name, domain)
+  }
+  // Narrowest first, so pinned variables are assigned before the branching ones and a
+  // refuting predicate prunes as high in the tree as it can.
+  const order = [...model.variables]
+    .map((v) => v.name)
+    .sort((a, b) => {
+      const d = (candidates.get(a) as Domain).size - (candidates.get(b) as Domain).size
+      return d < 0n ? -1 : d > 0n ? 1 : 0
+    })
+  const found: State[] = []
+  let examined = 0
+  const extend = (index: number, state: Map<string, Value>): NotApplicable | undefined => {
+    if (index === order.length) {
+      found.push(new Map(state))
+      return found.length > REACHABILITY_BFS_STATE_CAP
+        ? {
+            status: 'not-applicable',
+            reason: `more than ${REACHABILITY_BFS_STATE_CAP} initial states`,
+          }
+        : undefined
+    }
+    const name = order[index] as string
+    for (const value of (candidates.get(name) as Domain).values()) {
+      examined += 1
+      if (examined > REACHABILITY_BFS_WORK_CAP) {
+        return {
+          status: 'not-applicable',
+          reason: `more than ${REACHABILITY_BFS_WORK_CAP} candidate initial assignments examined`,
+        }
+      }
+      state.set(name, value)
+      if (model.initial.every((p) => partial(p, state) !== false)) {
+        const stop = extend(index + 1, state)
+        if (stop !== undefined) return stop
+      }
+    }
+    state.delete(name)
+    return undefined
+  }
+  return extend(0, new Map()) ?? found
 }
 
 /**
@@ -245,42 +419,19 @@ export const explicitCheck = (
   frame: ExplicitFrame,
 ): ExplicitVerdict => {
   const variables = model.variables
-  const domains = new Map<string, readonly Value[]>()
+  const domains = new Map<string, Domain>()
   for (const variable of variables) {
-    const domain = finiteDomain(variable)
+    const domain = declaredDomain(variable)
     if (domain !== undefined) domains.set(variable.name, domain)
   }
 
   // --- The initial states ---------------------------------------------------
-  const initialCandidates = new Map<string, readonly Value[]>()
-  let product = 1
-  for (const variable of variables) {
-    const pinned = variable.type === 'int' ? pinnedLiterals(variable.name, model.initial) : []
-    const candidates =
-      pinned.length > 0 ? pinned.filter((n) => inRange(variable, n)) : domains.get(variable.name)
-    if (candidates === undefined) {
-      return {
-        status: 'not-applicable',
-        reason: `the initial value of the unbounded int ${variable.name} is not pinned to a literal`,
-      }
-    }
-    initialCandidates.set(variable.name, candidates)
-    product *= candidates.length
-    if (product > REACHABILITY_BFS_STATE_CAP) {
-      return {
-        status: 'not-applicable',
-        reason: `more than ${REACHABILITY_BFS_STATE_CAP} candidate initial states`,
-      }
-    }
-  }
-
+  const initial = initialStates(model)
+  if ('status' in initial) return initial
   const seen = new Map<string, { state: State; parent?: string; via?: string }>()
   let frontier: string[] = []
-  for (const state of assignments(
-    new Map(),
-    variables.map((v) => v.name),
-    initialCandidates,
-  )) {
+  for (const state of initial) {
+    // Every predicate is decided on a complete assignment; `partial` only pruned.
     if (!model.initial.every((p) => truth(p, state))) continue
     const key = keyOf(variables, state)
     if (seen.has(key)) continue
@@ -328,22 +479,27 @@ export const explicitCheck = (
         const free = variables
           .map((v) => v.name)
           .filter((name) => !written.has(name) && !pinnedByFrame.has(name))
+        let fanOut = 1n
         for (const name of free) {
-          if (!domains.has(name)) {
+          const domain = domains.get(name)
+          if (domain === undefined) {
             return {
               status: 'not-applicable',
               reason: `the unbounded int ${name} is free in a step, so a step has infinitely many successors`,
             }
           }
+          fanOut *= domain.size
+        }
+        // Sized BEFORE generating: a step that leaves a wide bounded int free is refused
+        // from the product of the domain sizes, not after enumerating the range.
+        if (BigInt(work) + fanOut > BigInt(REACHABILITY_BFS_WORK_CAP)) {
+          return {
+            status: 'not-applicable',
+            reason: `more than ${REACHABILITY_BFS_WORK_CAP} successors to generate`,
+          }
         }
         for (const successor of assignments(post, free, domains)) {
           work += 1
-          if (work > REACHABILITY_BFS_WORK_CAP) {
-            return {
-              status: 'not-applicable',
-              reason: `more than ${REACHABILITY_BFS_WORK_CAP} successors generated`,
-            }
-          }
           const successorKey = keyOf(variables, successor)
           if (seen.has(successorKey)) continue
           seen.set(successorKey, { state: successor, parent: key, via: label })
