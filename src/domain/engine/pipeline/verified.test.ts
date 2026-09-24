@@ -642,6 +642,62 @@ describe('AC-3-6: the inflection test runs in the atomizer canonical space', () 
   })
 })
 
+/**
+ * The merge the finding proposes lives in the same canonical space as the test that raised
+ * it. A glossary entry declares two phrases synonyms, so the raw pair "open the door" /
+ * "close the doors" would alias a phrase to its own opposite under open/close: the flip is
+ * erased and the solver reads the contradiction as a redundancy.
+ */
+describe('AC-3-6: the proposed merge never aliases a phrase to its own opposite', () => {
+  const pair = (first: string, second: string) =>
+    docOf([
+      { id: P1, systemName: 'door controller', trigger: PRESS, systemResponse: first },
+      { id: P2, systemName: 'door controller', trigger: PRESS, systemResponse: second },
+    ])
+  const similar = (report: Awaited<ReturnType<typeof runCheck>>) =>
+    report.findings.filter((f) => f.code === 'FND_SIMILAR_SEMANTIC').map((f) => f.message)
+
+  it('proposes the number merge in canonical space, not the raw antonym pair', async () => {
+    const report = await runCheck(pair('open the door', 'close the doors'), {
+      semantic: { embedder: tableEmbedder([['open the door', 'close the doors']]) },
+    })
+    const [message] = similar(report)
+    expect(message).toContain('`symspec glossary add "close the door" "close the doors"`')
+    expect(message).not.toContain('"open the door" "close the doors"')
+    expect(message).not.toContain('"close the doors" "open the door"')
+    expect(nearDuplicate(report).map((d) => d.requirementIds)).toEqual([[P1, P2]])
+    // Negative guard on the promise the raw merge broke.
+    for (const text of [message, ...nearDuplicate(report).map((d) => d.action)]) {
+      expect(text).not.toContain('the solver then decides the pair')
+    }
+  })
+
+  it("keeps the author's wording when the raw merge is not a contrary pair", async () => {
+    const report = await runCheck(paraDoc(), {
+      semantic: { embedder: tableEmbedder([['open the door', 'open the doors']]) },
+    })
+    expect(similar(report)[0]).toContain('`symspec glossary add "open the door" "open the doors"`')
+  })
+
+  it('withholds the merge, and says why, when every candidate is a contrary pair', async () => {
+    // The antonym rest rule drops ONE preposition, so a canonical body with a second one does
+    // not re-atomize onto itself, and the raw pair is include/exclude: nothing survives.
+    const first = 'include the file in the box in the archive'
+    const second = 'exclude the file in the box in the archives'
+    const report = await runCheck(pair(first, second), {
+      semantic: { embedder: tableEmbedder([[first, second]]) },
+    })
+    const [message] = similar(report)
+    expect(message).not.toContain('symspec glossary')
+    expect(message).toContain('No glossary merge is proposed')
+    const [demotion] = nearDuplicate(report)
+    expect(demotion?.requirementIds).toEqual([P1, P2])
+    expect(demotion?.action).toContain('no glossary merge is offered')
+    expect(demotion?.action).not.toContain('`symspec glossary add` merge')
+    expect(report.verified).toBe(false)
+  })
+})
+
 describe('differsOnlyByInflection', () => {
   it.each([
     ['open the door', 'open the doors', true],

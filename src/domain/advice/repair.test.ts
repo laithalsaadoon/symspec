@@ -27,7 +27,10 @@ import { describe, expect, it } from 'vitest'
 import { allOperations } from '../../app/operations/index.ts'
 import { allCodes, lookupCode } from '../../app/runtime/catalog.ts'
 import { runnable } from '../../ports/command-form.ts'
-import type { CheckFinding, CoverageDemotion } from '../engine/pipeline/check.ts'
+import type { Embedder } from '../engine/formal/embed.ts'
+import { type CheckFinding, type CoverageDemotion, runCheck } from '../engine/pipeline/check.ts'
+import type { RequirementsDocument } from '../requirements/document.ts'
+import { applyOp } from '../requirements/mutate.ts'
 import { type RepairContext, repairForDemotion } from './repair.ts'
 
 const REPO_ROOT = new URL('../../..', import.meta.url).pathname
@@ -498,5 +501,97 @@ describe('a pair demotion repair is scoped to its own pair', () => {
     )
     expect(repair.commands).toContain('symspec glossary "one" "three"')
     expect(repair.commands).not.toContain('symspec glossary "one" "two"')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC-3-6: following the near-duplicate repair verbatim surfaces the conflict
+// ---------------------------------------------------------------------------
+
+/**
+ * The verifier's reproducer, driven through the pipeline and this module rather than
+ * asserted on a message string: "open the door" / "close the doors" under one trigger, with
+ * open/close committed as opposites. The two sit on `close_the_door` (negated) and
+ * `close_the_doors`, so the pair demotes. The claim under test is the one an agent acts on:
+ * running the repair's FIRST command and re-checking must reach the contradiction the
+ * document contains. A raw-text merge ("close the doors" <- "open the door") aliases one
+ * phrase to its own opposite, which the solver then reports as a redundancy and certifies.
+ */
+describe('AC-3-6: the near-duplicate repair, followed verbatim, surfaces the contradiction', () => {
+  const TS = '2026-01-01T00:00:00.000Z'
+  const TRIGGER = 'the passenger presses the door button'
+  const req = (id: string, systemResponse: string) => ({
+    id,
+    patternType: 'event-driven' as const,
+    systemName: 'door controller',
+    systemResponse,
+    trigger: TRIGGER,
+    negated: false,
+    sentence: `When ${TRIGGER}, the door controller shall ${systemResponse}.`,
+    priority: 'medium' as const,
+    status: 'draft' as const,
+    createdAt: TS,
+    updatedAt: TS,
+    derives: [],
+    satisfies: [],
+    verifies: [],
+    refines: [],
+  })
+  const doc = (): RequirementsDocument =>
+    ({
+      requirements: {
+        R1: req('R1', 'open the door'),
+        R2: req('R2', 'close the doors'),
+        R3: req('R3', 'sound the chime'),
+      },
+      glossary: [],
+      antonyms: [{ a: 'open', b: 'close' }],
+      waivers: [],
+      terms: [],
+      stateModel: { variables: [] },
+    }) as never
+  /** The real model scores the pair 0.76; a table states it instead of hoping for it. */
+  const embedder = (): Embedder => async (texts) =>
+    texts.map((t) => {
+      const v = new Float32Array(8)
+      v[t === 'sound the chime' ? 1 : 0] = 1
+      return v
+    })
+
+  it('the first repair command, applied, yields FND_CONTRADICTION rather than verified', async () => {
+    const before = await runCheck(doc() as never, { semantic: { embedder: embedder() } })
+    const demotion = before.coverage.demotions.find(
+      (d) => d.reason === 'opposite-polarity-near-duplicate',
+    )
+    expect(demotion?.requirementIds).toEqual(['R1', 'R2'])
+    const repair = repairForDemotion(demotion as CoverageDemotion, {
+      ...CONTEXT,
+      findings: before.findings,
+    })
+    const first = repair.commands[0] ?? ''
+    const merge = /^symspec glossary "([^"]+)" "([^"]+)"$/.exec(first)
+    expect(merge, `first command is a glossary merge: ${first}`).not.toBeNull()
+    const [, canonical, alias] = merge as RegExpExecArray
+    // Never the raw pair: that aliases "open the door" to its own opposite.
+    expect(new Set([canonical, alias])).not.toEqual(new Set(['open the door', 'close the doors']))
+
+    const applied = applyOp(
+      doc(),
+      { op: 'glossary', canonical: canonical as string, alias: alias as string },
+      TS,
+    )
+    if (!('document' in applied)) throw new Error(`glossary op failed: ${JSON.stringify(applied)}`)
+    const after = await runCheck(applied.document as never, { semantic: { embedder: embedder() } })
+    expect(
+      after.findings
+        .filter((f) => f.code === 'FND_CONTRADICTION')
+        .map((f) => [f.severity, [...f.requirementIds].sort()]),
+    ).toEqual([['error', ['R1', 'R2']]])
+    // Not the false equivalence the raw merge produced, and nothing left demoting on the
+    // pair: the run is a complete proof WITH an error finding, which `check` exits 1 on.
+    expect(after.findings.map((f) => f.code)).not.toContain('FND_REDUNDANCY')
+    expect(after.coverage.demotions.map((d) => d.reason)).not.toContain(
+      'opposite-polarity-near-duplicate',
+    )
   })
 })

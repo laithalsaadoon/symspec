@@ -388,8 +388,10 @@ export interface CoverageDemotion {
     // AC-3-6: a kept FND_SIMILAR_SEMANTIC pair whose responses sit at OPPOSITE polarity
     // and differ only in inflection or number ("open the door" / "shall not open the
     // doors"). If they mean one thing it is a contradiction on two atoms the solver
-    // cannot see. Discharged by the glossary merge (the solver then decides it) or by
-    // waiving the finding (declared distinct) — the finding is the triage record.
+    // cannot see. Discharged by the glossary merge the finding proposes (it lands both on one
+    // atom at opposite polarity; it is withheld when every merge would alias a phrase to its
+    // own opposite, and a rewrite is the route instead) or by waiving the finding (declared
+    // distinct) — the finding is the triage record.
     | 'opposite-polarity-near-duplicate'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
@@ -1109,8 +1111,10 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   // temporal tier's single joint check), each naming the requirements it covered.
   const tierUnknowns: { tier: string; requirementIds: string[] }[] = []
   // AC-3-6: the FND_SIMILAR_SEMANTIC pairs that are opposite-polarity inflection variants,
-  // keyed `lo|hi`. The demotion reads the KEPT findings, so a waiver discharges it.
-  const oppositeVariantPairs = new Set<string>()
+  // keyed `lo|hi`, each mapped to whether its finding proposes a glossary merge (it withholds
+  // one that would alias a phrase to its own opposite). The demotion reads the KEPT findings,
+  // so a waiver discharges it.
+  const oppositeVariantPairs = new Map<string, boolean>()
 
   const report = await runSolvers(doc, {
     ...(options.similarityThreshold !== undefined
@@ -1425,7 +1429,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           : []
 
       for (const f of semantic) {
-        if (f.oppositePolarityVariant) oppositeVariantPairs.add(f.requirementIds.join('|'))
+        if (f.oppositePolarityVariant) {
+          oppositeVariantPairs.set(f.requirementIds.join('|'), f.merge !== undefined)
+        }
       }
 
       // #6: opt-in opposition-candidate proposals. Same embedder, propose-only —
@@ -1849,17 +1855,24 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
     // off the KEPT set, so the waiver that declares the pair distinct discharges it.
     for (const f of kept) {
       if (f.code !== 'FND_SIMILAR_SEMANTIC') continue
-      if (!oppositeVariantPairs.has(f.requirementIds.join('|'))) continue
+      const hasMerge = oppositeVariantPairs.get(f.requirementIds.join('|'))
+      if (hasMerge === undefined) continue
       demotions.push({
         reason: 'opposite-polarity-near-duplicate',
         requirementIds: [...f.requirementIds],
         action:
           `${f.requirementIds.join(' and ')} respond with the same words up to inflection or ` +
           'number at OPPOSITE polarity, on two different atoms, so if they mean one thing they ' +
-          'contradict each other and the solver cannot see it. Commit the `symspec glossary add` ' +
-          "merge from the finding's message if they are the same (the solver then decides the " +
-          'pair), or waive FND_SIMILAR_SEMANTIC for the pair if they are genuinely distinct. ' +
-          'Then re-run `symspec check`.',
+          'contradict each other and the solver cannot see it. ' +
+          (hasMerge
+            ? "If they are the same, commit the `symspec glossary add` merge from the finding's " +
+              'message: it puts both on one atom at opposite polarity, which the solver then ' +
+              'compares like any other pair. '
+            : "If they are the same, rewrite one to use the other's words: no glossary merge is " +
+              'offered, because every merge of these phrasings aliases a phrase to its own ' +
+              'opposite. ') +
+          'If they are genuinely distinct, waive FND_SIMILAR_SEMANTIC for the pair. Then re-run ' +
+          '`symspec check`.',
       })
     }
     for (const f of openOppositionFindings) {
