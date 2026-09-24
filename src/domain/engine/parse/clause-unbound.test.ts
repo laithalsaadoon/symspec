@@ -87,6 +87,8 @@ describe('AC-2-2: an unbound leading clause is refused with ERR_CLAUSE_UNBOUND',
       'In case the guard door opens the press controller shall stop the press.',
       'In case the guard door opens',
     ],
+    // A clause ending on a verb particle ("is down") ends where the subject begins.
+    ['Even if the network is down the logger shall persist events.', 'Even if the network is down'],
   ])('comma-less, where Tier 2 cut the clause off the subject: %s', async (line, clause) => {
     const r = await refused(line)
     expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
@@ -125,6 +127,45 @@ describe('AC-2-2: an unbound leading clause is refused with ERR_CLAUSE_UNBOUND',
     expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
     expect(r.error).toContain(`"${clause}"`)
     expect(r.error).not.toMatch(/Leading clause "[[(]|[\])]"/)
+  })
+
+  const GUARD = 'Unless the guard door is closed'
+  it.each([
+    [`(1) ${GUARD}, the press controller shall start the press.`, GUARD],
+    [`(a) ${GUARD}, the press controller shall start the press.`, GUARD],
+    [`a) ${GUARD}, the press controller shall start the press.`, GUARD],
+    [`1) ${GUARD}, the press controller shall start the press.`, GUARD],
+    [`• ${GUARD}, the press controller shall start the press.`, GUARD],
+    [`> ${GUARD}, the press controller shall start the press.`, GUARD],
+    [`[P1] ${GUARD}, the press controller shall start the press.`, GUARD],
+    [`[SAFETY] ${GUARD}, the press controller shall start the press.`, GUARD],
+    [`Note: ${GUARD}, the press controller shall start the press.`, GUARD],
+    [`Safety: ${GUARD}, the press controller shall start the press.`, GUARD],
+    [`(P1) ${GUARD} the press controller shall start the press.`, GUARD],
+    [`[P1] [${GUARD}] the press controller shall start the press.`, GUARD],
+    [`{${GUARD}} the press controller shall start the press.`, GUARD],
+    [`[[${GUARD}]] the press controller shall start the press.`, GUARD],
+    [`([${GUARD}]) the press controller shall start the press.`, GUARD],
+    [`"${GUARD}", the press controller shall start the press.`, GUARD],
+    [
+      'Unless: the guard door is closed, the press controller shall start the press.',
+      'Unless: the guard door is closed',
+    ],
+    [
+      'Unless, of course, the guard door is closed, the press controller shall start the press.',
+      'Unless, of course, the guard door is closed',
+    ],
+    ['[P1] Before startup, the gateway shall load its config.', 'Before startup'],
+    ['(ii) Before startup, the gateway shall load its config.', 'Before startup'],
+  ])('behind list, tag, label, bracket or quote decoration Tier 2 also dropped: %s', async (line, clause) => {
+    const r = await refused(line)
+    expect(r.code).toBe('ERR_CLAUSE_UNBOUND')
+    expect(r.error).toContain(`Leading clause "${clause}"`)
+  })
+
+  it('"In case" followed by a clause or by "of" is the conjunction', async () => {
+    const r = await refused('In case the power fails, the UPS shall start the generator.')
+    expect(r.error).toContain('"In case the power fails"')
   })
 
   it('refused even when a word of the clause recurs in a slot by coincidence', async () => {
@@ -179,6 +220,38 @@ describe('AC-2-2 controls: every neighbouring shape keeps its base parse', () =>
     ['Before hooks shall run in order.', 'Before hooks'],
     ['Till drawers shall lock after each sale.', 'Till drawers'],
   ])('a marker word used as an ordinary word is no clause — %s', async (line, systemName) => {
+    expect((await stored(line)).slots.systemName).toBe(systemName)
+  })
+
+  it.each([
+    ['Until dates of expired contracts shall be archived.', 'contracts'],
+    ['Until dates in the form shall be validated.', 'form'],
+    ['Until dates on invoices shall be validated.', 'invoices'],
+    ['Except entries in the list shall be skipped.', 'list'],
+    ['Before images of each page shall be retained.', 'page'],
+    ['In case studies, the analyst shall cite sources.', 'analyst'],
+    ['In case management, the case worker shall close stale cases.', 'case worker'],
+    ['In case files, the clerk shall record the verdict.', 'clerk'],
+    ['In case sensitive mode, the matcher shall compare bytes.', 'matcher'],
+  ])('a marker word modifying a noun, then more words, is still no clause — %s', async (line, systemName) => {
+    expect((await stored(line)).slots.systemName).toBe(systemName)
+  })
+
+  it.each([
+    [
+      'In case of fire the sprinkler controller shall open the valves.',
+      'fire the sprinkler controller',
+    ],
+    ['Until the operator acknowledges the alarm the siren shall sound.', 'alarm the siren'],
+    ['Unless the operator is present the press shall be locked.', 'present the press'],
+  ])('a comma-less clause Tier 2 fused into the subject: stored as base stored it — %s', async (line, systemName) => {
+    expect((await stored(line)).slots.systemName).toBe(systemName)
+  })
+
+  it.each([
+    ['[P1] The gateway shall be notified of cached requests.', 'gateway'],
+    ['Note: The gateway shall be notified of cached requests.', 'gateway'],
+  ])('decoration with no marker behind it drops no condition — %s', async (line, systemName) => {
     expect((await stored(line)).slots.systemName).toBe(systemName)
   })
 

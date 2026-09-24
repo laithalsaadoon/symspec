@@ -97,7 +97,22 @@ export interface Tier2Ok {
    * projected into a `ParseResult`: it is the evidence `unboundLeadingClause` (spec 007 AC-2-2)
    * reads to decide whether the repair dropped a condition.
    */
-  droppedLead?: string
+  droppedLead?: DroppedLead
+}
+
+/** What a Tier-2 repair dropped left of the subject, as {@link Tier2Ok.droppedLead} records it. */
+export interface DroppedLead {
+  /** The dropped tokens, in order. */
+  tokens: readonly WinkToken[]
+  /**
+   * True when the subject chunk opens a fresh noun phrase where the dropped text ends: the chunk
+   * starts on a determiner, holds no second one, and the dropped text does not end on a
+   * preposition that opens a phrase the chunk completes. Only then does a comma-less lead end exactly where the subject begins. When it
+   * is false, part of the lead may sit in `systemName` ("In case of fire the sprinkler
+   * controller" → "fire the sprinkler controller"), or the chunk completes a noun phrase the
+   * lead began ("Until dates in the form").
+   */
+  subjectOpensCleanly: boolean
 }
 
 /** Tier-2 could not repair the clause; the caller escalates to the Tier-3 envelope (T-AC-2-7). */
@@ -383,7 +398,7 @@ function subjectNegatorGovernsModal(
 }
 
 /** Join token surface forms into slot text, collapsing the whitespace the join introduces. */
-function joinTokens(tokens: WinkToken[]): string {
+export function joinTokens(tokens: readonly WinkToken[]): string {
   return (
     tokens
       .map((t) => t.value)
@@ -419,6 +434,13 @@ function subjectChunkStart(tokens: WinkToken[], modalIdx: number): number {
   }
   return start
 }
+
+/**
+ * True when token `i` is a preposition opening a phrase the next tokens complete: an `ADP` after
+ * a noun ("dates in | the form"), not a verb particle ("is down", "logs in").
+ */
+const opensPrepositionalPhrase = (tokens: WinkToken[], i: number): boolean =>
+  tokens[i]!.pos === 'ADP' && !['AUX', 'VERB'].includes(tokens[i - 1]?.pos ?? '')
 
 /** Classify the leading clause (keyword before the subject) into a pattern + slot. */
 interface LeadingClause {
@@ -552,7 +574,16 @@ export function repairWithWink(
   // Tier 2 is a repair tier: confident enough to use, never `high`. Any repair
   // note (or a soft escalation trigger) pins it to `low`.
   const confidence: Confidence = repairNotes.length > 0 || baseNotes.length > 0 ? 'low' : 'medium'
-  const droppedLead = lead ? '' : leadText.trim()
+  const droppedLead: DroppedLead | undefined =
+    lead || leadText.trim() === ''
+      ? undefined
+      : {
+          tokens: tokens.slice(0, chunkStart),
+          subjectOpensCleanly:
+            LEADING_DETERMINER_POS.has(tokens[chunkStart]!.pos) &&
+            !subjectTokens.some((t) => t.pos === 'DET') &&
+            !opensPrepositionalPhrase(tokens, chunkStart - 1),
+        }
 
   return {
     ok: true,
@@ -562,7 +593,7 @@ export function repairWithWink(
     confidence,
     tier: 2,
     notes,
-    ...(droppedLead !== '' ? { droppedLead } : {}),
+    ...(droppedLead !== undefined ? { droppedLead } : {}),
   }
 }
 

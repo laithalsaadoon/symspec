@@ -114,6 +114,7 @@ Nobody shall be able to delete the audit log.
 None of the requests shall be dropped.
 Not all requests shall be logged.
 Not every request shall be logged.
+Note: The gateway shall be notified of cached requests.
 Note: The gateway shall log requests.
 Note: Unless the guard door is closed, the press controller shall start the press.
 Nothing shall be written to the audit log.
@@ -521,6 +522,7 @@ While valve β is open, the plant controller shall not start the pump.
 [Only if armed] the alarm shall sound.
 [P1, Security] The gateway shall log requests.
 [P1] Before startup, the gateway shall load its config.
+[P1] The gateway shall be notified of cached requests.
 [P1] The gateway shall log requests.
 [P1] Unless the guard door is closed, the press controller shall start the press.
 [P1] [Unless the guard door is closed] the press controller shall start the press.
