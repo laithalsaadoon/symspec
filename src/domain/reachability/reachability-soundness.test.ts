@@ -154,6 +154,98 @@ describe('AC-1-1 — the validator hands the encoder members already bound to th
 })
 
 // ---------------------------------------------------------------------------
+// AC-1-3 — a trace is read off the solver's STATE sequence, and names real steps
+// ---------------------------------------------------------------------------
+
+describe('AC-1-3 — a counterexample trace names steps that actually happen', () => {
+  /**
+   * `st` runs IDLE -> RUNNING -> DONE. By hand: `NOT_STARTED` (`st = IDLE`) is violated
+   * after ONE step, START; `BROKEN` (`st = IDLE and st = RUNNING`) is unsatisfiable, so it
+   * is violated by the initial state itself. Z3's rule-name trace blamed FINISH — a
+   * requirement whose guard (`st = RUNNING`) is false in the initial state — whenever
+   * FINISH's id sorted first.
+   */
+  const LIFECYCLE = (finishFirst: boolean, withFlag: boolean): RequirementsDocument =>
+    docOf(
+      [
+        enumVar('st', ['IDLE', 'RUNNING', 'DONE'], 'st = IDLE'),
+        ...(withFlag
+          ? [{ name: 'flag', type: 'bool', frame: 'volatile', initial: 'flag = false' } as const]
+          : []),
+      ],
+      [
+        effect(
+          finishFirst ? 1 : 2,
+          'FINISH',
+          withFlag
+            ? 'when st = RUNNING: st := DONE, flag := true'
+            : 'when st = RUNNING: st := DONE',
+        ),
+        effect(finishFirst ? 2 : 1, 'START', 'when st = IDLE: st := RUNNING'),
+        constraint(3, 'NOT_STARTED', 'st = IDLE'),
+        constraint(4, 'BROKEN', 'st = IDLE and st = RUNNING'),
+      ],
+    )
+
+  it.each([
+    [true, false],
+    [false, false],
+    [true, true],
+    [false, true],
+  ])('finishFirst=%s flag=%s: each trace is the real path', async (finishFirst, withFlag) => {
+    const report = await run(LIFECYCLE(finishFirst, withFlag))
+    expect(resultFor(report, 'NOT_STARTED').verdict).toBe('VIOLATED')
+    expect(traceOf(report, 'NOT_STARTED')).toEqual(['init', 'START', 'NOT_STARTED'])
+    expect(resultFor(report, 'BROKEN').verdict).toBe('VIOLATED')
+    expect(traceOf(report, 'BROKEN')).toEqual(['init', 'BROKEN'])
+  })
+
+  it('carries the state sequence, so each named step can be checked against it', async () => {
+    const report = await run(LIFECYCLE(true, true))
+    const trace = resultFor(report, 'NOT_STARTED').trace
+    expect(trace?.states).toEqual([
+      { st: 'IDLE', flag: 'false' },
+      { st: 'RUNNING', flag: 'false' },
+    ])
+  })
+
+  /**
+   * THE PERMUTATION GATE. A trace that depends on which requirement's id sorts first is
+   * a trace of the encoding, not of the model.
+   */
+  it('is identical under every permutation of requirement ids', async () => {
+    const keys = ['FINISH', 'START', 'RESET'] as const
+    const bodies: Record<(typeof keys)[number], string> = {
+      FINISH: 'when st = RUNNING: st := DONE',
+      START: 'when st = IDLE: st := RUNNING',
+      RESET: 'when st = DONE: st := IDLE',
+    }
+    const permutations = [
+      [0, 1, 2],
+      [0, 2, 1],
+      [1, 0, 2],
+      [1, 2, 0],
+      [2, 0, 1],
+      [2, 1, 0],
+    ] as const
+    const traces = new Set<string>()
+    for (const order of permutations) {
+      const report = await run(
+        docOf(
+          [enumVar('st', ['IDLE', 'RUNNING', 'DONE'], 'st = IDLE')],
+          [
+            ...order.map((k, position) => effect(position + 1, keys[k], bodies[keys[k]])),
+            constraint(9, 'NEVER_DONE', 'st != DONE'),
+          ],
+        ),
+      )
+      traces.add(traceOf(report, 'NEVER_DONE').join(' -> '))
+    }
+    expect([...traces]).toEqual(['init -> START -> FINISH -> NEVER_DONE'])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // AC-1-4 — keyword-shaped names are refused under case folding; integers stay exact
 // ---------------------------------------------------------------------------
 

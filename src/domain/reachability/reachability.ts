@@ -90,25 +90,17 @@
  * the two runs IS the detector for "the frame was load-bearing here" — no separate
  * dependency analysis needed.
  *
- * ## V29 — `getAnswer()` IS NOT A TRACE, AND RULE NAMES NEED PROGRAMMATIC RULES
+ * ## V29 / SPEC 007 AC-1-3 — A TRACE IS READ OFF STATES, NEVER OFF RULE NAMES
  *
- * `getAnswer()` on `sat` returns a hyper-resolution PROOF TERM (725 chars on a 4-step
- * system), and `get_ground_sat_answer` returned literal `false` — useless on this
- * shape, despite being the research's first recommendation.
- * `get_rules_along_trace` is the call that works.
- *
- * But rules loaded via `fixedpoint_from_string` carry NO names, so
- * `get_rule_names_along_trace` yields `<null>` per entry. Hence every rule here is
- * registered PROGRAMMATICALLY with its requirement's own key
- * (`fixedpoint_add_rule(..., mk_string_symbol(key))`), which is what lets a trace name
- * WHICH REQUIREMENTS fired in which order. Re-verified on 5.0.0: a 4-rule system
- * returned `"<null>;R-bad;R-set;R-tick;R-tick;R-tick;R-init"` — real names, rule
- * multiplicity preserved.
- *
- * Two ordering mitigations kept regardless: the trace is extracted LAST (after the
- * verdict and the invariant), because a `shared_occs` assertion would ABORT rather
- * than throw and `try/catch` cannot protect against it; and the trace comes back
- * REVERSE-ordered (violation first), so it is reversed before rendering.
+ * `getAnswer()` on `sat` returns a hyper-resolution PROOF TERM, `get_ground_sat_answer`
+ * returned literal `false` on this shape, and `get_rule_names_along_trace` — the call the
+ * first implementation used — returns rule names that do NOT correspond to the steps that
+ * happen: on `st{IDLE,RUNNING,DONE}` it blamed `FINISH` (guard `st = RUNNING`) for leaving
+ * the initial state whenever FINISH's id sorted first. So Spacer decides REACHABILITY and
+ * nothing else; the trace is reconstructed by {@link reconstructTrace}, a bounded model
+ * check over the same transition relation whose model IS the state sequence, and each step
+ * is named by evaluating the effects' own bodies on it. Rules are still registered with
+ * their requirement's key, which keeps a Spacer answer readable when debugging.
  *
  * ## V28 — THE INVARIANT IS INDEPENDENTLY RE-CHECKED, WHICH MAKES ITS TEXT NON-LOAD-BEARING
  *
@@ -822,6 +814,84 @@ const rangeConstraints = (
 // The encoding
 // ---------------------------------------------------------------------------
 
+/** A conjunction, with the empty and singleton cases spelled out so Z3 never sees a
+ * zero- or one-argument `and`. */
+const andOf = (Z3: LowLevelZ3, ctx: Ast, terms: readonly Ast[]): Ast =>
+  terms.length === 0 ? Z3.mk_true(ctx) : terms.length === 1 ? terms[0] : Z3.mk_and(ctx, terms)
+
+/** A disjunction; the empty one is `false`. */
+const orOf = (Z3: LowLevelZ3, ctx: Ast, terms: readonly Ast[]): Ast =>
+  terms.length === 0 ? Z3.mk_false(ctx) : terms.length === 1 ? terms[0] : Z3.mk_or(ctx, terms)
+
+/**
+ * The initial-state predicate over one binding: every per-variable and model-wide
+ * `initial`, plus the declared ranges. ONE builder for the Horn `init` rule, the
+ * satisfiability gate, and the trace reconstruction, so the three cannot disagree about
+ * which states are initial.
+ */
+const initTermOf = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  binding: ReadonlyMap<string, Ast>,
+): Ast =>
+  andOf(Z3, ctx, [
+    ...prepared.initial.map((e) => compile(Z3, ctx, e, binding, prepared.vars)),
+    ...rangeConstraints(Z3, ctx, prepared.variables, binding),
+  ])
+
+/**
+ * ONE effect's contribution to the transition relation, over a pre- and a post-state
+ * binding: its guard over the pre-state, its updates, and the frame.
+ *
+ * The single builder for the Horn transition rules AND the trace reconstruction, which
+ * is what makes a reconstructed step a step of the relation the proof was about.
+ *
+ * `frame` is the ONLY thing that differs between the runs. Which variables get pinned is
+ * the whole content of {@link FrameMode}; see its header for why this is three modes and
+ * not a boolean.
+ */
+const effectBody = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  effect: StateEffect,
+  frame: FrameMode,
+  preBinding: ReadonlyMap<string, Ast>,
+  postBinding: ReadonlyMap<string, Ast>,
+): Ast => {
+  const written = writesOf(effect.assignments)
+  const updates: Ast[] = []
+  // THE GUARD, over the PRE-state: the effect fires only from a state satisfying it.
+  // An absent guard contributes nothing, so the effect is available everywhere —
+  // which is the sound default, since it admits more transitions and therefore makes
+  // strictly fewer things provable.
+  if (effect.guard !== undefined) {
+    updates.push(compile(Z3, ctx, effect.guard, preBinding, prepared.vars))
+  }
+  for (const assignment of effect.assignments) {
+    const target = postBinding.get(assignment.target)
+    if (target === undefined) continue
+    updates.push(
+      Z3.mk_eq(ctx, target, compile(Z3, ctx, assignment.value, preBinding, prepared.vars)),
+    )
+  }
+  const pinned =
+    frame === 'none'
+      ? []
+      : frame === 'full'
+        ? prepared.variables.map((v) => v.name)
+        : prepared.stableVars
+  for (const name of pinned) {
+    // A variable this effect WRITES is never pinned — the write is the point.
+    if (written.has(name)) continue
+    const before = preBinding.get(name)
+    const after = postBinding.get(name)
+    if (before !== undefined && after !== undefined) updates.push(Z3.mk_eq(ctx, after, before))
+  }
+  return andOf(Z3, ctx, [...updates, ...rangeConstraints(Z3, ctx, prepared.variables, postBinding)])
+}
+
 /** One built Horn system, ready to query, plus what is needed to re-check its answer. */
 interface HornSystem {
   readonly fp: Ast
@@ -908,8 +978,7 @@ const buildSystem = (
   const preBinding = new Map(prepared.variables.map((v, i) => [v.name, pre[i]]))
   const postBinding = new Map(prepared.variables.map((v, i) => [v.name, post[i]]))
 
-  const and = (terms: readonly Ast[]): Ast =>
-    terms.length === 0 ? Z3.mk_true(ctx) : terms.length === 1 ? terms[0] : Z3.mk_and(ctx, terms)
+  const and = (terms: readonly Ast[]): Ast => andOf(Z3, ctx, terms)
   const app = (decl: Ast, args: readonly Ast[]) => Z3.mk_app(ctx, decl, args)
   const forall = (bound: readonly Ast[], body: Ast) =>
     bound.length === 0 ? body : Z3.mk_forall_const(ctx, 0, bound, [], body)
@@ -922,10 +991,7 @@ const buildSystem = (
   }
 
   // --- INIT ------------------------------------------------------------------
-  const initTerm = and([
-    ...prepared.initial.map((e) => compile(Z3, ctx, e, preBinding, prepared.vars)),
-    ...rangeConstraints(Z3, ctx, prepared.variables, preBinding),
-  ])
+  const initTerm = initTermOf(Z3, ctx, prepared, preBinding)
   const initRule = forall(pre, Z3.mk_implies(ctx, initTerm, app(invRelation, pre)))
   Z3.fixedpoint_add_rule(ctx, fp, initRule, sym('init'))
 
@@ -934,39 +1000,7 @@ const buildSystem = (
   // relation the certificate check re-uses.
   const transitions: Ast[] = []
   for (const { label, effect } of prepared.effects) {
-    const written = writesOf(effect.assignments)
-    const updates: Ast[] = []
-    // THE GUARD, over the PRE-state: the effect fires only from a state satisfying it.
-    // An absent guard contributes nothing, so the effect is available everywhere —
-    // which is the sound default, since it admits more transitions and therefore makes
-    // strictly fewer things provable.
-    if (effect.guard !== undefined) {
-      updates.push(compile(Z3, ctx, effect.guard, preBinding, prepared.vars))
-    }
-    for (const assignment of effect.assignments) {
-      const target = postBinding.get(assignment.target)
-      if (target === undefined) continue
-      updates.push(
-        Z3.mk_eq(ctx, target, compile(Z3, ctx, assignment.value, preBinding, prepared.vars)),
-      )
-    }
-    // THE FRAME — the ONLY thing that differs between the runs. Which variables get
-    // pinned is the whole content of `FrameMode`; see its header for why this is three
-    // modes and not a boolean.
-    const pinned =
-      frame === 'none'
-        ? []
-        : frame === 'full'
-          ? prepared.variables.map((v) => v.name)
-          : prepared.stableVars
-    for (const name of pinned) {
-      // A variable this effect WRITES is never pinned — the write is the point.
-      if (written.has(name)) continue
-      const before = preBinding.get(name)
-      const after = postBinding.get(name)
-      if (before !== undefined && after !== undefined) updates.push(Z3.mk_eq(ctx, after, before))
-    }
-    const body = and([...updates, ...rangeConstraints(Z3, ctx, prepared.variables, postBinding)])
+    const body = effectBody(Z3, ctx, prepared, effect, frame, preBinding, postBinding)
     transitions.push(body)
     rule(and([app(invRelation, pre), body]), app(invRelation, post), label)
   }
@@ -1090,14 +1124,13 @@ const checkInitialSatisfiable = (
     // deliberately: `--min 0 --max 3` with `initial "held = 5"` is exactly as vacuous as
     // a self-contradictory predicate, and it is the shape an author reaches by narrowing
     // a bound after writing the initial.
-    const terms = [
-      ...prepared.initial.map((e) => compile(Z3, ctx, e, binding, prepared.vars)),
-      ...rangeConstraints(Z3, ctx, prepared.variables, binding),
-    ]
+    const hasTerms =
+      prepared.initial.length > 0 ||
+      rangeConstraints(Z3, ctx, prepared.variables, binding).length > 0
     // NOTHING declared initial and no ranges: `true` is trivially satisfiable and there
     // is nothing to ask. Skipping the solver call here is not merely an optimization —
     // it keeps the common (unconstrained-initial) document from paying a query at all.
-    if (terms.length === 0) return { satisfiable: true }
+    if (!hasTerms) return { satisfiable: true }
 
     const s = Z3.mk_solver(ctx)
     Z3.solver_inc_ref(ctx, s)
@@ -1106,7 +1139,7 @@ const checkInitialSatisfiable = (
     Z3.params_set_uint(ctx, params, Z3.mk_string_symbol(ctx, 'timeout'), timeoutMs)
     Z3.solver_set_params(ctx, s, params)
     Z3.params_dec_ref(ctx, params)
-    Z3.solver_assert(ctx, s, terms.length === 1 ? terms[0] : Z3.mk_and(ctx, terms))
+    Z3.solver_assert(ctx, s, initTermOf(Z3, ctx, prepared, binding))
     const lbool = yield* solver.solve(
       {
         start: () => Z3.solver_check(ctx, s) as Promise<number>,
@@ -1125,8 +1158,17 @@ const checkInitialSatisfiable = (
 
 /** A counterexample, as evidence. */
 export interface TraceEvidence {
-  /** The rules that fired, in FORWARD order (init first, violation last). */
+  /** The rules that fired, in FORWARD order (init first, violation last). Empty when no
+   * trace was recovered — never a guessed one. */
   readonly steps: readonly TraceStep[]
+  /**
+   * The STATE SEQUENCE the steps walk, one record per state (`states[0]` is the initial
+   * state), each variable rendered as the author wrote it: `true`/`false`, a decimal
+   * integer, or an enum member name. `steps[i + 1]` is the requirement that takes
+   * `states[i]` to `states[i + 1]`, which is what lets a reader CHECK a trace rather than
+   * trust it (spec 007 AC-1-3).
+   */
+  readonly states: readonly Readonly<Record<string, string>>[]
 }
 
 /**
@@ -1364,42 +1406,187 @@ const checkCertificate = (
   })
 
 /**
- * Extract the counterexample trace, LAST and defensively (V29).
+ * The longest counterexample {@link reconstructTrace} will search for, in steps.
  *
- * Three measured facts shape this:
- *
- * - `get_rules_along_trace` is the call that works; `get_ground_sat_answer` returns
- *   literal `false` on this shape and `getAnswer` returns a proof term.
- * - `get_rule_names_along_trace` returns ONE symbol containing every name joined by
- *   `;`, leading with a `<null>` for the query itself. Verified on 5.0.0:
- *   `"<null>;R-bad;R-set;R-tick;R-tick;R-tick;R-init"`.
- * - The order is REVERSED (violation first, initial state last), so it is reversed
- *   here to read forward.
- *
- * Wrapped in try/catch AND called last, because those defend against different things:
- * the catch handles a throw, and the ORDERING is the only defense against a
- * `shared_occs` assertion, which would abort the process rather than throw.
+ * Spacer has already PROVEN a violation reachable when this runs, so the search always
+ * terminates in principle; the cap bounds how long a pathological (very deep) witness may
+ * cost. 128 steps is far beyond every measured fixture (the deepest is 9) and each
+ * extra depth is one incremental SAT check, so the cap is reached only by a model whose
+ * shortest witness is genuinely long — and then the finding says the trace was not
+ * recovered rather than printing a wrong one.
  */
-const extractTrace = (Z3: LowLevelZ3, ctx: Ast, fp: Ast): TraceEvidence => {
-  try {
-    const symbol = Z3.fixedpoint_get_rule_names_along_trace(ctx, fp)
-    const joined = Z3.get_symbol_string(ctx, symbol) as string
-    const steps = joined
-      .split(';')
-      .map((name) => name.trim())
-      // The leading `<null>` is the query relation itself, which is not a rule an
-      // author wrote — dropping it keeps the trace to requirements and `init`.
-      .filter((name) => name.length > 0 && name !== '<null>')
-      .reverse()
-      .map((rule) => ({ rule }))
-    return { steps }
-  } catch {
-    // A trace is EVIDENCE, not a verdict. Failing to extract one must not turn a
-    // sound `reachable` into an error, so the finding is reported with no steps and
-    // the check integration says so rather than pretending to a trace it does not have.
-    return { steps: [] }
-  }
+const TRACE_DEPTH_CAP = 128
+
+/** What a reconstructed trace must END at. */
+type TraceTarget =
+  /** A state violating a constraint: `bad` over the final state. */
+  | {
+      readonly kind: 'state'
+      readonly label: string
+      readonly bad: (at: ReadonlyMap<string, Ast>) => Ast
+    }
+  /** A final STEP by `effect` whose post-state satisfies `bad` (a range overflow). */
+  | {
+      readonly kind: 'step'
+      readonly effect: EffectRule
+      readonly bad: (pre: ReadonlyMap<string, Ast>, post: ReadonlyMap<string, Ast>) => Ast
+    }
+
+/** Render one variable's model value for evidence: a bool as `true`/`false`, an int in
+ * decimal, an enum as its MEMBER NAME (the index is an encoding artifact). */
+const renderValue = (Z3: LowLevelZ3, ctx: Ast, variable: StateVariable, value: Ast): string => {
+  if (variable.type === 'bool') return Z3.get_bool_value(ctx, value) === 1 ? 'true' : 'false'
+  const numeral = Z3.get_numeral_string(ctx, value) as string
+  if (variable.type === 'int') return numeral
+  return variable.domain[Number(numeral)] ?? `<index ${numeral}>`
 }
+
+/**
+ * RECONSTRUCT a counterexample from the solver's STATE SEQUENCE (spec 007 AC-1-3).
+ *
+ * ## Why the rule-name trace was replaced
+ *
+ * Spacer's `get_rule_names_along_trace` returns rule NAMES, and the names it returned did
+ * not correspond to the steps that happen. Measured on `st{IDLE,RUNNING,DONE}` with
+ * `START: when st = IDLE` and `FINISH: when st = RUNNING`: when FINISH's id sorted first,
+ * the trace for `st = IDLE` read `FINISH -> …`, blaming a requirement whose guard is false
+ * in the initial state, and a constraint violated by the initial state itself lost its
+ * `init`. A trace is the one piece of evidence an author acts on, so a trace that names
+ * the wrong requirement sends them to fix the wrong sentence.
+ *
+ * ## What this does instead
+ *
+ * Bounded model checking over THE SAME transition relation the proof run used
+ * ({@link effectBody} with the same frame): assert `Init(s0)`, then for k = 0, 1, …
+ * ask whether `target` holds at step k, adding `T(s_k, s_k+1)` between asks. The first
+ * `sat` is a SHORTEST witness, and its model is the state sequence. Each step is then
+ * NAMED by evaluating every effect's own body on `(s_i, s_i+1)` in the model and taking
+ * the first that holds in LABEL order — so every named step is one whose guard holds in
+ * its pre-state and whose updates produce its post-state, and the name never depends on
+ * which requirement's id sorts first. The disjunction is built in label order for the
+ * same reason: the formula, and therefore the model, is identical under any permutation
+ * of requirement ids.
+ *
+ * Returns NO steps (never a guessed trace) when the cap or the budget is reached first;
+ * the finding then says the trace was not recovered. Every check goes through the
+ * interruptible solve, awaited one at a time.
+ */
+const reconstructTrace = (
+  Z3: LowLevelZ3,
+  ctx: Ast,
+  prepared: PreparedModel,
+  target: TraceTarget,
+  frame: FrameMode,
+  timeoutMs: number,
+): Effect.Effect<TraceEvidence, never, SolverService> =>
+  Effect.gen(function* () {
+    const solver = yield* SolverService
+    const sorts = prepared.variables.map((v) => sortFor(Z3, ctx, v))
+    const stateAt = (k: number): ReadonlyMap<string, Ast> =>
+      new Map(
+        prepared.variables.map((v, i) => [
+          v.name,
+          Z3.mk_const(ctx, Z3.mk_string_symbol(ctx, `k${k}_${v.name}`), sorts[i]),
+        ]),
+      )
+    // LABEL order, not id order — see the header.
+    const effects = [...prepared.effects].sort((a, b) =>
+      a.label < b.label ? -1 : a.label > b.label ? 1 : a.requirementId < b.requirementId ? -1 : 1,
+    )
+
+    const s = Z3.mk_solver(ctx)
+    Z3.solver_inc_ref(ctx, s)
+    const params = Z3.mk_params(ctx)
+    Z3.params_inc_ref(ctx, params)
+    Z3.params_set_uint(ctx, params, Z3.mk_string_symbol(ctx, 'timeout'), timeoutMs)
+    Z3.solver_set_params(ctx, s, params)
+    Z3.params_dec_ref(ctx, params)
+
+    const states: ReadonlyMap<string, Ast>[] = [stateAt(0)]
+    Z3.solver_assert(ctx, s, initTermOf(Z3, ctx, prepared, states[0] as ReadonlyMap<string, Ast>))
+    const startedAt = Date.now()
+    const empty: TraceEvidence = { steps: [], states: [] }
+
+    for (let k = 0; k <= TRACE_DEPTH_CAP; k += 1) {
+      if (Date.now() - startedAt > timeoutMs) break
+      const here = states[k] as ReadonlyMap<string, Ast>
+      Z3.solver_push(ctx, s)
+      let finalPost: ReadonlyMap<string, Ast> | undefined
+      if (target.kind === 'state') {
+        Z3.solver_assert(ctx, s, target.bad(here))
+      } else {
+        finalPost = stateAt(k + 1)
+        Z3.solver_assert(
+          ctx,
+          s,
+          andOf(Z3, ctx, [
+            effectBody(Z3, ctx, prepared, target.effect.effect, frame, here, finalPost),
+            target.bad(here, finalPost),
+          ]),
+        )
+      }
+      const lbool = yield* solver.solve(
+        {
+          start: () => Z3.solver_check(ctx, s) as Promise<number>,
+          interrupt: () => {
+            Z3.interrupt(ctx)
+          },
+        },
+        0,
+      )
+      if (lbool === 1) {
+        const model = Z3.solver_get_model(ctx, s)
+        Z3.model_inc_ref(ctx, model)
+        const evaluate = (term: Ast): Ast => Z3.model_eval(ctx, model, term, true)
+        const holds = (term: Ast): boolean => Z3.get_bool_value(ctx, evaluate(term)) === 1
+        const sequence = finalPost !== undefined ? [...states, finalPost] : [...states]
+        const rendered = sequence.map((binding) =>
+          Object.fromEntries(
+            prepared.variables.map((v) => [
+              v.name,
+              renderValue(Z3, ctx, v, evaluate(binding.get(v.name))),
+            ]),
+          ),
+        )
+        const steps: TraceStep[] = [{ rule: 'init' }]
+        for (let i = 0; i < k; i += 1) {
+          const pre = states[i] as ReadonlyMap<string, Ast>
+          const post = states[i + 1] as ReadonlyMap<string, Ast>
+          const fired = effects.find((e) =>
+            holds(effectBody(Z3, ctx, prepared, e.effect, frame, pre, post)),
+          )
+          // Unreachable: the asserted transition IS the disjunction of these bodies.
+          // Refusing to name a step is still better than naming a wrong one.
+          if (fired === undefined) {
+            Z3.model_dec_ref(ctx, model)
+            Z3.solver_dec_ref(ctx, s)
+            return empty
+          }
+          steps.push({ rule: fired.label })
+        }
+        steps.push({ rule: target.kind === 'state' ? target.label : target.effect.label })
+        Z3.model_dec_ref(ctx, model)
+        Z3.solver_dec_ref(ctx, s)
+        return { steps, states: rendered }
+      }
+      Z3.solver_pop(ctx, s, 1)
+      // `unknown` (budget) ends the search: a longer witness would only cost more.
+      if (lbool !== -1) break
+      const next = stateAt(k + 1)
+      states.push(next)
+      Z3.solver_assert(
+        ctx,
+        s,
+        orOf(
+          Z3,
+          ctx,
+          effects.map((e) => effectBody(Z3, ctx, prepared, e.effect, frame, here, next)),
+        ),
+      )
+    }
+    Z3.solver_dec_ref(ctx, s)
+    return empty
+  })
 
 // ---------------------------------------------------------------------------
 // One constraint, end to end
@@ -1644,16 +1831,30 @@ export const decideConstraint = (
       }
     }
 
-    // VIOLATED. The trace comes from the FRAMED run, never the unpinned one: under full
-    // framing every step is a requirement-sanctioned change, so the witness is a real
-    // behavior of the described system. The unpinned run's witness may include a
-    // spontaneous change, which is exactly what would make the trace fiction.
+    // VIOLATED. The trace is reconstructed under the FRAMED relation, never the unpinned
+    // one: under full framing every step is a requirement-sanctioned change, so the
+    // witness is a real behavior of the described system. The unpinned run's witness may
+    // include a spontaneous change, which is exactly what would make the trace fiction.
+    const traceStarted = Date.now()
+    const trace = yield* reconstructTrace(
+      Z3,
+      ctx,
+      prepared,
+      {
+        kind: 'state',
+        label: constraint.label,
+        bad: (at) => Z3.mk_not(ctx, compile(Z3, ctx, constraint.predicate, at, prepared.vars)),
+      },
+      'full',
+      timeoutMs,
+    )
+    elapsedMs += Date.now() - traceStarted
     return {
       ...base,
       verdict: 'VIOLATED' as const,
       strict: openRun.verdict,
       framed: framedRun.verdict,
-      trace: extractTrace(Z3, ctx, framedRun.system.fp),
+      trace,
       elapsedMs,
       refusedParams,
     }

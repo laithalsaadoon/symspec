@@ -279,6 +279,9 @@ export const projectReachability = (
             'described system rather than an artifact of assuming nothing.',
           evidence: {
             trace: (result.trace?.steps ?? []).map((s) => s.rule),
+            // The state sequence the trace walks (AC-1-3), so a reader can CHECK each step
+            // against its guard and effect rather than trust the rule names.
+            states: result.trace?.states ?? [],
             strictRun: result.strict,
             ...(result.framed !== undefined ? { framedRun: result.framed } : {}),
           },

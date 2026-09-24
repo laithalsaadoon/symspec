@@ -118,7 +118,7 @@ describe('the tier may DEMOTE and may never promote', () => {
           verdict: 'VIOLATED',
           strict: 'reachable',
           framed: 'reachable',
-          trace: { steps: [{ rule: 'init' }, { rule: 'TX-A1' }] },
+          trace: { steps: [{ rule: 'init' }, { rule: 'TX-A1' }], states: [] },
         }),
       ],
     })
@@ -173,7 +173,7 @@ describe('only a genuine violation reaches error severity', () => {
             verdict: 'VIOLATED',
             strict: 'reachable',
             framed: 'reachable',
-            trace: { steps: [{ rule: 'init' }, { rule: 'TX-A1' }, { rule: 'TX-C1' }] },
+            trace: { steps: [{ rule: 'init' }, { rule: 'TX-A1' }, { rule: 'TX-C1' }], states: [] },
           }),
         ],
       }),
