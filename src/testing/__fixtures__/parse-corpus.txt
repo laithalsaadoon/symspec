@@ -1,7 +1,9 @@
+"Unless the guard door is closed", the press controller shall start the press.
 "retry 3 Times" plus "shall not retry 3 times" is FND_CONTRADICTION
 "within 5 Seconds" plus "shall not ... within 5 seconds" is FND_CONTRADICTION
 (1) The gateway shall be notified of cached requests.
 (1) The password store shall be encrypted at rest.
+(1) Unless the guard door is closed, the press controller shall start the press.
 (2) The gateway shall not be notified of cached requests.
 (Before startup) the gateway shall load its config.
 (Before the press starts) the press controller shall lock the guard door.
@@ -9,6 +11,7 @@
 (Except during maintenance) the gateway shall log requests.
 (In case of fire) the sprinkler controller shall open the valves.
 (Only if armed) the press controller shall be able to start the press.
+(P1) Unless the guard door is closed the press controller shall start the press.
 (Phase 2) The gateway shall log requests.
 (Priority: Must)
 (Priority: Must) The gateway
@@ -18,23 +21,32 @@
 (Unless the guard door is closed) the press controller shall start the press.
 (Unless the guard door is closed), the press controller shall start the press.
 (Until the operator acknowledges the alarm) the siren shall sound.
+([Unless the guard door is closed]) the press controller shall start the press.
+(a) Unless the guard door is closed, the press controller shall start the press.
 (for example an interlock requirement). The finding shall not offer a waiver.
+(ii) Before startup, the gateway shall load its config.
 - The api shall reject expired tokens
+1) Unless the guard door is closed, the press controller shall start the press.
 1. When the queue drains, the worker shall commit the batch
 2) The api shall grant read and write access
+> Unless the guard door is closed, the press controller shall start the press.
 A human reader sees the problem, because 30 minutes cannot also be 60 minutes. A literal checker
 A refused op shall name the failed condition and a model of it.
 A request with no body shall be rejected.
+A request with no body shall not be accepted.
 A threshold split written with symbolic comparators. `>= 30 ms` and `< 30 ms` cannot both
 AC-2-1 — "shall A" plus "shall B" is still a contradiction
 AC-2-1 — "shall not A" plus "shall not B" is consistent
 ACCEPTS everything it cannot decide with certainty — a false positive would be worse
+Accounts with MFA shall, on login, be challenged.
+Accounts without MFA shall, on login, be challenged.
 All payment gateways shall log requests.
 All payment requests shall be logged.
 All requests shall be logged.
 Any payment request shall be logged.
 Before deploying, read the runbook.
 Before hooks shall run in order.
+Before images of each page shall be retained.
 Before startup the gateway shall load its config.
 Before startup, load the config.
 Before startup, the gateway shall load its config.
@@ -55,6 +67,7 @@ Every audit record shall be retained.
 Every tier's encoding shall be a documented sound projection of this table, and a test shall
 Except during maintenance, log requests.
 Except during maintenance, the gateway shall log requests.
+Except entries in the list shall be skipped.
 Except entries shall be skipped.
 Except handlers shall log errors.
 Except in maintenance mode the gateway shall log requests.
@@ -76,24 +89,41 @@ If a schedule creation would exceed the configured enabled-schedule quota, then 
 If a tool call references a schedule or run id that does not exist, then the schedule management service shall return ScheduleNotFound or RunNotFound as a typed domain error.
 If bearer token authentication fails, then the HTTP schedule interface shall respond with the standard unauthorized HTTP status code without invoking a use case.
 If five logins fail, then the auth service shall lock the account
+If no user is signed in then the session store shall be cleared.
 If the link fails then the routing table shall not be flushed.
 If the operator selects the strengthen option the pump controller shall reduce the flow.
 If the token expires, then the auth service shall issue a session token.
+If the token is not valid then the gateway shall be notified.
 Immediately before shutdown, the gateway shall flush its logs.
+In case files, the clerk shall record the verdict.
+In case management, the case worker shall close stale cases.
+In case of fire the sprinkler controller shall open the valves.
 In case of fire, open the valves.
 In case of fire, the sprinkler controller shall open the valves.
+In case sensitive mode, the matcher shall compare bytes.
+In case studies, the analyst shall cite sources.
 In case the guard door opens the press controller shall stop the press.
 In case the guard door opens, the press controller shall stop the press.
+In case the power fails, the UPS shall start the generator.
 It never produces a verdict, and these two never demote one either — a wording opinion must
 Neither replica shall be promoted.
+Neither request shall be dropped.
 No request shall be dropped.
+No request shall, under load, be dropped.
+Nobody shall be able to delete the audit log.
 None of the requests shall be dropped.
+Not all requests shall be logged.
+Not every request shall be logged.
+Note: The gateway shall log requests.
+Note: Unless the guard door is closed, the press controller shall start the press.
+Nothing shall be written to the audit log.
 Once the door closes, the pump controller shall start the pump.
 One response at opposite polarity under two triggers that cannot both hold. The
 Only if armed the alarm shall sound.
 Only if armed, sound the alarm.
 Only if armed, the alarm shall sound.
 Only if the operator is authorized, the press controller shall start the press.
+Packets not matching a rule shall, by default, be dropped.
 Provided credentials
 Provided credentials shall match the stored hash.
 Provided that
@@ -105,6 +135,8 @@ Provided tokens shall be validated.
 Provided values shall be validated against the schema.
 R1, so it cannot be free. But it has a shape the kernel can check: it removes R1's obligation
 REQ-14: the api shall paginate every list response
+Records with an owner shall, nightly, be archived.
+Records with no owner shall, nightly, be archived.
 Reproducer: "The audit logger shall record the event." plus "If a disk write error occurs, then
 Reproducer: "Unless the guard door is closed, the press controller shall not start the press."
 Reproducer: "When the operator presses start, the pump controller shall set the mode to running"
@@ -112,9 +144,11 @@ Reproducer: "When the passenger presses the open button, the door controller sha
 Reproducer: a parent with R2 "While the train is moving, the door controller shall not open the
 Reproducers: "When a flagged purchase order is received, the procurement system shall not accept
 Reproducers: "shall not keep the door unlocked above 30 seconds" plus "shall keep the door
+Requests not cached by the edge shall, on arrival, be forwarded to the origin.
 Requests with no body shall be rejected.
 SAYS it fell back — a fallback must not read like a detection
 Sabotage: reintroduce the AC-1-1 defect with the BFS in place; the BFS must catch it and
+Safety: Unless the guard door is closed, the press controller shall start the press.
 Stored credentials shall be hashed.
 TX-C1 must be proven at one strength or the other
 TX-C2 is genuinely violable and must be reported
@@ -166,10 +200,13 @@ The billing service shall rotate the signing key.
 The conflict is R1 "When the passenger presses open, the door controller shall open the door"
 The controller shall behave.
 The dishka composition root shall provide the HTTP and MCP interfaces their use cases through request-scoped providers in infrastructure/di.py.
+The gateway cannot drop requests.
 The gateway cannot forward requests.
 The gateway must not forward requests.
 The gateway must not only log requests but also forward them.
+The gateway mustn't drop requests.
 The gateway mustn't forward requests.
+The gateway rather than not the proxy shall, always, forward requests.
 The gateway shall also not be notified of requests.
 The gateway shall be able to forward requests that are not cached.
 The gateway shall be notified of no requests.
@@ -180,6 +217,7 @@ The gateway shall forward requests.
 The gateway shall load its config before startup.
 The gateway shall log requests.
 The gateway shall never be notified.
+The gateway shall never drop requests.
 The gateway shall never forward requests.
 The gateway shall no longer be notified of requests.
 The gateway shall not be able to forward requests.
@@ -189,10 +227,13 @@ The gateway shall not log requests.
 The gateway shall not only be notified of requests but also log them.
 The gateway shall not only log requests but also forward them.
 The gateway shall reject requests that are not signed.
+The gateway shan't drop requests.
 The gateway shan't forward requests.
+The gateway shan't, under load, drop requests.
 The gateway should not forward requests.
 The gateway shouldn't forward requests.
 The gateway will not forward requests.
+The gateway won't drop requests.
 The gateway won't forward requests.
 The lock manager shall behave.
 The lock manager shall force a second grant.
@@ -272,6 +313,8 @@ Unicode minus sign, and the case of unit tokens. Characters it removes shall be 
 Unless
 Unless armed the alarm shall sound.
 Unless armed, the alarm shall be sounded.
+Unless armed, the alarm shall stay silent.
+Unless the door is closed the alarm shall sound.
 Unless the guard door is closed the press controller shall be notified.
 Unless the guard door is closed the press controller shall start the press.
 Unless the guard door is closed, stop the press.
@@ -280,15 +323,23 @@ Unless the guard door is closed, the press controller shall not start the press.
 Unless the guard door is closed, the press controller shall start the press and log the start.
 Unless the guard door is closed, the press controller shall start the press.
 Unless the guard door is closed, the press controller shan't start the press.
+Unless the operator is present the press shall be locked.
+Unless, of course, the guard door is closed, the press controller shall start the press.
 Unless-clauses shall be flagged.
+Unless: the guard door is closed, the press controller shall start the press.
+Until dates in the form shall be validated.
+Until dates of expired contracts shall be archived.
+Until dates on invoices shall be validated.
 Until dates shall be required.
 Until further notice, keep the siren on.
 Until startup completes, the gateway shall be unavailable.
 Until the operator acknowledges the alarm the siren shall sound.
 Until the operator acknowledges the alarm, the siren shall sound.
+Until-dates shall be required.
 Until-dates shall be validated.
 Users shall be able to reset passwords that are not expired.
 Users shall not only reset passwords but also unlock accounts.
+Users who are not admins shall be able to view logs.
 WHEN <trigger>, the system shall <response>
 When E, the system shall set S
 When P exceeds 5 bar, the pump controller shall close the bypass valve.
@@ -302,8 +353,10 @@ When a payment settles, the ledger shall post the journal entry.
 When a poll job evaluates a watch and the deterministic trigger gate returns true, the poll evaluator shall emit one agent_run with trigger type poll.
 When a purchase order is submitted, the procurement system shall accept the purchase order.
 When a purchase order is submitted, the procurement system shall not approve the purchase order.
+When a request arrives no response shall be cached.
 When a request is not authorized the gateway shall be notified.
 When a request is not authorized, the gateway shall be notified.
+When a request is not cached, the gateway shall forward it to the origin.
 When a run for a locked conversation is queued, the run service shall mark it waiting.
 When a run reaches a terminal state, the run service shall release the conversation lock.
 When a run request arrives through HTTP or MCP, the schedule management service shall create the agent run with trigger type api and the caller-supplied idempotency key as trigger id, then defer exactly one Procrastinate job in the same transaction.
@@ -327,6 +380,7 @@ When an ingress adapter accepts an on-demand message, the run service shall crea
 When an on-demand message is accepted, the ingress adapter shall persist the accepted run as a queued row and return before the run executes.
 When an on-demand run is born, the run service shall set the run trigger type to the value identifying the ingress source.
 When armed the alarm shall sound.
+When no user is signed in the session store shall be cleared.
 When runs for distinct conversations are queued, the agent workers shall execute the runs concurrently up to the configured per-process concurrency.
 When the A record changes, the billing service shall reload the zone.
 When the JSON payload is rejected, the billing service shall return an error.
@@ -402,13 +456,16 @@ While in maintenance mode the routing table shall not be flushed.
 While in maintenance mode, the routing table shall not be flushed.
 While maintenance mode is enabled, the api shall reject every request
 While offline all requests shall not be logged.
+While offline no request shall be dropped.
 While offline the cache shall be flushed.
 While offline the gateway shall not log requests.
 While offline the user's session store shall not be encrypted at rest.
 While offline, all payment requests shall not be logged.
 While offline, every audit record shall not be retained.
 While offline, except-list entries shall not be skipped.
+While offline, no request shall be dropped.
 While offline, provided tokens shall be cached.
+While offline, the contracts shall not be archived.
 While offline, the payment request shall not be logged.
 While offline, the records shall not be retained.
 While offline, the until-dates shall not be validated.
@@ -442,6 +499,9 @@ While the temperature is above 5 degrees celsius, when the temperature is below 
 While the tenant quota remains below its monthly ceiling, upon sign-in the auth service shall issue a session token.
 While the train is moving, the door controller shall not open the door
 While the train is moving, the door controller shall not open the door.
+While the user is not signed in the session store shall be cleared.
+While the user is not signed in, the session store shall be cleared.
+While the user is not signed in, the session store shall not be cleared.
 While valve α is open, the plant controller shall not start the pump.
 While valve α is open, the plant controller shall start the pump.
 While valve β is open, the plant controller shall not start the pump.
@@ -460,17 +520,22 @@ While valve β is open, the plant controller shall not start the pump.
 [ONLINE] The gateway shall not queue requests.
 [Only if armed] the alarm shall sound.
 [P1, Security] The gateway shall log requests.
+[P1] Before startup, the gateway shall load its config.
+[P1] The gateway shall log requests.
 [P1] Unless the guard door is closed, the press controller shall start the press.
+[P1] [Unless the guard door is closed] the press controller shall start the press.
 [Performance] The gateway shall respond within 2 seconds.
 [Priority: Should]
 [Priority: Should] The gateway shall log requests.
 [Provided that the guard door is closed] the press controller shall start the press.
+[SAFETY] Unless the guard door is closed, the press controller shall start the press.
 [SECURITY] The gateway shall log requests.
 [Security] The gateway shall log requests.
 [Security] The gateway shall not log requests.
 [UNLESS] the press controller shall start the press.
 [UNTIL] the press controller shall start the press.
 [US] ... shall not ...
+[Unless the guard door is closed] [P1] the press controller shall start the press.
 [Unless the guard door is closed] the press controller shall start the press.
 [Unless the guard door is closed], the press controller shall start the press.
 [Unless-2FA] the gateway
@@ -481,6 +546,7 @@ While valve β is open, the plant controller shall not start the pump.
 [V1] The API shall accept XML.
 [V2] The API shall not accept XML.
 [When armed] [P1] the alarm shall sound.
+[[Unless the guard door is closed]] the press controller shall start the press.
 `Inv := false` discharges all three certificate obligations — so V28 cannot catch vacuity
 `interruptibleSolve`'s canceler is not doing its job: it must call Z3_interrupt
 `symspec check`. Waiving a finding cannot discharge this — the comparison did not happen.
@@ -497,6 +563,7 @@ a present repair must not be empty
 a repair with no ops must at least name a command
 a suggestion must never name a field that does not exist
 a truncated run must carry a budget hint
+a) Unless the guard door is closed, the press controller shall start the press.
 an initial predicate it cannot enumerate withholds too, but an independent unbounded int does not
 applying the recommended budget must clear every truncation demotion
 at opposite polarity. Consistent because a cold cache and a warm cache cannot both
@@ -586,4 +653,6 @@ unless the guard door is closed, the press controller shall start the press.
 what budget should I use
 when T shall R
 will NOT help
+{Unless the guard door is closed} the press controller shall start the press.
 • The gateway shall be notified of cached requests.
+• Unless the guard door is closed, the press controller shall start the press.
