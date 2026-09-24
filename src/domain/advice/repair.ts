@@ -240,6 +240,27 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
         commands: [`symspec check ${context.docPath}`],
       }
 
+    case 'numeric-bounds-uncompared':
+      // The numeric tier declined to decide: the verdict depends on a reading (role,
+      // temperature sense, unit) the sentences do not fix. No command decides it for the
+      // author. The honest primary repair is to restate the bounds, which needs the
+      // requirements read first; the reviewed waiver is the fallback for a pair the
+      // author has checked is consistent.
+      return {
+        ops: [
+          {
+            op: 'waive',
+            code: 'FND_NUMERIC_UNCOMPARED',
+            reason: 'reviewed: <why these bounds are consistent>',
+            ...(demotion.requirementIds.length === 1 ? { ref: demotion.requirementIds[0] } : {}),
+          } satisfies DocumentOp,
+        ],
+        commands: [
+          ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
+          `symspec check ${context.docPath}`,
+        ],
+      }
+
     // ---------------------------------------------------------------------
     // Run-scoped reasons: the repair is a different INVOCATION, not an edit
     // ---------------------------------------------------------------------

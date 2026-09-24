@@ -105,7 +105,7 @@ import {
   SolverBudgetExceededError,
 } from '../formal/needs-review.ts'
 import { extractNumericPredicates } from '../formal/numeric.ts'
-import { findNumericContradictions } from '../formal/numeric-contradiction.ts'
+import { analyzeNumericBounds } from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
 import { findRelationalUnchecked } from '../formal/relational.ts'
 import { findOppositionCandidates, findSimilarSemantic } from '../formal/semantic.ts'
@@ -324,6 +324,11 @@ export interface CoverageDemotion {
     // hide, which symspec's pairwise numeric tier does not attempt. An honest
     // "not attempted" caveat so `verified` never outruns what was compared.
     | 'relational-reasoning-not-attempted'
+    // Co-live bounds on one quantity key that the numeric tier neither proved nor
+    // dismissed, because the verdict turns on a reading the sentences do not fix (a
+    // deadline vs a duration, an absolute vs a difference temperature, two units no
+    // conversion relates). Discharged by restating the bounds, or by a reviewed waiver.
+    | 'numeric-bounds-uncompared'
     // AC-1-7: the whole-run `--solver-budget-ms` deadline expired and at least
     // one solver tier stopped before finishing its units of work. The run did
     // NOT compare everything it would otherwise have compared, so it cannot
@@ -507,6 +512,7 @@ const PROPOSE_ONLY_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
   'FND_EXCLUDED_FROM_FORMAL',
   'FND_QUANTITY_ALIAS_CANDIDATE',
   'FND_RELATIONAL_UNCHECKED',
+  'FND_NUMERIC_UNCOMPARED',
   // The completeness heuristic names its whole same-trigger group, so it always
   // spans ≥2 ids — but its solver answer is fixed by the encoding, not read off
   // the document: `encode` emits every `pre` row positive, and a disjunction of
@@ -541,6 +547,7 @@ const COVERAGE_GAP_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
   'FND_EXCLUDED_FROM_FORMAL',
   'FND_QUANTITY_ALIAS_CANDIDATE',
   'FND_RELATIONAL_UNCHECKED',
+  'FND_NUMERIC_UNCOMPARED',
   'FND_INCOMPLETE',
   'FND_NEEDS_REVIEW',
 ])
@@ -1064,11 +1071,27 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // co-assert its bounds with everything. `encode` is pure and Z3-free, so the
       // extra encodings cost no solver time.
       const quantityAliases = glossaryIndex(doc.glossary)
+      // The response is read through the SAME negation view the propositional tier
+      // encodes (`toEncodable`): the stored `negated` flag, or a leading `not`/`never`
+      // stripped from hand-authored text. `shall not … above 30 seconds` bounds the
+      // quantity at `<= 30 s`; read without the flag it asserted `> 30 s` (spec 007
+      // AC-2-6).
+      const responseBounds = (r: (typeof reqs)[number]) => {
+        const view = toEncodable(r)
+        const negated = view.negated === true
+        return extractNumericPredicates(
+          view.systemResponse,
+          r.systemName,
+          'resp',
+          quantityAliases,
+          negated,
+        )
+      }
       const numericReqPreds = reqs.map((r) => ({
         id: r.id,
         contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
         predicates: [
-          ...extractNumericPredicates(r.systemResponse, r.systemName, 'resp', quantityAliases),
+          ...responseBounds(r),
           ...(r.trigger !== undefined
             ? extractNumericPredicates(r.trigger, r.systemName, 'trig', quantityAliases)
             : []),
@@ -1077,7 +1100,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
             : []),
         ],
       }))
-      const numericContradictions = await findNumericContradictions(ctx, numericReqPreds, bounds)
+      // The decide half (`contradictions`) and what it declined to decide (`uncompared`,
+      // demotion-only): a proof must hold under every reading of a role or a temperature,
+      // and a pair the readings split is disclosed rather than dropped.
+      const { contradictions: numericContradictions, uncompared: numericUncompared } =
+        await analyzeNumericBounds(ctx, numericReqPreds, bounds)
 
       // Issue #2 (reproducer a): the numeric tier keys a quantity off the phrase
       // before the comparator, so ONE physical quantity described with two
@@ -1257,6 +1284,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         ...graph,
         ...opposition,
         ...quantityAliasCandidates,
+        ...numericUncompared,
       ]) {
         formal.push({
           code: f.code,
@@ -1515,6 +1543,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   // legitimate discharge, unlike suppressing a coverage FACT.
   const quantityAliasFindings = kept.filter((f) => f.code === 'FND_QUANTITY_ALIAS_CANDIDATE')
   const relationalFindings = kept.filter((f) => f.code === 'FND_RELATIONAL_UNCHECKED')
+  const numericUncomparedFindings = kept.filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
 
   const demotions: CoverageDemotion[] = []
   if (requirements.length >= 2) {
@@ -1573,6 +1602,19 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           '(the numeric tier is pairwise same-quantity only). Verify any shared-resource sum or ' +
           'cross-entity relation by hand and waive this finding, or restate the constraint as a ' +
           'same-quantity numeric bound the solver can check.',
+      })
+    }
+    // Numeric bounds the tier neither proved nor dismissed: a verdict that turns on a
+    // reading the sentences do not fix is not a comparison that happened.
+    for (const f of numericUncomparedFindings) {
+      demotions.push({
+        reason: 'numeric-bounds-uncompared',
+        requirementIds: [...f.requirementIds],
+        action:
+          `The numeric bounds of ${f.requirementIds.join(', ')} were neither proved nor dismissed ` +
+          "(the finding's message says which reading splits them). Restate them in one sense and " +
+          'one recognized unit so the numeric tier can decide them, or waive this finding once you ' +
+          'have checked they are consistent. Then re-run `symspec check`.',
       })
     }
     for (const f of openOppositionFindings) {

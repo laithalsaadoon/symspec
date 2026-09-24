@@ -1403,6 +1403,40 @@ describe('a glossary alias hits only when it names the whole quantity label', ()
         req({
           id: 'dddddddd-8888-4888-8888-888888888884',
           systemName: 'auth service',
+          systemResponse: 'keep the user session alive for no less than 60 minutes',
+          sentence:
+            'The auth service shall keep the user session alive for no less than 60 minutes.',
+        }),
+      ),
+      glossary: [
+        {
+          canonical: 'token lifetime',
+          aliases: ['keep the token valid', 'keep the user session alive'],
+        },
+      ],
+    })
+    expect(data.findings.map((f) => f.code)).toContain('FND_NUMERIC_CONTRADICTION')
+    expect(data.counts.error).toBe(1)
+  })
+
+  it('DISCLOSES, and does not merge, a duration and a deadline under one alias', async () => {
+    // The merge above is two DURATIONS (`for`). `expire the user session in no less than 60
+    // minutes` is a deadline, and spec 007 AC-2-6 keeps a deadline and a duration on two
+    // variables even under one key: an alias equates two phrasings, and `sound the siren
+    // within 2 s` + `... for at least 30 s` is consistent on one phrasing. So this pair,
+    // which this test proved before roles existed, is not proved — and it is not certified
+    // either: the pair the roles keep apart is disclosed.
+    const data = await expectOk({
+      ...docOf(
+        req({
+          id: 'cccccccc-8888-4888-8888-888888888883',
+          systemName: 'auth service',
+          systemResponse: 'keep the token valid for at most 30 minutes',
+          sentence: 'The auth service shall keep the token valid for at most 30 minutes.',
+        }),
+        req({
+          id: 'dddddddd-8888-4888-8888-888888888884',
+          systemName: 'auth service',
           systemResponse: 'expire the user session in no less than 60 minutes',
           sentence: 'The auth service shall expire the user session in no less than 60 minutes.',
         }),
@@ -1414,8 +1448,10 @@ describe('a glossary alias hits only when it names the whole quantity label', ()
         },
       ],
     })
-    expect(data.findings.map((f) => f.code)).toContain('FND_NUMERIC_CONTRADICTION')
-    expect(data.counts.error).toBe(1)
+    expect(data.counts.error).toBe(0)
+    expect(data.findings.map((f) => f.code)).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(data.coverage.demotions.map((d) => d.reason)).toContain('numeric-bounds-uncompared')
+    expect(data.verified).toBe(false)
   })
 })
 
