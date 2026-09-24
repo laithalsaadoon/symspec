@@ -1,5 +1,5 @@
 /**
- * The ERR_* error catalog: 21 stable operational-error codes, each a
+ * The ERR_* error catalog: the stable operational-error codes, each a
  * {@link Schema.TaggedErrorClass} whose TAG IS THE CODE.
  *
  * ## Why the tag is the code
@@ -342,6 +342,19 @@ export class ErrDuplicateKey extends Schema.TaggedErrorClass<ErrDuplicateKey>()(
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
   override readonly [Runtime.errorReported] = false
 }
+
+/** A leading clause has no EARS slot, so storing the rest would drop its condition (spec 007 AC-2-2). */
+export class ErrClauseUnbound extends Schema.TaggedErrorClass<ErrClauseUnbound>()(
+  'ERR_CLAUSE_UNBOUND',
+  ErrorFields,
+  {
+    description:
+      'A leading clause (Unless, Provided that, In case, Except, Before, Until, Only if, Even if) has no EARS slot, so the requirement is refused rather than stored without its condition. Suggestion: restate the named clause as While/When/If…then, or name the state in which the requirement applies.',
+  },
+) {
+  override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
+  override readonly [Runtime.errorReported] = false
+}
 // ---------------------------------------------------------------------------
 // The closed union and the code list
 // ---------------------------------------------------------------------------
@@ -373,6 +386,7 @@ export type OperationalError =
   | ErrDocExists
   | ErrEmbedModelMissing
   | ErrDuplicateKey
+  | ErrClauseUnbound
 
 /**
  * Every ERR_* class, in shipped order. The catalog projections
@@ -401,6 +415,7 @@ export const ERR_CLASSES = [
   ErrDocExists,
   ErrEmbedModelMissing,
   ErrDuplicateKey,
+  ErrClauseUnbound,
 ] as const
 
 /** The union of ERR_* code strings. */

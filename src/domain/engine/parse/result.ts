@@ -71,7 +71,8 @@ import type { Confidence, Tier1Ok, Tier1Slots } from './tier1.ts'
 import type { ProposedSplit, Tier2Loader, Tier2Ok, Tier2Options, Tier2Outcome } from './tier2.ts'
 import { defaultTier2Loader, runTier2 } from './tier2.ts'
 import type { ParseErrorCode, Tier3Envelope } from './tier3.ts'
-import { makeTier3Envelope } from './tier3.ts'
+import { makeClauseUnboundEnvelope, makeTier3Envelope } from './tier3.ts'
+import { unboundLeadingClause } from './unbound.ts'
 
 export type { ParseErrorCode } from './tier3.ts'
 export { PARSE_ERROR_CODES } from './tier3.ts'
@@ -235,11 +236,20 @@ export const fromTier3 = (
  *   2. otherwise prefer the Tier-2 repair when it succeeded, then a usable Tier-1
  *      parse (soft triggers ride on it as downgraded confidence);
  *   3. otherwise Tier 3, split into `skipped` (no-modal) or `error`.
+ *
+ * One post-condition sits on step 2 (spec 007 AC-2-2): a Tier-2 repair that dropped a leading
+ * clause no EARS slot binds (`Unless`, `Before`, …) is not stored. It becomes
+ * `ERR_CLAUSE_UNBOUND` naming the clause, because the requirement it would store holds in
+ * states the author excluded. See `./unbound.ts` for exactly when a drop counts.
  */
 export const resolveParseResult = (text: string, outcome: Tier2Outcome): ParseResult => {
   const compound = outcome.triggers.includes('compound-conjunction')
   if (!compound) {
-    if (outcome.tier2?.ok) return fromTierOk(outcome.tier2)
+    if (outcome.tier2?.ok) {
+      const clause = unboundLeadingClause(outcome.tier2)
+      if (clause !== undefined) return fromTier3(makeClauseUnboundEnvelope(text, clause), text)
+      return fromTierOk(outcome.tier2)
+    }
     if (outcome.tier1.ok) return fromTierOk(outcome.tier1)
   }
   return fromTier3(makeTier3Envelope(text, outcome), text)

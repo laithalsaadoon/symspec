@@ -20,7 +20,7 @@ symspec install                            # drop this guidance into your agent 
 ```
 
 `manifest` is the machine-readable version of this document. `explain` answers for a
-single code across all 86 of them (21 `ERR_*`, 41 `FND_*`, 24 `GTWR_*`) and returns
+single code across all 87 of them (22 `ERR_*`, 41 `FND_*`, 24 `GTWR_*`) and returns
 its family, severity, tier, meaning, remedy, and a worked example where the catalog carries
 one — so a fix loop never pays for the whole contract to learn what one code means.
 
@@ -726,6 +726,7 @@ one.
 | `ERR_DOC_EXISTS` | `init` refused to overwrite an existing document at the resolved path. |
 | `ERR_EMBED_MODEL_MISSING` | The embedding model (core to every `check`) is not cached and remote loading is disabled — the run fails closed rather than silently skipping the semantic/opposition tier. |
 | `ERR_DUPLICATE_KEY` | A create supplied a --key that another requirement already uses; keys must be unique. |
+| `ERR_CLAUSE_UNBOUND` | A leading clause (Unless, Provided that, In case, Except, Before, Until, Only if, Even if) has no EARS slot, so the requirement is refused rather than stored without its condition. |
 
 ## Finding codes (`FND_*`)
 

@@ -41,6 +41,11 @@
  * actionable fix; NO_MODAL is more informative than a general ambiguity; NOT_A_REQUIREMENT
  * is reserved for sentences that lack *any* obligation vocabulary.
  *
+ * `ERR_CLAUSE_UNBOUND` (spec 007 AC-2-2) sits outside this heuristic: it is not a failure to
+ * parse but a successful Tier-2 parse that dropped a leading `Unless`/`Before`/… clause, so
+ * `./unbound.ts` decides it as a post-condition and {@link makeClauseUnboundEnvelope} builds
+ * the envelope.
+ *
  * ## Design contract for Wave 6 (AC-6-2)
  *
  * `Tier3Envelope` is the Tier-3 layer's internal return type. The CLI layer
@@ -63,12 +68,14 @@ import type { EscalationTrigger, ProposedSplit, Tier2Outcome } from './tier2.ts'
 // ERR_PARSE_* code subset (strict sub-type of ErrCode for parse failures)
 // ---------------------------------------------------------------------------
 
-/** The four stable `ERR_PARSE_*` codes AC-2-7 defines. */
+/** The stable parse-failure codes: AC-2-7's four `ERR_PARSE_*`, then spec 007 AC-2-2's
+ * `ERR_CLAUSE_UNBOUND` (see {@link makeClauseUnboundEnvelope}). */
 export const PARSE_ERROR_CODES = [
   'ERR_PARSE_NO_MODAL',
   'ERR_PARSE_AMBIGUOUS_CLAUSES',
   'ERR_PARSE_COMPOUND',
   'ERR_PARSE_NOT_A_REQUIREMENT',
+  'ERR_CLAUSE_UNBOUND',
 ] as const
 
 export type ParseErrorCode = (typeof PARSE_ERROR_CODES)[number]
@@ -165,6 +172,13 @@ function suggestionsFor(code: ParseErrorCode, partial: PartialSlots): readonly s
           : 'Example: "the <system> shall <first response>." / "the <system> shall <second response>."',
       ]
 
+    case 'ERR_CLAUSE_UNBOUND':
+      return [
+        'Restate the leading clause as one EARS binds to a slot: "While <state>, …" (precondition), "When <event>, …" (trigger), or "If <condition>, then …" (unwanted behavior).',
+        '"Unless <P>, …" applies exactly when <P> does not hold: name that state, e.g. "While <not P>, the <system> shall …".',
+        'Do not delete the clause to make the line parse: without its condition the requirement is stronger than the one written.',
+      ]
+
     case 'ERR_PARSE_AMBIGUOUS_CLAUSES':
       return [
         'Reorder clauses to match the canonical EARS structure: "[While <pre>,] [When <trigger>,] the <system> shall <response>."',
@@ -256,8 +270,10 @@ function assignCode(allNotes: Set<string>, triggers: Set<EscalationTrigger>): Pa
 // Error message builders per code
 // ---------------------------------------------------------------------------
 
-function messageFor(code: ParseErrorCode, text: string): string {
+function messageFor(code: ParseErrorCode, text: string, clause?: string): string {
   switch (code) {
+    case 'ERR_CLAUSE_UNBOUND':
+      return `Leading clause "${clause ?? ''}" has no EARS slot (While/When/If…then/Where), and storing the rest would drop its condition: "${text}"`
     case 'ERR_PARSE_NO_MODAL':
       return `No modal verb ("shall", "must", "will", "should") found in: "${text}"`
     case 'ERR_PARSE_NOT_A_REQUIREMENT':
@@ -306,6 +322,28 @@ export function makeTier3Envelope(text: string, outcome: Tier2Outcome): Tier3Env
     suggestions: suggestionsFor(code, partial),
     notes: [...allNotes],
     ...(hasSplits ? { proposedSplits } : {}),
+  }
+}
+
+/**
+ * The Tier-3 envelope for a line whose leading clause no EARS slot binds (spec 007 AC-2-2).
+ *
+ * Not reachable through {@link assignCode}: the ladder decides this one as a post-condition on
+ * an otherwise-successful parse (`./unbound.ts`), because the failure is not that parsing broke
+ * but that the parse it produced dropped a condition. So there is deliberately no `partial` and
+ * no split — either would hand an agent the same requirement minus its clause.
+ *
+ * @param text    The original input text.
+ * @param clause  The unbound clause as written, without the brackets that framed it.
+ */
+export function makeClauseUnboundEnvelope(text: string, clause: string): Tier3Envelope {
+  const code: ParseErrorCode = 'ERR_CLAUSE_UNBOUND'
+  return {
+    tier: 3,
+    code,
+    error: messageFor(code, text, clause),
+    suggestions: suggestionsFor(code, {}),
+    notes: ['clause-unbound'],
   }
 }
 

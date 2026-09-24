@@ -91,6 +91,13 @@ export interface Tier2Ok {
   tier: 2
   /** Provenance notes: escalation triggers plus repair notes (e.g. `subject-repaired`). */
   notes: string[]
+  /**
+   * The text left of the subject that {@link classifyLeadingClause} could not bind to a slot,
+   * and so appears in NO slot of this parse. Present only when such text exists. Never
+   * projected into a `ParseResult`: it is the evidence `unboundLeadingClause` (spec 007 AC-2-2)
+   * reads to decide whether the repair dropped a condition.
+   */
+  droppedLead?: string
 }
 
 /** Tier-2 could not repair the clause; the caller escalates to the Tier-3 envelope (T-AC-2-7). */
@@ -510,6 +517,7 @@ export function repairWithWink(
   // Tier 2 is a repair tier: confident enough to use, never `high`. Any repair
   // note (or a soft escalation trigger) pins it to `low`.
   const confidence: Confidence = repairNotes.length > 0 || baseNotes.length > 0 ? 'low' : 'medium'
+  const droppedLead = lead ? '' : leadText.trim()
 
   return {
     ok: true,
@@ -519,6 +527,7 @@ export function repairWithWink(
     confidence,
     tier: 2,
     notes,
+    ...(droppedLead !== '' ? { droppedLead } : {}),
   }
 }
 
