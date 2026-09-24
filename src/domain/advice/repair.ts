@@ -266,6 +266,15 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
         ],
       }
 
+    case 'run-weakened':
+      // The semantic tier ran on the TEST stub (AC-3-5). NO OPS: the document is not at
+      // fault. The repair is the same invocation with the stub switch off for that one
+      // command (the Layer enables the stub only on exactly `1`), so it loads the pinned model.
+      return {
+        ops: [],
+        commands: [`SYMSPEC_EMBED_STUB=0 symspec check ${context.docPath}`],
+      }
+
     case 'semantic-tier-skipped':
       // NO OPS, and that is right: the tier was skipped by CONFIGURATION, so the
       // document is not at fault and no document change discharges it. The repair is

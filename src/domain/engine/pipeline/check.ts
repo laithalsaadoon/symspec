@@ -187,6 +187,14 @@ export interface CheckOptions {
     embedder: Embedder
     /** Cosine threshold (default `DEFAULT_SEMANTIC_THRESHOLD`, `--semantic-threshold`). */
     threshold?: number
+    /**
+     * True when `embedder` is the deterministic TEST stub (AC-3-5). The stub's cosines are
+     * a hash, so the opposition detector — part of the certification surface — cannot find
+     * what the pinned model would: the run is WEAKENED, demotes with `run-weakened`, and is
+     * disclosed as `run.embedder: 'stub'`. The caller that loaded the embedder knows which
+     * one it loaded, so it says so here; the engine never infers it.
+     */
+    stub?: boolean
   }
   /**
    * Opt-in bounded temporal tier (AC-33-2, `--temporal`). When set, EARS
@@ -372,6 +380,11 @@ export interface CoverageDemotion {
     // detect-and-demote bridge for a conflict whose reachability (can the two guards
     // co-occur?) this tier cannot decide. Not waivable: there is no finding behind it.
     | 'conditional-conflict-unchecked'
+    // AC-3-5 / invariant I-1: the run itself was weakened — today, the semantic tier ran on
+    // the deterministic TEST stub embedder, whose cosines are meaningless, so the opposition
+    // detector could not find what the pinned model would. A statement about the RUN, not
+    // the document: discharged by re-running without the stub, never by waiving.
+    | 'run-weakened'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
   action: string
@@ -492,6 +505,19 @@ export interface CheckReport {
    * error-severity finding.
    */
   strictGate?: 'pass' | 'fail'
+  /**
+   * What this run was made of, where it can weaken the verdict (spec 007 invariant I-1).
+   * `embedder` is `'model'` when the semantic tier ran on a caller-supplied embedder,
+   * `'stub'` when it ran on the deterministic TEST stub (which demotes with
+   * `run-weakened`), and `'off'` when it did not run (which demotes with
+   * `semantic-tier-skipped`).
+   */
+  run: RunDisclosure
+}
+
+/** See {@link CheckReport.run}. */
+export interface RunDisclosure {
+  readonly embedder: 'model' | 'stub' | 'off'
 }
 
 /**
@@ -1830,6 +1856,21 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
             'guards/objects) or commit glossary/antonym links so the decide tier can compare pairs.',
       })
     }
+    // AC-3-5: the stub ran in the model's place. Inside the ≥2 guard with
+    // `semantic-tier-skipped`, for the same reason: with fewer than two requirements the
+    // semantic tier has nothing to compare, so which embedder ran cannot weaken anything.
+    if (options.semantic?.stub === true) {
+      demotions.push({
+        reason: 'run-weakened',
+        requirementIds: [],
+        action:
+          'The semantic tier ran on the deterministic TEST stub embedder (SYMSPEC_EMBED_STUB=1), ' +
+          'whose cosines are a hash rather than a similarity, so opposition candidates and ' +
+          'paraphrase merges the pinned model would propose may be missing — this run cannot ' +
+          'certify. Unset SYMSPEC_EMBED_STUB and re-run `symspec check` (pre-warm an air-gapped ' +
+          'host with `symspec download-model`). Waiving cannot discharge this: nothing was compared.',
+      })
+    }
     if (options.semantic === undefined) {
       demotions.push({
         reason: 'semantic-tier-skipped',
@@ -1993,5 +2034,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
     coverage: coverageReport,
     verified,
     ...(strictGate !== undefined ? { strictGate } : {}),
+    run: {
+      embedder:
+        options.semantic === undefined ? 'off' : options.semantic.stub === true ? 'stub' : 'model',
+    },
   }
 }

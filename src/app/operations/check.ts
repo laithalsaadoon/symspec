@@ -616,6 +616,8 @@ const toCheckOptions = (
    * rather than treating as a clean run.
    */
   embedder: Embedder | undefined,
+  /** Whether `embedder` is the TEST stub — `EmbedderService.isStub`, never re-derived. */
+  embedderIsStub: boolean,
 ): CheckOptions => ({
   timeoutMs: input.timeoutMs,
   // 0 is the "unbounded" sentinel; v4 expresses unbounded as an absent key.
@@ -633,6 +635,9 @@ const toCheckOptions = (
     ? {
         semantic: {
           embedder,
+          // AC-3-5: the stub DEMOTES. Forwarded from the service's own disclosure so the
+          // engine never guesses which embedder ran.
+          ...(embedderIsStub ? { stub: true } : {}),
           ...(input.semanticThreshold !== null && Number.isFinite(input.semanticThreshold)
             ? { threshold: input.semanticThreshold }
             : {}),
@@ -783,7 +788,8 @@ export const checkOp = defineOperation({
       // the fail-closed rule: a missing model must produce ERR_EMBED_MODEL_MISSING
       // (exit 2) instead of a report whose opposition detector silently did not run.
       // A detector that can be skipped is a gate that can be gamed by omission.
-      const embedder = input.semantic ? yield* (yield* EmbedderService).load : undefined
+      const embedderService = yield* EmbedderService
+      const embedder = input.semantic ? yield* embedderService.load : undefined
       const engineDoc = toEngineDoc(loaded.document)
 
       // The AC-A-8 ANCHOR. Measured around the pipeline call and nowhere else, so it
@@ -796,7 +802,7 @@ export const checkOp = defineOperation({
       const startedAt = Date.now()
 
       const full = yield* Effect.tryPromise({
-        try: () => runCheck(engineDoc, toCheckOptions(input, embedder)),
+        try: () => runCheck(engineDoc, toCheckOptions(input, embedder, embedderService.isStub)),
         catch: (cause) =>
           // The tier's own typed failures (a `SolverBudgetExceededError` escaping
           // `findNeedsReview` to a direct caller) and any genuine defect both land
