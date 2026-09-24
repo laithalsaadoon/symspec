@@ -120,7 +120,7 @@ export const FND_CODES = [
   // Quantity-alias proposal (appended) — two co-active numeric bounds (same
   // system, same guard, or both unguarded) land on DIFFERENT quantity keys
   // that nonetheless share a noun token (e.g. "complete the infusion within ≤30
-  // min" vs "finish the infusion in ≥60 min"). The bounds may constrain ONE
+  // min" vs "run the infusion for ≥60 min"). The bounds may constrain ONE
   // physical quantity the verb phrasing split apart. Propose-only: suggests
   // `symspec glossary add` to unify the quantities so the LIA tier can compare
   // their bounds. Never a verdict; it DEMOTES `verified` because a possible
@@ -133,6 +133,12 @@ export const FND_CODES = [
   // aggregate sums or cross-quantity arithmetic. Info-tier, DEMOTES `verified`
   // so "verified" never outruns what the solver actually compared.
   'FND_RELATIONAL_UNCHECKED',
+  // Numeric-uncompared disclosure (appended, spec 007 AC-2-5/AC-2-6) — co-live bounds
+  // on ONE quantity key that the numeric tier neither proved nor dismissed: a deadline
+  // and a duration it keeps on two variables, a °F/K bound whose absolute and
+  // difference readings disagree, or two units no conversion relates. Info-tier,
+  // DEMOTES `verified`; never a verdict.
+  'FND_NUMERIC_UNCOMPARED',
 ] as const
 
 export type FndCode = (typeof FND_CODES)[number]
@@ -278,7 +284,12 @@ export const FndCodeMeta = {
   FND_QUANTITY_ALIAS_CANDIDATE: {
     code: 'FND_QUANTITY_ALIAS_CANDIDATE',
     description:
-      'info — two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "finish the infusion in ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary add` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict.',
+      'info — two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "run the infusion for ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary add` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict.',
+  },
+  FND_NUMERIC_UNCOMPARED: {
+    code: 'FND_NUMERIC_UNCOMPARED',
+    description:
+      'info — two co-live numeric bounds on ONE quantity key were neither proved nor dismissed, because the verdict depends on a reading the sentences do not fix: a deadline and a duration (e.g. "complete the infusion within 30 min" vs "... for at least 60 min"), which the numeric tier keeps on two variables; a °F or K bound that conflicts read as an absolute temperature and not as a difference (a differential, rise, or overshoot), or the reverse; or two units no conversion relates (e.g. "400 days" vs "1 year"). DEMOTES `verified`; discharge by restating the bounds in one sense and one unit, or waive it if they are consistent. Never a verdict.',
   },
   FND_RELATIONAL_UNCHECKED: {
     code: 'FND_RELATIONAL_UNCHECKED',

@@ -64,6 +64,32 @@ const pairDoc = (a: ReqSpec, b: ReqSpec) => ({
   stateModel: { variables: [] },
 })
 
+/**
+ * A document of any number of requirements, ids in argument order. The verifier's shape for a
+ * deleted disclosure is a PAIR duplicated under a second trigger: two requirements per guard
+ * silence `FND_RELATIONAL_UNCHECKED` (every atom is shared), so whatever still demotes is
+ * the numeric tier's own doing.
+ */
+const idAt = (i: number) => `aaaaaaaa-1111-4111-8111-${String(i).padStart(12, '0')}`
+const manyDoc = (...specs: ReqSpec[]) => ({
+  ...pairDoc(specs[0]!, specs[1]!),
+  requirements: Object.fromEntries(specs.map((s, i) => [idAt(i), reqOf(idAt(i), s)])),
+})
+
+/** The pair `a`/`b` under trigger `t1`, and again under trigger `t2`. */
+const twoTriggers = (
+  base: Pick<ReqSpec, 'systemName'>,
+  a: string,
+  b: string,
+  t1: string,
+  t2: string,
+): ReqSpec[] => [
+  { ...base, systemResponse: a, trigger: t1 },
+  { ...base, systemResponse: b, trigger: t1 },
+  { ...base, systemResponse: a, trigger: t2 },
+  { ...base, systemResponse: b, trigger: t2 },
+]
+
 /** The numeric-contradiction findings `check` reports for the two requirements. */
 const numericFindings = async (a: ReqSpec, b: ReqSpec) => {
   const report = await runCheck(pairDoc(a, b) as never, {})
@@ -284,6 +310,62 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
   })
 })
 
+describe('AC-2-5: a temperature on an offset scale is read as an absolute AND as a difference', () => {
+  const chiller = (systemResponse: string): ReqSpec => ({ systemName: 'chiller', systemResponse })
+
+  it('proves no conflict from a DIFFERENCE read as an absolute: 36 °F of differential is 20 °C', async () => {
+    // Read as an absolute temperature, `at most 36 °F` is `<= 20/9 °C` and meets `>= 15 °C`
+    // as a conflict. A differential, a rise, or an overshoot is a DIFFERENCE, and 36 °F of
+    // difference is 20 °C of difference, above the 15 °C floor. The sentence does not say
+    // which, so neither reading may be asserted alone.
+    const pairs: Array<[string, string]> = [
+      [
+        'hold the supply return temperature differential at most 36 degrees fahrenheit',
+        'hold the supply return temperature differential at least 15 degrees celsius',
+      ],
+      [
+        'limit the temperature rise to at most 40 degF',
+        'limit the temperature rise to at least 10 degC',
+      ],
+      [
+        'limit the temperature overshoot to at most 5 kelvin',
+        'limit the temperature overshoot to at least 2 degrees celsius',
+      ],
+    ]
+    for (const [a, b] of pairs) {
+      expect(await numericFindings(chiller(a), chiller(b)), `${a} / ${b}`).toEqual([])
+    }
+  })
+
+  it('DISCLOSES the pair it could not decide, so a two-reading conflict cannot certify', async () => {
+    // The absolute reading conflicts and the difference reading does not. Declining the proof
+    // is a miss unless something says so: the pair duplicated under a second trigger silences
+    // every other demotion, and the run must still not be verified.
+    const doc = manyDoc(
+      ...twoTriggers(
+        { systemName: 'chiller' },
+        'hold the supply return temperature differential at most 36 degrees fahrenheit',
+        'hold the supply return temperature differential at least 15 degrees celsius',
+        'the compressor starts',
+        'the compressor restarts',
+      ),
+    )
+    const report = await runCheck(doc as never, {})
+    expect(report.counts.error).toBe(0)
+    expect(report.findings.map((f) => f.code)).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(report.coverage.demotions.map((d) => d.reason)).toContain('numeric-bounds-uncompared')
+    expect(report.verified).toBe(false)
+  })
+
+  it('still proves a conflict both readings agree on: 80 °F is above 25 °C either way', async () => {
+    const found = await numericFindings(
+      chiller('hold the supply temperature at least 80 degrees fahrenheit'),
+      chiller('hold the supply temperature at most 25 degrees celsius'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+})
+
 const door = (systemResponse: string, negated = false): ReqSpec => ({
   systemName: 'door controller',
   systemResponse,
@@ -399,8 +481,11 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
     }
     const report = await runCheck(doc as never, {})
     expect(report.findings.map((f) => f.code)).not.toContain('FND_NUMERIC_CONTRADICTION')
-    // Nor is the pair PROPOSED as an alias: a `glossary add` between two roles could not
-    // change the verdict, so suggesting one hands the author a repair that does nothing.
+    // Kept apart is not silently dropped: the aliased pair is disclosed.
+    expect(report.findings.map((f) => f.code)).toContain('FND_NUMERIC_UNCOMPARED')
+    // And before the alias, the pair is still PROPOSED — the candidate is a discloser and
+    // pairs on the coarse unit class — but its message does not promise a proof the
+    // decide tier will not make: it names the disclosure the alias leads to.
     const bare = await runCheck(
       pairDoc(
         siren('start the siren within 2 seconds'),
@@ -408,7 +493,9 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
       ) as never,
       {},
     )
-    expect(bare.findings.map((f) => f.code)).not.toContain('FND_QUANTITY_ALIAS_CANDIDATE')
+    const candidate = bare.findings.find((f) => f.code === 'FND_QUANTITY_ALIAS_CANDIDATE')
+    expect(candidate?.message).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(candidate?.message).not.toContain('can prove any conflict')
     // The control: two DEADLINES under two verbs are proposed, and once aliased, proved.
     const sameRole = pairDoc(
       siren('start the siren within 2 seconds'),
@@ -444,6 +531,153 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
       monitor('poll the sensor at most once every 5 seconds'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
+  it('reads `within 5 mm` as a tolerance on a distance, not a deadline', async () => {
+    // A deadline is a TIME role. `keep the positioning error within 5 mm` bounds the error
+    // itself, so it meets `at least 10 mm` on one variable and the conflict is proved.
+    const doc = manyDoc(
+      ...twoTriggers(
+        { systemName: 'positioner' },
+        'keep the positioning error within 5 mm',
+        'keep the positioning error at least 10 mm',
+        'the arm is homed',
+        'the arm is parked',
+      ),
+    )
+    const report = await runCheck(doc as never, {})
+    const proven = report.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+    expect(proven.map((f) => f.requirementIds)).toEqual([
+      [idAt(0), idAt(1)],
+      [idAt(2), idAt(3)],
+    ])
+    // Nor is `for` a duration on a distance: `travel for at least 10 mm` and `travel within
+    // 5 mm` are two magnitudes of one travel, and they conflict.
+    const travel = await numericFindings(
+      { systemName: 'positioner', systemResponse: 'travel within 5 mm' },
+      { systemName: 'positioner', systemResponse: 'travel for at least 10 mm' },
+    )
+    expect(travel.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
+  it('asserts an unmarked bound on EVERY role beside it, so the verdict stays monotone', async () => {
+    // With a deadline and a duration on one key, `below 1 second` carries no role of its own.
+    // Read against the duration it conflicts with `for at least 30 seconds`; asserting it on
+    // one role only would let adding the deadline requirement DELETE that proof.
+    const doc = manyDoc(
+      siren('sound the siren within 2 seconds'),
+      siren('sound the siren for at least 30 seconds'),
+      siren('sound the siren below 1 second'),
+    )
+    const report = await runCheck(doc as never, {})
+    const proven = report.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+    expect(proven.map((f) => f.requirementIds)).toEqual([[idAt(1), idAt(2)]])
+  })
+
+  it('compares an unmarked bound with a deadline: `respond over 30 ms` meets `respond within 30 ms`', async () => {
+    // An unmarked bound carries no role of its own, so it is read against whichever role the
+    // other bound names. Only two DIFFERENT markers (a deadline and a duration) are kept apart.
+    for (const over of ['respond over 30 ms', 'respond above 50 ms', 'respond over 3000 ms']) {
+      const within = over.endsWith('3000 ms') ? 'respond within 2 seconds' : 'respond within 30 ms'
+      const doc = manyDoc(
+        ...twoTriggers(
+          { systemName: 'api gateway' },
+          within,
+          over,
+          'a request arrives',
+          'a retry arrives',
+        ),
+      )
+      const report = await runCheck(doc as never, {})
+      const proven = report.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+      expect(
+        proven.map((f) => f.requirementIds),
+        over,
+      ).toEqual([
+        [idAt(0), idAt(1)],
+        [idAt(2), idAt(3)],
+      ])
+    }
+  })
+
+  it('DISCLOSES a deadline and a duration it did not compare, so the pair cannot certify', async () => {
+    // `sound the siren within 2 seconds` + `... for at least 30 seconds` is consistent (onset,
+    // then how long), and `complete the infusion within 30 minutes` + `... for at least 60`
+    // is not (a run of 60 minutes cannot complete in 30) — one role pair, two verdicts. The
+    // tier proves neither, and says so.
+    const siren2 = manyDoc(
+      ...twoTriggers(
+        { systemName: 'alarm unit' },
+        'sound the siren within 2 seconds',
+        'sound the siren for at least 30 seconds',
+        'an intrusion is detected',
+        'a tamper is detected',
+      ),
+    )
+    const report = await runCheck(siren2 as never, {})
+    expect(report.counts.error).toBe(0)
+    expect(report.findings.map((f) => f.code)).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(report.coverage.demotions.map((d) => d.reason)).toContain('numeric-bounds-uncompared')
+    expect(report.verified).toBe(false)
+  })
+
+  it('still PROPOSES an alias across roles, so issue #2 (a) cannot certify', async () => {
+    // A completion deadline and a run duration under two verbs are two quantity keys. The
+    // candidate is a DISCLOSER, so it pairs on the coarse unit class, never on the role the
+    // prover splits on; a finer key there deleted the only demotion the document had.
+    for (const [a, b] of [
+      ['complete the infusion within 30 minutes', 'run the infusion for at least 60 minutes'],
+      ['finish the backup within 30 minutes', 'run the backup for at least 60 minutes'],
+    ] as const) {
+      const doc = manyDoc(
+        ...twoTriggers(
+          { systemName: 'infusion pump' },
+          a,
+          b,
+          'the dose is started',
+          'the dose is resumed',
+        ),
+      )
+      const report = await runCheck(doc as never, {})
+      expect(
+        report.findings.map((f) => f.code),
+        a,
+      ).toContain('FND_QUANTITY_ALIAS_CANDIDATE')
+      expect(report.verified, a).toBe(false)
+      // And once the author commits the alias the candidate printed, the pair meets on one
+      // key with two roles: still not proved, still disclosed.
+      const aliased = await runCheck(
+        {
+          ...doc,
+          glossary: [{ canonical: a.split(' within')[0]!, aliases: [b.split(' for')[0]!] }],
+        } as never,
+        {},
+      )
+      expect(aliased.counts.error, a).toBe(0)
+      expect(
+        aliased.findings.map((f) => f.code),
+        a,
+      ).toContain('FND_NUMERIC_UNCOMPARED')
+      expect(aliased.verified, a).toBe(false)
+    }
+  })
+
+  it('DISCLOSES two unrecognized units it did not compare: 400 days against 1 year', async () => {
+    // Keyed on its raw text, `days` never meets `year` (AC-2-5), which is right for `90 days`
+    // and a miss for `400 days`. The pair is disclosed rather than silently certified.
+    const doc = manyDoc(
+      ...twoTriggers(
+        { systemName: 'archive service' },
+        'retain audit logs for at least 400 days',
+        'retain audit logs for at most 1 year',
+        'a log is written',
+        'a log is rotated',
+      ),
+    )
+    const report = await runCheck(doc as never, {})
+    expect(report.counts.error).toBe(0)
+    expect(report.findings.map((f) => f.code)).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(report.verified).toBe(false)
   })
 
   it('keeps digits in the quantity subject: zone 1 and zone 2 are two temperatures', async () => {

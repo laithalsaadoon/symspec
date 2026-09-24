@@ -71,6 +71,15 @@ export interface NumericPredicate {
   /** The bound, normalized into `baseUnit`, exactly. This is what Z3 is given. */
   readonly exact: Rational
   /**
+   * The same bound read as a DIFFERENCE on its scale — the factor applied, the offset
+   * not — present only when the unit's conversion has an offset (°F, K). `at most 36 °F`
+   * is `<= 20/9 °C` as an absolute temperature and `<= 20 °C` as a differential, rise,
+   * or overshoot, and the sentence does not say which. `numeric-contradiction.ts` proves
+   * a conflict only when BOTH readings are unsatisfiable, and discloses a pair on which
+   * they disagree.
+   */
+  readonly difference?: Rational
+  /**
    * The unit dimension the bound is on: a {@link DIMENSIONS} name (`time`,
    * `distance`, …) when the unit is recognized, {@link RAW_UNIT_DIMENSION} when a
    * unit token is present but recognized by no dimension, `''` when the number has
@@ -108,9 +117,24 @@ export interface NumericPredicate {
  *
  * "Sound the siren within 2 seconds" and "sound the siren for at least 30 seconds"
  * are one quantity key and two roles; read as one variable they were `<= 2 s ∧ >=
- * 30 s`, an error on a consistent document. The role only ever SPLITS a comparison
- * cell, so reading it can only drop a proof, never invent one; the price is that an
- * unmarked `respond over 30 ms` is not compared with `respond within 30 ms`.
+ * 30 s`, an error on a consistent document. Two DIFFERENT markers are never compared
+ * with each other ({@link rolesCompatible}); an unmarked bound names no role of its
+ * own and is compared with every role on its key, so `respond over 30 ms` still meets
+ * `respond within 30 ms`. A pair the role keeps apart is not silently dropped: when
+ * the two would conflict read as one quantity, `numeric-contradiction.ts` discloses it
+ * (`FND_NUMERIC_UNCOMPARED`), because "complete the infusion within 30 minutes" and
+ * "... for at least 60 minutes" is that shape too, and it is a real conflict.
+ *
+ * A role is a TIME role: `keep the positioning error within 5 mm` is a tolerance on a
+ * distance, not a deadline, and carries no role. A unit this tier does not recognize
+ * (`days`) or no unit at all may still be a time, so those keep their marker.
+ *
+ * `within` BEFORE another comparator (`complete the infusion within at most 30
+ * minutes`) stays in the quantity label, so the key already names the deadline
+ * (`complete the infusion within`) and the bound carries no role on top of it. Only a
+ * committed glossary alias can bring another phrasing onto that key, and an alias to
+ * a label that names its own role is the author's statement that the two are one
+ * quantity.
  */
 export type BoundRole = 'deadline' | 'duration' | 'period' | ''
 
@@ -534,7 +558,7 @@ function readUnit(rest: string): { raw: string; length: number } {
 function normalizeBound(
   numberText: string,
   rawUnit: string,
-): { exact: Rational; dimension: string; baseUnit: string } {
+): { exact: Rational; difference?: Rational; dimension: string; baseUnit: string } {
   const magnitude = parseRational(numberText.replace(/,/g, ''))
   if (rawUnit === '') return { exact: magnitude, dimension: '', baseUnit: '' }
   const resolved = resolveUnit(rawUnit)
@@ -542,23 +566,49 @@ function normalizeBound(
     return { exact: magnitude, dimension: RAW_UNIT_DIMENSION, baseUnit: rawUnit }
   }
   const scaled = mulR(magnitude, parseRational(resolved.scale.factor))
-  const exact =
-    resolved.scale.offset === undefined
-      ? scaled
-      : addR(scaled, parseRational(resolved.scale.offset))
-  return { exact, dimension: resolved.dimension, baseUnit: resolved.base }
+  if (resolved.scale.offset === undefined) {
+    return { exact: scaled, dimension: resolved.dimension, baseUnit: resolved.base }
+  }
+  return {
+    exact: addR(scaled, parseRational(resolved.scale.offset)),
+    difference: scaled,
+    dimension: resolved.dimension,
+    baseUnit: resolved.base,
+  }
 }
 
 /**
- * The comparability class of a bound: two bounds on one quantity are arithmetic
- * about the same thing only when they share a ROLE (AC-2-6), a dimension, and a
- * unit (AC-2-5). Exported so the decide tier (`numeric-contradiction.ts`) and the
- * propose tier (`quantity-alias.ts`) partition on one definition — a propose tier
- * looser than its decide tier suggests a `glossary add` that the decide tier then
- * never compares, so the suggested repair cannot change the verdict.
+ * The unit class of a bound: two bounds on one quantity are arithmetic about the same
+ * scale only when they share a dimension and a unit (AC-2-5). The ROLE is not part of
+ * it: roles are settled inside a cell ({@link rolesCompatible}), so the decide tier
+ * can compare an unmarked bound with a marked one and DISCLOSE two marked bounds it
+ * kept apart. Exported so the decide tier (`numeric-contradiction.ts`) and the propose
+ * tier (`quantity-alias.ts`) partition on one definition.
  */
-export function comparabilityOf(pred: NumericPredicate): string {
-  return JSON.stringify([pred.role, pred.dimension, pred.baseUnit])
+export function unitClassOf(pred: NumericPredicate): string {
+  return JSON.stringify([pred.dimension, pred.baseUnit])
+}
+
+/**
+ * Whether two bounds' roles let the decide tier assert them on ONE variable: the same
+ * role, or either one unmarked. A deadline and a duration are two quantities (AC-2-6).
+ */
+export function rolesCompatible(a: BoundRole, b: BoundRole): boolean {
+  return a === b || a === '' || b === ''
+}
+
+/**
+ * Two comparators are directionally OPPOSED — the only shape that can be jointly
+ * unsatisfiable once the two bounds share a variable. An equality opposes anything but
+ * the same equality, and an upper bound opposes a lower one. Two same-direction bounds
+ * only tighten. Shared by the disclosers (`quantity-alias.ts`, and the uncompared-unit
+ * pairs in `numeric-contradiction.ts`), which pair without a solver.
+ */
+export function opposedComparators(a: NumericComparator, b: NumericComparator): boolean {
+  const upper = (c: NumericComparator) => c === '<' || c === '<='
+  const lower = (c: NumericComparator) => c === '>' || c === '>='
+  if (a === '=' || b === '=') return a !== b
+  return (upper(a) && lower(b)) || (lower(a) && upper(b))
 }
 
 /**
@@ -579,7 +629,7 @@ export function comparabilityOf(pred: NumericPredicate): string {
  * scale its value was normalized onto; the two are separate facts and the key must
  * keep naming only the first. Comparability is a property of a PAIR of predicates,
  * so the unit belongs in the comparison partition, not the identity: see
- * {@link comparabilityOf}, which `numeric-contradiction.ts` (`comparisonKey`) groups on
+ * {@link unitClassOf}, which `numeric-contradiction.ts` (`comparisonKey`) groups on
  * so a unitless bound, a `days` bound, and an `ms` bound are never compared with
  * one another — and which `quantity-alias.ts` requires to agree before it pairs.
  * Folding the unit in here would also rename the `quantity` in every emitted
@@ -758,11 +808,15 @@ const MEANING_CHANGING_FILLER: ReadonlySet<string> = new Set([
  * comparator (`prev`) and the filler between the comparator and the number
  * (`mid`). `invert` means the comparator bounds a frequency and must be flipped to
  * bound the interval. `null` means the bound is declined.
+ *
+ * `dimension` is the bound's unit dimension: a deadline and a duration are time
+ * roles, so a bound on a recognized non-time dimension (`within 5 mm`) is a magnitude.
  */
 function roleOf(
   phrase: string,
   prev: string | undefined,
   mid: readonly string[],
+  dimension: string,
 ): { role: BoundRole; invert: boolean } | null {
   if (mid.includes('every')) {
     const shape = mid.join(' ')
@@ -772,9 +826,12 @@ function roleOf(
     return null
   }
   if (mid.some((w) => MEANING_CHANGING_FILLER.has(w))) return null
-  if (phrase === 'within' || prev === 'within' || prev === 'in') {
-    return { role: 'deadline', invert: false }
-  }
+  // `within` before another comparator is the last word of the LABEL, so the key
+  // already names the deadline; see {@link BoundRole}.
+  if (prev === 'within') return { role: '', invert: false }
+  const timeLike = dimension === 'time' || dimension === RAW_UNIT_DIMENSION || dimension === ''
+  if (!timeLike) return { role: '', invert: false }
+  if (phrase === 'within' || prev === 'in') return { role: 'deadline', invert: false }
   if (prev === 'for') return { role: 'duration', invert: false }
   if (prev === 'every') return { role: 'period', invert: false }
   return { role: '', invert: false }
@@ -923,7 +980,8 @@ export function extractNumericPredicates(
         .toLowerCase()
         .split(/\s+/)
         .filter((w) => w !== '')
-      const reading = roleOf(phrase, prev?.word, midWords)
+      const bound = normalizeBound(m[1]!, unit.raw)
+      const reading = roleOf(phrase, prev?.word, midWords, bound.dimension)
       if (reading === null) {
         declined += 1
         continue
@@ -936,7 +994,7 @@ export function extractNumericPredicates(
         continue
       }
 
-      const { exact, dimension, baseUnit } = normalizeBound(m[1]!, unit.raw)
+      const { exact, difference, dimension, baseUnit } = bound
 
       out.push({
         quantity: quantityKey(systemName, label, quantityAliases),
@@ -944,6 +1002,7 @@ export function extractNumericPredicates(
         comparator: cmpr,
         value: toDisplayNumber(exact),
         exact,
+        ...(difference !== undefined ? { difference } : {}),
         dimension,
         baseUnit,
         role: reading.role,
@@ -962,9 +1021,9 @@ export function extractNumericPredicates(
  * Drop exact-duplicate predicates.
  *
  * The key names every field of the record that carries a claim — slot, quantity,
- * comparator, exact value, dimension, base unit — so two predicates that differ anywhere both
- * survive. `sourceText` is excluded deliberately: it is the audit substring, and
- * two spellings of one bound in one slot are one claim.
+ * comparator, exact value, difference reading, dimension, base unit, role — so two
+ * predicates that differ anywhere both survive. `sourceText` is excluded deliberately: it
+ * is the audit substring, and two spellings of one bound in one slot are one claim.
  *
  * The `slot` component cannot change the outcome for any caller
  * {@link extractNumericPredicates} has, because each call carries one slot and so
@@ -981,6 +1040,7 @@ function dedupe(preds: NumericPredicate[]): NumericPredicate[] {
       p.quantity,
       p.comparator,
       `${p.exact.numerator}/${p.exact.denominator}`,
+      p.difference === undefined ? '' : `${p.difference.numerator}/${p.difference.denominator}`,
       p.dimension,
       p.baseUnit,
       p.role,

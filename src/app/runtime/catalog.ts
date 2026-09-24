@@ -293,6 +293,7 @@ const FND_TIER = {
   FND_EXCLUDED_FROM_FORMAL: 'structural',
   FND_QUANTITY_ALIAS_CANDIDATE: 'formal',
   FND_RELATIONAL_UNCHECKED: 'formal',
+  FND_NUMERIC_UNCOMPARED: 'formal',
 } as const satisfies Record<(typeof FND_CODES)[number], 'structural' | 'lint' | 'formal'>
 
 /**

@@ -195,6 +195,7 @@ const EVERY_REASON: readonly CoverageDemotion['reason'][] = [
   'excluded-from-formal',
   'quantity-alias-candidate',
   'relational-reasoning-not-attempted',
+  'numeric-bounds-uncompared',
   'solver-budget-exhausted',
   'inconclusive-group',
 ]

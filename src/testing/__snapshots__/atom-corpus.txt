@@ -2,10 +2,10 @@ eval-rounds/eval-feedback-exclude-include	resp	sys__gallery_service__resp__exclu
 eval-rounds/eval-feedback-exclude-include	resp	sys__gallery_service__resp__exclude_that_tile_the_default_gallery_view [NEG]	<- include that tile in the default gallery view
 eval-rounds/eval-feedback-exclude-include	trig	sys__gallery_service__trig__curator_hides_a_tile	<- the curator hides a tile
 eval-rounds/eval-issue2-infusion-proven-via-glossary	resp	sys__infusion_pump__resp__complete_the_infusion_within_at_most_30_minutes	<- complete the infusion within at most 30 minutes
-eval-rounds/eval-issue2-infusion-proven-via-glossary	resp	sys__infusion_pump__resp__finish_the_infusion_in_at_least_60_minutes	<- finish the infusion in at least 60 minutes
+eval-rounds/eval-issue2-infusion-proven-via-glossary	resp	sys__infusion_pump__resp__run_the_infusion_for_at_least_60_minutes	<- run the infusion for at least 60 minutes
 eval-rounds/eval-issue2-infusion-proven-via-glossary	trig	sys__infusion_pump__trig__infusion_started	<- an infusion is started
 eval-rounds/eval-issue2-infusion-quantity-alias	resp	sys__infusion_pump__resp__complete_the_infusion_within_at_most_30_minutes	<- complete the infusion within at most 30 minutes
-eval-rounds/eval-issue2-infusion-quantity-alias	resp	sys__infusion_pump__resp__finish_the_infusion_in_at_least_60_minutes	<- finish the infusion in at least 60 minutes
+eval-rounds/eval-issue2-infusion-quantity-alias	resp	sys__infusion_pump__resp__run_the_infusion_for_at_least_60_minutes	<- run the infusion for at least 60 minutes
 eval-rounds/eval-issue2-infusion-quantity-alias	trig	sys__infusion_pump__trig__infusion_started	<- an infusion is started
 eval-rounds/eval-issue2-ring-odd-cycle	resp	sys__controller__resp__assign_sensor_five_to_a_channel_that_differs_from_the_channel_of_sensor_one	<- assign sensor five to a channel that differs from the channel of sensor one
 eval-rounds/eval-issue2-ring-odd-cycle	resp	sys__controller__resp__assign_sensor_four_to_a_channel_that_differs_from_the_channel_of_sensor_five	<- assign sensor four to a channel that differs from the channel of sensor five
@@ -131,7 +131,7 @@ generated-t2/contradiction-t2-0	resp	sys__auth_service__resp__issue_a_session_to
 generated-t2/contradiction-t2-0	trig	sys__auth_service__trig__user_submits_valid_credentials	<- the user submits valid credentials
 generated-t2/missing-link-t2-4	resp	sys__auth_service__resp__issue_a_session_token_after_authentication	<- issue a session token after authentication
 generated-t2/missing-link-t2-4	resp	sys__auth_service__resp__issue_a_session_token_on_login	<- issue a session token on login
-generated-t2/numeric-t2-1	resp	sys__api__resp__respond_in_over_3000_ms	<- respond in over 3000 ms
+generated-t2/numeric-t2-1	resp	sys__api__resp__respond_over_3000_ms	<- respond over 3000 ms
 generated-t2/numeric-t2-1	resp	sys__api__resp__respond_within_2_seconds	<- respond within 2 seconds
 generated-t2/temporal-t2-2	resp	sys__controller__resp__close_the_relief_valve	<- open the relief valve
 generated-t2/temporal-t2-2	resp	sys__controller__resp__close_the_relief_valve [NEG]	<- open the relief valve

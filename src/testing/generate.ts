@@ -250,7 +250,7 @@ function genNumeric(tier: number, seed: number): AdversarialCase {
   } else if (tier === 2) {
     reqs = [
       mkReq({ id: a, systemName: sys, systemResponse: 'respond within 2 seconds' }),
-      mkReq({ id: b, systemName: sys, systemResponse: 'respond in over 3000 ms' }),
+      mkReq({ id: b, systemName: sys, systemResponse: 'respond over 3000 ms' }),
     ]
     note = 'unit mismatch (s vs ms) hides the conflict from a lexical check'
   } else {
