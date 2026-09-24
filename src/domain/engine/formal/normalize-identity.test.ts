@@ -10,8 +10,10 @@
  * token. A merged GUARD puts two requirements into one context group, so two mutually exclusive
  * conditions can prove a conflict the document does not contain.
  *
- * The same rule sat in `normalizeScope`, where it merged `α valve controller` with
- * `β valve controller` into one system namespace.
+ * The same rule deleted every symbol: `$` and `€`, the `#` and `+` of `C#` and `C++`, `%`, and
+ * every emoji, so "the invoice currency is $" and "… €" were one guard. It sat in
+ * `normalizeScope` too, where it merged `α valve controller` with `β valve controller`, and
+ * `C# compiler` with `C++ compiler`, into one system namespace.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -96,6 +98,21 @@ describe('AC-2-4 — each reproducer pair lands on two distinct atoms', () => {
     expect(guard('the store holds 8 GiB')).not.toBe(guard('the store holds 8 Gib'))
   })
 
+  it('identity-bearing symbols: currency, C# / C++, emoji, percent', () => {
+    expect(guard('the invoice currency is $')).not.toBe(guard('the invoice currency is €'))
+    expect(guard('the project language is C#')).not.toBe(guard('the project language is C++'))
+    expect(guard('the project language is C#')).not.toBe(guard('the project language is C'))
+    expect(guard('the status light shows 🔴')).not.toBe(guard('the status light shows 🟢'))
+    expect(guard('the load exceeds 50%')).not.toBe(guard('the load exceeds 50'))
+    expect(guard('the load exceeds 50%')).not.toBe(guard('the load exceeds 50‰'))
+    expect(guard('the fee is 5 $')).not.toBe(guard('the fee is 5 £'))
+  })
+
+  it('the system scope keeps identity-bearing symbols too', () => {
+    expect(normalizeScope('C# compiler')).not.toBe(normalizeScope('C++ compiler'))
+    expect(normalizeScope('🚀')).not.toBe(normalizeScope('🛰'))
+  })
+
   it('the system scope keeps every script too', () => {
     expect(normalizeScope('α valve controller')).not.toBe(normalizeScope('β valve controller'))
     expect(normalizeScope('ゲートウェイ')).not.toBe(normalizeScope('认证服务'))
@@ -108,8 +125,37 @@ describe('AC-2-4 — what normalization still does', () => {
     expect(normalize('Grant ACCESS')).toBe(normalize('grant access'))
   })
 
+  it('drops quotes, brackets, dashes, sentence marks and separators in any script', () => {
+    expect(normalize('"quoted" and “curly” and «guillemets»')).toBe(
+      'quoted_and_curly_and_guillemets',
+    )
+    expect(normalize("the operator's console")).toBe('operator_s_console')
+    expect(normalize('**bold** `code` input/output a|b a\\b')).toBe(
+      'bold_code_input_output_a_b_a_b',
+    )
+    expect(normalize('日本語。')).toBe(normalize('日本語'))
+    expect(normalize('ready… ¿listo? ¡sí!')).toBe('ready_listo_sí')
+  })
+
+  it('a kept symbol is its own token, so spacing around it does not split a phrase', () => {
+    expect(normalize('$5')).toBe(normalize('$ 5'))
+    expect(normalize('50%')).toBe(normalize('50 %'))
+    expect(normalize('C#')).toBe('c_#')
+    expect(normalize('5°C')).toBe(normalize('5 °C'))
+    expect(normalize('5 °C')).not.toBe(normalize('5 °c'))
+  })
+
   it('is idempotent over its own output, case-kept unit tokens included', () => {
-    for (const text of ['100 MBps', '−5 °C', 'valve α', 'العربية', '100Mbps link']) {
+    for (const text of [
+      '100 MBps',
+      '−5 °C',
+      'valve α',
+      'العربية',
+      '100Mbps link',
+      'C++ and C#',
+      '$5 or €5',
+      '🔴 light ❤️',
+    ]) {
       expect(normalize(normalize(text))).toBe(normalize(text))
     }
   })
@@ -144,6 +190,36 @@ describe('AC-2-4 — a merged guard no longer fabricates a contradiction', () =>
       ]),
     )
     expect(report.findings.filter((f) => f.severity === 'error').map((f) => f.code)).toEqual([])
+  })
+
+  for (const [name, a, b] of [
+    ['$ and €', 'the invoice currency is $', 'the invoice currency is €'],
+    ['C# and C++', 'the project language is C#', 'the project language is C++'],
+    ['🔴 and 🟢', 'the status light shows 🔴', 'the status light shows 🟢'],
+  ] as const) {
+    it(`"${name}" are two contexts`, async () => {
+      const report = await runCheck(
+        await docOf([
+          `While ${a}, the billing service shall apply the surcharge.`,
+          `While ${b}, the billing service shall not apply the surcharge.`,
+        ]),
+        { temporal: {} },
+      )
+      expect(report.findings.filter((f) => f.severity === 'error').map((f) => f.code)).toEqual([])
+    })
+  }
+
+  it('a symbol-bearing guard still reaches every solver tier and proves a real conflict', async () => {
+    const report = await runCheck(
+      await docOf([
+        'While the invoice currency is €, the billing service shall apply the surcharge.',
+        'While the invoice currency is €, the billing service shall not apply the surcharge.',
+      ]),
+      { temporal: {} },
+    )
+    const codes = report.findings.map((f) => f.code)
+    expect(codes).toContain('FND_CONTRADICTION')
+    expect(codes).toContain('FND_TEMPORAL_CONTRADICTION')
   })
 
   it('one guard in a non-Latin script still reaches the solver and proves a real conflict', async () => {

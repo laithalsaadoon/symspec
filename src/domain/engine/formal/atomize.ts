@@ -18,8 +18,9 @@
  *      IDs" contradiction test (AC-4-4) rely on this.
  *
  *   2. CONSERVATIVE, NEAR-EXACT NORMALIZATION. The pipeline is EXACTLY:
- *        lowercase → strip leading articles (a|an|the) → strip punctuation
- *        → collapse whitespace → underscore-join → glossary rewrite →
+ *        strip leading articles (a|an|the) → spell comparison and sign symbols →
+ *        strip identity-free punctuation, keep every other symbol as a token →
+ *        fold case (not unit tokens) → underscore-join → glossary rewrite →
  *        copula strip (guard slots only) → leading-verb de-inflection +
  *        antonym-class lookup (response slots only; it sets the atom's
  *        {@link Opposition} and names the head after its class SIDE, never its
@@ -197,12 +198,12 @@ export function renderAtom(ref: AtomRef): string {
   // POSTCONDITIONS, not comments. An empty scope makes `sys____<kind>__<body>`, which merges every
   // system whose name normalizes away into ONE namespace — two unrelated systems' responses then
   // land on one atom and, at opposite polarity, prove a contradiction neither document contains.
-  // A scope carrying anything but letters, marks, digits (any script) and `_` makes the rendered
-  // name ambiguous to parse, and the format is parsed: `catalog.ts` and the atom-corpus gate both
-  // split on `__`.
+  // A scope that is not `_`-joined non-empty tokens (whitespace, a leading or trailing `_`, or a
+  // `__`) makes the rendered name ambiguous to parse, and the format is parsed: `catalog.ts` and
+  // the atom-corpus gate both split on `__`.
   if (ref.scope === '') throw new Error('renderAtom: empty scope — see normalizeScope')
-  if (!/^[\p{L}\p{M}\p{N}_]+$/u.test(ref.scope) || ref.scope.includes('__')) {
-    throw new Error(`renderAtom: scope outside [letters digits _]: ${JSON.stringify(ref.scope)}`)
+  if (!/^[^\s_]+(?:_[^\s_]+)*$/u.test(ref.scope)) {
+    throw new Error(`renderAtom: scope is not normalized tokens: ${JSON.stringify(ref.scope)}`)
   }
   return `sys__${ref.scope}__${atomNamespace(ref.kind)}__${ref.body}`
 }
@@ -597,10 +598,52 @@ export const SYMBOL_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
 ]
 
 /**
+ * The punctuation {@link normalize} deletes: the characters that carry no identity (spec 007
+ * AC-2-4). Each becomes a token boundary. The set is closed:
+ *   - connectors, dashes, brackets and quotes (`\p{Pc}` `\p{Pd}` `\p{Ps}` `\p{Pe}` `\p{Pi}`
+ *     `\p{Pf}`, `\p{Quotation_Mark}`), so `response-cache`, `(warm)` and `"x"` keep only words;
+ *   - sentence and clause punctuation in every script (`\p{Terminal_Punctuation}`: `. , ; : ! ?`,
+ *     `。`, `،`, `।` and the rest);
+ *   - separators and emphasis that join or decorate words and name nothing: `/ \ | * \` ´ … ‥ • ‣ ⁃ ¡ ¿`
+ *     (`input/output` is two words, `**bold**` is one). `|` and `\` also cannot appear inside a
+ *     quoted SMT-LIB symbol, and atom names are Z3 symbols;
+ *   - control and format characters (`\p{Cc}` `\p{Cf}`) and variation selectors, which change how
+ *     a character is drawn, not which character it is.
+ * Every other character outside letters, marks and digits is kept ({@link IDENTITY_SYMBOL}).
+ */
+const IDENTITY_FREE =
+  /[\s\p{Pc}\p{Pd}\p{Ps}\p{Pe}\p{Pi}\p{Pf}\p{Quotation_Mark}\p{Terminal_Punctuation}\p{Cc}\p{Cf}\p{Variation_Selector}/\\|*`´…‥•‣⁃¡¿]+/gu
+
+/**
+ * A character {@link normalize} KEEPS although it is neither a letter, a mark nor a digit: a
+ * symbol with identity, with any combining marks that follow it. Currency (`$` vs `€`), the `#`
+ * and `+` of `C#` and `C++`, `%` and `‰`, `°`, `&`, `@`, `§`, primes, and every emoji are
+ * different things. Deleting them merged `the invoice currency is $` with `… €` into one guard, and
+ * two exclusive conditions then proved a contradiction the document does not contain. Each one
+ * becomes its OWN token, so `$5` and `$ 5`, or `50%` and `50 %`, stay one phrase.
+ */
+const IDENTITY_SYMBOL = /[^\p{L}\p{M}\p{N}\s]\p{M}*/gu
+
+/** Delete {@link IDENTITY_FREE} punctuation and split every {@link IDENTITY_SYMBOL} into its own token. */
+function tokenize(text: string): string[] {
+  return text
+    .replace(IDENTITY_FREE, ' ')
+    .replace(IDENTITY_SYMBOL, (symbol) => ` ${symbol} `)
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+/**
  * Whether a raw token is a NUMBER, the position after which a token is a unit (AC-2-4). Digits in
  * any script, because `normalize` keeps every script's digits.
  */
 const NUMBER_TOKEN = /^\p{N}+$/u
+
+/**
+ * A token a unit may follow: a {@link NUMBER_TOKEN}, or the degree sign that {@link tokenize} splits
+ * off `5 °C`, so the `C` after it is read as a unit exactly as it was when `°` was deleted.
+ */
+const UNIT_POSITION = new RegExp(`${NUMBER_TOKEN.source}|^°$`, 'u')
 
 /** A token that OPENS with a number and continues with a unit: `100Mbps`, `5G`. */
 const NUMBER_THEN_UNIT = /^(\p{N}+)(.+)$/u
@@ -638,7 +681,7 @@ function isUnitToken(token: string): boolean {
  * rule can only SPLIT relative to full lowercasing, and only over unit spellings.
  */
 function foldCase(token: string, previous: string | undefined): string {
-  if (previous !== undefined && NUMBER_TOKEN.test(previous) && isUnitToken(token)) return token
+  if (previous !== undefined && UNIT_POSITION.test(previous) && isUnitToken(token)) return token
   const unit = NUMBER_THEN_UNIT.exec(token)
   if (unit !== null && isUnitToken(unit[2] as string)) return token
   return token.toLowerCase()
@@ -652,9 +695,10 @@ function foldCase(token: string, previous: string | undefined): string {
  *      ("issue a session token") are preserved deliberately
  *   2. spell out the {@link SYMBOL_PHRASES} symbols — BEFORE step 3, which would otherwise
  *      delete them
- *   3. strip punctuation: every character that is not a letter, combining mark or digit IN ANY
- *      SCRIPT, and not whitespace, becomes a space; this also normalizes input underscores so
- *      `auth_service` is idempotent
+ *   3. {@link tokenize}: {@link IDENTITY_FREE} punctuation becomes a space, which also normalizes
+ *      input underscores so `auth_service` is idempotent; every other character that is not a
+ *      letter, combining mark or digit IN ANY SCRIPT is an {@link IDENTITY_SYMBOL} and becomes its
+ *      own token
  *   4. split on whitespace and fold each token's case ({@link foldCase}: lowercase, except a
  *      {@link UNIT_TOKEN} after a number, whose case is its identity)
  *   5. underscore-join the surviving tokens
@@ -665,8 +709,10 @@ function foldCase(token: string, previous: string | undefined): string {
  * `[a-z0-9\s]` after lowercasing, which is a MERGE rule: `العربية` and `日本語` both normalized to
  * the empty body, `valve α` and `valve β` to one guard, `−5 °C` to `5 °C`, and `100 Mbps` to
  * `100 MBps`. A merged guard puts two requirements into one context group, so two exclusive
- * conditions could prove a contradiction the document does not contain. Keeping more characters
- * only ever refines the partition, so this change cannot merge two bodies that were distinct.
+ * conditions could prove a contradiction the document does not contain. The same held for every
+ * symbol: `$` and `€`, `C#` and `C++`, `🔴` and `🟢`, `50%` and `50`. Keeping a symbol as its own
+ * token only refines that partition. The one exception is a variation selector, which changes how
+ * a character is drawn and not which character it is.
  *
  * No stemming, no lemmatization, no stopword removal beyond the leading article.
  */
@@ -674,10 +720,7 @@ export function normalize(text: string): string {
   const deArticled = text.replace(/^(?:a|an|the)\s+/i, '')
   let spelled = deArticled
   for (const [pattern, phrase] of SYMBOL_PHRASES) spelled = spelled.replace(pattern, phrase)
-  const tokens = spelled
-    .replace(/[^\p{L}\p{M}\p{N}\s]+/gu, ' ')
-    .split(/\s+/)
-    .filter(Boolean)
+  const tokens = tokenize(spelled)
   return tokens.map((token, i) => foldCase(token, tokens[i - 1])).join('_')
 }
 
@@ -690,15 +733,15 @@ export function normalize(text: string): string {
  *    carries no meaning inside a slot phrase. In a system NAME it is part of the identifier:
  *    without this, `A Gateway` and `Gateway` are one system, and two products whose names differ
  *    only by an article share every atom they own.
- * 2. **Never empty.** A name with no letter or digit in any script (`—`, `🚀`) has nothing to
- *    keep. Measured when the keep-set was still `[a-z0-9]`, `ゲートウェイ` and `认证服务` both
+ * 2. **Never empty.** A name made only of identity-free punctuation (`—`, `( … )`) has nothing
+ *    to keep. Measured when the keep-set was still `[a-z0-9]`, `ゲートウェイ` and `认证服务` both
  *    vanished and produced one atom for two systems — `grant access` and `revoke access` at
  *    OPPOSITE polarity, a provable contradiction across documents that share nothing.
  *
- * It keeps letters, combining marks and digits in EVERY script, the same keep-set as
- * {@link normalize} (spec 007 AC-2-4): with the ASCII-only set, `α valve controller` and
- * `β valve controller` were one namespace, and so was any pair of names that differed only in
- * their non-Latin part. Unlike `normalize` it folds ALL case — a system name has no unit token.
+ * It keeps letters, combining marks and digits in EVERY script, and every identity-bearing
+ * symbol, through the same {@link tokenize} as {@link normalize} (spec 007 AC-2-4): with the
+ * ASCII-only set, `α valve controller` and `β valve controller` were one namespace, and so were
+ * `C# compiler` and `C++ compiler`. Unlike `normalize` it folds ALL case — a system name has no unit token.
  *
  * The fallback is a 32-bit FNV-1a over the name's code points, spelled out here rather than taken
  * from `node:crypto`, so the engine tier gains no import and stays byte-reproducible on any host.
@@ -706,9 +749,7 @@ export function normalize(text: string): string {
  * survive normalization" in an atom table rather than as a normal identifier.
  */
 export function normalizeScope(systemName: string): string {
-  const lowered = systemName.toLowerCase()
-  const dePunct = lowered.replace(/[^\p{L}\p{M}\p{N}\s]+/gu, ' ')
-  const scope = dePunct.split(/\s+/).filter(Boolean).join('_')
+  const scope = tokenize(systemName.toLowerCase()).join('_')
   if (scope !== '') return scope
   let hash = 0x811c9dc5
   for (const ch of systemName) {

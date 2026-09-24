@@ -325,18 +325,22 @@ describe('the atom scope', () => {
   })
 
   it('hashes deterministically and readably when nothing survives', () => {
-    // No letter or digit in any script: the only names the fallback still serves.
-    expect(normalizeScope('🚀 — 🚀')).toBe(normalizeScope('🚀 — 🚀'))
-    expect(normalizeScope('🚀 — 🚀')).toMatch(/^h[0-9a-f]{8}$/)
-    expect(normalizeScope('🚀 — 🚀')).not.toBe(normalizeScope('🛰'))
+    // Nothing but identity-free punctuation: the only names the fallback still serves. A symbol
+    // such as `🚀` is kept (spec 007 AC-2-4), so it no longer needs the fallback.
+    expect(normalizeScope('— … —')).toBe(normalizeScope('— … —'))
+    expect(normalizeScope('— … —')).toMatch(/^h[0-9a-f]{8}$/)
+    expect(normalizeScope('— … —')).not.toBe(normalizeScope('( — )'))
+    expect(normalizeScope('🚀 — 🚀')).toBe('🚀_🚀')
   })
 
   it('renderAtom REFUSES a scope it cannot render unambiguously', () => {
     // Postconditions rather than comments: an empty scope merges namespaces, and a scope outside
-    // letters/digits/`_` makes the `__`-delimited name ambiguous to the parsers that split on it.
+    // `_`-joined tokens makes the `__`-delimited name ambiguous to the parsers that split on it.
     expect(() => renderAtom({ scope: '', kind: 'resp', body: 'x' })).toThrow(/empty scope/)
-    expect(() => renderAtom({ scope: 'a b', kind: 'resp', body: 'x' })).toThrow(/outside/)
-    expect(() => renderAtom({ scope: 'a__b', kind: 'resp', body: 'x' })).toThrow(/outside/)
+    for (const scope of ['a b', 'a__b', '_a', 'a_']) {
+      expect(() => renderAtom({ scope, kind: 'resp', body: 'x' }), scope).toThrow(/not normalized/)
+    }
+    expect(renderAtom({ scope: 'c_#', kind: 'resp', body: 'x' })).toBe('sys__c_#__resp__x')
     expect(renderAtom({ scope: 'ゲートウェイ', kind: 'resp', body: 'x' })).toBe(
       'sys__ゲートウェイ__resp__x',
     )
