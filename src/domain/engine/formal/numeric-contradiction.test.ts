@@ -48,6 +48,7 @@ const bound = (
   value,
   exact: parseRational(String(value)),
   dimension: '',
+  role: '',
   baseUnit: '',
   slot,
   sourceText: `${comparator} ${value}`,

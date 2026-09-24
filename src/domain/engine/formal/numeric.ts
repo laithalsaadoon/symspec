@@ -83,11 +83,36 @@ export interface NumericPredicate {
    * not (`days`, `percent`, `Mb`), and `''` when there is no unit.
    */
   readonly baseUnit: string
+  /**
+   * What the number measures about the quantity — see {@link BoundRole}. Part of
+   * the comparison class: a deadline and a duration on one response are two
+   * quantities, never one.
+   */
+  readonly role: BoundRole
   /** Which EARS slot the bound was read out of — guard role vs response role. */
   readonly slot: PredicateSlot
   /** The original slot substring the predicate came from (evidence). */
   readonly sourceText: string
 }
+
+/**
+ * The role a bound's number plays (spec 007 AC-2-6), read off the word that
+ * introduces it:
+ *
+ *   - `deadline` — `within 2 s`, `in at most 2 s`: WHEN the response happens,
+ *     measured from the trigger.
+ *   - `duration` — `for at least 30 s`: how LONG the response lasts.
+ *   - `period` — `at least once every 5 s`: the INTERVAL between repetitions.
+ *   - `''` — no role marker: a magnitude of the quantity itself (`at most 2 km`,
+ *     `above 30 seconds`).
+ *
+ * "Sound the siren within 2 seconds" and "sound the siren for at least 30 seconds"
+ * are one quantity key and two roles; read as one variable they were `<= 2 s ∧ >=
+ * 30 s`, an error on a consistent document. The role only ever SPLITS a comparison
+ * cell, so reading it can only drop a proof, never invent one; the price is that an
+ * unmarked `respond over 30 ms` is not compared with `respond within 30 ms`.
+ */
+export type BoundRole = 'deadline' | 'duration' | 'period' | ''
 
 /** The {@link NumericPredicate.dimension} of a unit token no dimension recognizes. */
 export const RAW_UNIT_DIMENSION = 'unrecognized'
@@ -526,13 +551,14 @@ function normalizeBound(
 
 /**
  * The comparability class of a bound: two bounds on one quantity are arithmetic
- * about the same thing only when they share a dimension AND a unit. Exported so the
- * decide tier (`numeric-contradiction.ts`) and the propose tier (`quantity-alias.ts`)
- * partition on one definition — a propose tier looser than its decide tier suggests a
- * glossary alias whose proof the decide tier then fabricates.
+ * about the same thing only when they share a ROLE (AC-2-6), a dimension, and a
+ * unit (AC-2-5). Exported so the decide tier (`numeric-contradiction.ts`) and the
+ * propose tier (`quantity-alias.ts`) partition on one definition — a propose tier
+ * looser than its decide tier suggests a `glossary add` that the decide tier then
+ * never compares, so the suggested repair cannot change the verdict.
  */
-export function unitClassOf(pred: NumericPredicate): string {
-  return JSON.stringify([pred.dimension, pred.baseUnit])
+export function comparabilityOf(pred: NumericPredicate): string {
+  return JSON.stringify([pred.role, pred.dimension, pred.baseUnit])
 }
 
 /**
@@ -553,7 +579,7 @@ export function unitClassOf(pred: NumericPredicate): string {
  * scale its value was normalized onto; the two are separate facts and the key must
  * keep naming only the first. Comparability is a property of a PAIR of predicates,
  * so the unit belongs in the comparison partition, not the identity: see
- * {@link unitClassOf}, which `numeric-contradiction.ts` (`comparisonKey`) groups on
+ * {@link comparabilityOf}, which `numeric-contradiction.ts` (`comparisonKey`) groups on
  * so a unitless bound, a `days` bound, and an `ms` bound are never compared with
  * one another — and which `quantity-alias.ts` requires to agree before it pairs.
  * Folding the unit in here would also rename the `quantity` in every emitted
@@ -575,7 +601,7 @@ function quantityKey(
     .trim()
     .toLowerCase()
     .replace(/^the\s+/, '')
-    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/[^\p{L}\p{N}]+/gu, '_')
     .replace(/^_+|_+$/g, '')
   return `sys__${sys}__qty__${q}`
 }
@@ -614,7 +640,11 @@ function quantityKey(
 function labelBefore(text: string, comparatorStart: number): string | null {
   const before = text.slice(0, comparatorStart).trim()
   if (before === '') return null
-  let words = before.split(/\s+/).filter((w) => /[a-zA-Z]/.test(w))
+  // A word is any run carrying a letter or a digit in ANY script (AC-2-6). Keeping
+  // only Latin letters dropped `1` from `hold zone 1 temperature` and `温度` from
+  // `keep the 温度 reading`, so two zones' temperatures, or temperature and
+  // humidity, were one quantity key and their bounds one conflict.
+  let words = before.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w))
   if (words.length === 0) return null
   // Strip TRAILING prepositions/fillers so "respond in", "respond in no" and
   // "respond" all normalize to the same quantity — otherwise a unit/phrasing
@@ -655,6 +685,140 @@ function labelBefore(text: string, comparatorStart: number): string | null {
   return phrase.replace(/^(?:shall|be|is|are|the|a|an|with|of|to|have|has)\s+/i, '').trim() || null
 }
 
+/** The comparator of `NOT (x <c> v)`: exact, because the comparison is atomic. */
+const NEGATE: Readonly<Record<NumericComparator, NumericComparator>> = {
+  '<': '>=',
+  '<=': '>',
+  '=': '!=',
+  '!=': '=',
+  '>=': '<',
+  '>': '<=',
+}
+
+/**
+ * The comparator after swapping which side is bounded: a bound on how OFTEN
+ * becomes the reverse bound on the INTERVAL. `at least once every 5 s` is
+ * "interval <= 5 s"; `at most once every 1 s` is "interval >= 1 s".
+ */
+const FLIP: Readonly<Record<NumericComparator, NumericComparator>> = {
+  '<': '>',
+  '<=': '>=',
+  '=': '=',
+  '!=': '!=',
+  '>=': '<=',
+  '>': '<',
+}
+
+/** Comparators that bound a COUNT, so `<phrase> once every N` is a frequency bound. */
+const COUNT_PHRASES: ReadonlySet<string> = new Set([
+  'no more than',
+  'no less than',
+  'at most',
+  'at least',
+  'less than or equal to',
+  'greater than or equal to',
+  'less than',
+  'greater than',
+  'exactly',
+])
+
+/**
+ * Filler between the comparator and the number that changes what the number
+ * means — a count (`at least once in 5 s`), a multiplier (`at most half 10 MB`),
+ * a sign (`below minus 5`), a partitive (`at least one of 3`) — so the bound is
+ * declined rather than read as `<comparator> <number>`.
+ */
+const MEANING_CHANGING_FILLER: ReadonlySet<string> = new Set([
+  'once',
+  'twice',
+  'thrice',
+  'times',
+  'per',
+  'each',
+  'every',
+  'minus',
+  'negative',
+  'half',
+  'double',
+  'triple',
+  'quarter',
+  'third',
+  'not',
+  'no',
+  'than',
+  'or',
+  'and',
+  'to',
+  'of',
+  'in',
+])
+
+/**
+ * The role a bound plays ({@link BoundRole}), read off the word before the
+ * comparator (`prev`) and the filler between the comparator and the number
+ * (`mid`). `invert` means the comparator bounds a frequency and must be flipped to
+ * bound the interval. `null` means the bound is declined.
+ */
+function roleOf(
+  phrase: string,
+  prev: string | undefined,
+  mid: readonly string[],
+): { role: BoundRole; invert: boolean } | null {
+  if (mid.includes('every')) {
+    const shape = mid.join(' ')
+    if ((shape === 'every' || shape === 'once every') && COUNT_PHRASES.has(phrase)) {
+      return { role: 'period', invert: true }
+    }
+    return null
+  }
+  if (mid.some((w) => MEANING_CHANGING_FILLER.has(w))) return null
+  if (phrase === 'within' || prev === 'within' || prev === 'in') {
+    return { role: 'deadline', invert: false }
+  }
+  if (prev === 'for') return { role: 'duration', invert: false }
+  if (prev === 'every') return { role: 'period', invert: false }
+  return { role: '', invert: false }
+}
+
+/** The whitespace-delimited word ending at `end`, lowercased, with where it starts. */
+function precedingWord(text: string, end: number): { word: string; start: number } | null {
+  const m = /(\S+)\s*$/u.exec(text.slice(0, end))
+  if (m === null) return null
+  return { word: m[1]!.toLowerCase(), start: m.index }
+}
+
+/**
+ * Read a negated response (`shall not …`) through its negation (AC-2-6):
+ * `shall not keep the door unlocked above 30 seconds` bounds the door at `<= 30 s`.
+ * Ignoring the flag asserted `> 30 s`, the opposite obligation, and proved it
+ * against `below 10 seconds` at error severity.
+ *
+ * The negation is exact only for ONE atomic comparison. `NOT (A ∧ B)` is `¬A ∨ ¬B`,
+ * not `¬A ∧ ¬B`, and a response that says anything besides its bound (a second
+ * bound, a declined one, a trailing qualifier) is some `NOT (A ∧ C)` whose `C` this
+ * tier cannot see; asserting `¬A` alone is STRONGER than the requirement. So a
+ * negated response is read only when its one bound is the whole remainder of the
+ * slot, and declined — a miss, the honest direction — otherwise.
+ */
+function negateResponse(
+  text: string,
+  preds: readonly NumericPredicate[],
+  declined: number,
+  claimed: ReadonlyArray<readonly [number, number]>,
+): NumericPredicate[] {
+  const [only] = preds
+  // Exactly one comparator phrase claimed a number, and it became the one predicate.
+  if (claimed.length !== 1 || preds.length !== 1 || only === undefined) return []
+  // No other phrase that looked like a bound (`above the alarm threshold`, a
+  // toleranced value, a count) was declined: it is a conjunct this tier cannot see.
+  if (declined > 0) return []
+  // Nothing follows the bound: `below 30 seconds during a fire drill` is
+  // `NOT (x < 30 s ∧ drill)`, and `x >= 30 s` alone forbids what the drill clause
+  // permits.
+  if (/[\p{L}\p{N}]/u.test(text.slice(claimed[0]![1]))) return []
+  return [{ ...only, comparator: NEGATE[only.comparator], sourceText: `not ${only.sourceText}` }]
+}
+
 /**
  * Extract every numeric predicate in one slot text, scoped to `systemName` and
  * stamped with the slot it came from. Returns `[]` when no numeric predicate is
@@ -669,15 +833,28 @@ function labelBefore(text: string, comparatorStart: number): string | null {
  * (built from the committed glossary, same shape as the atom glossary index) so
  * two phrasings of one physical quantity collapse to a single quantity key and
  * the arithmetic solver compares them. Omitted ⇒ unchanged behavior.
+ *
+ * `negated` (spec 007 AC-2-6): the requirement's modal negation (`shall not`,
+ * `shall never`), which governs the whole response. Only a response can carry it,
+ * so passing it for a guard slot throws. A negated response yields the NEGATION of
+ * its single bound, or nothing — see {@link negateResponse}.
  */
 export function extractNumericPredicates(
   text: string,
   systemName: string,
   slot: PredicateSlot,
   quantityAliases?: ReadonlyMap<string, string>,
+  negated = false,
 ): NumericPredicate[] {
+  if (negated && slot !== 'resp') {
+    throw new RangeError('numeric: only a response is negated by its modal')
+  }
   const out: NumericPredicate[] = []
   const lower = text.toLowerCase()
+  // Comparator phrases that introduced a bound this function then declined to read.
+  // A negated response is read only when it carries exactly one bound and nothing
+  // else that looked like one (see `negateResponse`).
+  let declined = 0
   // Character ranges already consumed by a matched comparator phrase, so a
   // SHORTER phrase ("less than") can't re-match inside a longer one already
   // claimed ("no less than"). COMPARATOR_LEXICON lists longer phrases first.
@@ -692,18 +869,23 @@ export function extractNumericPredicates(
       const idx = lower.indexOf(phrase, searchFrom)
       if (idx === -1) break
       searchFrom = idx + phrase.length
+      // A phrase inside a longer word is not the phrase: `over` in `handover 5 s`,
+      // `under` in `understand`.
+      const next = lower[idx + phrase.length]
+      if (idx > 0 && /[\p{L}\p{N}]/u.test(lower[idx - 1]!)) continue
+      if (next !== undefined && /[\p{L}\p{N}]/u.test(next)) continue
       if (overlaps(idx, idx + phrase.length)) continue
 
       // Match "<phrase> <number>" allowing filler words between; the unit is read
       // separately, after the number, so it can be more than one letter run.
       const after = text.slice(idx + phrase.length)
       const m = new RegExp(String.raw`^\s+(?:[a-zA-Z]+\s+){0,2}${NUMBER}`).exec(after)
-      if (m === null) continue
+      if (m === null) {
+        declined += 1
+        continue
+      }
       const rest = after.slice(m[0].length)
-      // `200 ± 5` (or `200 °C ± 5 °C`) is a range; reading it as the point `= 200`
-      // asserts a bound the requirement does not place. Decline it.
       const unit = readUnit(rest)
-      if (TOLERANCE.test(rest.slice(unit.length))) continue
       const end = idx + phrase.length + m[0].length + unit.length
       // Overlap must be checked over the FULL match range, not just the phrase:
       // in a compound bound like "within at most 30 minutes", the outer phrase
@@ -717,26 +899,63 @@ export function extractNumericPredicates(
       if (overlaps(idx, end)) continue
       claimed.push([idx, end])
 
-      const label = labelBefore(text, idx)
-      if (label === null) continue
+      // `200 ± 5` (or `200 °C ± 5 °C`) is a range; reading it as the point `= 200`
+      // asserts a bound the requirement does not place. Decline it.
+      if (TOLERANCE.test(rest.slice(unit.length))) {
+        declined += 1
+        continue
+      }
+
+      // A `not` right before the comparator negates the one comparison it governs:
+      // `keep the door unlocked not below 30 seconds` is `>= 30 s`. It is not part of
+      // the subject, and the role marker, if any, is the word before it.
+      let cmpr = comparator
+      let labelEnd = idx
+      let prev = precedingWord(text, idx)
+      if (prev?.word === 'not') {
+        cmpr = NEGATE[cmpr]
+        labelEnd = prev.start
+        prev = precedingWord(text, prev.start)
+      }
+      const midWords = m[0]
+        .slice(0, m[0].length - m[1]!.length)
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w !== '')
+      const reading = roleOf(phrase, prev?.word, midWords)
+      if (reading === null) {
+        declined += 1
+        continue
+      }
+      if (reading.invert) cmpr = FLIP[cmpr]
+
+      const label = labelBefore(text, labelEnd)
+      if (label === null) {
+        declined += 1
+        continue
+      }
 
       const { exact, dimension, baseUnit } = normalizeBound(m[1]!, unit.raw)
 
       out.push({
         quantity: quantityKey(systemName, label, quantityAliases),
         label,
-        comparator,
+        comparator: cmpr,
         value: toDisplayNumber(exact),
         exact,
         dimension,
         baseUnit,
+        role: reading.role,
         slot,
-        sourceText: text.slice(idx, end).trim(),
+        sourceText: text.slice(labelEnd, end).trim(),
       })
     }
   }
 
-  return dedupe(out)
+  const preds = dedupe(out)
+  if (!negated) return preds
+  return negateResponse(text, preds, declined, claimed)
 }
 
 /**
@@ -764,6 +983,7 @@ function dedupe(preds: NumericPredicate[]): NumericPredicate[] {
       `${p.exact.numerator}/${p.exact.denominator}`,
       p.dimension,
       p.baseUnit,
+      p.role,
     ])
     if (seen.has(key)) continue
     seen.add(key)

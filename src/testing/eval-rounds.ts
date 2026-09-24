@@ -563,10 +563,13 @@ export function evalRoundCases(): AdversarialCase[] {
   }
 
   // ---- 10. GitHub issue #2 reproducer (a): same physical quantity, two verbs.
-  // "complete the infusion within at most 30 minutes" (≤30) vs "run the infusion
-  // for at least 60 minutes" (≥60) — one duration, jointly UNSAT, but the two
-  // verb phrasings key to different quantities so the pairwise LIA tier never
-  // compares them. symspec verdict then: exit 0, verified=true. Now the
+  // "complete the infusion within at most 30 minutes" (≤30) vs "finish the infusion
+  // in at least 60 minutes" (≥60) — one completion deadline, jointly UNSAT, but the
+  // two verb phrasings key to different quantities so the pairwise LIA tier never
+  // compares them. (Both are deadlines: the issue's original second sentence, "run
+  // the infusion for at least 60 minutes", is a DURATION, a different role the
+  // numeric tier never compares with a deadline — spec 007 AC-2-6.) symspec
+  // verdict then: exit 0, verified=true. Now the
   // quantity-alias candidate demotes verified (abstention) and hands the author
   // the glossary command; case 11 proves the fix works once committed.
   {
@@ -585,7 +588,7 @@ export function evalRoundCases(): AdversarialCase[] {
         patternType: 'event-driven',
         systemName: 'infusion pump',
         trigger,
-        systemResponse: 'run the infusion for at least 60 minutes',
+        systemResponse: 'finish the infusion in at least 60 minutes',
       }),
     ]
     cases.push({
@@ -623,7 +626,7 @@ export function evalRoundCases(): AdversarialCase[] {
         patternType: 'event-driven',
         systemName: 'infusion pump',
         trigger,
-        systemResponse: 'run the infusion for at least 60 minutes',
+        systemResponse: 'finish the infusion in at least 60 minutes',
       }),
     ]
     cases.push({
@@ -639,7 +642,9 @@ export function evalRoundCases(): AdversarialCase[] {
         // second, which the candidate emits in lexicographic order. The loop-closure gate in
         // `./adversarial.test.ts` parses that command out of a real round-10 run and asserts
         // this entry against it, so the propose half and the decide half cannot drift apart.
-        d.glossary = [{ canonical: 'complete the infusion within', aliases: ['run the infusion'] }]
+        d.glossary = [
+          { canonical: 'complete the infusion within', aliases: ['finish the infusion'] },
+        ]
         return d
       })(),
       note:

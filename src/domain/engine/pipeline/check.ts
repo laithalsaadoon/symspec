@@ -1064,11 +1064,27 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // co-assert its bounds with everything. `encode` is pure and Z3-free, so the
       // extra encodings cost no solver time.
       const quantityAliases = glossaryIndex(doc.glossary)
+      // The response is read through the SAME negation view the propositional tier
+      // encodes (`toEncodable`): the stored `negated` flag, or a leading `not`/`never`
+      // stripped from hand-authored text. `shall not … above 30 seconds` bounds the
+      // quantity at `<= 30 s`; read without the flag it asserted `> 30 s` (spec 007
+      // AC-2-6).
+      const responseBounds = (r: (typeof reqs)[number]) => {
+        const view = toEncodable(r)
+        const negated = view.negated === true
+        return extractNumericPredicates(
+          view.systemResponse,
+          r.systemName,
+          'resp',
+          quantityAliases,
+          negated,
+        )
+      }
       const numericReqPreds = reqs.map((r) => ({
         id: r.id,
         contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
         predicates: [
-          ...extractNumericPredicates(r.systemResponse, r.systemName, 'resp', quantityAliases),
+          ...responseBounds(r),
           ...(r.trigger !== undefined
             ? extractNumericPredicates(r.trigger, r.systemName, 'trig', quantityAliases)
             : []),

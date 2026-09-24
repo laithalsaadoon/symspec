@@ -283,3 +283,199 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
 })
+
+const door = (systemResponse: string, negated = false): ReqSpec => ({
+  systemName: 'door controller',
+  systemResponse,
+  negated,
+})
+const siren = (systemResponse: string): ReqSpec => ({
+  systemName: 'alarm unit',
+  trigger: 'an intrusion is detected',
+  systemResponse,
+})
+const fridge = (systemResponse: string): ReqSpec => ({
+  systemName: 'refrigeration controller',
+  systemResponse,
+})
+
+describe('AC-2-6: a bound is read through negation, role, and the whole subject', () => {
+  it('reads `shall not … above 30 seconds` as at most 30 seconds', async () => {
+    // NOT(x > 30 s) is x <= 30 s, which the `below 10 seconds` bound sits inside.
+    expect(
+      await numericFindings(
+        door('keep the door unlocked above 30 seconds', true),
+        door('keep the door unlocked below 10 seconds'),
+      ),
+    ).toEqual([])
+    expect(
+      await errorCodes(
+        door('keep the door unlocked above 30 seconds', true),
+        door('keep the door unlocked below 10 seconds'),
+      ),
+    ).toEqual([])
+  })
+
+  it('proves a conflict the negation creates: `shall not … below 30 s` against below 10 s', async () => {
+    // The control: NOT(x < 30 s) is x >= 30 s, which contradicts x < 10 s. A tier that
+    // dropped negated responses instead of reading them would miss this.
+    const found = await numericFindings(
+      door('keep the door unlocked below 30 seconds', true),
+      door('keep the door unlocked below 10 seconds'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+    const bounds = found[0]?.evidence?.numeric?.predicates.map((p) => [p.comparator, p.value])
+    expect(bounds).toContainEqual(['>=', 30_000])
+  })
+
+  it('reads a negation that governs the bound itself: `not below 30` is at least 30', async () => {
+    expect(
+      await numericFindings(
+        door('keep the door unlocked not below 30 seconds'),
+        door('keep the door unlocked not above 40 seconds'),
+      ),
+    ).toEqual([])
+  })
+
+  it('declines a negated response with two bounds, because NOT(A and B) is not NOT A and NOT B', async () => {
+    expect(
+      await numericFindings(
+        door('keep the door unlocked above 30 seconds and below 60 seconds', true),
+        door('keep the door unlocked below 10 seconds'),
+      ),
+    ).toEqual([])
+  })
+
+  it('declines a negated bound with a trailing qualifier: NOT (x < 30 s during a drill)', async () => {
+    // Read as `x >= 30 s`, it contradicts `below 10 seconds`; the requirement only forbids
+    // the short unlock DURING a drill, which the second requirement does not mention.
+    expect(
+      await numericFindings(
+        door('keep the door unlocked below 30 seconds during a fire drill', true),
+        door('keep the door unlocked below 10 seconds'),
+      ),
+    ).toEqual([])
+  })
+
+  it('declines a negated bound beside a comparator it could not read', async () => {
+    // Both forbid a conjunction whose first half (`above the alarm threshold`) has no
+    // number. Read as `x >= 30 s` and `x <= 20 s` they are UNSAT; the document is satisfied
+    // by never unlocking above the threshold at all.
+    expect(
+      await numericFindings(
+        door('keep the door unlocked above the alarm threshold and below 30 seconds', true),
+        door('keep the door unlocked above the alarm threshold and above 20 seconds', true),
+      ),
+    ).toEqual([])
+  })
+
+  it('keeps a deadline (`within`) and a duration (`for at least`) as two quantities', async () => {
+    // Sounding the siren within 2 s of the intrusion and keeping it sounding for 30 s are
+    // both satisfiable at once. One variable reads `<= 2 s ∧ >= 30 s`.
+    expect(
+      await numericFindings(
+        siren('sound the siren within 2 seconds'),
+        siren('sound the siren for at least 30 seconds'),
+      ),
+    ).toEqual([])
+    // The control: two deadlines on the same response do conflict.
+    const found = await numericFindings(
+      siren('sound the siren within 2 seconds'),
+      siren('sound the siren in at least 30 seconds'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
+  it('keeps the two roles apart under a committed glossary alias too', async () => {
+    // The alias says `start the siren` and `sound the siren` name one response; it says
+    // nothing about a deadline being a duration. Keyed on the alias alone, the two bounds
+    // met on one variable and the author's synonym became an error.
+    const doc = {
+      ...pairDoc(
+        siren('start the siren within 2 seconds'),
+        siren('sound the siren for at least 30 seconds'),
+      ),
+      glossary: [{ canonical: 'sound the siren', aliases: ['start the siren'] }],
+    }
+    const report = await runCheck(doc as never, {})
+    expect(report.findings.map((f) => f.code)).not.toContain('FND_NUMERIC_CONTRADICTION')
+    // Nor is the pair PROPOSED as an alias: a `glossary add` between two roles could not
+    // change the verdict, so suggesting one hands the author a repair that does nothing.
+    const bare = await runCheck(
+      pairDoc(
+        siren('start the siren within 2 seconds'),
+        siren('sound the siren for at least 30 seconds'),
+      ) as never,
+      {},
+    )
+    expect(bare.findings.map((f) => f.code)).not.toContain('FND_QUANTITY_ALIAS_CANDIDATE')
+    // The control: two DEADLINES under two verbs are proposed, and once aliased, proved.
+    const sameRole = pairDoc(
+      siren('start the siren within 2 seconds'),
+      siren('sound the siren in at least 30 seconds'),
+    )
+    const proposed = await runCheck(sameRole as never, {})
+    expect(proposed.findings.map((f) => f.code)).toContain('FND_QUANTITY_ALIAS_CANDIDATE')
+    const aliased = await runCheck({ ...sameRole, glossary: doc.glossary } as never, {})
+    expect(
+      aliased.findings
+        .filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+        .map((f) => f.requirementIds),
+    ).toEqual([[ID_A, ID_B]])
+  })
+
+  it('reads a period (`at least once every`) as a bound on the interval, not the count', async () => {
+    // At least one poll in every 5 s window and no more than one per second: the interval
+    // is between 1 s and 5 s. Read as a bound on the number, `>= 5 s ∧ <= 1 s` is UNSAT.
+    const monitor = (systemResponse: string): ReqSpec => ({
+      systemName: 'monitor',
+      trigger: 'the sensor is enabled',
+      systemResponse,
+    })
+    expect(
+      await numericFindings(
+        monitor('poll the sensor at least once every 5 seconds'),
+        monitor('poll the sensor at most once every 1 second'),
+      ),
+    ).toEqual([])
+    // The control: at least once a second but at most once every five is a real conflict.
+    const found = await numericFindings(
+      monitor('poll the sensor at least once every 1 second'),
+      monitor('poll the sensor at most once every 5 seconds'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
+  it('keeps digits in the quantity subject: zone 1 and zone 2 are two temperatures', async () => {
+    expect(
+      await numericFindings(
+        fridge('hold zone 1 temperature above 20 degrees celsius'),
+        fridge('hold zone 2 temperature below 5 degrees celsius'),
+      ),
+    ).toEqual([])
+    // The control: the same zone, the same bounds.
+    const found = await numericFindings(
+      fridge('hold zone 1 temperature above 20 degrees celsius'),
+      fridge('hold zone 1 temperature below 5 degrees celsius'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
+  it('keeps non-Latin words in the quantity subject', async () => {
+    const hvac = (systemResponse: string): ReqSpec => ({
+      systemName: 'HVAC controller',
+      systemResponse,
+    })
+    expect(
+      await numericFindings(
+        hvac('keep the 温度 reading below 30 percent'),
+        hvac('keep the 湿度 reading above 60 percent'),
+      ),
+    ).toEqual([])
+    const found = await numericFindings(
+      hvac('keep the 温度 reading below 30 percent'),
+      hvac('keep the 温度 reading above 60 percent'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+})

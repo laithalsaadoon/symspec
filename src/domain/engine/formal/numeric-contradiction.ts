@@ -69,7 +69,7 @@
  * (either direction) would fabricate a magnitude, so the only sound move is to
  * decline the comparison. Declining is a MISS — the honest failure direction —
  * whereas comparing invents a verdict. The propose-only quantity-alias tier pairs on
- * the same {@link unitClassOf}; the DECIDE tier, where a false positive is
+ * the same {@link comparabilityOf}; the DECIDE tier, where a false positive is
  * unrecoverable, must be at least as strict as the tier that may only suggest.
  *
  * The same argument covers a unit no dimension recognizes (spec 007 AC-2-5). It
@@ -79,6 +79,11 @@
  * or a bare number. A recognized unit keys on its DIMENSION as well as its base, and
  * converts into that base exactly (`numeric.ts` `Rational`), so `2 km` meets `500
  * meters` as `2000 m` and `500 m`, and `1.1 hours` meets `66 minutes` at one point.
+ *
+ * And it covers the bound's ROLE (AC-2-6, `numeric.ts` `BoundRole`): `sound the siren
+ * within 2 seconds` is a deadline and `sound the siren for at least 30 seconds` a
+ * duration, so they share a quantity key and never a cell — under a committed
+ * glossary alias too, because an alias equates two phrasings, not two roles.
  *
  * The group is PARTITIONED, not skipped: a quantity carrying both a unitless and
  * an `ms` bound still has its `ms` bounds proved against each other. Skipping the
@@ -106,7 +111,7 @@ import type { SolverBounds } from './budget.ts'
 import { liveIn, planGroups } from './contradiction.ts'
 import type { Z3Bool } from './encode.ts'
 import type { Evidence } from './finding.ts'
-import { type NumericPredicate, unitClassOf } from './numeric.ts'
+import { comparabilityOf, type NumericPredicate } from './numeric.ts'
 
 /** A numeric-contradiction finding (Appendix B `FND_NUMERIC_CONTRADICTION`, error). */
 export interface NumericContradictionFinding {
@@ -137,7 +142,7 @@ export interface RequirementPredicates {
 
 /**
  * Group key for the comparison partition: the canonical quantity PLUS its unit
- * class ({@link unitClassOf} — the dimension and the unit the value was
+ * class ({@link comparabilityOf} — the dimension and the unit the value was
  * normalized onto, or the raw text of a unit no dimension recognizes). A JSON
  * array, so no character a system name or a raw unit can contain makes the join
  * ambiguous.
@@ -149,7 +154,7 @@ export interface RequirementPredicates {
  * every predicate lands in exactly one arithmetically-coherent group.
  */
 function comparisonKey(pred: NumericPredicate): string {
-  return JSON.stringify([pred.quantity, unitClassOf(pred)])
+  return JSON.stringify([pred.quantity, comparabilityOf(pred)])
 }
 
 /**

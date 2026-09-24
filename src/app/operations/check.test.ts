@@ -1121,9 +1121,9 @@ describe('no command in a check envelope spells a nested subcommand', () => {
         patternType: 'event-driven',
         trigger: 'the clinician starts an infusion',
         systemName: 'infusion pump',
-        systemResponse: 'run the infusion for at least 60 minutes',
+        systemResponse: 'finish the infusion in at least 60 minutes',
         sentence:
-          'When the clinician starts an infusion, the infusion pump shall run the infusion for at least 60 minutes.',
+          'When the clinician starts an infusion, the infusion pump shall finish the infusion in at least 60 minutes.',
       }),
     )
 
@@ -1158,14 +1158,14 @@ describe('no command in a check envelope spells a nested subcommand', () => {
       (d) => d.reason === 'quantity-alias-candidate',
     )
     expect(alias?.repair?.commands[0]).toBe(
-      'symspec glossary "complete the infusion" "run the infusion"',
+      'symspec glossary "complete the infusion" "finish the infusion"',
     )
     // And the prose a human copies out of `--pretty` agrees with it.
     const finding = result.success.data.findings.find(
       (f) => f.code === 'FND_QUANTITY_ALIAS_CANDIDATE',
     )
     expect(finding?.message).toContain(
-      '`symspec glossary "complete the infusion" "run the infusion"`',
+      '`symspec glossary "complete the infusion" "finish the infusion"`',
     )
   })
 })
@@ -1272,7 +1272,7 @@ describe('mutually exclusive preconditions are NOT one context', () => {
       drainBound(
         'bbbbbbbb-7777-4777-8777-777777777772',
         'empty',
-        'run the drain for at least 60 minutes',
+        'finish the drain in at least 60 minutes',
       ),
     )
 
@@ -1308,7 +1308,7 @@ describe('mutually exclusive preconditions are NOT one context', () => {
       drainBound(
         'bbbbbbbb-7777-4777-8777-777777777774',
         'full',
-        'run the drain for at least 60 minutes',
+        'finish the drain in at least 60 minutes',
       ),
     )
     const data = await expectOk(sharedStateDoc, { strict: true })
@@ -1356,9 +1356,9 @@ describe('a glossary alias hits only when it names the whole quantity label', ()
         patternType: 'event-driven',
         trigger: 'an infusion is started',
         systemName: 'infusion pump',
-        systemResponse: 'run the infusion for at least 60 minutes',
+        systemResponse: 'finish the infusion in at least 60 minutes',
         sentence:
-          'When an infusion is started, the infusion pump shall run the infusion for at least 60 minutes.',
+          'When an infusion is started, the infusion pump shall finish the infusion in at least 60 minutes.',
       }),
     ),
     glossary,
@@ -1366,7 +1366,9 @@ describe('a glossary alias hits only when it names the whole quantity label', ()
 
   it('proves the conflict when the alias names the whole label', async () => {
     const data = await expectOk(
-      infusionDoc([{ canonical: 'complete the infusion within', aliases: ['run the infusion'] }]),
+      infusionDoc([
+        { canonical: 'complete the infusion within', aliases: ['finish the infusion'] },
+      ]),
     )
     expect(data.findings.map((f) => f.code)).toContain('FND_NUMERIC_CONTRADICTION')
     expect(data.counts.error).toBe(1)
@@ -1378,7 +1380,7 @@ describe('a glossary alias hits only when it names the whole quantity label', ()
     // recorded cost of coupling the quantity keyer to the whole-body glossary table, and the
     // reason a dedicated quantity-alias table would decouple them.
     const data = await expectOk(
-      infusionDoc([{ canonical: 'run the infusion', aliases: ['infusion within'] }]),
+      infusionDoc([{ canonical: 'finish the infusion', aliases: ['infusion within'] }]),
     )
     expect(data.findings.map((f) => f.code)).not.toContain('FND_NUMERIC_CONTRADICTION')
     expect(data.counts.error).toBe(0)
@@ -1403,14 +1405,15 @@ describe('a glossary alias hits only when it names the whole quantity label', ()
         req({
           id: 'dddddddd-8888-4888-8888-888888888884',
           systemName: 'auth service',
-          systemResponse: 'expire the user session in no less than 60 minutes',
-          sentence: 'The auth service shall expire the user session in no less than 60 minutes.',
+          systemResponse: 'keep the user session alive for no less than 60 minutes',
+          sentence:
+            'The auth service shall keep the user session alive for no less than 60 minutes.',
         }),
       ),
       glossary: [
         {
           canonical: 'token lifetime',
-          aliases: ['keep the token valid', 'expire the user session'],
+          aliases: ['keep the token valid', 'keep the user session alive'],
         },
       ],
     })

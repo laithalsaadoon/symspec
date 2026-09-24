@@ -9,11 +9,17 @@
  * two different verbs splits into two keys and the joint bound is never seen:
  *
  *     "complete the infusion within at most 30 minutes"  → qty `complete_the_infusion_within`  (≤ 30 min)
- *     "run the infusion for at least 60 minutes"         → qty `run_the_infusion`              (≥ 60 min)
+ *     "finish the infusion in at least 60 minutes"       → qty `finish_the_infusion`           (≥ 60 min)
  *
- * ≤ 30 ∧ ≥ 60 on one duration is UNSAT, but the two keys never meet, so nothing in
- * the decide tier can prove it (GitHub issue #2, reproducer a). This tier is what
- * stops `check` certifying such a document.
+ * ≤ 30 ∧ ≥ 60 on one completion deadline is UNSAT, but the two keys never meet, so
+ * nothing in the decide tier can prove it (GitHub issue #2, reproducer a). This tier
+ * is what stops `check` certifying such a document.
+ *
+ * Both bounds must also share a ROLE (`numeric.ts` `BoundRole`): "complete the
+ * infusion within 30 minutes" is a deadline and "run the infusion for at least 60
+ * minutes" a duration, which the decide tier never compares even under one key —
+ * so a `glossary add` between them would be a suggestion that changes no verdict,
+ * and the pair is not proposed (spec 007 AC-2-6).
  *
  * ## Why this is propose-only, not an automatic merge
  *
@@ -49,7 +55,7 @@
 
 import { normalize } from './atomize.ts'
 import type { NumericComparator } from './encode.ts'
-import { type NumericPredicate, unitClassOf } from './numeric.ts'
+import { comparabilityOf, type NumericPredicate } from './numeric.ts'
 
 /** One requirement's numeric predicates + the context needed to group it. */
 export interface QuantityAliasInput {
@@ -204,7 +210,7 @@ export function findQuantityAliasCandidates(
           // Comparable unit: the same class the decide tier partitions on. A time
           // bound and a byte bound are genuinely different quantities, and an alias
           // between them would hand the decide tier a pair it never compares.
-          if (unitClassOf(pa) !== unitClassOf(pb)) continue
+          if (comparabilityOf(pa) !== comparabilityOf(pb)) continue
           if (!opposed(pa.comparator, pb.comparator)) continue
           const object = sharedObjectSuffix(pa.label, pb.label)
           if (object === null) continue

@@ -177,6 +177,7 @@ function bound(comparator: NumericPredicate['comparator'], value: number): Numer
     value,
     exact: parseRational(String(value)),
     dimension: 'time',
+    role: '',
     baseUnit: 'ms',
     slot: 'resp',
     sourceText: `${comparator} ${value} ms`,

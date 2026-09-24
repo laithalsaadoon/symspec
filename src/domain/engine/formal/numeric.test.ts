@@ -100,3 +100,85 @@ describe('a bound carries its dimension, its unit, and an exact value (spec 007 
     })
   })
 })
+
+describe('a negated response is read through its negation, or not at all (spec 007 AC-2-6)', () => {
+  const negated = (text: string) =>
+    extractNumericPredicates(text, 'door controller', 'resp', undefined, true).map((p) => [
+      p.comparator,
+      p.value,
+      p.sourceText,
+    ])
+
+  it('negates the one bound of a response that is only that bound', () => {
+    expect(negated('keep the door unlocked above 30 seconds')).toEqual([
+      ['<=', 30_000, 'not above 30 seconds'],
+    ])
+  })
+
+  it('does not count a word that merely starts with a comparator as a declined bound', () => {
+    // `under` opens `underfloor`; read as a comparator with no number it would be a
+    // declined bound, and the negated response would be dropped for nothing.
+    expect(negated('keep the underfloor heater on above 30 seconds')).toEqual([
+      ['<=', 30_000, 'not above 30 seconds'],
+    ])
+  })
+
+  it('declines two bounds: NOT (A and B) is not (NOT A) and (NOT B)', () => {
+    expect(negated('keep the door unlocked above 30 seconds and below 60 seconds')).toEqual([])
+  })
+
+  it('declines a bound followed by a qualifier it cannot read', () => {
+    expect(negated('keep the door unlocked below 30 seconds during a fire drill')).toEqual([])
+  })
+
+  it('declines a bound beside a comparator it could not read', () => {
+    expect(
+      negated('keep the door unlocked above the alarm threshold and below 30 seconds'),
+    ).toEqual([])
+  })
+
+  it('refuses a negation on a guard slot, which the modal does not govern', () => {
+    expect(() =>
+      extractNumericPredicates('the door is open above 30 seconds', 'door', 'pre', undefined, true),
+    ).toThrow(RangeError)
+  })
+})
+
+describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)', () => {
+  const read = (text: string) =>
+    extractNumericPredicates(text, 'svc', 'resp').map((p) => [p.label, p.role, p.comparator])
+
+  it('reads the role off the word that introduces the bound', () => {
+    expect(read('sound the siren within 2 seconds')).toEqual([
+      ['sound the siren', 'deadline', '<='],
+    ])
+    expect(read('respond in at most 2 seconds')).toEqual([['respond', 'deadline', '<=']])
+    expect(read('sound the siren for at least 30 seconds')).toEqual([
+      ['sound the siren', 'duration', '>='],
+    ])
+    expect(read('poll the sensor at least once every 5 seconds')).toEqual([
+      ['poll the sensor', 'period', '<='],
+    ])
+    expect(read('keep the flight radius at most 2 km')).toEqual([
+      ['keep the flight radius', '', '<='],
+    ])
+  })
+
+  it('declines a count or a sign between the comparator and the number', () => {
+    expect(read('poll the sensor at least twice every 5 seconds')).toEqual([])
+    expect(read('keep the tank temperature below minus 5 degrees celsius')).toEqual([])
+    expect(read('keep at least one of 3 replicas online')).toEqual([])
+  })
+
+  it('does not read a comparator inside a longer word', () => {
+    expect(read('complete the handover 5 seconds after the alarm')).toEqual([])
+  })
+
+  it('keeps digits and non-Latin words in the subject', () => {
+    expect(read('hold zone 1 temperature above 20 degrees celsius')).toEqual([
+      ['hold zone 1 temperature', '', '>'],
+    ])
+    const [cjk] = extractNumericPredicates('keep the 温度 reading below 30 percent', 'hvac', 'resp')
+    expect(cjk?.quantity).toBe('sys__hvac__qty__keep_the_温度_reading')
+  })
+})

@@ -120,7 +120,7 @@ export const FND_CODES = [
   // Quantity-alias proposal (appended) — two co-active numeric bounds (same
   // system, same guard, or both unguarded) land on DIFFERENT quantity keys
   // that nonetheless share a noun token (e.g. "complete the infusion within ≤30
-  // min" vs "run the infusion for ≥60 min"). The bounds may constrain ONE
+  // min" vs "finish the infusion in ≥60 min"). The bounds may constrain ONE
   // physical quantity the verb phrasing split apart. Propose-only: suggests
   // `symspec glossary add` to unify the quantities so the LIA tier can compare
   // their bounds. Never a verdict; it DEMOTES `verified` because a possible
@@ -278,7 +278,7 @@ export const FndCodeMeta = {
   FND_QUANTITY_ALIAS_CANDIDATE: {
     code: 'FND_QUANTITY_ALIAS_CANDIDATE',
     description:
-      'info — two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "run the infusion for ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary add` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict.',
+      'info — two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "finish the infusion in ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary add` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict.',
   },
   FND_RELATIONAL_UNCHECKED: {
     code: 'FND_RELATIONAL_UNCHECKED',
