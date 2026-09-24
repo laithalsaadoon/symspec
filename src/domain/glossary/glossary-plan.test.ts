@@ -240,12 +240,12 @@ describe('applying the plan leaves a SOUND glossary index', () => {
   /**
    * The canonical names the AUTHOR'S wording, not the internal atom spelling.
    *
-   * `atomize` merges verb classes, so "grant access" arrives on the atom
-   * `..._resp__allow_access` — a spelling the document never contains. That makes atom order
-   * and phrase order disagree here: by atom, `allow_access` sorts first; by phrase,
-   * `bestow_permissions` does. Picking by atom position would put a canonical in the glossary
+   * An atom spelling is not an author's phrase — before spec 007 AC-2-1 `atomize` renamed
+   * verb classes, so "grant access" arrived on `..._resp__allow_access`, a spelling the
+   * document never contains. Picking by atom position would put a canonical in the glossary
    * that the author cannot find in their own spec, which is the same defect class as reading
-   * an antonym-class canonical out as a verb head.
+   * an antonym-class canonical out as a verb head. The pin stays on the phrase so no future
+   * atom spelling can reintroduce that.
    */
   it('picks the canonical by the author`s phrase, not by the atom spelling', async () => {
     const doc = docOf([

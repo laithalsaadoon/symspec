@@ -37,7 +37,7 @@
  * on its own, independent of `findContradictions`.
  */
 
-import { atomize as realAtomize } from './atomize.ts'
+import { makeAtomize } from './atomize.ts'
 import type { Z3Context } from './backend.ts'
 import { getContext } from './backend.ts'
 import {
@@ -48,6 +48,7 @@ import {
 } from './contradiction.ts'
 import {
   type Atomize,
+  contraryAxioms,
   type EncodableRequirement,
   type EncodedRequirement,
   encode,
@@ -106,10 +107,7 @@ function budgetExceededError(solverBudgetMs: number): SolverBudgetExceededError 
  * small, deliberate leaf-level duplication rather than a cross-file import
  * of a private helper).
  */
-const defaultAtomize: Atomize = (kind, slotText, systemName, negated) => {
-  const a = realAtomize({ kind, text: slotText, systemName, negated })
-  return { atom: a.name, negated: a.negated }
-}
+const defaultAtomize: Atomize = makeAtomize()
 
 /** A planned context group (AC-4-3's {@link ContextGroup}) plus its member requirement ids. */
 export interface NeedsReviewGroup extends ContextGroup {
@@ -155,9 +153,12 @@ export type GroupCheckStatus = 'sat' | 'unsat' | 'unknown'
 /** Everything the default {@link GroupChecker} (and any override) needs to run one group's check. */
 export interface GroupCheckContext {
   readonly ctx: Z3Context
-  /** Every requirement's materialized `guard ⇒ body` formula (whole-spec, per AC-4-3). */
+  /**
+   * Every requirement's materialized `guard ⇒ body` formula (whole-spec, per AC-4-3), followed by
+   * the unguarded contrary axioms (AC-2-1) — every entry is a plain assertion.
+   */
   readonly formulaAsts: readonly Z3Bool[]
-  /** Every requirement's guard assumption literal, in the same order as `formulaAsts`. */
+  /** Every requirement's guard assumption literal, in requirement order. */
   readonly guardAsts: readonly Z3Bool[]
   /** The per-group solver timeout in ms. */
   readonly timeoutMs: number
@@ -245,7 +246,11 @@ export async function findNeedsReview(
   const encoded = reqs.map((r) => encode(r, atomize))
   const ctx = await getContext('symspec-needs-review')
 
-  const formulaAsts = encoded.map((e) => materialize(ctx, e.formula))
+  // AC-2-1: the contrary axioms ride in the whole-spec assertion set, so a group's check is the
+  // same problem the contradiction tier solves for it.
+  const formulaAsts = [...encoded.map((e) => e.formula), ...contraryAxioms(encoded)].map((f) =>
+    materialize(ctx, f),
+  )
   const guardAsts = encoded.map((e) => ctx.Bool.const(e.guard))
 
   const groups = planNeedsReviewGroups(encoded)

@@ -68,11 +68,12 @@
  *     contradiction), which AC-4-7 will upgrade to an explicit review finding.
  */
 
-import { atomize as realAtomize } from './atomize.ts'
+import { makeAtomize } from './atomize.ts'
 import type { Z3Context } from './backend.ts'
 import { getContext } from './backend.ts'
 import {
   type Atomize,
+  contraryAxioms,
   type EncodableRequirement,
   type EncodedRequirement,
   encode,
@@ -103,15 +104,11 @@ export interface ContradictionFinding {
 }
 
 /**
- * Adapter from the AC-4-2a `atomize({ kind, text, systemName, negated })` shape
- * to the encoder's positional `Atomize` contract. Kept in this integration file
- * per the encode.ts design note ("the integration tier passes the real AC-4-2a
- * atomize, adapting its signature in its own file").
+ * The default atomizer: the real AC-4-2a `atomize` through {@link makeAtomize}, so the
+ * opposition membership {@link contraryAxioms} reads rides along (AC-2-1). A hand-rolled adapter
+ * that copied only `{atom, negated}` would silently drop every contrary axiom on this path.
  */
-const defaultAtomize: Atomize = (kind, slotText, systemName, negated) => {
-  const a = realAtomize({ kind, text: slotText, systemName, negated })
-  return { atom: a.name, negated: a.negated }
-}
+const defaultAtomize: Atomize = makeAtomize()
 
 /** The trigger/precondition atom names of an encoded requirement (its context). */
 export function contextAtomsOf(enc: EncodedRequirement): string[] {
@@ -323,8 +320,8 @@ export async function minimizeCore(solver: Z3Solver, core: readonly Z3Bool[]): P
  * across groups), or `[]` when the spec is consistent as atomized.
  *
  * A contradiction is detectable ONLY when two responses resolve to the SAME
- * atom with opposite polarity (explicit `shall not` via AC-2-4, or an antonym
- * pair via AC-4-2a). Conflicts across unrelated response atoms are a documented
+ * atom with opposite polarity (explicit `shall not` via AC-2-4), or to two
+ * atoms related by a contrary axiom (an antonym pair, AC-2-1). Conflicts across unrelated response atoms are a documented
  * false negative (sound modulo atomization, AC-4-11) — the correct failure
  * direction for a linter.
  */
@@ -379,6 +376,10 @@ export async function findContradictions(
   // which one being decided by file position.
   const solverOrder = [...encoded].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   const formulaAsts = solverOrder.map((e) => materialize(ctx, e.formula))
+  // AC-2-1: the contrary axioms `¬(A ∧ B)` for every opposed pair of response atoms. Plain
+  // assertions, never assumptions, so they hold in every group and never enter a core — the core
+  // names exactly the requirements that demand the two contrary actions.
+  const axiomAsts = contraryAxioms(solverOrder).map((f) => materialize(ctx, f))
 
   // Guard assumption literals: their string form maps back to the requirement
   // id. The core returns a subset of exactly these, so id recovery needs no
@@ -405,6 +406,7 @@ export async function findContradictions(
     // each is guarded by its bridge id (an assumption literal), so a bridge only
     // takes effect when its requirement is assumed and it can appear in the core.
     for (const f of bridgeAsts) solver.add(f)
+    for (const f of axiomAsts) solver.add(f)
     for (const name of group.contextAtoms) solver.add(ctx.Bool.const(name))
 
     // A single group can host MORE THAN ONE independent conflict — two disjoint
@@ -457,8 +459,8 @@ export async function findContradictions(
           severity: 'error',
           requirementIds: unique,
           message:
-            `Requirements ${unique.join(', ')} cannot all hold: their responses resolve to ` +
-            'the same atom with opposite polarity under a reachable context.',
+            `Requirements ${unique.join(', ')} cannot all hold: under a reachable context their ` +
+            'responses demand one atom at opposite polarity, or two contrary actions.',
         })
       }
     }

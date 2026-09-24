@@ -116,14 +116,17 @@ describe('a document pair that touches a seed class', () => {
     expect(merged.get('roll_back')).toEqual({ canonical: 'abort', negated: false })
   })
 
-  it('rewrites the atom NAME and its polarity for every requirement in the document', () => {
-    // The consequence, at the layer that decides verdicts. The name moves and the sign inverts,
-    // so a document that was consistent under the seed table can report a contradiction under
-    // the merged one, with no requirement edited.
+  it('moves only the opposition KEY — never an atom NAME or a polarity (AC-2-1)', () => {
+    // Under the pre-AC-2-1 rename this commit renamed `commit the transaction` to
+    // `abort_the_transaction` and inverted its sign, so a document consistent under the seed
+    // table could report a contradiction under the merged one with no requirement edited. With
+    // opposition as a contrary axiom the index decides only which atoms are CONTRARIES; the atom
+    // and its polarity are the author's.
     const seeded = atomize({ kind: 'resp', text: 'commit the transaction', systemName: 'ledger' })
     expect(seeded).toMatchObject({
       name: 'sys__ledger__resp__commit_the_transaction',
       negated: false,
+      opposition: { key: 'sys__ledger__resp__commit_the_transaction', negative: false },
     })
     const merged = atomize({
       kind: 'resp',
@@ -132,8 +135,9 @@ describe('a document pair that touches a seed class', () => {
       antonyms: buildAntonymIndexWithDoc([['abort', 'commit']]),
     })
     expect(merged).toMatchObject({
-      name: 'sys__ledger__resp__abort_the_transaction',
-      negated: true,
+      name: 'sys__ledger__resp__commit_the_transaction',
+      negated: false,
+      opposition: { key: 'sys__ledger__resp__abort_the_transaction', negative: true },
     })
   })
 })

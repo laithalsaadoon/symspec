@@ -6,7 +6,8 @@
  * `checkVacuityOf` asserts every OTHER requirement's body plus the target's guard literals and
  * looks for `unsat`. Under the shipped atomizer the only way that set goes unsat is:
  *
- *   - two OTHER requirements force one `resp` atom at OPPOSITE polarity, and
+ *   - two OTHER requirements force one `resp` atom at OPPOSITE polarity, or two `resp` atoms a
+ *     contrary axiom relates (spec 007 AC-2-1 — an antonym pair is two atoms, never one), and
  *   - each of their context sets is a subset of the target's, so asserting the target's guard
  *     activates both.
  *
@@ -29,7 +30,12 @@
 import { describe, expect, it } from 'vitest'
 import { type AtomKind, makeAtomize } from './atomize.ts'
 import { getContext } from './backend.ts'
-import { type EncodableRequirement, type EncodedRequirement, encode } from './encode.ts'
+import {
+  contraryAxioms,
+  type EncodableRequirement,
+  type EncodedRequirement,
+  encode,
+} from './encode.ts'
 import { checkVacuity, checkVacuityOf } from './vacuity.ts'
 
 const real = makeAtomize()
@@ -59,7 +65,7 @@ const DOOR_OPEN = 'the door is open'
 
 /** The blamed requirement: its guard is what activates the other two. */
 const target = enc({ id: 'v-target', preCondition: DOOR_OPEN, systemResponse: 'halt the car' })
-/** `enable` and `disable` are a seed antonym pair, so these two force ONE atom, opposed. */
+/** `enable` and `disable` are a seed antonym pair, so these two force two CONTRARY atoms. */
 const forcesOn = enc({ id: 'v-on', preCondition: DOOR_OPEN, systemResponse: 'enable the alarm' })
 const forcesOff = enc({ id: 'v-off', preCondition: DOOR_OPEN, systemResponse: 'disable the alarm' })
 /** Same conflict, but behind a guard the target does not assert. */
@@ -70,12 +76,16 @@ const forcesOffElsewhere = enc({
 })
 
 describe('the fixture', () => {
-  it('puts the two other requirements on ONE response atom at opposite polarity', () => {
+  it('puts the two other requirements on two CONTRARY response atoms, both asserted', () => {
     // The premise. Without it the vacuity assertions below could be green for any reason.
+    // Spec 007 AC-2-1: opposition is the axiom `¬(enable ∧ disable)` over two atoms — the
+    // pre-AC-2-1 rename put both on ONE atom at opposite polarity, which also made "shall not
+    // enable" plus "shall not disable" a contradiction.
     const resp = (e: EncodedRequirement) => e.atoms.find((a) => a.kind === 'resp')
-    expect(resp(forcesOn)?.atom).toBe(resp(forcesOff)?.atom)
-    expect(resp(forcesOn)?.negated).toBe(true)
+    expect(resp(forcesOn)?.atom).not.toBe(resp(forcesOff)?.atom)
+    expect(resp(forcesOn)?.negated).toBe(false)
     expect(resp(forcesOff)?.negated).toBe(false)
+    expect(contraryAxioms([forcesOn, forcesOff])).toHaveLength(1)
   })
 
   it('gives both of them the same guard atom the target carries', () => {

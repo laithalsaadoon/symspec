@@ -141,21 +141,24 @@ $ symspec check --pretty
 code: FND_CONTRADICTION
 severity: error
 tier: formal
-message: Requirements 778c1db4…, 99c274ba… cannot all hold: their responses resolve to
-         the same atom with opposite polarity under a reachable context.
+message: Requirements 778c1db4…, 99c274ba… cannot all hold: under a reachable context their
+         responses demand one atom at opposite polarity, or two contrary actions.
 evidence:
   atomTable:
     - atom: sys__auth_service__trig__user_submits_valid_credentials   negated: false
-    - atom: sys__auth_service__resp__allow_access                     negated: true
-    - atom: sys__auth_service__resp__allow_access                     negated: false
+    - atom: sys__auth_service__resp__grant_access                     negated: true
+    - atom: sys__auth_service__resp__grant_access                     negated: false
   core: [778c1db4…, 99c274ba…]
 ```
 
 The exit code is 1. Both culprits are named, and the `atomTable` shows what was compared: one
 response atom, asserted at both polarities. You can audit that against the English instead of
 taking the tool's word for it. No language model is involved in this verdict. If you rewrite the
-second requirement as *deny access*, the contradiction still holds. If you change its trigger,
-the contradiction disappears, because the two requirements no longer apply at the same time.
+second requirement as *shall deny access*, the contradiction still holds: `grant` and `deny` are a
+seed antonym pair, so their atoms are contraries that cannot both hold, and the row for `deny`
+carries the `opposition` key that relates them. *Shall not grant* plus *shall not deny* is not a
+contradiction, because doing neither is consistent. If you change the trigger, the contradiction
+disappears, because the two requirements no longer apply at the same time.
 
 ---
 

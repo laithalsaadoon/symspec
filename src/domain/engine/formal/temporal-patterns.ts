@@ -197,10 +197,10 @@ export const U = (lhs: TemporalFormula, rhs: TemporalFormula): TemporalFormula =
  *
  * **Polarity, never a name** (AC-2-7 divergence 7). The atomizer returns the
  * POSITIVE atom plus a polarity flag (its invariant 4), and the flag becomes a
- * `¬` node here. An antonym-unified response (`revoke x` → `grant x` + negated)
- * therefore lands on the same atom the propositional tier uses, at the polarity
- * that makes `G(t → F grant_x)` vs `G(t → F ¬grant_x)` provable. Composing the
- * AC-2-4 `negated` flag with an antonym flip is the atomizer's XOR, not ours.
+ * `¬` node here. An antonym is NOT a polarity (spec 007 AC-2-1): `revoke x` is its
+ * own atom, and the contrary axiom `G ¬(grant_x ∧ revoke_x)` reaches this tier as
+ * an unguarded assertion from `check.ts`, next to the same atom names the
+ * propositional tier uses.
  */
 function slotLiteral(
   atomize: Atomize,

@@ -21,7 +21,8 @@
  *        lowercase → strip leading articles (a|an|the) → strip punctuation
  *        → collapse whitespace → underscore-join → glossary rewrite →
  *        copula strip (guard slots only) → leading-verb de-inflection +
- *        antonym rewrite (response slots only).
+ *        antonym-class lookup (response slots only; it sets the atom's
+ *        {@link Opposition}, never its name's head or its polarity).
  *      It MUST NOT stem, lemmatize, or strip stopwords from the REMAINDER of a
  *      slot. Three closed, deterministic head/token rules are the whole
  *      exception surface (each below, each tested):
@@ -31,9 +32,10 @@
  *        - GUARD slots ({@link GUARD_KINDS}: pre/trig/feat) drop a single copula
  *          token ({@link stripCopula}), so "the session is authenticated" and
  *          "the session authenticated" name one guard state;
- *        - when (and only when) an ANTONYM head-flip fires, one preposition
+ *        - when (and only when) the head is in an ANTONYM class, one preposition
  *          token is dropped from the remainder ({@link canonicalizeAntonymRest}),
- *          so "include X in the view" / "exclude X from the view" unify.
+ *          so "include X in the view" / "exclude X from the view" share one
+ *          opposition key and are contraries.
  *      Everything else stays near-exact: aggressive normalization is the one
  *      false-positive risk class (AC-4-11), so we buy only what closed rules
  *      can honestly deliver.
@@ -52,9 +54,13 @@
  *      solver sees `R` vs `¬R` and can find the conflict — the whole point of
  *      extracting negation as a flag rather than leaving "not" in the string.
  *      The curated seed antonym table (antonyms.ts) extends this to lexical
- *      opposites: "grant access" / "revoke access" unify to one atom, opposite
- *      polarity, so the common grant-vs-revoke conflict is detectable rather
- *      than a false negative (spec AC-4-2a; research-smt.md §4.2).
+ *      opposites — as a CONTRARY, not a negation (spec 007 AC-2-1): "grant
+ *      access" / "revoke access" are two atoms plus the axiom
+ *      `¬(grant_access ∧ revoke_access)` ({@link contraryPairs}), so "shall grant"
+ *      plus "shall revoke" is still unsatisfiable while "shall not grant" plus
+ *      "shall not revoke" — do neither — is not. The rename `revoke ≡ ¬grant` this
+ *      replaced asserted that one of the two always happens, and fabricated an
+ *      error-severity contradiction on exactly that consistent document.
  *
  * ## ONE atomizer for BOTH tiers (AC-2-7)
  *
@@ -181,14 +187,41 @@ export interface Atom {
   negated: boolean
   /** The structured identity `name` renders from (see {@link AtomRef}). */
   ref: AtomRef
+  /**
+   * Present exactly when the response's leading verb is in an antonym class (seed or
+   * doc-committed): which class-and-remainder the atom belongs to, and which side of it. Two
+   * atoms with one `key` and opposite `negative` are CONTRARIES — see {@link contraryPairs}.
+   */
+  opposition?: Opposition
+}
+
+/**
+ * An atom's place in an antonym class (spec 007 AC-2-1).
+ *
+ * Opposition is a CONTRARY relation between two distinct atoms, `¬(A ∧ B)`, and never the rename
+ * `A ≡ ¬B`. The rename asserted that one of the two actions always happens, so "shall not accept
+ * the order" plus "shall not reject the order" — a document that only says "do neither" — was
+ * `¬A ∧ A` and an error-severity FND_CONTRADICTION. The contrary axiom says only what the table
+ * means: both cannot happen at once.
+ */
+export interface Opposition {
+  /**
+   * The class-and-remainder identity: the atom name the pre-AC-2-1 rename would have produced
+   * (`sys__<scope>__resp__<class canonical>_<remainder>`). Two atoms share a key exactly when the
+   * rename used to collapse them onto one atom, so the axioms relate exactly the pairs the rename
+   * related, and nothing else.
+   */
+  readonly key: string
+  /** Which polarity side of the class the head verb sits on (`reject`, `decline` vs `accept`). */
+  readonly negative: boolean
 }
 
 /**
  * A Boolean atom paired with its polarity, as the injected {@link Atomize}
- * contract returns it. `negated: true` means the requirement asserts `¬atom` (an
- * explicit `shall not` per AC-2-4, or a polar-opposite unified via the antonym
- * table). The atom name is the *positive* atom in both cases, so `shall X` and
- * `shall not X` share one atom with opposite polarity.
+ * contract returns it. `negated: true` means the requirement asserts `¬atom` — an
+ * explicit `shall not` per AC-2-4, and nothing else (an antonym is a contrary
+ * axiom, never a polarity flip — AC-2-1). The atom name is the *positive* atom,
+ * so `shall X` and `shall not X` share one atom with opposite polarity.
  *
  * Declared HERE rather than in `encode.ts` (AC-2-7): the atomization contract
  * belongs to the atomizer, and having the encoder own a second copy of the atom
@@ -204,6 +237,8 @@ export interface AtomLit {
    * than fall back to parsing `atom` (see {@link AtomRef}).
    */
   ref?: AtomRef
+  /** The atom's antonym-class membership, when it has one (see {@link Opposition}). */
+  opposition?: Opposition
 }
 
 /**
@@ -231,7 +266,7 @@ export type Atomize = (
  * Build the injected {@link Atomize} both tiers consume, closing over an optional
  * glossary index (AC-9-2) so agent-confirmed synonyms canonicalize to one atom,
  * and an optional doc-augmented antonym index (#1) so agent-confirmed opposites
- * collapse to one atom at opposite polarity. With neither, behavior is
+ * become contraries ({@link Opposition}). With neither, behavior is
  * byte-identical to the pre-feature run.
  *
  * This lives here rather than in the pipeline (AC-2-7) precisely so the temporal
@@ -254,8 +289,70 @@ export function makeAtomize(
       ...(antonyms !== undefined ? { antonyms } : {}),
       ...(terms !== undefined ? { terms } : {}),
     })
-    return { atom: a.name, negated: a.negated, ref: a.ref }
+    return {
+      atom: a.name,
+      negated: a.negated,
+      ref: a.ref,
+      ...(a.opposition !== undefined ? { opposition: a.opposition } : {}),
+    }
   }
+}
+
+/**
+ * Whether two atoms are contraries (spec 007 AC-2-1): distinct atoms on opposite sides of one
+ * antonym class over one remainder. For the PROPOSE tiers, which used to skip such a pair because
+ * the rename gave both one atom name; now the names differ, and without this they would propose
+ * `accept X` and `reject X` as synonyms to merge.
+ */
+export function areContrary(
+  a: { readonly name: string; readonly opposition?: Opposition },
+  b: { readonly name: string; readonly opposition?: Opposition },
+): boolean {
+  return (
+    a.name !== b.name &&
+    a.opposition !== undefined &&
+    b.opposition !== undefined &&
+    a.opposition.key === b.opposition.key &&
+    a.opposition.negative !== b.opposition.negative
+  )
+}
+
+/**
+ * The contrary pairs among a set of atoms (spec 007 AC-2-1): every two DISTINCT atoms that share
+ * an {@link Opposition.key} and sit on opposite sides of it. Each pair `[a, b]` is the axiom
+ * `¬(a ∧ b)`, which every solver-driving tier asserts as a plain (unguarded) background fact —
+ * it is part of the vocabulary, not of any requirement, so it never appears in an unsat core.
+ *
+ * Same-side members of one class (`accept`, `approve`) get NO axiom and stay distinct atoms. The
+ * rename used to merge them as a side effect — two verbs opposite to one third verb were forced
+ * equal — which contraries do not entail, and which asserted a synonymy nobody committed.
+ *
+ * Pure; the output is sorted and deduplicated, so it is a function of the atom SET.
+ */
+export function contraryPairs(
+  lits: Iterable<{ readonly atom: string; readonly opposition?: Opposition }>,
+): Array<readonly [string, string]> {
+  const sides = new Map<string, { pos: Set<string>; neg: Set<string> }>()
+  for (const lit of lits) {
+    if (lit.opposition === undefined) continue
+    let entry = sides.get(lit.opposition.key)
+    if (entry === undefined) {
+      entry = { pos: new Set(), neg: new Set() }
+      sides.set(lit.opposition.key, entry)
+    }
+    ;(lit.opposition.negative ? entry.neg : entry.pos).add(lit.atom)
+  }
+  const pairs = new Map<string, readonly [string, string]>()
+  for (const { pos, neg } of sides.values()) {
+    for (const p of pos) {
+      for (const n of neg) {
+        if (p === n) continue
+        const pair = (p < n ? [p, n] : [n, p]) as readonly [string, string]
+        pairs.set(`${pair[0]}\u0000${pair[1]}`, pair)
+      }
+    }
+  }
+  return [...pairs.entries()].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)).map(([, v]) => v)
 }
 
 /** Arguments to {@link atomize}. */
@@ -290,8 +387,8 @@ export interface AtomizeArgs {
    * seed table ({@link ANTONYM_INDEX}) is used, so behavior is byte-identical to
    * the pre-feature path. Callers that have doc-committed antonym pairs pass a
    * merged index (built by `buildAntonymIndexWithDoc`) so an agent-confirmed
-   * pair like open/shut unifies exactly like a seed pair. Consulted only for
-   * `resp` slots, after the glossary rewrite.
+   * pair like open/shut becomes a contrary exactly like a seed pair. Consulted only
+   * for `resp` slots, after the glossary rewrite.
    */
   antonyms?: ReadonlyMap<string, AntonymEntry>
   /**
@@ -554,16 +651,18 @@ function stripCopula(body: string): string {
 }
 
 /**
- * Prepositions dropped from an antonym-flipped response remainder (A4). Fires
+ * Prepositions dropped from an antonym-class response remainder (A4). Fires
  * ONLY after an antonym head hit, and drops exactly ONE token — the first
  * preposition appearing after at least one non-preposition token — so
  * "exclude that tile from the default gallery view" and "include that tile in
- * the default gallery view" unify at opposite polarity. Direction within an
+ * the default gallery view" share one opposition key and are contraries. Direction within an
  * antonym class is carried by the HEAD (include vs exclude), never by the
  * preposition, which is what makes this sound; verbs outside the antonym
  * table ("move X to A" / "move X from A") are never touched, and differing
  * landing sites ("…gallery A" vs "…gallery B") still produce distinct atoms
  * because only the preposition itself is dropped, never the noun phrase.
+ * It applies to the atom BODY as well as the key, so the partition is exactly the
+ * pre-AC-2-1 one refined by head: nothing that was two atoms became one.
  */
 const REST_PREPOSITIONS: ReadonlySet<string> = new Set([
   'in',
@@ -593,17 +692,18 @@ function canonicalizeAntonymRest(rest: string): string {
 /**
  * Turn one EARS slot into a scoped Boolean {@link Atom}. Pure and deterministic.
  *
- * For `resp` slots, the leading verb is checked against the seed antonym table:
- * on a hit the verb is rewritten to its class canonical and the polarity is
- * flipped, so polar-opposite responses land on one atom. The AC-2-4 `negated`
- * flag and any antonym flip compose by XOR.
+ * For `resp` slots, the leading verb is checked against the antonym index: on a
+ * hit the atom keeps its own de-inflected head and gains an {@link Opposition},
+ * which is what makes it a contrary of the class's other-side members. Polarity is
+ * the AC-2-4 `negated` flag, unmodified.
  */
 export function atomize(args: AtomizeArgs): Atom {
   const scope = normalizeScope(args.systemName)
   let body = normalize(args.text)
-  let negated = args.negated ?? false
+  const negated = args.negated ?? false
+  let opposition: Opposition | undefined
 
-  // Glossary canonicalization (AC-9-2) runs FIRST, before antonym unification,
+  // Glossary canonicalization (AC-9-2) runs FIRST, before the antonym lookup,
   // so an agent-confirmed synonym is rewritten to its canonical phrasing and
   // then participates in the same antonym/atom logic as any native phrase.
   // A no-op when no glossary is supplied or the body is not an alias.
@@ -642,16 +742,15 @@ export function atomize(args: AtomizeArgs): Atom {
     body = stripCopula(body)
   }
 
-  // Antonym unification applies only to responses (spec AC-4-2a: "polar-opposite
+  // The antonym lookup applies only to responses (spec AC-4-2a: "polar-opposite
   // responses"). The leading verb is de-inflected (closed 3sg rule) and looked
   // up longest-prefix-first — two tokens ("roll_back") before one ("roll") — so
-  // multiword opposites like commit/roll-back resolve. On a hit the head is
-  // rewritten to the class canonical, polarity flips, and one remainder
-  // preposition is dropped (see canonicalizeAntonymRest); the rest of the
-  // remainder must still be byte-identical, so "grant access"/"revoke access"
-  // unify but "grant access"/"revoke permission" do not. On a miss the
-  // de-inflected head still replaces the surface head, so "opens the valve"
-  // and "open the valve" collide even outside any antonym class.
+  // multiword opposites like commit/roll-back resolve. On a hit one remainder
+  // preposition is dropped (see canonicalizeAntonymRest) and the atom records its
+  // class-and-remainder key; the rest of the remainder must still be
+  // byte-identical, so "grant access"/"revoke access" are contraries but "grant
+  // access"/"revoke permission" are unrelated. Either way the de-inflected head
+  // replaces the surface head, so "opens the valve" and "open the valve" collide.
   if (args.kind === 'resp' && body.length > 0) {
     const tokens = body.split('_')
     const tok1 = deInflectHead(tokens[0] as string)
@@ -668,8 +767,16 @@ export function atomize(args: AtomizeArgs): Atom {
     if (entry) {
       const rest = tokens.slice(headLen).join('_')
       const canonRest = canonicalizeAntonymRest(rest)
-      body = canonRest === '' ? entry.canonical : `${entry.canonical}_${canonRest}`
-      negated = negated !== entry.negated // XOR: compose AC-2-4 negation with the antonym flip
+      // The atom keeps ITS OWN head (de-inflected), so `reject the order` is its own atom rather
+      // than `accept the order` at flipped polarity (AC-2-1). The class canonical goes into the
+      // opposition KEY only, and polarity is the parse's `negated` and nothing else.
+      const head = twoEntry !== undefined ? (twoTok as string) : tok1
+      body = canonRest === '' ? head : `${head}_${canonRest}`
+      const classBody = canonRest === '' ? entry.canonical : `${entry.canonical}_${canonRest}`
+      opposition = {
+        key: renderAtom({ scope, kind: 'resp', body: classBody }),
+        negative: entry.negated,
+      }
     } else if (tok1 !== tokens[0]) {
       tokens[0] = tok1
       body = tokens.join('_')
@@ -677,5 +784,10 @@ export function atomize(args: AtomizeArgs): Atom {
   }
 
   const ref: AtomRef = { scope, kind: args.kind, body }
-  return { name: renderAtom(ref), negated, ref }
+  return {
+    name: renderAtom(ref),
+    negated,
+    ref,
+    ...(opposition !== undefined ? { opposition } : {}),
+  }
 }

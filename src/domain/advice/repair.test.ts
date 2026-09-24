@@ -182,7 +182,7 @@ const QUANTITY_ALIAS_MESSAGE =
 const OPPOSITION_MESSAGE =
   'req-a and req-b share the object phrase but differ on the leading verb ("start" vs ' +
   '"halt"). If they are polar OPPOSITES, run `symspec antonym add start halt` (the formal ' +
-  'tier then collapses them to one atom at opposite polarity); if they are SYNONYMS, run ' +
+  'tier then treats them as contraries); if they are SYNONYMS, run ' +
   '`symspec glossary add "start the pump" "halt the pump"` instead. Committing the wrong ' +
   'one MANUFACTURES a false contradiction.'
 

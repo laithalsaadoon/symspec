@@ -18,7 +18,7 @@
  */
 
 import { ANTONYM_INDEX, type AntonymEntry } from './antonyms.ts'
-import { type Atom, atomize, deInflectHead, normalize } from './atomize.ts'
+import { type Atom, areContrary, atomize, deInflectHead, normalize } from './atomize.ts'
 import type { Embedder } from './embed.ts'
 
 /** An info-severity semantic-similarity finding (Appendix B `FND_SIMILAR_SEMANTIC`). */
@@ -156,10 +156,11 @@ export async function findSimilarSemantic(
       // Same-system only (per-system atom scoping, AC-4-2a).
       if (a.systemName !== b.systemName) continue
 
-      // Skip pairs already unified by atomize (glossary/antonym/identical).
+      // Skip pairs already unified by atomize (glossary/identical), and contraries the seed
+      // table already relates (AC-2-1) — a synonym proposal for those would be a merge of opposites.
       const atomA = responseAtom(a, options.glossary)
       const atomB = responseAtom(b, options.glossary)
-      if (atomA.name === atomB.name) continue
+      if (atomA.name === atomB.name || areContrary(atomA, atomB)) continue
 
       const key = pairKey(a.id, b.id)
       if (seen.has(key)) continue
@@ -193,7 +194,7 @@ export async function findSimilarSemantic(
           headA !== '' && headB !== '' && headA !== headB
             ? ` These fire under the SAME trigger, so if they are polar OPPOSITES rather than ` +
               `synonyms, run \`symspec antonym add ${headA} ${headB}\` instead — the formal tier ` +
-              'will then collapse them to one atom at opposite polarity and can prove the conflict.'
+              'will then treat them as contraries (they cannot both hold) and can prove the conflict.'
             : ' These fire under the SAME trigger, so if these responses are opposites rather than ' +
               'synonyms, register an antonym instead (see `symspec antonym add`).'
       }
@@ -379,7 +380,7 @@ export async function findOppositionCandidates(
           `leading verbs ("${headA}" vs "${headB}"). These verbs differ, but embeddings CANNOT ` +
           'tell opposites (open/shut) from synonyms (delete/remove) — decide which these are: ' +
           `if they are polar OPPOSITES, run \`symspec antonym add ${headA} ${headB}\` (the formal ` +
-          'tier will then collapse them to one atom at opposite polarity and can prove a conflict); ' +
+          'tier will then treat them as contraries — they cannot both hold — and can prove a conflict); ' +
           `if they are SYNONYMS, run \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\` ` +
           'instead. Committing the WRONG one manufactures a false contradiction, so confirm the ' +
           'direction before applying. This is a suggestion, not a verdict.',

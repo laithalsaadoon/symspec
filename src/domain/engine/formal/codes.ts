@@ -268,7 +268,7 @@ export const FndCodeMeta = {
   FND_OPPOSITION_CANDIDATE: {
     code: 'FND_OPPOSITION_CANDIDATE',
     description:
-      'info — two same-system responses share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified. Propose-only: if the verbs are truly opposite, run `symspec antonym add <verbA> <verbB>` so the formal tier collapses them to one atom at opposite polarity and can prove any conflict. Never a verdict.',
+      'info — two same-system responses share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified. Propose-only: if the verbs are truly opposite, run `symspec antonym add <verbA> <verbB>` so the formal tier treats them as contraries (two atoms that cannot both hold) and can prove any conflict. Never a verdict.',
   },
   FND_EXCLUDED_FROM_FORMAL: {
     code: 'FND_EXCLUDED_FROM_FORMAL',

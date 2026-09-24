@@ -68,7 +68,13 @@
 
 import type { EarsPattern } from '../core/schema.ts'
 import type { ReqView } from '../solvers/types.ts'
-import type { Atomize, AtomKind, AtomLit } from './atomize.ts'
+import {
+  type Atomize,
+  type AtomKind,
+  type AtomLit,
+  contraryPairs,
+  type Opposition,
+} from './atomize.ts'
 import type { Z3Context } from './backend.ts'
 
 // ---------------------------------------------------------------------------
@@ -81,7 +87,7 @@ import type { Z3Context } from './backend.ts'
 // carve both modules out of its blanket re-export to dodge a TS2308 ambiguity.
 // There is now exactly one declaration; this file re-exports it so every existing
 // `from './encode.ts'` import site keeps working unchanged.
-export type { Atomize, AtomKind, AtomLit, AtomRef } from './atomize.ts'
+export type { Atomize, AtomKind, AtomLit, AtomRef, Opposition } from './atomize.ts'
 
 // ---------------------------------------------------------------------------
 // Abstract propositional formula AST
@@ -243,6 +249,8 @@ export interface AtomTableEntry {
   slotText: string
   /** Polarity as used in the formula. */
   negated: boolean
+  /** The atom's antonym-class membership, when it has one — what {@link contraryAxioms} reads. */
+  opposition?: Opposition
 }
 
 /** The pure encoding of a single requirement. */
@@ -340,6 +348,7 @@ export function encode(req: EncodableRequirement, atomize: Atomize): EncodedRequ
     kind: 'resp',
     slotText: req.systemResponse,
     negated: response.negated,
+    ...(response.opposition !== undefined ? { opposition: response.opposition } : {}),
   })
 
   const responseFormula = literal(response)
@@ -354,6 +363,25 @@ export function encode(req: EncodableRequirement, atomize: Atomize): EncodedRequ
     body,
     formula: implies(atom(req.id), body),
   }
+}
+
+/**
+ * The contrary axioms `¬(A ∧ B)` over a set of encoded requirements' atoms (spec 007 AC-2-1).
+ *
+ * Opposition used to be a RENAME inside the atomizer (`reject X` became `accept X` at flipped
+ * polarity), which every tier inherited for free because it lived in the atom names. A contrary
+ * lives BESIDE the names, so every solver-driving tier that compares responses has to assert these
+ * axioms itself, as plain unguarded assertions: they are background vocabulary, not a
+ * requirement, so they can never enter an unsat core, and they hold in every context group.
+ *
+ * Strictly weaker than the rename it replaces — `A ≡ ¬B` entails `¬(A ∧ B)`, not conversely — so
+ * any set these axioms make unsatisfiable the rename made unsatisfiable too. The change can remove
+ * a finding (the "do neither" fabrication), never invent one.
+ */
+export function contraryAxioms(encoded: Iterable<EncodedRequirement>): Formula[] {
+  const rows: AtomTableEntry[] = []
+  for (const e of encoded) rows.push(...e.atoms)
+  return contraryPairs(rows).map(([a, b]) => not(and([atom(a), atom(b)])))
 }
 
 // ---------------------------------------------------------------------------

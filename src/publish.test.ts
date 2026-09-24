@@ -370,9 +370,12 @@ describe('the README is a PACKAGE readme, greenfield-first and honest', () => {
       expect(session, step).toContain(step)
     }
     // The measured atom table, which is what makes the proof auditable rather than
-    // asserted: one response atom, present at both polarities.
+    // asserted: one response atom, present at both polarities. It is the AUTHOR'S verb —
+    // spec 007 AC-2-1 retired the rename that printed the antonym class name (`allow_access`)
+    // for a document that only ever said "grant access".
     expect(session).toContain('FND_CONTRADICTION')
-    expect(session).toContain('sys__auth_service__resp__allow_access')
+    expect(session).toContain('sys__auth_service__resp__grant_access')
+    expect(session).not.toContain('allow_access')
     expect(session.indexOf('symspec parse')).toBeLessThan(session.indexOf('FND_CONTRADICTION'))
   })
 

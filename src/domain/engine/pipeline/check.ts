@@ -62,8 +62,9 @@
  *     `encode` and `earsToTemporal`. The temporal tier previously received none —
  *     `earsToTemporal(req)` took no glossary or antonym parameter at all — so
  *     `--temporal` was structurally blind to every committed glossary alias and
- *     antonym pair. Passing the same instance is what makes `G(t → F grant_x)` vs
- *     `G(t → F ¬grant_x)` provable once `antonym add grant revoke` is committed.
+ *     antonym pair. Passing the same instance, plus the same contrary axioms
+ *     (spec 007 AC-2-1), is what makes `G(grant_x)` vs `G(t → F revoke_x)`
+ *     provable once `antonym add grant revoke` is committed.
  *   - **One requirement population.** Both tiers now score the AC-3-7 gate's
  *     INCLUDED subset. The temporal tier previously scored raw `reqs`, so the two
  *     error-severity tiers disagreed about which document they were checking, and
@@ -79,7 +80,13 @@ import { renderSentence } from '../core/render.ts'
 import type { Requirement, Waiver } from '../core/schema.ts'
 import { detectAmbiguity } from '../formal/ambiguity.ts'
 import { type AntonymEntry, buildAntonymIndexWithDoc } from '../formal/antonyms.ts'
-import { glossaryIndex, makeAtomize, normalize, termIndex } from '../formal/atomize.ts'
+import {
+  contraryPairs,
+  glossaryIndex,
+  makeAtomize,
+  normalize,
+  termIndex,
+} from '../formal/atomize.ts'
 import { getContext } from '../formal/backend.ts'
 import { type SolverBounds, SolverBudget } from '../formal/budget.ts'
 import { type FndCode, structuralKindToFndCode } from '../formal/codes.ts'
@@ -112,7 +119,7 @@ import { findOppositionCandidates, findSimilarSemantic } from '../formal/semanti
 import { findSimilarUnunified } from '../formal/similar.ts'
 import { checkSubsumption } from '../formal/subsumption.ts'
 import { findTemporalContradictions } from '../formal/temporal.ts'
-import { earsToTemporal } from '../formal/temporal-patterns.ts'
+import { earsToTemporal, G, tAnd, tAtom, tNot } from '../formal/temporal-patterns.ts'
 import { checkVacuity } from '../formal/vacuity.ts'
 import { checkGtWRules, checkGtWRulesSet } from '../lint/gtwr.ts'
 import { type FormalTierResult, runSolvers } from '../solvers/index.ts'
@@ -920,8 +927,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // agent-confirmed paraphrases collide and paraphrased contradictions
       // become provable. Empty glossary ⇒ identical to a glossary-free run.
       // #1: fold the committed antonym pairs into the seed table so
-      // agent-confirmed opposites (open/shut) collapse to one atom at opposite
-      // polarity — the shape the contradiction tier proves. Empty ⇒ seed-only.
+      // agent-confirmed opposites (open/shut) become contraries — two atoms and
+      // the axiom `¬(open ∧ shut)` every solver tier asserts (spec 007 AC-2-1).
+      // Empty ⇒ seed-only.
       // #6: committed noun-phrase terms are substituted inside every slot body, so one entry
       // aligns a noun document-wide. Empty ⇒ identical to a term-free run.
       const atomize = pipelineAtomize(doc)
@@ -950,6 +958,16 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           }
           owners.add(e.id)
         }
+      }
+      // Spec 007 AC-2-1: a contrary axiom compares two atoms exactly as the old rename's one shared
+      // atom did, so each side counts the other side's owners as partners. Read from a snapshot
+      // so the credit is one hop — a same-side sibling of `accept` gets none from `reject`.
+      const contraryOwners = contraryPairs(encoded.flatMap((e) => e.atoms)).map(
+        ([a, b]) => [a, b, [...(atomOwners.get(a) ?? [])], [...(atomOwners.get(b) ?? [])]] as const,
+      )
+      for (const [a, b, ownersA, ownersB] of contraryOwners) {
+        for (const id of ownersB) atomOwners.get(a)?.add(id)
+        for (const id of ownersA) atomOwners.get(b)?.add(id)
       }
       for (const owners of atomOwners.values()) {
         if (owners.size === 1) unmatchedAtoms += 1
@@ -1180,6 +1198,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
               encodable.map((r) => ({ id: r.id, formula: earsToTemporal(r, atomize) })),
               options.temporal.bound ?? 10,
               bounds,
+              // Spec 007 AC-2-1: the same contrary axioms the propositional tiers assert, over the
+              // same atoms — `encoded` is `encodable` through the same atomizer.
+              contraryPairs(encoded.flatMap((e) => e.atoms)).map(([a, b]) =>
+                G(tNot(tAnd([tAtom(a), tAtom(b)]))),
+              ),
             )
           : []
 

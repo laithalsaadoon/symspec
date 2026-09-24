@@ -226,7 +226,7 @@ export interface Remedy {
 
 /** One distinct phrasing cluster member — an atom the document has TODAY. */
 export interface GlossaryMember {
-  /** The scoped atom name, e.g. `sys__auth_service__resp__allow_access`. */
+  /** The scoped atom name, e.g. `sys__auth_service__resp__grant_access`. */
   readonly atom: string
   /** The representative raw slot text (lexicographically smallest seen). */
   readonly phrase: string
@@ -1090,8 +1090,8 @@ const remediesFor = (
     ops: [{ op: 'antonym', a: verbs[0], b: verbs[1] }],
     commands: [`symspec antonym ${verbs[0]} ${verbs[1]}`],
     consequence:
-      'The verbs collapse to one atom at OPPOSITE polarity, so a conflict between them ' +
-      'becomes provable rather than invisible.',
+      'The verbs become contraries — two atoms that cannot both hold — so a conflict between ' +
+      'them becomes provable rather than invisible.',
   }
 
   // `seed-antonym` is the case where offering both would be wrong. The table ALREADY
