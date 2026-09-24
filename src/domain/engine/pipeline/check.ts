@@ -680,8 +680,8 @@ export function toEncodable(view: ReqView): EncodableRequirement {
  * (which groups on it), and a shared derivation is what keeps the two tiers from
  * disagreeing about what "the same context" means.
  *
- * `normalize` emits only `[a-z0-9_]`, so `|` cannot appear inside either half
- * and the composite can never alias one slot pair onto another.
+ * `normalize` emits only letters, marks, digits (any script) and `_`, so `|` cannot appear
+ * inside either half and the composite can never alias one slot pair onto another.
  *
  * ## The two consumers group at DIFFERENT granularities, and must
  *

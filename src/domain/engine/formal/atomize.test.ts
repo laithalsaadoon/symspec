@@ -302,7 +302,10 @@ describe('the atom scope', () => {
       negated: false,
     })
     expect(a.name).not.toBe(b.name)
-    expect(normalize('ゲートウェイ'), 'the premise: normalize alone erases it').toBe('')
+    // Spec 007 AC-2-4: the names are no longer erased at all — each is its own readable scope.
+    // The premise this test used to pin (`normalize('ゲートウェイ') === ''`) was the defect.
+    expect(normalizeScope('ゲートウェイ')).toBe('ゲートウェイ')
+    expect(normalizeScope('认证服务')).toBe('认证服务')
   })
 
   it('does not strip a leading article from a system NAME', () => {
@@ -322,15 +325,21 @@ describe('the atom scope', () => {
   })
 
   it('hashes deterministically and readably when nothing survives', () => {
-    expect(normalizeScope('ゲートウェイ')).toBe(normalizeScope('ゲートウェイ'))
-    expect(normalizeScope('ゲートウェイ')).toMatch(/^h[0-9a-f]{8}$/)
+    // No letter or digit in any script: the only names the fallback still serves.
+    expect(normalizeScope('🚀 — 🚀')).toBe(normalizeScope('🚀 — 🚀'))
+    expect(normalizeScope('🚀 — 🚀')).toMatch(/^h[0-9a-f]{8}$/)
+    expect(normalizeScope('🚀 — 🚀')).not.toBe(normalizeScope('🛰'))
   })
 
   it('renderAtom REFUSES a scope it cannot render unambiguously', () => {
     // Postconditions rather than comments: an empty scope merges namespaces, and a scope outside
-    // [a-z0-9_] makes the `__`-delimited name ambiguous to the parsers that split on it.
+    // letters/digits/`_` makes the `__`-delimited name ambiguous to the parsers that split on it.
     expect(() => renderAtom({ scope: '', kind: 'resp', body: 'x' })).toThrow(/empty scope/)
     expect(() => renderAtom({ scope: 'a b', kind: 'resp', body: 'x' })).toThrow(/outside/)
+    expect(() => renderAtom({ scope: 'a__b', kind: 'resp', body: 'x' })).toThrow(/outside/)
+    expect(renderAtom({ scope: 'ゲートウェイ', kind: 'resp', body: 'x' })).toBe(
+      'sys__ゲートウェイ__resp__x',
+    )
     expect(renderAtom({ scope: 'gateway', kind: 'resp', body: 'x' })).toBe('sys__gateway__resp__x')
   })
 })

@@ -166,11 +166,12 @@ export function renderAtom(ref: AtomRef): string {
   // POSTCONDITIONS, not comments. An empty scope makes `sys____<kind>__<body>`, which merges every
   // system whose name normalizes away into ONE namespace — two unrelated systems' responses then
   // land on one atom and, at opposite polarity, prove a contradiction neither document contains.
-  // A scope carrying anything outside `[a-z0-9_]` makes the rendered name ambiguous to parse, and
-  // the format is parsed: `catalog.ts` and the atom-corpus gate both split on `__`.
+  // A scope carrying anything but letters, marks, digits (any script) and `_` makes the rendered
+  // name ambiguous to parse, and the format is parsed: `catalog.ts` and the atom-corpus gate both
+  // split on `__`.
   if (ref.scope === '') throw new Error('renderAtom: empty scope — see normalizeScope')
-  if (!/^[a-z0-9_]+$/.test(ref.scope)) {
-    throw new Error(`renderAtom: scope outside [a-z0-9_]: ${JSON.stringify(ref.scope)}`)
+  if (!/^[\p{L}\p{M}\p{N}_]+$/u.test(ref.scope) || ref.scope.includes('__')) {
+    throw new Error(`renderAtom: scope outside [letters digits _]: ${JSON.stringify(ref.scope)}`)
   }
   return `sys__${ref.scope}__${ref.kind}__${ref.body}`
 }
@@ -557,33 +558,74 @@ export const SYMBOL_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   [/=/g, ' equal to '],
   // SIGN, not arithmetic: only a `+`/`-` that leads a number, so `de-duplicate` and `roll-back`
   // (letter-preceded) and `1-2` (digit-preceded) are untouched. Without the guard, every hyphenated
-  // word in the corpus would gain a `minus` token.
-  [/(?<![a-z0-9])\+(?=\d)/g, ' plus '],
-  [/(?<![a-z0-9])-(?=\d)/g, ' minus '],
+  // word in the corpus would gain a `minus` token. The Unicode MINUS SIGN (U+2212) is the same
+  // sign and spells the same word (spec 007 AC-2-4): deleting it as punctuation read `−5 °C` as
+  // `5 °C`. Letters and digits of every script count as the preceding word, so `α-2` stays a
+  // hyphenated name.
+  [/(?<![\p{L}\p{N}])\+(?=\p{N})/gu, ' plus '],
+  [/(?<![\p{L}\p{N}])[-\u2212](?=\p{N})/gu, ' minus '],
 ]
+
+/**
+ * Whether a raw token is a NUMBER, the position after which a token is a unit (AC-2-4). Digits in
+ * any script, because `normalize` keeps every script's digits.
+ */
+const NUMBER_TOKEN = /^\p{N}+$/u
+
+/** A token that OPENS with a number and continues with a unit: `100Mbps`, `5G`. */
+const NUMBER_THEN_UNIT = /^(\p{N}+)(.+)$/u
+
+/**
+ * Fold one surviving token's case, keeping it where case IS the identity (spec 007 AC-2-4).
+ *
+ * A unit token is the one place ordinary text carries meaning in case: `Mbps` is megabits and
+ * `MBps` megabytes, `mW` a milliwatt and `MW` a megawatt. So a token that directly follows a
+ * number keeps its case, as does the unit tail of a token that opens with digits (`100MBps`).
+ * Everything else is lowercased as before. The rule can only SPLIT: every pair it keeps apart was
+ * one token under full lowercasing, and nothing it produces could have been two tokens before.
+ */
+function foldCase(token: string, previous: string | undefined): string {
+  if (previous !== undefined && NUMBER_TOKEN.test(previous)) return token
+  const unit = NUMBER_THEN_UNIT.exec(token)
+  if (unit !== null) return `${unit[1] as string}${unit[2] as string}`
+  return token.toLowerCase()
+}
 
 /**
  * The conservative, near-exact normalization pipeline (AC-4-2a). Pure.
  *
  * Order is normative and load-bearing:
- *   1. lowercase
- *   2. strip a single LEADING article (`a`/`an`/`the`) — internal articles
+ *   1. strip a single LEADING article (`a`/`an`/`the`, any case) — internal articles
  *      ("issue a session token") are preserved deliberately
- *   3. spell out the {@link SYMBOL_PHRASES} symbols — BEFORE step 4, which would otherwise
- *      delete them, and before it strips non-ASCII so `≥` and `≤` are still present
- *   4. strip punctuation (any non-alphanumeric, non-space char → space); this
- *      also normalizes input underscores so `auth_service` is idempotent
- *   5. collapse whitespace and underscore-join the surviving word tokens
+ *   2. spell out the {@link SYMBOL_PHRASES} symbols — BEFORE step 3, which would otherwise
+ *      delete them
+ *   3. strip punctuation: every character that is not a letter, combining mark or digit IN ANY
+ *      SCRIPT, and not whitespace, becomes a space; this also normalizes input underscores so
+ *      `auth_service` is idempotent
+ *   4. split on whitespace and fold each token's case ({@link foldCase}: lowercase, except a
+ *      unit token, whose case is its identity)
+ *   5. underscore-join the surviving tokens
+ *
+ * ## What it may delete (spec 007 AC-2-4)
+ *
+ * Only punctuation that carries no identity. It used to delete everything outside
+ * `[a-z0-9\s]` after lowercasing, which is a MERGE rule: `العربية` and `日本語` both normalized to
+ * the empty body, `valve α` and `valve β` to one guard, `−5 °C` to `5 °C`, and `100 Mbps` to
+ * `100 MBps`. A merged guard puts two requirements into one context group, so two exclusive
+ * conditions could prove a contradiction the document does not contain. Keeping more characters
+ * only ever refines the partition, so this change cannot merge two bodies that were distinct.
  *
  * No stemming, no lemmatization, no stopword removal beyond the leading article.
  */
 export function normalize(text: string): string {
-  const lowered = text.toLowerCase()
-  const deArticled = lowered.replace(/^(?:a|an|the)\s+/, '')
+  const deArticled = text.replace(/^(?:a|an|the)\s+/i, '')
   let spelled = deArticled
   for (const [pattern, phrase] of SYMBOL_PHRASES) spelled = spelled.replace(pattern, phrase)
-  const dePunct = spelled.replace(/[^a-z0-9\s]+/g, ' ')
-  return dePunct.split(/\s+/).filter(Boolean).join('_')
+  const tokens = spelled
+    .replace(/[^\p{L}\p{M}\p{N}\s]+/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+  return tokens.map((token, i) => foldCase(token, tokens[i - 1])).join('_')
 }
 
 /**
@@ -595,21 +637,24 @@ export function normalize(text: string): string {
  *    carries no meaning inside a slot phrase. In a system NAME it is part of the identifier:
  *    without this, `A Gateway` and `Gateway` are one system, and two products whose names differ
  *    only by an article share every atom they own.
- * 2. **Never empty.** `normalize` deletes every character outside `[a-z0-9\s]`, so an entirely
- *    non-Latin name vanishes: `normalize('ゲートウェイ') === ''` and `normalize('认证服务') === ''`.
- *    Measured before this function existed, those two systems produced
- *    `sys____resp__allow_access` at OPPOSITE polarity for `grant access` and `revoke access` —
- *    one atom, two systems, a provable contradiction across documents that share nothing.
+ * 2. **Never empty.** A name with no letter or digit in any script (`—`, `🚀`) has nothing to
+ *    keep. Measured when the keep-set was still `[a-z0-9]`, `ゲートウェイ` and `认证服务` both
+ *    vanished and produced one atom for two systems — `grant access` and `revoke access` at
+ *    OPPOSITE polarity, a provable contradiction across documents that share nothing.
+ *
+ * It keeps letters, combining marks and digits in EVERY script, the same keep-set as
+ * {@link normalize} (spec 007 AC-2-4): with the ASCII-only set, `α valve controller` and
+ * `β valve controller` were one namespace, and so was any pair of names that differed only in
+ * their non-Latin part. Unlike `normalize` it folds ALL case — a system name has no unit token.
  *
  * The fallback is a 32-bit FNV-1a over the name's code points, spelled out here rather than taken
  * from `node:crypto`, so the engine tier gains no import and stays byte-reproducible on any host.
- * It is a LAST resort: any name with one surviving Latin character keeps its readable scope, and a
- * hashed scope is deliberately ugly so it reads as "this name did not survive normalization" in an
- * atom table rather than as a normal identifier.
+ * It is a LAST resort, and a hashed scope is deliberately ugly so it reads as "this name did not
+ * survive normalization" in an atom table rather than as a normal identifier.
  */
 export function normalizeScope(systemName: string): string {
   const lowered = systemName.toLowerCase()
-  const dePunct = lowered.replace(/[^a-z0-9\s]+/g, ' ')
+  const dePunct = lowered.replace(/[^\p{L}\p{M}\p{N}\s]+/gu, ' ')
   const scope = dePunct.split(/\s+/).filter(Boolean).join('_')
   if (scope !== '') return scope
   let hash = 0x811c9dc5
