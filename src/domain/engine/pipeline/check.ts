@@ -81,10 +81,12 @@ import type { Requirement, Waiver } from '../core/schema.ts'
 import { detectAmbiguity } from '../formal/ambiguity.ts'
 import { type AntonymEntry, buildAntonymIndexWithDoc } from '../formal/antonyms.ts'
 import {
+  areContrary,
   contraryPairs,
   glossaryIndex,
   makeAtomize,
   normalize,
+  type Opposition,
   termIndex,
 } from '../formal/atomize.ts'
 import { getContext } from '../formal/backend.ts'
@@ -401,13 +403,15 @@ export interface CoverageDemotion {
     // detector could not find what the pinned model would. A statement about the RUN, not
     // the document: discharged by re-running without the stub, never by waiving.
     | 'run-weakened'
-    // AC-3-6: a kept FND_SIMILAR_SEMANTIC pair whose responses sit at OPPOSITE polarity
-    // and differ only in inflection or number ("open the door" / "shall not open the
-    // doors"). If they mean one thing it is a contradiction on two atoms the solver
-    // cannot see. Discharged by the glossary merge the finding proposes (it lands both on one
-    // atom at opposite polarity; it is withheld when every merge would alias a phrase to its
-    // own opposite or split an atom the document already shares, and a rewrite is the route
-    // instead) or by waiving the finding (declared distinct) — the finding is the triage record.
+    // AC-3-6: a kept FND_SIMILAR_SEMANTIC pair whose responses differ only in inflection or
+    // number and would conflict as one thing: OPPOSITE polarity ("open the door" / "shall not
+    // open the doors"), or both asserted on opposite sides of an antonym class ("open the door"
+    // / "close the doors", contraries under AC-2-1). If they mean one thing it is a
+    // contradiction on two atoms (or two keys) the solver cannot see. Discharged by the glossary
+    // merge the finding proposes (it lands both on one atom at opposite polarity, or on one key
+    // as contraries; it is withheld when every merge would alias a phrase to its own opposite
+    // or split an atom the document already shares, and a rewrite is the route instead) or by
+    // waiving the finding (declared distinct) — the finding is the triage record.
     | 'opposite-polarity-near-duplicate'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
@@ -814,22 +818,29 @@ function pipelineAtomize(doc: Doc): Atomize {
  * Every slot of every requirement (`reqs`, not the gate-included subset: an entry rewrites
  * all of them) is atomized twice through {@link pipelineAtomize}, once as committed and once
  * with the candidate entry added. The merge is admitted when the pair's two responses land on
- * one atom AND the old partition survives: every set of slots that shares an atom today still
- * shares one, at the same relative polarity. The second half is the one a pair-local check
- * cannot see. Lookup is one hop, so aliasing "close the doors" away while the glossary routes
- * "arm the barrier" onto it moves "close the doors" alone; so does an inflection ("closes the
- * doors"), a term, or an antonym flip ("open the doors") that shares its atom. Any conflict the
- * shared atom carried is then gone, and a later `check` certifies over it.
+ * one atom or on the two sides of one opposition key (contraries, spec 007 AC-2-1), AND the old
+ * partitions survive: every set of slots that shares an atom today still shares one, at the same
+ * relative polarity, and every set of responses that shares an opposition key today still shares
+ * one, on the same relative sides. The second half is the one a pair-local check cannot see.
+ * Lookup is one hop, so aliasing "close the doors" away while the glossary routes "arm the
+ * barrier" onto it moves "close the doors" alone; so does an inflection ("closes the doors") or
+ * a term that shares its atom, and so does an alias that moves "open the door" off the key
+ * "close the door" shares with it. Any conflict the shared atom or key carried is then gone, and
+ * a later `check` certifies over it.
  */
 function glossaryMergeAdmission(
   doc: Doc,
   reqs: readonly EncodableRequirement[],
 ): (merge: GlossaryMerge, pair: readonly [string, string]) => boolean {
   const slotsUnder = (atomize: Atomize) => {
-    const slots = new Map<string, { atom: string; negated: boolean }>()
+    const slots = new Map<string, { atom: string; negated: boolean; opposition?: Opposition }>()
     for (const r of reqs) {
       for (const row of encode(r, atomize).atoms) {
-        slots.set(`${r.id}|${row.kind}`, { atom: row.atom, negated: row.negated })
+        slots.set(`${r.id}|${row.kind}`, {
+          atom: row.atom,
+          negated: row.negated,
+          ...(row.opposition !== undefined ? { opposition: row.opposition } : {}),
+        })
       }
     }
     return slots
@@ -840,16 +851,31 @@ function glossaryMergeAdmission(
     const merged = slotsUnder(pipelineAtomize({ ...doc, glossary }))
     const ra = merged.get(`${a}|resp`)
     const rb = merged.get(`${b}|resp`)
-    if (ra === undefined || rb === undefined || ra.atom !== rb.atom) return false
-    // old atom -> the one new atom its slots all move to, and whether they flip polarity.
+    if (ra === undefined || rb === undefined) return false
+    const related =
+      ra.atom === rb.atom || areContrary({ name: ra.atom, ...ra }, { name: rb.atom, ...rb })
+    if (!related) return false
+    // old atom -> the one new atom its slots all move to, and whether they flip polarity; old
+    // opposition key -> the one new key its responses all move to, and whether they flip side.
     const movesTo = new Map<string, string>()
+    const keyMovesTo = new Map<string, string>()
+    const agrees = (table: Map<string, string>, from: string, to: string): boolean => {
+      const seen = table.get(from)
+      if (seen === undefined) table.set(from, to)
+      return seen === undefined || seen === to
+    }
     for (const [slot, before] of now) {
       const after = merged.get(slot)
       if (after === undefined) return false
-      const move = `${after.atom}|${after.negated !== before.negated}`
-      const seen = movesTo.get(before.atom)
-      if (seen === undefined) movesTo.set(before.atom, move)
-      else if (seen !== move) return false
+      if (!agrees(movesTo, before.atom, `${after.atom}|${after.negated !== before.negated}`)) {
+        return false
+      }
+      if (before.opposition === undefined) continue
+      if (after.opposition === undefined) return false
+      const side = after.opposition.negative !== before.opposition.negative
+      if (!agrees(keyMovesTo, before.opposition.key, `${after.opposition.key}|${side}`)) {
+        return false
+      }
     }
     return true
   }
@@ -1986,12 +2012,13 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         requirementIds: [...f.requirementIds],
         action:
           `${f.requirementIds.join(' and ')} respond with the same words up to inflection or ` +
-          'number at OPPOSITE polarity, on two different atoms, so if they mean one thing they ' +
-          'contradict each other and the solver cannot see it. ' +
+          'number at OPPOSITE polarity, or as contraries under the committed antonyms, on two ' +
+          'different atoms or keys, so if they mean one thing they contradict each other and ' +
+          'the solver cannot see it. ' +
           (hasMerge
             ? "If they are the same, commit the `symspec glossary add` merge from the finding's " +
-              'message: it puts both on one atom at opposite polarity, which the solver then ' +
-              'compares like any other pair. '
+              'message: it puts both on one atom at opposite polarity, or on one antonym key as ' +
+              'contraries, which the solver then compares like any other pair. '
             : "If they are the same, rewrite one to use the other's words: no glossary merge is " +
               'offered, because every merge of these phrasings aliases a phrase to its own ' +
               'opposite or splits an atom the document already shares. ') +

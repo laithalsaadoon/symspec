@@ -141,7 +141,11 @@ describe('a document pair that touches a seed class', () => {
     expect(seeded).toMatchObject({
       name: 'sys__ledger__resp__commit_the_transaction',
       negated: false,
-      opposition: { key: 'sys__ledger__resp__commit_the_transaction', negative: false },
+      opposition: {
+        key: 'sys__ledger__resp__commit_the_transaction',
+        body: 'commit_the_transaction',
+        negative: false,
+      },
     })
     const merged = atomize({
       kind: 'resp',
@@ -152,7 +156,11 @@ describe('a document pair that touches a seed class', () => {
     expect(merged).toMatchObject({
       name: 'sys__ledger__resp__commit_the_transaction',
       negated: false,
-      opposition: { key: 'sys__ledger__resp__abort_the_transaction', negative: true },
+      opposition: {
+        key: 'sys__ledger__resp__abort_the_transaction',
+        body: 'abort_the_transaction',
+        negative: true,
+      },
     })
   })
 
