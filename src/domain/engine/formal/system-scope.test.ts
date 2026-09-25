@@ -17,6 +17,8 @@ import { runCheck } from '../pipeline/check.ts'
 import { emitCandidatePairs } from '../solvers/free/pairwise-filter.ts'
 import { atomize } from './atomize.ts'
 import type { Embedder } from './embed.ts'
+import { extractNumericPredicates } from './numeric.ts'
+import { findRelationalUnchecked } from './relational.ts'
 import { findOppositionCandidates, findSimilarSemantic } from './semantic.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -65,6 +67,8 @@ const SPELLINGS = [
   ['Access Controller', 'access controller'],
   ['access controller', 'access-controller'],
   ['ACCESS CONTROLLER', 'Access  Controller'],
+  // `normalize` keeps a unit's case after a number ("5 MW" is not "5 mW"); a scope folds it.
+  ['Pump 5 MW', 'pump 5 mW'],
 ] as const
 
 describe('the spellings under test really are one atom scope', () => {
@@ -213,5 +217,71 @@ describe('the pairwise candidate filter compares systems by atom scope', () => {
       view('b', 'door controller', 'open the gate and sound the bell'),
     ] as never)
     expect(pairs).toEqual([])
+  })
+})
+
+describe('the numeric quantity key carries the atom scope', () => {
+  // A DECIDE key: two bounds on one quantity key are asserted on one Real. Its system part was
+  // `systemName` lower-cased with spaces joined, so "access-controller" and "access controller"
+  // were two quantities while every atom of theirs was one system's — a conflict the propositional
+  // tier would compare went uncompared here. Parity with the atom scope is the whole rule.
+  const quantity = (systemName: string) =>
+    extractNumericPredicates('keep the latency at most 5 ms', systemName, 'resp')[0]?.quantity
+  for (const [a, b] of SPELLINGS) {
+    it(`one quantity across ${a} / ${b}`, () => {
+      expect(quantity(a)).toBeDefined()
+      expect(quantity(a)).toBe(quantity(b))
+    })
+  }
+
+  it('two different systems keep two quantities', () => {
+    expect(quantity('access controller')).not.toBe(quantity('door controller'))
+  })
+
+  it('so two opposed bounds across two spellings of one system are compared', async () => {
+    const report = await runCheck(
+      docOf([
+        { systemName: 'access controller', systemResponse: 'keep the latency at most 5 ms' },
+        { systemName: 'access-controller', systemResponse: 'keep the latency at least 10 ms' },
+      ]) as never,
+      {},
+    )
+    expect(report.findings.map((f) => f.code)).toContain('FND_NUMERIC_CONTRADICTION')
+  })
+
+  it('and never across two different systems', async () => {
+    const report = await runCheck(
+      docOf([
+        { systemName: 'access controller', systemResponse: 'keep the latency at most 5 ms' },
+        { systemName: 'door controller', systemResponse: 'keep the latency at least 10 ms' },
+      ]) as never,
+      {},
+    )
+    expect(report.findings.map((f) => f.code)).not.toContain('FND_NUMERIC_CONTRADICTION')
+  })
+})
+
+describe('the relational blind-spot tier groups systems by atom scope', () => {
+  // A DISCLOSER: a key finer than the solver's deletes a disclosure, and with it a demotion.
+  const member = (id: string, systemName: string) => ({
+    id,
+    systemName,
+    guardKey: `|${PRESS}`,
+    trigger: PRESS,
+    responseText: 'hold the pressure at most 10 bar',
+    hasNumericBound: true,
+    hasUnmatchedAtom: true,
+  })
+  for (const [a, b] of SPELLINGS) {
+    it(`discloses one group across ${a} / ${b}`, () => {
+      const found = findRelationalUnchecked([member('a', a), member('b', b)])
+      expect(found.map((f) => [...f.requirementIds].sort())).toEqual([['a', 'b']])
+    })
+  }
+
+  it('does not group two different systems', () => {
+    expect(
+      findRelationalUnchecked([member('a', 'access controller'), member('b', 'door controller')]),
+    ).toEqual([])
   })
 })

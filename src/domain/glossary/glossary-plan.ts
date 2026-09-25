@@ -53,7 +53,13 @@ import {
   type AntonymEntry,
   buildAntonymIndexWithDoc,
 } from '../engine/formal/antonyms.ts'
-import { GUARD_KINDS, glossaryIndex, normalize, renderAtom } from '../engine/formal/atomize.ts'
+import {
+  GUARD_KINDS,
+  glossaryIndex,
+  normalize,
+  normalizeScope,
+  renderAtom,
+} from '../engine/formal/atomize.ts'
 import { contextAtomsOf, liveIn, planContextGroups } from '../engine/formal/contradiction.ts'
 import type { Embedder } from '../engine/formal/embed.ts'
 import type { EncodedRequirement } from '../engine/formal/encode.ts'
@@ -687,7 +693,9 @@ const antonymIndexOf = (doc: Doc): ReadonlyMap<string, AntonymEntry> => {
  * corpus used to re-encode the document a second time just to count requirements.
  */
 const nodesOf = (doc: Doc): NodeScan => {
-  const systemById = new Map(listRequirements(doc).map((r) => [r.id, normalize(r.systemName)]))
+  // A node's system is its atoms' scope, so a class spans exactly the spellings the solver reads
+  // as one system ("Pump 5 MW" / "pump 5 mW": `normalize` keeps a unit's case, the scope folds it).
+  const systemById = new Map(listRequirements(doc).map((r) => [r.id, normalizeScope(r.systemName)]))
   type Bucket = {
     system: string
     phrases: Set<string>

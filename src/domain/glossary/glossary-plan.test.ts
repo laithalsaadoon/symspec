@@ -1232,3 +1232,36 @@ describe('the re-derived shape check agrees with the engine original', () => {
     expect(isNegatingPrefixPair('de_energize', 'energize')).toBe(true)
   })
 })
+
+describe('a class spans exactly the spellings of one system the atoms read as one scope', () => {
+  // `nodesOf` keyed a node's system by `normalize(systemName)`, which strips a leading article, so
+  // "The Gateway" and "Gateway" were one system to the plan while their atoms are two scopes
+  // (`sys__the_gateway__…`, `sys__gateway__…`: in a system NAME the article is part of the
+  // identifier). The plan proposed a class across two systems the solver never compares.
+  const table = {
+    'issue a session token': [1, 0.05],
+    'issue a login credential': [1, 0.08],
+  } as const
+  const opsAcross = async (a: string, b: string) =>
+    (
+      await buildGlossaryPlan(
+        toEngineDoc(
+          docOf([
+            req(a, 'issue a session token', 'the user signs in'),
+            req(b, 'issue a login credential', 'the user signs in'),
+          ]),
+        ),
+        tableEmbedder(table),
+      )
+    ).ops.length
+
+  it('proposes one class across two spellings of one scope', async () => {
+    expect(await opsAcross('Gateway', 'gateway')).toBe(1)
+    expect(await opsAcross('access controller', 'Access-Controller')).toBe(1)
+  })
+
+  it('and none across two scopes, however `normalize` reads them', async () => {
+    expect(await opsAcross('The Gateway', 'Gateway')).toBe(0)
+    expect(await opsAcross('pump controller', 'valve controller')).toBe(0)
+  })
+})
