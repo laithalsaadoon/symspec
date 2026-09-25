@@ -80,7 +80,11 @@ import {
   projectReachability,
   type ReachabilityFinding,
 } from '../../domain/reachability/reachability-report.ts'
-import type { DocumentDiagnostic } from '../../domain/requirements/document.ts'
+import { requirementsContentHash } from '../../domain/requirements/content-hash.ts'
+import type {
+  DocumentDiagnostic,
+  RequirementsDocument,
+} from '../../domain/requirements/document.ts'
 import { runTerminology } from '../../domain/terminology/terminology.ts'
 import { runnableInProse } from '../../ports/command-form.ts'
 import { DocPath, DocStore } from '../../ports/doc-store.ts'
@@ -757,14 +761,18 @@ const withRepairs = (
   recommendedBudgetMs: number | undefined,
   /** `data.run`, so a `run-weakened` repair undoes the weakening this run actually had. */
   run: RunDisclosure,
+  /** The checked document, so a pair waiver op carries the hash of the text it was raised on. */
+  document: RequirementsDocument,
 ): readonly RepairableDemotion[] => {
   const exclusionsById = new Map(excluded.map((e) => [e.id, e]))
+  const contentHash = (ids: readonly string[]) => requirementsContentHash(document, ids)
   return demotions.map((demotion) => {
     const repair = repairForDemotion(demotion, {
       exclusionsById,
       findings,
       docPath: path,
       run,
+      contentHash,
       timeoutMs: input.timeoutMs,
       ...(input.solverBudgetMs > 0 ? { solverBudgetMs: input.solverBudgetMs } : {}),
       ...(recommendedBudgetMs !== undefined ? { recommendedBudgetMs } : {}),
@@ -1025,6 +1033,7 @@ export const checkOp = defineOperation({
           path,
           budgetHint?.recommendedBudgetMs,
           full.run,
+          loaded.document,
         ),
         ...reachabilityDemotions,
       ]

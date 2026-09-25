@@ -127,6 +127,14 @@ export interface RepairContext {
   readonly run?: RunDisclosure
   /** The document path, so every command is copy-pasteable as-is. */
   readonly docPath: string
+  /**
+   * The content hash of the requirements a finding names, as a pair waiver binds it
+   * (`requirementsContentHash`). Threaded in so a waiver op carries the hash of the text `check`
+   * raised the finding on, and `apply` refuses it once that text has changed. Absent for a
+   * caller with no document (a direct library call, a test): the op then omits the hash and
+   * `apply` binds the text as it stands when the op is applied.
+   */
+  readonly contentHash?: (ids: readonly string[]) => string | undefined
 }
 
 /** A repair with nothing in it — the honest shape when no mechanical fix exists. */
@@ -440,15 +448,18 @@ const raisingFinding = (
 
 /**
  * The reviewed-waiver op for a demotion whose only mechanical discharge is a waiver of `code`,
- * scoped to ONE of the demotion's requirements and never document-wide.
+ * scoped to EXACTLY the finding that raised it: its full requirement set (`refs`) and the
+ * content hash of their current text.
  *
- * `check` suppresses a finding under a scoped waiver when the finding names the ref, and under
- * an unscoped one ALWAYS. So a code-only waiver for a pair demotion discharges every finding of
- * that code, including pairs added later that nobody triaged: one honest review of "sound the
- * siren within 2 seconds" / "for at least 30 seconds" then certified "complete the infusion
- * within 30 minutes" / "for at least 60 minutes". The ref is picked by {@link scopeFor}, which
- * keeps the blast radius to this demotion's own finding where the ids allow. With no id to scope
- * to, there is no op: a waiver that cannot be scoped is the document-wide one this rules out.
+ * A waiver is a claim that someone read these requirements, as written, and found them
+ * consistent. Every wider scope claims more than that. A code-only waiver discharges every
+ * finding of the code, so a review of "sound the siren within 2 seconds" / "for at least 30
+ * seconds" certified a later "complete the infusion within 30 minutes" / "for at least 60
+ * minutes". A one-requirement `ref` still discharges every finding that NAMES the ref: the
+ * `FND_RELATIONAL_UNCHECKED` over a cluster a third siren requirement joined, or the same pair
+ * after its partner was rewritten into a different bound. The exact set stops the first (a grown
+ * cluster is a different set), and the hash the second (an edited pair is different text).
+ * With no id to scope to, there is no op: an unscoped waiver is what this rules out.
  */
 const scopedWaive = (
   demotion: CoverageDemotion,
@@ -456,13 +467,22 @@ const scopedWaive = (
   code: string,
   reason: string,
 ): DocumentOp[] => {
-  const sameCode = context.findings.filter((f) => f.code === code)
-  const finding = raisingFinding(demotion, sameCode)
-  const ref =
-    finding !== undefined
-      ? scopeFor(finding, sameCode)
-      : [...demotion.requirementIds].sort().reverse()[0]
-  return ref === undefined ? [] : [{ op: 'waive', code, reason, ref } satisfies DocumentOp]
+  const finding = raisingFinding(
+    demotion,
+    context.findings.filter((f) => f.code === code),
+  )
+  const refs = [...new Set(finding?.requirementIds ?? demotion.requirementIds)].sort()
+  if (refs.length === 0) return []
+  const contentHash = context.contentHash?.(refs)
+  return [
+    {
+      op: 'waive',
+      code,
+      reason,
+      refs,
+      ...(contentHash !== undefined ? { contentHash } : {}),
+    } satisfies DocumentOp,
+  ]
 }
 
 const fromFindingMessage = (

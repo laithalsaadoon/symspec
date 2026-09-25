@@ -415,12 +415,19 @@ describe('no source string hand-types a count of the tool`s own surface', () => 
 // ---------------------------------------------------------------------------
 
 /**
- * `check` suppresses a finding under a waiver when the codes match and either the waiver
- * is unscoped or the finding names its `ref`. Mirrored here so the property is asserted
- * against the rule the pipeline applies, not against the op's shape.
+ * `check` suppresses a finding under a waiver when the codes match and every scope the waiver
+ * carries holds: the finding names its `ref`, and names exactly its `refs`. Mirrored here so the
+ * property is asserted against the rule the pipeline applies, not against the op's shape.
  */
-const suppresses = (op: { code?: string; ref?: string }, finding: CheckFinding): boolean =>
-  op.code === finding.code && (op.ref === undefined || finding.requirementIds.includes(op.ref))
+const suppresses = (
+  op: { code?: string; ref?: string; refs?: readonly string[] },
+  finding: CheckFinding,
+): boolean =>
+  op.code === finding.code &&
+  (op.ref === undefined || finding.requirementIds.includes(op.ref)) &&
+  (op.refs === undefined ||
+    (new Set(op.refs).size === new Set(finding.requirementIds).size &&
+      op.refs.every((id) => finding.requirementIds.includes(id))))
 
 const pairFinding = (code: string, ids: [string, string], message: string): CheckFinding => ({
   code,
@@ -454,6 +461,54 @@ describe('a pair demotion repair is scoped to its own pair', () => {
     const waive = repair.ops[0] as { code?: string; ref?: string }
     expect(suppresses(waive, door)).toBe(true)
     expect(suppresses(waive, brake)).toBe(false)
+  })
+
+  // The reviewed-waiver discharges bind the FINDING, not one of its ids: a ref-scoped waiver
+  // still discharges every same-code finding naming the ref — the relational cluster a third
+  // requirement joined, or the same pair after its partner was rewritten.
+  const REVIEWED: readonly [CoverageDemotion['reason'], string][] = [
+    ['relational-reasoning-not-attempted', 'FND_RELATIONAL_UNCHECKED'],
+    ['numeric-bounds-uncompared', 'FND_NUMERIC_UNCOMPARED'],
+  ]
+
+  it.each(REVIEWED)('%s: the op names the exact set and its content hash', (reason, code) => {
+    const pair = pairFinding(code, ['w', 'x'], 'pair')
+    const hashed: string[][] = []
+    const repair = repairForDemotion(
+      { reason, requirementIds: ['x', 'w'], action: 'x' } as CoverageDemotion,
+      {
+        ...CONTEXT,
+        findings: [pair],
+        contentHash: (ids) => {
+          hashed.push([...ids])
+          return `sha256:${ids.join('+')}`
+        },
+      },
+    )
+    expect(repair.ops).toEqual([
+      {
+        op: 'waive',
+        code,
+        reason: expect.any(String),
+        refs: ['w', 'x'],
+        contentHash: 'sha256:w+x',
+      },
+    ])
+    expect(hashed).toEqual([['w', 'x']])
+  })
+
+  it.each(REVIEWED)('%s: the op does not reach a cluster that grew', (reason, code) => {
+    const pair = pairFinding(code, ['w', 'x'], 'pair')
+    const repair = repairForDemotion(
+      { reason, requirementIds: ['w', 'x'], action: 'x' } as CoverageDemotion,
+      { ...CONTEXT, findings: [pair] },
+    )
+    const waive = repair.ops[0] as { code?: string; refs?: readonly string[] }
+    const grown: CheckFinding = { ...pair, requirementIds: ['w', 'x', 'y'] }
+    expect(suppresses(waive, pair)).toBe(true)
+    expect(suppresses(waive, grown)).toBe(false)
+    // Without a document to hash, the op omits the hash and `apply` binds the text it finds.
+    expect(waive).not.toHaveProperty('contentHash')
   })
 
   it('scopes to the id the finding message names (the higher one)', () => {

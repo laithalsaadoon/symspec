@@ -989,11 +989,16 @@ export type AntonymPair = typeof AntonymPair.Type
 
 /**
  * One reviewed finding waiver: a deliberate, reasoned suppression of a finding
- * code, optionally scoped to one requirement. A waived finding is dropped from
+ * code, optionally scoped to one requirement (`requirementId`) or to one exact
+ * requirement set bound to its reviewed text (`requirementIds` + `contentHash`,
+ * which a pair finding's repair op writes). A waived finding is dropped from
  * `findings[]` and from the exit gate, and tallied under a `waived` counter — so
  * a heuristic false positive gets a dignified, auditable exit instead of
  * degrading the prose or being re-emitted on every run.
  */
+/** The shape of {@link Waiver}'s `contentHash`: `sha256:` and 64 lowercase hex digits. */
+export const CONTENT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/
+
 export const Waiver = Schema.Struct({
   code: NonEmpty.annotate({
     description: lines(
@@ -1010,6 +1015,27 @@ export const Waiver = Schema.Struct({
       ),
     }),
   ),
+  requirementIds: Schema.optionalKey(
+    Schema.Array(Uuid)
+      .pipe(Schema.check(Schema.isMinLength(1)))
+      .annotate({
+        description: lines(
+          'Optional EXACT scope: only a finding of `code` whose requirement set is exactly these UUIDs',
+          'is waived, so a reviewed pair does not reach a cluster that later grows or a sibling pair',
+          'sharing one id. Written by the `refs` form of the `waive` op, together with `contentHash`.',
+        ),
+      }),
+  ),
+  contentHash: Schema.optionalKey(
+    Schema.String.pipe(Schema.check(Schema.isPattern(CONTENT_HASH_PATTERN))).annotate({
+      description: lines(
+        'Optional binding to the TEXT that was reviewed: `sha256:<hex>` of the meaning-bearing fields',
+        'of the requirements in `requirementIds`, taken when the waiver was committed. Once any of',
+        'them is edited or deleted the hash no longer matches and `check` ignores the waiver, so a',
+        'review of one wording never certifies another.',
+      ),
+    }),
+  ),
   reason: NonEmpty.annotate({
     description: lines(
       'Why this finding is waived — the audit trail a future reader needs to tell triage from neglect.',
@@ -1017,7 +1043,8 @@ export const Waiver = Schema.Struct({
     ),
   }),
 }).annotate({
-  description: 'A reviewed, reasoned suppression of a finding code, optionally requirement-scoped.',
+  description:
+    'A reviewed, reasoned suppression of a finding code, optionally scoped to one requirement or to an exact requirement set and its reviewed text.',
 })
 export type Waiver = typeof Waiver.Type
 

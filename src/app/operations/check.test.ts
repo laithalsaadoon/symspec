@@ -34,6 +34,8 @@ import {
   type Requirement,
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
+import { foldOps } from '../../domain/requirements/mutate.ts'
+import type { DocumentOp } from '../../domain/requirements/ops.ts'
 import { DocPath, DocStore, makeDocPath, type SaveInput } from '../../ports/doc-store.ts'
 import { embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound, type OperationalError } from '../../ports/errors.ts'
@@ -1768,5 +1770,142 @@ describe('check — the terminology tier is spliced in without reaching the verd
     )
     expect(payload.terminology?.keysExamined).toBe(0)
     expect(payload.findings.some((f) => f.code === 'FND_TERM_INCONSISTENT')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A pair waiver followed verbatim covers exactly the pair and text it was raised on
+// ---------------------------------------------------------------------------
+
+describe('the numeric/relational repair waiver is bound to its finding and its text', () => {
+  const W = '00000000-0000-4000-8000-000000000001'
+  const X = 'ffffffff-0000-4000-8000-000000000002'
+  const Y = '88888888-0000-4000-8000-000000000003'
+  const siren = (id: string, systemResponse: string) =>
+    req({
+      id,
+      patternType: 'event-driven',
+      trigger: 'the smoke detector trips',
+      systemName: 'fire panel',
+      systemResponse,
+      sentence: `When the smoke detector trips, the fire panel shall ${systemResponse}.`,
+    })
+  const PAIR_REASONS = ['relational-reasoning-not-attempted', 'numeric-bounds-uncompared'] as const
+  const REASON = 'reviewed: siren starts within 2 s and then runs 30 s; consistent'
+
+  const fold = (document: RequirementsDocument, ops: readonly DocumentOp[]) => {
+    const result = foldOps(document, ops, TS)
+    if (result.abortedAt !== undefined) {
+      throw new Error(`fold aborted: ${JSON.stringify(result.results)}`)
+    }
+    return result.document
+  }
+  const reasonsOf = (payload: CheckPayload) => payload.coverage.demotions.map((d) => d.reason)
+
+  /** The siren pair, with every repair waiver `check` offers applied as-is (reason filled in). */
+  const triaged = async () => {
+    const doc = docOf(
+      siren(W, 'sound the siren within 2 seconds'),
+      siren(X, 'sound the siren for at least 30 seconds'),
+    )
+    const first = await expectOk(doc)
+    expect(reasonsOf(first)).toEqual(expect.arrayContaining([...PAIR_REASONS]))
+    const waives = first.coverage.demotions
+      .filter((d) => (PAIR_REASONS as readonly string[]).includes(d.reason))
+      .flatMap((d) => (d.repair?.ops ?? []) as readonly DocumentOp[])
+      .filter((op) => op.op === 'waive')
+      .map((op) => ({ ...op, reason: REASON }) as DocumentOp)
+    expect(waives).toHaveLength(2)
+    return { doc, waives, waived: fold(doc, waives) }
+  }
+
+  it('offers the exact id set plus the content hash, never a one-id ref', async () => {
+    const { waives } = await triaged()
+    for (const op of waives) {
+      expect(op).not.toHaveProperty('ref')
+      expect(op).toMatchObject({
+        refs: [W, X].sort(),
+        contentHash: expect.stringMatching(/^sha256:/),
+      })
+    }
+  })
+
+  it('discharges the triaged pair', async () => {
+    const { waived } = await triaged()
+    const payload = await expectOk(waived)
+    for (const reason of PAIR_REASONS) expect(reasonsOf(payload)).not.toContain(reason)
+    expect(payload.waived).toBe(2)
+  })
+
+  it('(a) does not discharge the cluster a third requirement joins', async () => {
+    const { waived } = await triaged()
+    const grown = fold(waived, [
+      {
+        op: 'add',
+        id: Y,
+        patternType: 'event-driven',
+        trigger: 'the smoke detector trips',
+        systemName: 'fire panel',
+        systemResponse: 'sound the siren after at least 10 seconds',
+      },
+    ])
+    const payload = await expectOk(grown)
+    expect(reasonsOf(payload)).toContain('relational-reasoning-not-attempted')
+    expect(payload.verified).toBe(false)
+  })
+
+  it('(b) does not discharge the pair once the partner is edited into another bound', async () => {
+    const { waived } = await triaged()
+    const edited = fold(waived, [
+      {
+        op: 'update',
+        ref: X,
+        attr: 'systemResponse',
+        value: 'sound the siren after at least 10 seconds',
+      },
+    ])
+    const payload = await expectOk(edited)
+    expect(reasonsOf(payload)).toContain('relational-reasoning-not-attempted')
+    expect(payload.waived).toBe(0)
+  })
+
+  it('(c) does not certify the pair rewritten into the infusion conflict', async () => {
+    const { waived } = await triaged()
+    const rewritten = fold(waived, [
+      {
+        op: 'update',
+        ref: W,
+        attr: 'systemResponse',
+        value: 'complete the infusion within 30 minutes',
+      },
+      {
+        op: 'update',
+        ref: X,
+        attr: 'systemResponse',
+        value: 'complete the infusion for at least 60 minutes',
+      },
+    ])
+    const payload = await expectOk(rewritten)
+    expect(reasonsOf(payload)).toEqual(expect.arrayContaining([...PAIR_REASONS]))
+    expect(payload.findings.map((f) => f.code)).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(payload.waived).toBe(0)
+  })
+
+  it('refuses to commit the offered waiver over text edited after the check', async () => {
+    const doc = docOf(
+      siren(W, 'sound the siren within 2 seconds'),
+      siren(X, 'sound the siren for at least 30 seconds'),
+    )
+    const waive = (await expectOk(doc)).coverage.demotions
+      .flatMap((d) => (d.repair?.ops ?? []) as readonly DocumentOp[])
+      .find((op): op is Extract<DocumentOp, { op: 'waive' }> => op.op === 'waive')
+    expect(waive).toBeDefined()
+    const edited = fold(doc, [
+      { op: 'update', ref: X, attr: 'systemResponse', value: 'sound the siren for 5 seconds' },
+    ])
+    const result = foldOps(edited, [{ ...waive!, reason: REASON }], TS)
+    expect(result.abortedAt).toBe(0)
+    expect(result.results[0]).toMatchObject({ ok: false, code: 'ERR_USAGE' })
+    expect(result.results[0]?.error).toMatch(/changed since the finding was raised/)
   })
 })
