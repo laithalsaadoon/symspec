@@ -549,6 +549,18 @@ function readUnit(rest: string): { raw: string; length: number } {
 }
 
 /**
+ * Whether the text right after a number opens a unit this tier CONVERTS: one that
+ * {@link readUnit} reads and a {@link DIMENSIONS} entry resolves, by the same
+ * case-sensitive symbol and case-insensitive word lookup a bound is normalized with.
+ * Exported so the R6 missing-units lint reads units off this table rather than a copy of
+ * it: a spelling this tier compares arithmetically can never be one R6 calls missing.
+ */
+export function opensConvertedUnit(rest: string): boolean {
+  const unit = readUnit(rest)
+  return unit.raw !== '' && resolveUnit(unit.raw) !== null
+}
+
+/**
  * Normalize a number and its raw unit into the bound's dimension, base unit, and
  * exact value. An unrecognized unit is not dropped: it keys on its own raw text, so
  * `90 days` meets `30 days` and never `1 year`. Keyed on `''`, every unknown unit

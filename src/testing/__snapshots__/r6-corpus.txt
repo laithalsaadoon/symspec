@@ -34,21 +34,21 @@
 "The api gateway shall respond within 500 once the request arrives."	{"r6":[["error",[37,40],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
 "The archive service shall store 1 record."	{"r6":[["error",[32,33],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The archive service shall store 42 records."	{"r6":[["error",[32,34],"Bare number \"42\" with no unit; specify unit (e.g., \"42 seconds\")"]]}
-"The arm shall travel at most 3 foot."	{"r6":[["error",[29,30],"Bare number \"3\" with no unit; specify unit (e.g., \"3 seconds\")"]]}
-"The arm shall travel at most 3 inches."	{"r6":[["error",[29,30],"Bare number \"3\" with no unit; specify unit (e.g., \"3 seconds\")"]]}
+"The arm shall travel at most 3 foot."	{"r6":[]}
+"The arm shall travel at most 3 inches."	{"r6":[]}
 "The auth service shall expire the user session in no less than 60 minutes."	{"r6":[]}
 "The auth service shall keep the token valid for at most 30 minutes."	{"r6":[]}
 "The auth service shall keep the user session alive for no less than 60 minutes."	{"r6":[]}
-"The backup service shall complete the snapshot within 2 h."	{"r6":[["error",[54,55],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
-"The backup service shall complete the snapshot within 2 hrs."	{"r6":[["error",[54,55],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
-"The backup service shall complete the snapshot within 30 min."	{"r6":[["error",[54,56],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
-"The backup service shall complete the snapshot within 30 mins."	{"r6":[["error",[54,56],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
-"The backup service shall complete the snapshot within 90 sec."	{"r6":[["error",[54,56],"Bare number \"90\" with no unit; specify unit (e.g., \"90 seconds\")"]]}
-"The backup service shall retain the snapshot for at least 60 min."	{"r6":[["error",[58,60],"Bare number \"60\" with no unit; specify unit (e.g., \"60 seconds\")"]]}
-"The cache shall hold at most 5 B."	{"r6":[["error",[29,30],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
-"The cache shall hold at most 5 GiB."	{"r6":[["error",[29,30],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
-"The cache shall hold at most 5 MB."	{"r6":[["error",[29,30],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
-"The cache shall hold at most 64 bytes."	{"r6":[["error",[29,31],"Bare number \"64\" with no unit; specify unit (e.g., \"64 seconds\")"]]}
+"The backup service shall complete the snapshot within 2 h."	{"r6":[]}
+"The backup service shall complete the snapshot within 2 hrs."	{"r6":[]}
+"The backup service shall complete the snapshot within 30 min."	{"r6":[]}
+"The backup service shall complete the snapshot within 30 mins."	{"r6":[]}
+"The backup service shall complete the snapshot within 90 sec."	{"r6":[]}
+"The backup service shall retain the snapshot for at least 60 min."	{"r6":[]}
+"The cache shall hold at most 5 B."	{"r6":[]}
+"The cache shall hold at most 5 GiB."	{"r6":[]}
+"The cache shall hold at most 5 MB."	{"r6":[]}
+"The cache shall hold at most 64 bytes."	{"r6":[]}
 "The client shall use delay/30 for each request."	{"r6":[["error",[27,29],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The client shall use delay:30 for each request."	{"r6":[["error",[27,29],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The client shall use retries.5 for each request."	{"r6":[["error",[29,30],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
@@ -87,15 +87,15 @@
 "The controller shall hold zone 1 air temperature above 20 degrees celsius."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall hold zone 1 at 20 degrees celsius."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall hold zone 1 temp above 20 °C."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
-"The controller shall hold zone 1 temperature above 20 celsius."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[51,53],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
-"The controller shall hold zone 1 temperature above 20 degC."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[51,53],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
-"The controller shall hold zone 1 temperature above 20 degrees c."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[51,53],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
+"The controller shall hold zone 1 temperature above 20 celsius."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
+"The controller shall hold zone 1 temperature above 20 degC."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
+"The controller shall hold zone 1 temperature above 20 degrees c."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall hold zone 1 temperature above 20 degrees celsius and set the fan to 80."	{"unparsed":true,"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[89,91],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "The controller shall hold zone 1 temperature above 20 degrees celsius."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall hold zone 1 temperature above 20 °C."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
-"The controller shall hold zone 1 temperature above 20 ℃."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[51,53],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
-"The controller shall hold zone 1 temperature above 290 kelvin."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[51,54],"Bare number \"290\" with no unit; specify unit (e.g., \"290 seconds\")"]]}
-"The controller shall hold zone 1 temperature above 68 fahrenheit."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[51,53],"Bare number \"68\" with no unit; specify unit (e.g., \"68 seconds\")"]]}
+"The controller shall hold zone 1 temperature above 20 ℃."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
+"The controller shall hold zone 1 temperature above 290 kelvin."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
+"The controller shall hold zone 1 temperature above 68 fahrenheit."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall hold zone 1 temperature not above 20 degrees celsius."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall hold zone 1 temperatures above 20 °C."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall hold zone 2 at 5 degrees celsius."	{"r6":[["error",[31,32],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
@@ -107,7 +107,7 @@
 "The controller shall immediately pump 50."	{"r6":[["error",[38,40],"Bare number \"50\" with no unit; specify unit (e.g., \"50 seconds\")"]]}
 "The controller shall keep 2 zones temperature above 20 °C."	{"r6":[["error",[26,27],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall keep axis 3 position within 5 mm."	{"r6":[["error",[31,32],"Bare number \"3\" with no unit; specify unit (e.g., \"3 seconds\")"]]}
-"The controller shall keep disk 2 usage below 5 GB."	{"r6":[["error",[31,32],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"],["error",[45,46],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
+"The controller shall keep disk 2 usage below 5 GB."	{"r6":[["error",[31,32],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall keep latency 500 for each request."	{"r6":[["error",[34,37],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
 "The controller shall keep latency above 500."	{"r6":[["error",[40,43],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
 "The controller shall keep latency below 100."	{"r6":[["error",[40,43],"Bare number \"100\" with no unit; specify unit (e.g., \"100 seconds\")"]]}
@@ -121,7 +121,7 @@
 "The controller shall keep pump 3 below 5 bar."	{"r6":[["error",[31,32],"Bare number \"3\" with no unit; specify unit (e.g., \"3 seconds\")"],["error",[39,40],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
 "The controller shall keep pump 4 above 8 bar."	{"r6":[["error",[31,32],"Bare number \"4\" with no unit; specify unit (e.g., \"4 seconds\")"],["error",[39,40],"Bare number \"8\" with no unit; specify unit (e.g., \"8 seconds\")"]]}
 "The controller shall keep pump 50 delay below 10 seconds."	{"r6":[["error",[31,33],"Bare number \"50\" with no unit; specify unit (e.g., \"50 seconds\")"]]}
-"The controller shall keep radio 2 frequency above 80 kHz."	{"r6":[["error",[32,33],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"],["error",[50,52],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
+"The controller shall keep radio 2 frequency above 80 kHz."	{"r6":[["error",[32,33],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall keep response time 200 at most."	{"r6":[["error",[40,43],"Bare number \"200\" with no unit; specify unit (e.g., \"200 seconds\")"]]}
 "The controller shall keep scale 1 load below 5 kg."	{"r6":[["error",[32,33],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall keep speed 3000 until shutdown."	{"r6":[["error",[32,36],"Bare number \"3000\" with no unit; specify unit (e.g., \"3000 seconds\")"]]}
@@ -255,10 +255,10 @@
 "The door controller shall remain open 30 after the alarm."	{"r6":[["error",[38,40],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The heater shall maintain temperature 20 while idle."	{"r6":[["error",[38,40],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "The link shall carry at least 10 Kbps."	{"r6":[]}
-"The link shall carry at least 10 MB/s."	{"r6":[["error",[30,32],"Bare number \"10\" with no unit; specify unit (e.g., \"10 seconds\")"]]}
-"The link shall carry at least 10 Tbps."	{"r6":[["error",[30,32],"Bare number \"10\" with no unit; specify unit (e.g., \"10 seconds\")"]]}
-"The link shall carry at least 10 bit/s."	{"r6":[["error",[30,32],"Bare number \"10\" with no unit; specify unit (e.g., \"10 seconds\")"]]}
-"The link shall carry at least 10 kbit/s."	{"r6":[["error",[30,32],"Bare number \"10\" with no unit; specify unit (e.g., \"10 seconds\")"]]}
+"The link shall carry at least 10 MB/s."	{"r6":[]}
+"The link shall carry at least 10 Tbps."	{"r6":[]}
+"The link shall carry at least 10 bit/s."	{"r6":[]}
+"The link shall carry at least 10 kbit/s."	{"r6":[]}
 "The monitor shall keep the concentration below 5 ppm."	{"r6":[["error",[47,48],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
 "The monitor shall keep the illuminance above 300 lux."	{"r6":[["error",[45,48],"Bare number \"300\" with no unit; specify unit (e.g., \"300 seconds\")"]]}
 "The monitor shall raise an alarm for beds 3 and 4 within 2 seconds."	{"unparsed":true,"r6":[["error",[42,43],"Bare number \"3\" with no unit; specify unit (e.g., \"3 seconds\")"],["error",[48,49],"Bare number \"4\" with no unit; specify unit (e.g., \"4 seconds\")"]]}
@@ -276,8 +276,8 @@
 "The pump shall deliver 30 ml per hour plus or minus 2 ml per hour."	{"unparsed":true,"r6":[]}
 "The pump shall deliver 30 ml per hour."	{"r6":[]}
 "The pump shall maintain pressure 5 during startup."	{"r6":[["error",[33,34],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
-"The radio shall transmit above 80 hertz."	{"r6":[["error",[31,33],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
-"The radio shall transmit above 80 kHz."	{"r6":[["error",[31,33],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
+"The radio shall transmit above 80 hertz."	{"r6":[]}
+"The radio shall transmit above 80 kHz."	{"r6":[]}
 "The refrigeration controller shall hold the temperature in zones 1 and 2 above 20 degrees celsius."	{"unparsed":true,"r6":[["error",[65,66],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[71,72],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The refrigeration controller shall hold the temperature of zones 1 and 2 above 20 degrees celsius."	{"unparsed":true,"r6":[["error",[65,66],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[71,72],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The refrigeration controller shall hold the zones 1 and 2 above 20 degrees celsius."	{"unparsed":true,"r6":[["error",[50,51],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[56,57],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
@@ -300,8 +300,8 @@
 "The system shall set the delay 30 when the alarm sounds."	{"r6":[["error",[31,33],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The tank shall hold at most 5 ML."	{"r6":[]}
 "The test rig shall hold pressure 5 until the test ends."	{"r6":[["error",[33,34],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
-"The timer shall fire within 5 us."	{"r6":[["error",[28,29],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
-"The timer shall fire within 500 ns."	{"r6":[["error",[28,31],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
+"The timer shall fire within 5 us."	{"r6":[]}
+"The timer shall fire within 500 ns."	{"r6":[]}
 "The vehicle controller shall comply with ISO 26262."	{"r6":[]}
 "Unless the door is shut, PLC_1 shall stop."	{"unparsed":true,"r6":[]}
 "Unless the door is shut, the press #3 shall stop."	{"unparsed":true,"r6":[["error",[36,37],"Bare number \"3\" with no unit; specify unit (e.g., \"3 seconds\")"]]}
@@ -358,7 +358,7 @@
 "While the link tier is provisioned at 100 MBps, the router shall disable the traffic shaper."	{"r6":[]}
 "While the link tier is provisioned at 100 Mbps, the router shall enable the traffic shaper."	{"r6":[]}
 "While the pulse width is 10 s, the gate driver shall disable the output stage."	{"r6":[]}
-"While the pulse width is 10 µs, the gate driver shall enable the output stage."	{"r6":[["error",[25,27],"Bare number \"10\" with no unit; specify unit (e.g., \"10 seconds\")"]]}
+"While the pulse width is 10 µs, the gate driver shall enable the output stage."	{"r6":[]}
 "While the temperature is above 5 degrees celsius, the controller shall log the event."	{"r6":[]}
 "While the temperature is above 5 degrees celsius, when the temperature is below 3 degrees celsius, the vent controller shall log the fault."	{"r6":[]}
 "While zone 2 temperature is below 5 degrees celsius, the controller shall close the vent."	{"r6":[["error",[11,12],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
@@ -385,7 +385,7 @@
 "`Inv := false` discharges all three certificate obligations — so V28 cannot catch vacuity"	{"unparsed":true,"r6":[]}
 "`interruptibleSolve`'s canceler is not doing its job: it must call Z3_interrupt"	{"unparsed":true,"r6":[]}
 "a 14-op BATCH preserves it too, so the fold cannot lose it mid-stream"	{"unparsed":true,"r6":[["error",[2,4],"Bare number \"14\" with no unit; specify unit (e.g., \"14 seconds\")"]]}
-"a clean sentence must not load the ~4.5 MB wink model"	{"sentence":"The clean sentence shall not load the ~4.5 MB wink model.","r6":[["error",[39,42],"Bare number \"4.5\" with no unit; specify unit (e.g., \"4.5 seconds\")"]]}
+"a clean sentence must not load the ~4.5 MB wink model"	{"sentence":"The clean sentence shall not load the ~4.5 MB wink model.","r6":[]}
 "proves a conflict the negation creates: `shall not … below 30 s` against below 10 s"	{"unparsed":true,"r6":[]}
 "reads `shall not … above 30 seconds` as at most 30 seconds"	{"unparsed":true,"r6":[]}
 "shall not ... within 5 seconds"	{"unparsed":true,"r6":[]}

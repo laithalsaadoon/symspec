@@ -12,6 +12,7 @@
  */
 
 import type { Requirement } from '../core/schema.ts'
+import { opensConvertedUnit } from '../formal/numeric.ts'
 import { KW } from '../parse/tier1.ts'
 
 export interface GtWRFinding {
@@ -142,15 +143,14 @@ function isStandardIdentifierNumber(sentence: string, matchIndex: number): boole
 }
 
 /**
- * The unit spellings R6 (missing-units) accepts immediately after a bare number,
- * so `"5 kg"`, `"200 ms"`, or `"3 Mbps"` do NOT trip the rule. This is the
- * lint-tier recognized-unit whitelist — a SEPARATE list from the arithmetic
- * conflict tier's `DIMENSIONS` (src/formal/numeric.ts): R6 only asks "does a
- * unit token follow this number?", while the numeric tier normalizes spellings
- * to a shared base for comparison, so the two lists have different jobs and
- * membership. Exported so the manifest can surface it (see the
- * `TODO(coordination)` in src/cli/manifest.ts) and the two whitelists can be
- * reconciled in one place.
+ * The unit spellings R6 (missing-units) accepts immediately after a bare number
+ * ON TOP OF the numeric tier's: so `"5 kg"`, `"200 ms"`, or `"3 Mbps"` do NOT trip
+ * the rule. Every spelling the numeric tier converts (`DIMENSIONS` in
+ * `formal/numeric.ts`) is a unit to R6 as well, read through that tier's own
+ * reader ({@link opensConvertedUnit}), so this list is not the source for those.
+ * What only this list carries is what the numeric tier deliberately does not
+ * convert — calendar spans, counts, `percent`, electrical units, currency — and
+ * the case-insensitive spellings (`MS`, `KG`) R6 has always accepted.
  *
  * GitHub issue #2 flagged legitimate units R6 was
  * error-flagging: mass, volume, electrical, data-rate, distance, and calendar
@@ -503,6 +503,8 @@ function checkR6MissingUnits(sentence: string, findings: GtWRFinding[]): void {
     // score/cosine/fusion-constant, not a quantity missing a unit. Integers and
     // decimals >1 stay flagged (see isDimensionlessRatio).
     if (num !== undefined && isDimensionlessRatio(num)) continue
+    // A unit the numeric tier converts is a unit (see opensConvertedUnit).
+    if (opensConvertedUnit(sentence.slice(match.index + matched.length))) continue
     findings.push({
       code: 'GTWR_R6_MISSING_UNITS',
       severity: 'error',
