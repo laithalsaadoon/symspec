@@ -358,7 +358,12 @@ const splitStore = (fs: SplitFs) => {
     DocStore.of({
       ...base,
       exists: (path) => Effect.succeed(fs.files.has(path) || fs.texts.has(path)),
-      configPath: (path) => Effect.succeed(join(dirname(path), CONFIG_FILE_NAME)),
+      configPath: (path) =>
+        Effect.succeed({
+          path: join(dirname(path), CONFIG_FILE_NAME),
+          source: 'directory' as const,
+          document: path,
+        }),
       create: (path, contents) =>
         fs.files.has(path) || fs.texts.has(path)
           ? Effect.fail(new ErrDocExists({ error: `${path} exists`, suggestions: [] }))

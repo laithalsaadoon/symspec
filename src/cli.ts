@@ -483,10 +483,13 @@ const checkCommand = Command.make(
     // OPTIONAL for the same reason `--fail-on-unmatched` is: omitting it means "use
     // the measured default", which is a different statement from any number.
     semanticThreshold: Flag.optional(floatFlag(checkOp, 'semanticThreshold')),
+    // OPTIONAL: omitting it is how the config is found at the repository toplevel.
+    config: Flag.optional(stringFlag(checkOp, 'config')),
   },
   (config) =>
     emit(checkOp, {
       file: Option.getOrNull(config.file),
+      config: Option.getOrNull(config.config),
       timeoutMs: config.timeoutMs,
       reachabilityTimeoutMs: config.reachabilityTimeoutMs,
       solverBudgetMs: config.solverBudgetMs,

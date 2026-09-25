@@ -10,11 +10,14 @@
  *
  * ## One location, no walk
  *
- * The config is read from exactly `<git toplevel>/symspec.config.json`, or from the document's
- * own directory when the document is not inside a git work tree. There is no `--config` flag,
- * no environment override and no nearest-ancestor search. An agent that can drop a file next to
- * the document could otherwise shadow the owner's config with a weaker one (spec 007 F11). The
- * lookup itself is the store's (`adapters/fs/store.ts`); this module owns the rule's name.
+ * The config is `--config` or `SYMSPEC_CONFIG` when either names one. Otherwise it is
+ * `<toplevel>/symspec.config.json`, where the toplevel is what `git rev-parse --show-toplevel`
+ * prints in the document's real directory, or the document's own directory when git names no
+ * repository there. Nothing is searched: an agent that drops a weaker config next to the
+ * document does not shadow the owner's (spec 007 F11). The pinned config is authoritative in a
+ * CI job on a fresh clone, where no `.git` content and no flag arrive with a push; a local run
+ * that reads a config any other way says so in `data.run.config` (`path` and `source`). The
+ * lookup itself is the store's (`adapters/fs/store.ts`); this module owns the file's name.
  *
  * ## The comparators read EFFECTIVE values
  *
@@ -489,11 +492,16 @@ const raiseOne = <K extends Knob>(
  * only the knobs the run was below. Each pinned knob a flagless command would run below gets
  * the flag that sets it to the pin, in table order, so a raise sees the ones before it (a
  * raised `--timeout-ms` is the bound an inheriting reachability run resolves to).
+ *
+ * `configFlag` is the config the run named with `--config`: the command names it too, so it
+ * reads the pins it was built from. A config named by the environment is read again by a
+ * command run in that environment, as the embedder's is.
  */
 export const pinnedInvocation = (
   docPath: string,
   run: RunSettings,
   pins: EffectivePins,
+  configFlag?: string,
 ): string => {
   const env = new Set<string>()
   // Keyed on the flag name, so no flag is repeated.
@@ -509,7 +517,8 @@ export const pinnedInvocation = (
   const args = [...flags.values()].flatMap((f) =>
     f.value === undefined ? [f.name] : [f.name, f.value],
   )
-  return [...env, 'symspec', 'check', docPath, ...args].join(' ')
+  const config = configFlag !== undefined ? ['--config', configFlag] : []
+  return [...env, 'symspec', 'check', docPath, ...config, ...args].join(' ')
 }
 
 /**

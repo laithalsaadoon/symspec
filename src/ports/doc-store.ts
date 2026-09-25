@@ -12,7 +12,7 @@ import type { Intent, Policy } from '../domain/anchor/anchor.ts'
 import { CONFIG_FILE_NAME, type SymspecConfig } from '../domain/config/config.ts'
 import type { LoadedDocument, RequirementsDocument } from '../domain/requirements/document.ts'
 import {
-  type ErrConfigInvalid,
+  ErrConfigInvalid,
   type ErrDocExists,
   type ErrDocNotFound,
   type ErrDocParse,
@@ -32,6 +32,34 @@ export const DOC_PATH_ENV_VAR = 'SYMSPEC_DOC'
  * rather than four paraphrases that drift.
  */
 export const DOC_PATH_CONVENTION = `Resolution precedence, in order: the supplied path, then the ${DOC_PATH_ENV_VAR} environment variable, then the ${DEFAULT_DOC_PATH} default.`
+
+/** The environment variable that names the config explicitly, below `--config`. */
+export const CONFIG_PATH_ENV_VAR = 'SYMSPEC_CONFIG'
+
+/**
+ * Where a config came from. `flag` and `env` are explicit (`--config`, then
+ * {@link CONFIG_PATH_ENV_VAR}); `toplevel` is `<git rev-parse --show-toplevel>/symspec.config.json`
+ * for the document's real directory; `directory` is the document's own directory, when git names
+ * no repository there.
+ */
+export type ConfigSource = 'flag' | 'env' | 'toplevel' | 'directory'
+
+/** A config location, and which rule chose it. */
+export interface ConfigLocation {
+  readonly path: string
+  readonly source: ConfigSource
+}
+
+/** An explicitly named config: `--config` or {@link CONFIG_PATH_ENV_VAR}. */
+export interface ExplicitConfig extends ConfigLocation {
+  readonly source: 'flag' | 'env'
+}
+
+/**
+ * The config-location rule, as prose — single-sourced for the flag description, the manifest and
+ * AGENTS.md.
+ */
+export const CONFIG_PATH_CONVENTION = `Resolution precedence, in order: --config, then the ${CONFIG_PATH_ENV_VAR} environment variable, then ${CONFIG_FILE_NAME} at the toplevel \`git rev-parse --show-toplevel\` prints in the document's directory (symlinks resolved first), or in the document's own directory when git names no repository there. Nothing else is searched, and data.run.config names the path and which of these chose it.`
 
 /**
  * The path-resolution service.
@@ -56,6 +84,12 @@ export class DocPath extends Context.Service<
     /** The sampled `SYMSPEC_DOC` value, or `undefined` when unset. Exposed for
      * diagnostics and for tests that assert the precedence. */
     readonly envPath: string | undefined
+    /**
+     * The explicitly named config: an explicit value (`--config`) first, then the sampled
+     * {@link CONFIG_PATH_ENV_VAR}. `undefined` when neither names one, and the store then reads
+     * the config at the document's repository toplevel.
+     */
+    readonly resolveConfig: (explicit: string | null | undefined) => ExplicitConfig | undefined
   }
 >()('symspec/DocPath') {}
 
@@ -72,8 +106,15 @@ export const makeDocPath = (env: Readonly<Record<string, string | undefined>>) =
   // exports SYMSPEC_DOC= would otherwise resolve every command to '' and fail
   // with a confusing ENOENT on a path that is not a path.
   const envPath = raw !== undefined && raw.length > 0 ? raw : undefined
+  const rawConfig = env[CONFIG_PATH_ENV_VAR]
+  const envConfig = rawConfig !== undefined && rawConfig.length > 0 ? rawConfig : undefined
   return DocPath.of({
     envPath,
+    resolveConfig: (explicit) => {
+      if (explicit !== null && explicit !== undefined && explicit.length > 0)
+        return { path: explicit, source: 'flag' }
+      return envConfig !== undefined ? { path: envConfig, source: 'env' } : undefined
+    },
     resolve: (explicit) => {
       if (explicit !== null && explicit !== undefined && explicit.length > 0) return explicit
       return envPath ?? DEFAULT_DOC_PATH
@@ -99,10 +140,8 @@ export interface LoadedAnchor<A> {
   readonly source: AnchorSource
 }
 
-/** The pinned config, as read from its one location. */
-export interface LoadedConfig {
-  /** The path it was read from: the fixed location, never a searched one. */
-  readonly path: string
+/** The pinned config, as read from the one location its rule chose. */
+export interface LoadedConfig extends ConfigLocation {
   readonly config: SymspecConfig
   /**
    * Whether this config governs the checked document: it names no `files.document`, or names
@@ -168,32 +207,44 @@ export interface DocStoreShape {
    * deciding whether to refuse — actually needs to know. */
   readonly exists: (path: string) => Effect.Effect<boolean>
   /**
-   * Load the document at `path` as a {@link DocumentBundle}: the document, the config at its
-   * one location ({@link DocStore.configPath}), and the intent and policy.
+   * Load the document at `path` as a {@link DocumentBundle}: the document, the config (the
+   * `explicit` one when given, else the one at {@link DocStore.configPath}), and the intent and
+   * policy.
    *
    * `ERR_CONFIG_INVALID` when the config or a split file it names cannot be read and decoded,
-   * or when the document carries an inline intent (or policy) and the config names a split
-   * one too. It fails CLOSED: a config that cannot be read is never read as no config.
+   * when an explicit config does not exist, or when the document carries an inline intent (or
+   * policy) and the config names a split one too. It fails CLOSED: a config that cannot be read
+   * is never read as no config.
    */
   readonly loadBundle: (
     path: string,
+    explicit?: ExplicitConfig,
   ) => Effect.Effect<
     DocumentBundle,
     ErrDocNotFound | ErrDocParse | ErrSchemaVersion | ErrConfigInvalid
   >
   /**
-   * The ONE location of the config for the document at `path`: `symspec.config.json` at the
-   * document's repository toplevel, or in the document's own directory outside a work tree.
-   * Never a search for the nearest config. `ERR_CONFIG_INVALID` when a `.git` entry on the way
-   * up is not a repository: it would move the toplevel, so it is refused rather than trusted.
+   * The default location of the config for the document at `path`, and the document's real
+   * path. The document's symlinks are resolved first, then `symspec.config.json` is at the
+   * toplevel `git rev-parse --show-toplevel` prints in its directory (`toplevel`), or in that
+   * directory when git names no repository there (`directory`). Never a search for the nearest
+   * config. `ERR_CONFIG_INVALID` when git fails for any reason other than "not a repository":
+   * the location cannot be known, so it is refused rather than guessed.
    */
-  readonly configPath: (path: string) => Effect.Effect<string, ErrConfigInvalid>
+  readonly configPath: (path: string) => Effect.Effect<DefaultConfigLocation, ErrConfigInvalid>
   /**
    * Write `contents` to a file that must not exist yet. `ERR_DOC_EXISTS` when it does, and
    * then nothing is written: the exclusive create is the write-safety primitive for the
    * files an owner authors (`init --split`'s intent, policy and config).
    */
   readonly create: (path: string, contents: string) => Effect.Effect<void, ErrDocExists | ErrIo>
+}
+
+/** The default config location for a document, with the document's real path. */
+export interface DefaultConfigLocation extends ConfigLocation {
+  readonly source: 'toplevel' | 'directory'
+  /** The document's path with every symlink resolved (lexically resolved when it is absent). */
+  readonly document: string
 }
 
 /** The document store service. See {@link DocStoreShape}. */
@@ -209,8 +260,9 @@ const parentOf = (path: string): string => {
 /**
  * A {@link DocStore} over a store that holds only DOCUMENTS — the in-memory stores the suites
  * and harnesses build. Its world has no repository and no config, so
- * {@link DocStore.loadBundle} is the document with its inline anchors,
- * {@link DocStore.configPath} is the outside-a-work-tree rule, and {@link DocStore.create}
+ * {@link DocStore.loadBundle} is the document with its inline anchors (and an explicit config,
+ * which it cannot read, fails closed),
+ * {@link DocStore.configPath} is the no-repository rule, and {@link DocStore.create}
  * refuses: there is no file but a document to create.
  */
 export const documentOnlyStore = (
@@ -218,8 +270,21 @@ export const documentOnlyStore = (
 ): DocStoreShape =>
   DocStore.of({
     ...store,
-    loadBundle: (path) => Effect.map(store.load(path), documentBundle),
-    configPath: (path) => Effect.succeed(`${parentOf(path)}/${CONFIG_FILE_NAME}`),
+    loadBundle: (path, explicit) =>
+      explicit === undefined
+        ? Effect.map(store.load(path), documentBundle)
+        : Effect.fail(
+            new ErrConfigInvalid({
+              error: `This store holds only documents, so it cannot read the config ${explicit.path}.`,
+              suggestions: ['Run the command against the real filesystem.'],
+            }),
+          ),
+    configPath: (path) =>
+      Effect.succeed({
+        path: `${parentOf(path)}/${CONFIG_FILE_NAME}`,
+        source: 'directory' as const,
+        document: path,
+      }),
     create: (path) =>
       Effect.fail(
         new ErrIo({

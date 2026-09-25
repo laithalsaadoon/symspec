@@ -20,14 +20,16 @@
  * ## The bundle `check` reads
  *
  * `loadBundle` is `load` plus the pinned `symspec.config.json` and the split intent and
- * policy it names (spec 007 AC-5-10). The config has ONE location, `configPath`: the
- * document's repository toplevel (the nearest directory up whose `.git` entry is a git
- * directory or a gitfile naming one, and which every repository enclosing it agrees is a
- * toplevel of its own; any other `.git` entry is refused), or the document's own directory
- * outside a work tree. The walk looks for the repository, never for
- * a config, so a config placed between the document and the toplevel is not read. Every
- * failure to read what the config names is `ERR_CONFIG_INVALID`: fail closed, never "no config".
- * `create` is the exclusive write `init --split` uses for those owner-authored files.
+ * policy it names (spec 007 AC-5-10). An explicit config (`--config`, then `SYMSPEC_CONFIG`)
+ * is read when one is named. Otherwise the config has ONE location, `configPath`: the document's
+ * symlinks are resolved, and the config is `symspec.config.json` at the toplevel
+ * `git rev-parse --show-toplevel` prints in the document's real directory, or in that directory
+ * when git names no repository there. Git is asked; nothing about `.git` is parsed here. The
+ * trust boundary is a CI job on a fresh clone, where no `.git` content travels in a push, so
+ * git's answer there is the committed repository's. The lookup never searches for a config, so
+ * a config placed between the document and the toplevel is not read. Every failure to read what
+ * the config names is `ERR_CONFIG_INVALID`: fail closed, never "no config". `create` is the
+ * exclusive write `init --split` uses for those owner-authored files.
  *
  * ## The atomic-write pattern, ported from v4's `storage.ts`
  *
@@ -74,7 +76,8 @@
  * disjointness, same agent-visible outcome, opposite mechanism.)
  */
 
-import { Effect, FileSystem, Layer, Path, Schema } from 'effect'
+import { Effect, FileSystem, Layer, Path, Schema, Stream } from 'effect'
+import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
 import { Intent, Policy } from '../../domain/anchor/anchor.ts'
 import { CONFIG_FILE_NAME, decodeConfig } from '../../domain/config/config.ts'
 import {
@@ -87,12 +90,14 @@ import {
   withUnknownKeys,
 } from '../../domain/requirements/document.ts'
 import {
+  type DefaultConfigLocation,
   DOC_PATH_CONVENTION,
   DOC_PATH_ENV_VAR,
   DocPath,
   DocStore,
   type DocumentBundle,
   documentBundle,
+  type ExplicitConfig,
   type LoadedAnchor,
   makeDocPath,
   type SaveInput,
@@ -105,7 +110,6 @@ import {
   ErrIo,
   ErrSchemaVersion,
 } from '../../ports/errors.ts'
-import { indexUnder } from './git-index.ts'
 
 // ---------------------------------------------------------------------------
 // Serialization — pure, no I/O
@@ -286,22 +290,22 @@ export const docPathLayer = Layer.sync(DocPath)(() => makeDocPath(process.env))
  * cannot collide. */
 let tempCounter = 0
 
-/** A git `HEAD`: a symbolic ref, or a detached SHA-1 or SHA-256 object name. */
-const GIT_HEAD = /^(ref: refs\/\S+|[0-9a-f]{40}|[0-9a-f]{64})\s*$/
+/**
+ * The environment `git rev-parse` runs in: the caller's, minus every `GIT_*` variable (a hook's
+ * `GIT_DIR` or `GIT_WORK_TREE` would answer for another repository than the document's), with
+ * the C locale so "not a git repository" reads the same everywhere.
+ */
+const gitEnvironment = (): Record<string, string> => ({
+  ...Object.fromEntries(
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => !entry[0].startsWith('GIT_') && entry[1] !== undefined,
+    ),
+  ),
+  LC_ALL: 'C',
+})
 
-/** The prefix of a gitfile, the `.git` FILE of a linked work tree or a submodule. */
-const GITFILE_PREFIX = 'gitdir: '
-
-/** A repository config's `objectformat = sha256`, whose index names objects in 32 bytes. */
-const SHA256_OBJECT_FORMAT = /^\s*objectformat\s*=\s*sha256\s*$/im
-
-/** A repository toplevel, found by its `.git` entry, with the real git and common directories. */
-interface Repository {
-  readonly toplevel: string
-  readonly entry: string
-  readonly gitDir: string
-  readonly common: string
-}
+/** Git's answer outside any repository, the one failure that means "no toplevel". */
+const NOT_A_REPOSITORY = /not a git repository/i
 
 /**
  * The production {@link DocStore}, over the platform `FileSystem` and `Path`.
@@ -314,6 +318,7 @@ export const docStoreLayer = Layer.effect(DocStore)(
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 
     const exists = (target: string): Effect.Effect<boolean> =>
       fs.exists(target).pipe(Effect.orElseSucceed(() => false))
@@ -377,186 +382,76 @@ export const docStoreLayer = Layer.effect(DocStore)(
         }).pipe(Effect.tapError(() => cleanup))
       })
 
-    /** The type of the entry at `target`, following links; `undefined` when there is none. */
-    const typeOf = (target: string): Effect.Effect<string | undefined> =>
-      fs.stat(target).pipe(
-        Effect.map((info): string | undefined => info.type),
-        Effect.orElseSucceed(() => undefined),
+    /**
+     * `target` with every symlink resolved. An absent tail (a document `init` is about to
+     * create) is kept as written beneath the nearest ancestor that resolves.
+     */
+    const realOf = (target: string): Effect.Effect<string> =>
+      fs.realPath(target).pipe(
+        Effect.catchCause(() => {
+          const parent = path.dirname(target)
+          return parent === target
+            ? Effect.succeed(target)
+            : Effect.map(realOf(parent), (real) => path.join(real, path.basename(target)))
+        }),
       )
 
-    /** The text of the file at `target`; `undefined` when it cannot be read. */
-    const textOf = (target: string): Effect.Effect<string | undefined> =>
-      fs.readFileString(target).pipe(Effect.orElseSucceed(() => undefined))
-
-    /** `target` with every link resolved; `target` itself when it cannot be resolved. */
-    const realOf = (target: string): Effect.Effect<string> =>
-      fs.realPath(target).pipe(Effect.orElseSucceed(() => target))
-
-    /**
-     * Why `dir` is not a git directory, or its COMMON directory when it is one. Git's own test:
-     * a `HEAD` naming a ref or an object, and `objects/` and `refs/` directories — in the common
-     * directory a `commondir` file names, for a linked work tree's git directory.
-     */
-    const gitDirectory = (
-      dir: string,
-    ): Effect.Effect<{ readonly why: string } | { readonly common: string }> =>
-      Effect.gen(function* () {
-        if ((yield* typeOf(dir)) !== 'Directory') return { why: `${dir} is not a directory` }
-        const head = yield* textOf(path.join(dir, 'HEAD'))
-        if (head === undefined || !GIT_HEAD.test(head)) {
-          return { why: `${dir} has no HEAD naming a ref or a commit` }
-        }
-        const commondir = (yield* textOf(path.join(dir, 'commondir')))?.trim()
-        const common = commondir ? path.resolve(dir, commondir) : dir
-        for (const sub of ['objects', 'refs']) {
-          if ((yield* typeOf(path.join(common, sub))) !== 'Directory') {
-            return { why: `${common} has no ${sub}/ directory` }
-          }
-        }
-        return { common: yield* realOf(common) }
-      })
-
-    /** A refusal of the `.git` entry at `entry`: it would move where the config is read. */
-    const refuse = (entry: string, why: string, suggestions: readonly string[]) =>
-      Effect.fail(
-        new ErrConfigInvalid({
-          error: `${entry} marks a repository toplevel, but ${why}. The pinned config is read at the toplevel, so this entry would move where it is read from.`,
-          suggestions: [
-            ...suggestions,
-            `The check does not run beside it rather than run without the toplevel's pins.`,
-          ],
+    /** Run `git rev-parse --show-toplevel` in `dir`: its exit code, stdout and stderr. */
+    const revParseToplevel = (dir: string) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const handle = yield* spawner.spawn(
+            ChildProcess.make('git', ['rev-parse', '--show-toplevel'], {
+              cwd: dir,
+              env: gitEnvironment(),
+              extendEnv: false,
+            }),
+          )
+          const [stdout, stderr, code] = yield* Effect.all(
+            [
+              Stream.mkString(Stream.decodeText(handle.stdout)),
+              Stream.mkString(Stream.decodeText(handle.stderr)),
+              handle.exitCode,
+            ],
+            { concurrency: 'unbounded' },
+          )
+          return { code: Number(code), stdout: stdout.trim(), stderr: stderr.trim() }
         }),
       )
 
     /**
-     * The repository whose toplevel is `dir`: its `.git` entry is a git directory, or a gitfile
-     * (`gitdir: <path>`, a linked work tree's or a submodule's) naming one. `gitDir` and `common`
-     * are real paths, so a symlinked `.git` resolves to the directory it names. A `.git` entry
-     * that is neither is refused as `ERR_CONFIG_INVALID`, never skipped or trusted: an empty
-     * directory is invisible to `git status`, and trusting it would move the toplevel to it.
-     */
-    const repositoryAt = (dir: string): Effect.Effect<Repository | undefined, ErrConfigInvalid> =>
-      Effect.gen(function* () {
-        const entry = path.join(dir, '.git')
-        const type = yield* typeOf(entry)
-        if (type === undefined) return undefined
-        let named: string | undefined = entry
-        let why: string | undefined
-        if (type === 'File') {
-          const text = (yield* textOf(entry)) ?? ''
-          named = text.startsWith(GITFILE_PREFIX)
-            ? path.resolve(dir, text.slice(GITFILE_PREFIX.length).trim())
-            : undefined
-          if (named === undefined)
-            why = `it is a file, but not a gitfile (\`${GITFILE_PREFIX}<path>\`)`
-        } else if (type !== 'Directory') why = `it is a ${type}`
-        if (named !== undefined && why === undefined) {
-          const found = yield* gitDirectory(named)
-          if ('common' in found) {
-            return { toplevel: dir, entry, gitDir: yield* realOf(named), common: found.common }
-          }
-          why = found.why
-        }
-        return yield* refuse(entry, `it is not a repository: ${why}`, [
-          `Remove ${entry}; \`git rev-parse --show-toplevel\` prints the toplevel git resolves.`,
-        ])
-      })
-
-    /**
-     * Refuse `inner`, a repository nested in `outer`'s work tree, unless `outer` agrees it is a
-     * toplevel of its own. Git itself does not ask: a well-formed `.git` beside the document —
-     * a gitfile or symlink naming the enclosing git directory, a hand-made git directory, a
-     * `git init` — makes `git rev-parse --show-toplevel` print the document's directory, and
-     * `git status` never lists a `.git` path. So the enclosing repository is the witness:
-     *
-     * - The SAME repository (one common directory): `inner` must be a linked work tree of it,
-     *   registered under `<common>/worktrees/` with a `gitdir` file naming `inner`'s `.git` back.
-     * - ANOTHER repository: `outer`'s index must register `inner` as a gitlink (a submodule) or
-     *   track nothing inside it. Tracked files under it mean the marker came after the commit —
-     *   `git add` on a directory holding a `.git` records a gitlink, never its files.
-     */
-    const nestedIn = (
-      inner: Repository,
-      outer: Repository,
-    ): Effect.Effect<void, ErrConfigInvalid> =>
-      Effect.gen(function* () {
-        if (inner.common === outer.common) {
-          const back = (yield* textOf(path.join(inner.gitDir, 'gitdir')))?.trim()
-          const registered =
-            inner.gitDir !== outer.gitDir &&
-            path.dirname(inner.gitDir) === path.join(inner.common, 'worktrees') &&
-            back !== undefined &&
-            back !== '' &&
-            (yield* realOf(path.resolve(inner.gitDir, back))) === (yield* realOf(inner.entry))
-          if (registered) return
-          return yield* refuse(
-            inner.entry,
-            `it names the git directory of the repository at ${outer.toplevel} (${inner.gitDir}) without being a work tree registered with it`,
-            [
-              `Remove ${inner.entry}; the document belongs to the work tree at ${outer.toplevel}.`,
-              `A second work tree of one repository is made by \`git worktree add\`, which registers it.`,
-            ],
-          )
-        }
-        const index = yield* fs
-          .readFile(path.join(outer.gitDir, 'index'))
-          .pipe(Effect.orElseSucceed(() => undefined))
-        // No index: the enclosing repository tracks nothing yet, so nothing is inside it.
-        if (index === undefined) return
-        const config = (yield* textOf(path.join(outer.common, 'config'))) ?? ''
-        const hashBytes = SHA256_OBJECT_FORMAT.test(config) ? 32 : 20
-        const rel = path.relative(outer.toplevel, inner.toplevel).split(path.sep).join('/')
-        const under = indexUnder(index, rel, hashBytes)
-        if (!under.readable) {
-          return yield* refuse(
-            inner.entry,
-            `the index of the enclosing repository at ${outer.toplevel} cannot be read to confirm it (${under.why})`,
-            [`Remove ${inner.entry}, or register ${rel} as a submodule of ${outer.toplevel}.`],
-          )
-        }
-        if (under.gitlink || under.tracked === undefined) return
-        return yield* refuse(
-          inner.entry,
-          `the enclosing repository at ${outer.toplevel} tracks ${under.tracked} inside ${inner.toplevel} and does not register ${rel} as a submodule`,
-          [
-            `Remove ${inner.entry}; \`git ls-files ${rel}\` in ${outer.toplevel} lists the files the enclosing repository tracks there.`,
-            `A repository nested on purpose is a submodule: \`git submodule add\` registers it.`,
-          ],
-        )
-      })
-
-    /**
-     * The document's repository toplevel: the nearest directory, from the document's own up,
-     * whose `.git` entry is a repository ({@link repositoryAt}). `undefined` outside a work tree.
-     *
-     * This walks for the REPOSITORY, never for a config: the config is then read from exactly
-     * one place under it, so a `symspec.config.json` dropped anywhere between the document and
-     * the toplevel is not read at all (spec 007 F11). The walk goes on to the filesystem root,
-     * and every repository on the way must be a toplevel its enclosing one agrees to
-     * ({@link nestedIn}) — every pair, because a planted repository could vouch for the next.
+     * The toplevel git prints for `dir`, or `undefined` when git names no repository there (or
+     * is not installed). Any other failure (an unsafe-ownership refusal, a `.git` git cannot
+     * read) is `ERR_CONFIG_INVALID`: the location cannot be known, so it is not guessed.
      */
     const toplevelOf = (dir: string): Effect.Effect<string | undefined, ErrConfigInvalid> =>
       Effect.gen(function* () {
-        const chain: Repository[] = []
-        let current = dir
-        for (;;) {
-          const repository = yield* repositoryAt(current)
-          if (repository !== undefined) chain.push(repository)
-          const parent = path.dirname(current)
-          if (parent === current) break
-          current = parent
-        }
-        for (const [i, inner] of chain.entries()) {
-          const outer = chain[i + 1]
-          if (outer !== undefined) yield* nestedIn(inner, outer)
-        }
-        return chain[0]?.toplevel
+        const result = yield* Effect.result(revParseToplevel(dir))
+        // No git to ask: there is no repository this build can see.
+        if (result._tag === 'Failure') return undefined
+        const { code, stdout, stderr } = result.success
+        if (code === 0 && stdout.length > 0) return yield* realOf(stdout)
+        if (NOT_A_REPOSITORY.test(stderr)) return undefined
+        return yield* Effect.fail(
+          new ErrConfigInvalid({
+            error: `\`git rev-parse --show-toplevel\` failed in ${dir} (exit ${code}): ${stderr || 'no output'}. The pinned config is read at the repository toplevel, so its location cannot be known.`,
+            suggestions: [
+              `Run \`git -C ${dir} rev-parse --show-toplevel\` and fix what it reports.`,
+              `If git refuses the repository's ownership, mark it safe: \`git config --global --add safe.directory ${dir}\`.`,
+              'Or name the config explicitly with --config.',
+            ],
+          }),
+        )
       })
 
-    const configPath = (target: string): Effect.Effect<string, ErrConfigInvalid> =>
+    const configPath = (target: string): Effect.Effect<DefaultConfigLocation, ErrConfigInvalid> =>
       Effect.gen(function* () {
-        const dir = path.dirname(path.resolve(target))
-        return path.join((yield* toplevelOf(dir)) ?? dir, CONFIG_FILE_NAME)
+        const document = yield* realOf(path.resolve(target))
+        const dir = path.dirname(document)
+        const toplevel = yield* toplevelOf(dir)
+        return toplevel !== undefined
+          ? { path: path.join(toplevel, CONFIG_FILE_NAME), source: 'toplevel', document }
+          : { path: path.join(dir, CONFIG_FILE_NAME), source: 'directory', document }
       })
 
     /** Read, parse and decode one owner-authored JSON file, failing as ERR_CONFIG_INVALID. */
@@ -620,17 +515,20 @@ export const docStoreLayer = Layer.effect(DocStore)(
         }
       })
 
-    const loadBundle = (target: string) =>
+    const loadBundle = (target: string, explicit?: ExplicitConfig) =>
       Effect.gen(function* () {
         const loaded = yield* load(target)
         const inline = documentBundle(loaded)
-        const configFile = yield* configPath(target)
-        if (!(yield* exists(configFile))) return inline
+        const location = yield* configPath(target)
+        // An explicit config is read or refused: a named file that is absent is not "no config".
+        const chosen = explicit ?? location
+        const configFile = path.resolve(chosen.path)
+        if (explicit === undefined && !(yield* exists(configFile))) return inline
         const config = yield* readDecoded(configFile, 'config', decodeConfig)
         const governed = config.files?.document
         const governsDocument =
           governed === undefined ||
-          path.resolve(path.dirname(configFile), governed) === path.resolve(target)
+          (yield* realOf(path.resolve(path.dirname(configFile), governed))) === location.document
         const files = governsDocument ? config.files : undefined
         const intent = yield* splitAnchor(
           files?.intent,
@@ -648,7 +546,7 @@ export const docStoreLayer = Layer.effect(DocStore)(
         )
         return {
           loaded,
-          config: { path: configFile, config, governsDocument },
+          config: { path: configFile, source: chosen.source, config, governsDocument },
           ...(intent !== undefined ? { intent } : {}),
           ...(policy !== undefined ? { policy } : {}),
         } satisfies DocumentBundle

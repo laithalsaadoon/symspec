@@ -9,7 +9,8 @@
  * borrowed reason name is as visible as one under the right name.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { NodeServices } from '@effect/platform-node'
@@ -146,7 +147,10 @@ describe('a run below a pin is run-weakened, per knob (AC-5-10)', () => {
     expect(data.coverage.demotions.map((d) => d.reason)).toEqual(['run-weakened'])
     expect(data.run.belowPinned).toEqual(['temporalBound'])
     expect(data.run.pinned).toEqual({ temporalBound: 10 })
-    expect(data.run.config).toBe(join(dir, CONFIG_FILE_NAME))
+    expect(data.run.config).toEqual({
+      path: join(realpathSync(dir), CONFIG_FILE_NAME),
+      source: 'directory',
+    })
     const [demotion] = data.coverage.demotions
     expect(demotion?.action).toContain('temporalBound')
     expect(demotion?.action).toContain(join(dir, CONFIG_FILE_NAME))
@@ -217,75 +221,38 @@ describe('a run below a pin is run-weakened, per knob (AC-5-10)', () => {
 })
 
 /** A git directory at `gitDir`: the HEAD, objects and refs git itself requires of one. */
-const gitDirAt = (gitDir: string): void => {
-  mkdirSync(join(gitDir, 'objects'), { recursive: true })
-  mkdirSync(join(gitDir, 'refs'))
-  writeFileSync(join(gitDir, 'HEAD'), 'ref: refs/heads/main\n')
+/** Make `root` a repository toplevel with real git, and no inherited GIT_* variable. */
+const gitInit = (root: string): void => {
+  execFileSync('git', ['init', '-q'], {
+    cwd: root,
+    env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
+  })
 }
 
 describe('the config has ONE location (F11)', () => {
   it('under a repository, the toplevel config governs and a weaker shadow beside the document is not read', async () => {
-    const root = tempDir()
-    gitDirAt(join(root, '.git'))
+    const root = realpathSync(tempDir())
+    gitInit(root)
     writeJson(join(root, CONFIG_FILE_NAME), { configVersion: 1, gate: { temporalBound: 10 } })
     const sub = join(root, 'specs', 'door')
     mkdirSync(sub, { recursive: true })
     // The shadow: a config next to the document that pins nothing.
     const doc = docIn(sub, {})
     const data = await expectData(doc, { temporalBound: 1 })
-    expect(data.run.config).toBe(join(root, CONFIG_FILE_NAME))
+    expect(data.run.config).toEqual({ path: join(root, CONFIG_FILE_NAME), source: 'toplevel' })
     expect(data.run.belowPinned).toEqual(['temporalBound'])
     expect(data.verified).toBe(false)
   })
 
-  it('a linked work tree marks its toplevel with a .git FILE, and that counts too', async () => {
-    // A linked work tree's git directory holds a HEAD and a `commondir` naming the main one.
-    const main = join(tempDir(), '.git')
-    gitDirAt(main)
-    const linked = join(main, 'worktrees', 'docs')
-    mkdirSync(linked, { recursive: true })
-    writeFileSync(join(linked, 'HEAD'), `${'a'.repeat(40)}\n`)
-    writeFileSync(join(linked, 'commondir'), '../..\n')
-    const root = tempDir()
-    writeFileSync(join(root, '.git'), `gitdir: ${linked}\n`)
-    writeJson(join(root, CONFIG_FILE_NAME), { configVersion: 1, gate: { strict: true } })
-    const sub = join(root, 'docs')
-    mkdirSync(sub)
-    const data = await expectData(docIn(sub))
-    expect(data.run.belowPinned).toEqual(['strict'])
-  })
-
-  it('a .git entry that is not a repository fails CLOSED rather than moving the toplevel', async () => {
-    const root = tempDir()
-    gitDirAt(join(root, '.git'))
+  it('--config names the config in place of the toplevel one, and discloses it as flag', async () => {
+    const root = realpathSync(tempDir())
+    gitInit(root)
     writeJson(join(root, CONFIG_FILE_NAME), { configVersion: 1, gate: { temporalBound: 10 } })
-    const sub = join(root, 'docs')
-    mkdirSync(sub)
-    const doc = docIn(sub, {})
-    const marker = join(sub, '.git')
-    const fakes: Record<string, () => void> = {
-      'an empty directory': () => mkdirSync(marker),
-      'a directory whose HEAD names nothing': () => {
-        gitDirAt(marker)
-        writeFileSync(join(marker, 'HEAD'), 'not a ref\n')
-      },
-      'a directory with no refs/': () => {
-        mkdirSync(join(marker, 'objects'), { recursive: true })
-        writeFileSync(join(marker, 'HEAD'), 'ref: refs/heads/main\n')
-      },
-      'a gitfile to nowhere': () => writeFileSync(marker, 'gitdir: /nonexistent\n'),
-      'a file that is not a gitfile': () => writeFileSync(marker, '{}\n'),
-    }
-    for (const [what, plant] of Object.entries(fakes)) {
-      plant()
-      expect(await check(doc, { temporalBound: 1 }), what).toEqual({
-        ok: false,
-        code: 'ERR_CONFIG_INVALID',
-      })
-      rmSync(marker, { recursive: true, force: true })
-    }
-    const data = await expectData(doc, { temporalBound: 1 })
-    expect(data.run.config).toBe(join(root, CONFIG_FILE_NAME))
+    const named = join(realpathSync(tempDir()), 'named.json')
+    writeJson(named, { configVersion: 1, gate: {} })
+    const data = await expectData(docIn(root), { temporalBound: 1, config: named })
+    expect(data.run.config).toEqual({ path: named, source: 'flag' })
+    expect(data.run.belowPinned).toEqual([])
   })
 
   it('outside a repository, a config in a PARENT directory is not read', async () => {

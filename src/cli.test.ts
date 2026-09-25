@@ -1547,15 +1547,29 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
   })
 
   const CONFIG = 'symspec.config.json'
-  const REPO_MARKER = ['.', 'git'].join('')
   const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
 
-  /** Make `root` a repository toplevel: the HEAD, objects and refs a git directory holds. */
+  /** git with no inherited GIT_* variable (a hook's GIT_DIR would redirect it); stderr captured. */
+  const git = (cwd: string, ...args: string[]): string =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
+    }).trim()
+
+  /** Make `root` a repository toplevel, the way an owner does. */
   const repoAt = (root: string): void => {
-    const gitDir = join(root, REPO_MARKER)
-    mkdirSync(join(gitDir, 'objects'), { recursive: true })
-    mkdirSync(join(gitDir, 'refs'))
-    writeFileSync(join(gitDir, 'HEAD'), 'ref: refs/heads/main\n')
+    git(root, 'init', '-q')
+  }
+
+  /** The CLI with extra environment variables. */
+  const runJsonEnv = (env: Record<string, string>, ...args: string[]) => {
+    const r = spawnSync(process.execPath, [BUNDLE, ...args], {
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
+    })
+    return { envelope: JSON.parse(r.stdout ?? '') as Record<string, unknown>, code: r.status ?? -1 }
   }
 
   /** An initialized document in `dir`, with an optional config beside it. */
@@ -1569,7 +1583,11 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
   const checkRun = (...args: string[]) => {
     const { envelope, code } = runJson('check', ...args)
     const data = envelope.data as {
-      run: { belowPinned?: string[]; pinned?: Record<string, unknown>; config?: string }
+      run: {
+        belowPinned?: string[]
+        pinned?: Record<string, unknown>
+        config?: { path: string; source: string }
+      }
       coverage: { demotions: { reason: string; action: string }[] }
     }
     return { code, data, envelope }
@@ -1604,77 +1622,149 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
     mkdirSync(sub)
     const doc = docIn(sub, {})
     const { data } = checkRun(doc, '--temporal-bound', '1')
-    expect(data.run.config).toBe(join(root, CONFIG))
+    expect(data.run.config).toEqual({ path: join(realpathSync(root), CONFIG), source: 'toplevel' })
     expect(data.run.belowPinned).toEqual(['temporalBound'])
   })
 
-  it('a fake repository marker beside the document does not shadow the toplevel config (F11)', () => {
-    const root = workDir()
+  /** A repository committing docs/requirements.json and a toplevel config pinning temporalBound 10. */
+  const committedRepo = () => {
+    const root = realpathSync(workDir())
     repoAt(root)
     writeFileSync(join(root, CONFIG), json({ configVersion: 1, gate: { temporalBound: 10 } }))
-    const sub = join(root, 'docs')
-    mkdirSync(sub)
-    // The shadow a fake marker would promote: a config beside the document that pins nothing.
-    const doc = docIn(sub, {})
-    // An empty directory (invisible to git status), and a gitfile naming no repository.
-    const fakes: [string, () => void][] = [
-      ['an empty directory', () => mkdirSync(join(sub, REPO_MARKER))],
-      [
-        'a gitfile to nowhere',
-        () => writeFileSync(join(sub, REPO_MARKER), 'gitdir: /nonexistent\n'),
-      ],
-      ['a file that is not a gitfile', () => writeFileSync(join(sub, REPO_MARKER), 'anything\n')],
-    ]
-    for (const [what, plant] of fakes) {
-      plant()
-      const { envelope, code } = runJson('check', doc, '--temporal-bound', '1')
-      expect(code, what).toBe(2)
-      expect(envelope.code, what).toBe('ERR_CONFIG_INVALID')
-      expect(String(envelope.error), what).toContain(join(sub, REPO_MARKER))
-      rmSync(join(sub, REPO_MARKER), { recursive: true, force: true })
-    }
-    // With the fake gone, the toplevel pin holds.
-    expect(checkRun(doc, '--temporal-bound', '1').data.run.belowPinned).toEqual(['temporalBound'])
+    const docs = join(root, 'docs')
+    mkdirSync(docs)
+    const doc = docIn(docs)
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'init')
+    return { root, docs, doc }
+  }
+
+  it('on a fresh clone, committed content cannot move the config off the clone`s toplevel (F11)', () => {
+    const { root, docs } = committedRepo()
+    // A weaker config committed beside the document is committed content, and it is not read.
+    writeFileSync(join(docs, CONFIG), json({ configVersion: 1, gate: {} }))
+    // A nested `.git` cannot be committed at all: git refuses the path.
+    writeFileSync(join(docs, '.git'), 'gitdir: ../.git\n')
+    const blob = git(root, 'hash-object', '-w', join(docs, '.git'))
+    expect(() =>
+      git(root, 'update-index', '--add', '--cacheinfo', `100644,${blob},docs/.git`),
+    ).toThrow()
+    rmSync(join(docs, '.git'))
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'shadow')
+    const clone = join(realpathSync(workDir()), 'clone')
+    git(root, 'clone', '-q', root, clone)
+    const { code, data } = checkRun(
+      join(clone, 'docs', 'requirements.json'),
+      '--temporal-bound',
+      '1',
+    )
+    expect(code).toBe(0)
+    // What a CI job asserts: the committed toplevel config of ITS checkout governed the run.
+    expect(data.run.config).toEqual({ path: join(clone, CONFIG), source: 'toplevel' })
+    expect(data.run.belowPinned).toEqual(['temporalBound'])
   })
 
-  it('a well-formed marker beside a committed document does not shadow the toplevel config (F11)', () => {
-    /** git with no inherited GIT_* variable: a hook's GIT_DIR would redirect it. */
-    const git = (cwd: string, ...args: string[]): string =>
-      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
-        cwd,
-        encoding: 'utf8',
-        env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
-      }).trim()
-    const marker = (docs: string) => join(docs, REPO_MARKER)
-    // Each is well-formed, makes `git rev-parse --show-toplevel` print docs/, and leaves
-    // `git status --porcelain --ignored -uall` empty.
-    const plants: [string, (docs: string) => void][] = [
-      ['a gitfile naming ../.git', (d) => writeFileSync(marker(d), 'gitdir: ../.git\n')],
-      ['a symlink to ../.git', (d) => symlinkSync(join('..', REPO_MARKER), marker(d))],
-      ['a hand-made git directory', (d) => repoAt(d)],
-      ['git init docs', (d) => git(d, 'init', '-q')],
-    ]
-    for (const [what, plant] of plants) {
-      const root = realpathSync(workDir())
-      git(root, 'init', '-q')
-      writeFileSync(join(root, CONFIG), json({ configVersion: 1, gate: { temporalBound: 10 } }))
-      const docs = join(root, 'docs')
-      mkdirSync(docs)
-      const doc = docIn(docs)
-      git(root, 'add', '-A')
-      git(root, 'commit', '-q', '-m', 'init')
-      expect(checkRun(doc, '--temporal-bound', '1').data.run.belowPinned, what).toEqual([
-        'temporalBound',
-      ])
-      plant(docs)
-      expect(git(root, 'status', '--porcelain', '--ignored', '-uall'), what).toBe('')
-      // The shadow the marker would promote: a config beside the document that pins nothing.
-      writeFileSync(join(docs, CONFIG), json({ configVersion: 1, gate: {} }))
-      const { envelope, code } = runJson('check', doc, '--temporal-bound', '1')
-      expect(code, what).toBe(2)
-      expect(envelope.code, what).toBe('ERR_CONFIG_INVALID')
-      expect(String(envelope.error), what).toContain(marker(docs))
+  it('a symlinked directory or document reads the config of the repository it resolves into (F11)', () => {
+    const { root, docs } = committedRepo()
+    // The shadow a lexical walk would read: a config beside the link, pinning nothing.
+    const outside = realpathSync(workDir())
+    writeFileSync(join(outside, CONFIG), json({ configVersion: 1, gate: {} }))
+    symlinkSync(docs, join(outside, 'd'))
+    symlinkSync(join(docs, 'requirements.json'), join(outside, 'r.json'))
+    for (const via of [join(outside, 'd', 'requirements.json'), join(outside, 'r.json')]) {
+      const { data } = checkRun(via, '--temporal-bound', '1')
+      expect(data.run.config, via).toEqual({ path: join(root, CONFIG), source: 'toplevel' })
+      expect(data.run.belowPinned, via).toEqual(['temporalBound'])
     }
+    expect(git(root, 'status', '--porcelain', '--ignored', '-uall')).toBe('')
+  })
+
+  it('the toplevel is the one git rev-parse prints: a linked work tree reads its own', () => {
+    const { root } = committedRepo()
+    const linked = join(realpathSync(workDir()), 'wt')
+    git(root, 'worktree', 'add', '-q', '--detach', linked)
+    writeFileSync(join(linked, CONFIG), json({ configVersion: 1, gate: { temporalBound: 20 } }))
+    const { data } = checkRun(join(linked, 'docs', 'requirements.json'), '--temporal-bound', '10')
+    expect(git(join(linked, 'docs'), 'rev-parse', '--show-toplevel')).toBe(linked)
+    expect(data.run.config).toEqual({ path: join(linked, CONFIG), source: 'toplevel' })
+    expect(data.run.pinned).toEqual({ temporalBound: 20 })
+  })
+
+  it('asks git about the document, not about a GIT_DIR the caller inherited', () => {
+    const { root, doc } = committedRepo()
+    const other = realpathSync(workDir())
+    repoAt(other)
+    writeFileSync(join(other, CONFIG), json({ configVersion: 1, gate: {} }))
+    const hooked = runJsonEnv(
+      { GIT_DIR: join(other, '.git'), GIT_WORK_TREE: other },
+      'check',
+      doc,
+      '--temporal-bound',
+      '1',
+    )
+    const run = (hooked.envelope.data as { run: Record<string, unknown> }).run
+    expect(run.config).toEqual({ path: join(root, CONFIG), source: 'toplevel' })
+    expect(run.belowPinned).toEqual(['temporalBound'])
+  })
+
+  it('with no git to ask, the config beside the document is read and disclosed as directory', () => {
+    const { docs, doc } = committedRepo()
+    writeFileSync(join(docs, CONFIG), json({ configVersion: 1, gate: {} }))
+    const noGit = runJsonEnv({ PATH: join(docs, 'no-such-bin') }, 'check', doc)
+    const run = (noGit.envelope.data as { run: Record<string, unknown> }).run
+    expect(run.config).toEqual({ path: join(docs, CONFIG), source: 'directory' })
+  })
+
+  it('--config and SYMSPEC_CONFIG replace the toplevel config, and data.run.config says so', () => {
+    const { root, doc } = committedRepo()
+    const elsewhere = realpathSync(workDir())
+    const byFlag = join(elsewhere, 'flag.json')
+    const byEnv = join(elsewhere, 'env.json')
+    writeFileSync(byFlag, json({ configVersion: 1, gate: { temporalBound: 30 } }))
+    writeFileSync(byEnv, json({ configVersion: 1, gate: { temporalBound: 40 } }))
+    const flagged = checkRun(doc, '--temporal-bound', '1', '--config', byFlag)
+    expect(flagged.data.run.config).toEqual({ path: byFlag, source: 'flag' })
+    expect(flagged.data.run.pinned).toEqual({ temporalBound: 30 })
+    // The repair re-reads the same config, so running it discharges the pins it was built from.
+    const repair = flagged.data.coverage.demotions.find((d) => d.action.includes('pinned by'))
+    expect(repair?.action).toContain(`--config ${byFlag}`)
+    const env = { SYMSPEC_CONFIG: byEnv }
+    const viaEnv = runJsonEnv(env, 'check', doc, '--temporal-bound', '1')
+    const envRun = (viaEnv.envelope.data as { run: Record<string, unknown> }).run
+    expect(envRun.config).toEqual({ path: byEnv, source: 'env' })
+    expect(envRun.pinned).toEqual({ temporalBound: 40 })
+    // The flag beats the environment.
+    const both = runJsonEnv(env, 'check', doc, '--config', byFlag)
+    expect((both.envelope.data as { run: Record<string, unknown> }).run.config).toEqual({
+      path: byFlag,
+      source: 'flag',
+    })
+    // An empty SYMSPEC_CONFIG is unset: the toplevel config governs.
+    const empty = runJsonEnv({ SYMSPEC_CONFIG: '' }, 'check', doc)
+    expect((empty.envelope.data as { run: Record<string, unknown> }).run.config).toEqual({
+      path: join(root, CONFIG),
+      source: 'toplevel',
+    })
+  })
+
+  it('an explicit config that cannot be read fails closed as ERR_CONFIG_INVALID', () => {
+    const { doc } = committedRepo()
+    const missing = join(realpathSync(workDir()), 'absent.json')
+    const flagged = runJson('check', doc, '--config', missing)
+    expect(flagged.code).toBe(2)
+    expect(flagged.envelope.code).toBe('ERR_CONFIG_INVALID')
+    const viaEnv = runJsonEnv({ SYMSPEC_CONFIG: missing }, 'check', doc)
+    expect(viaEnv.code).toBe(2)
+    expect(viaEnv.envelope.code).toBe('ERR_CONFIG_INVALID')
+  })
+
+  it('outside a repository, the config beside the document is read and disclosed as directory', () => {
+    const dir = realpathSync(workDir())
+    const doc = docIn(dir, { temporalBound: 10 })
+    const { data } = checkRun(doc, '--temporal-bound', '1')
+    expect(data.run.config).toEqual({ path: join(dir, CONFIG), source: 'directory' })
+    expect(data.run.belowPinned).toEqual(['temporalBound'])
   })
 
   it('running the published repair discharges every pin, even one the run met by a flag', () => {

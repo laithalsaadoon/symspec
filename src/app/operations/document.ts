@@ -134,9 +134,11 @@ const initSplit = (path: string, force: boolean) =>
       )
     }
 
-    const configFile = yield* store.configPath(path)
-    const intentFile = join(dirname(path), SPLIT_INTENT_FILE)
-    const policyFile = join(dirname(path), SPLIT_POLICY_FILE)
+    // Real paths throughout, so the names the config records resolve from where it is written.
+    const location = yield* store.configPath(path)
+    const configFile = location.path
+    const intentFile = join(dirname(location.document), SPLIT_INTENT_FILE)
+    const policyFile = join(dirname(location.document), SPLIT_POLICY_FILE)
     const targets = [intentFile, policyFile, configFile]
     const existing: string[] = []
     for (const target of targets) if (yield* store.exists(target)) existing.push(target)
@@ -163,7 +165,7 @@ const initSplit = (path: string, force: boolean) =>
       configFile,
       jsonText(
         skeletonConfig({
-          document: relativeTo(configDir, path),
+          document: relativeTo(configDir, location.document),
           intent: relativeTo(configDir, intentFile),
           policy: relativeTo(configDir, policyFile),
         }),
@@ -223,9 +225,10 @@ export const initOp = defineOperation({
         description: [
           `Also write the anchors as separate files: skeleton \`${SPLIT_INTENT_FILE}\` and \`${SPLIT_POLICY_FILE}\` beside the`,
           `document, and a \`${CONFIG_FILE_NAME}\` that names them and pins every run knob at its default.`,
-          'The config goes to its ONE location: the repository toplevel of the document, or the',
-          'document`s directory outside a work tree. `check` reads it from there and nowhere else, and',
-          'a run below any pin is demoted `run-weakened`.',
+          'The config goes to its default location: the toplevel `git rev-parse --show-toplevel` prints',
+          'for the document`s real directory, or that directory when git names no repository there.',
+          '`check` reads it from there unless --config or SYMSPEC_CONFIG names another, and a run below',
+          'any pin is demoted `run-weakened`.',
           'An existing document is kept, not recreated (unless --force). The three new files are NEVER',
           'overwritten, --force or not: if any exists the command writes nothing and fails with',
           'ERR_DOC_EXISTS, because an owner writes these, not the tool. A document that already carries',

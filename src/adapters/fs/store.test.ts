@@ -637,6 +637,24 @@ describe('loadBundle', () => {
     expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
   })
 
+  it('reads an explicitly named config in place of the default one, and refuses one that is absent', async () => {
+    const { dir, doc } = fixture({})
+    const named = join(tempDir(), 'named.json')
+    writeJson(named, { configVersion: 1, gate: { temporalBound: 5 } })
+    const bundle = await withStore((s) => s.loadBundle(doc, { path: named, source: 'env' }))
+    expect(bundle.config).toMatchObject({ path: named, source: 'env', governsDocument: true })
+    expect(bundle.config?.config.gate).toEqual({ temporalBound: 5 })
+    const byDefault = await withStore((s) => s.loadBundle(doc))
+    expect(byDefault.config).toMatchObject({
+      path: join(realpathSync(dir), 'symspec.config.json'),
+      source: 'directory',
+    })
+    const absent = join(dir, 'absent.json')
+    const r = await attemptStore((s) => s.loadBundle(doc, { path: absent, source: 'flag' }))
+    expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
+    if (r._tag === 'Failure') expect(r.failure.error).toContain(absent)
+  })
+
   it('refuses a split file that fails its schema as ERR_CONFIG_INVALID, naming the file', async () => {
     const { dir, doc } = fixture({ policy: 'policy.json' })
     writeJson(join(dir, 'policy.json'), { ...POLICY, assign: { I1: 'undeclared' } })
@@ -646,7 +664,7 @@ describe('loadBundle', () => {
   })
 })
 
-describe('configPath reads the toplevel git resolves', () => {
+describe('configPath is the toplevel git prints for the real document directory', () => {
   /** Run git in `cwd`, with no inherited GIT_* variable: a hook's GIT_DIR would redirect it. */
   const git = (cwd: string, ...args: string[]): string =>
     execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
@@ -655,6 +673,8 @@ describe('configPath reads the toplevel git resolves', () => {
       env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
     }).trim()
 
+  const configAt = (dir: string) => join(dir, 'symspec.config.json')
+
   it('a real clone and a real linked work tree are each a toplevel', async () => {
     // Real paths, because git prints the toplevel resolved (a temp dir can be behind a link).
     const root = realpathSync(tempDir())
@@ -662,124 +682,65 @@ describe('configPath reads the toplevel git resolves', () => {
     git(root, 'commit', '-q', '--allow-empty', '-m', 'init')
     const docs = join(root, 'docs')
     mkdirSync(docs)
-    expect(await withStore((s) => s.configPath(join(docs, 'requirements.json')))).toBe(
-      join(git(docs, 'rev-parse', '--show-toplevel'), 'symspec.config.json'),
-    )
+    const doc = join(docs, 'requirements.json')
+    expect(await withStore((s) => s.configPath(doc))).toEqual({
+      path: configAt(git(docs, 'rev-parse', '--show-toplevel')),
+      source: 'toplevel',
+      document: doc,
+    })
     const linked = join(realpathSync(tempDir()), 'linked')
     git(root, 'worktree', 'add', '-q', linked)
     mkdirSync(join(linked, 'docs'))
-    expect(await withStore((s) => s.configPath(join(linked, 'docs', 'requirements.json')))).toBe(
-      join(git(join(linked, 'docs'), 'rev-parse', '--show-toplevel'), 'symspec.config.json'),
-    )
+    const inLinked = await withStore((s) => s.configPath(join(linked, 'docs', 'requirements.json')))
+    expect(inLinked.path).toBe(configAt(git(join(linked, 'docs'), 'rev-parse', '--show-toplevel')))
+    expect(inLinked.path).toBe(configAt(linked))
   })
 
-  it('refuses an empty .git directory beside the document, which git status never shows', async () => {
-    const root = tempDir()
-    git(root, 'init', '-q')
-    const docs = join(root, 'docs')
-    mkdirSync(join(docs, '.git'), { recursive: true })
-    // git itself looks past it to the real toplevel; the store refuses it rather than trust it.
-    expect(git(docs, 'rev-parse', '--show-toplevel')).toBe(
-      git(root, 'rev-parse', '--show-toplevel'),
-    )
-    const r = await attemptStore((s) => s.configPath(join(docs, 'requirements.json')))
-    expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
-  })
-
-  /**
-   * A repository whose toplevel commits `docs/requirements.json` and a config: the state every
-   * marker below is planted into. Each marker is well-formed, fools `git rev-parse` itself, and
-   * is invisible to `git status --porcelain --ignored`, because git never lists a `.git` path.
-   */
-  const committedRepo = (): { root: string; docs: string } => {
+  it('resolves the document`s symlinks before asking git, so a link from outside reads the repository`s', async () => {
     const root = realpathSync(tempDir())
     git(root, 'init', '-q')
     const docs = join(root, 'docs')
     mkdirSync(docs)
-    writeFileSync(join(docs, 'requirements.json'), serializeDocument(emptyDocument()))
-    writeFileSync(join(root, 'symspec.config.json'), '{"configVersion":1,"gate":{}}\n')
-    git(root, 'add', '-A')
-    git(root, 'commit', '-q', '-m', 'init')
-    return { root, docs }
-  }
-
-  const expectRefused = async (docs: string, what: string) => {
-    const r = await attemptStore((s) => s.configPath(join(docs, 'requirements.json')))
-    expect(r._tag === 'Failure' ? r.failure._tag : r._tag, what).toBe('ERR_CONFIG_INVALID')
-    if (r._tag === 'Failure') expect(r.failure.error, what).toContain(join(docs, '.git'))
-  }
-
-  it('refuses a well-formed marker beside the document that the enclosing repository explains away', async () => {
-    const plants: [string, (docs: string) => void][] = [
-      [
-        'a gitfile naming the enclosing git dir',
-        (d) => writeFileSync(join(d, '.git'), 'gitdir: ../.git\n'),
-      ],
-      ['a symlink to the enclosing git dir', (d) => symlinkSync('../.git', join(d, '.git'))],
-      [
-        'a hand-made git directory',
-        (d) => {
-          mkdirSync(join(d, '.git', 'objects'), { recursive: true })
-          mkdirSync(join(d, '.git', 'refs'))
-          writeFileSync(join(d, '.git', 'HEAD'), 'ref: refs/heads/main\n')
-        },
-      ],
-      ['git init over committed files', (d) => git(d, 'init', '-q')],
-    ]
-    for (const [what, plant] of plants) {
-      const { root, docs } = committedRepo()
-      plant(docs)
-      // git itself now takes the document's directory for the toplevel, and shows nothing.
-      expect(git(docs, 'rev-parse', '--show-toplevel'), what).toBe(docs)
-      expect(git(root, 'status', '--porcelain', '--ignored', '-uall'), what).toBe('')
-      await expectRefused(docs, what)
+    const doc = join(docs, 'requirements.json')
+    writeFileSync(doc, serializeDocument(emptyDocument()))
+    const outside = realpathSync(tempDir())
+    symlinkSync(docs, join(outside, 'd'))
+    symlinkSync(doc, join(outside, 'r.json'))
+    for (const via of [join(outside, 'd', 'requirements.json'), join(outside, 'r.json')]) {
+      expect(await withStore((s) => s.configPath(via)), via).toEqual({
+        path: configAt(root),
+        source: 'toplevel',
+        document: doc,
+      })
     }
+    // A document init has yet to create resolves beneath its real directory.
+    const absent = await withStore((s) => s.configPath(join(outside, 'd', 'new.json')))
+    expect(absent.document).toBe(join(docs, 'new.json'))
   })
 
-  it('refuses a nested repository vouched for only by a repository that is itself planted', async () => {
-    // root commits a/b/docs/requirements.json; `a` is then made a repository that registers
-    // b/docs as a submodule. The pair (docs, a) holds; the pair (a, root) does not.
+  it('fails closed when git fails for any reason but "not a repository"', async () => {
     const root = realpathSync(tempDir())
     git(root, 'init', '-q')
-    const docs = join(root, 'a', 'b', 'docs')
-    mkdirSync(docs, { recursive: true })
-    writeFileSync(join(docs, 'requirements.json'), serializeDocument(emptyDocument()))
-    git(root, 'add', '-A')
-    git(root, 'commit', '-q', '-m', 'init')
-    git(join(root, 'a'), 'init', '-q')
-    git(join(root, 'a'), 'update-index', '--add', '--cacheinfo', `160000,${'1'.repeat(40)},b/docs`)
-    git(docs, 'init', '-q')
+    const docs = join(root, 'docs')
+    mkdirSync(docs)
+    // A .git git cannot read: git exits 128 with "invalid gitfile format", not "not a repository".
+    writeFileSync(join(docs, '.git'), 'not a gitfile\n')
     const r = await attemptStore((s) => s.configPath(join(docs, 'requirements.json')))
     expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
-    if (r._tag === 'Failure') expect(r.failure.error).toContain(join(root, 'a', '.git'))
+    if (r._tag === 'Failure') expect(r.failure.error).toContain('git rev-parse --show-toplevel')
   })
 
-  it('a registered submodule, a nested linked work tree, and an untracked nested clone are each their own toplevel', async () => {
-    const { root } = committedRepo()
-    // A submodule: the enclosing index registers it as a gitlink.
-    const upstream = realpathSync(tempDir())
-    git(upstream, 'init', '-q')
-    git(upstream, 'commit', '-q', '--allow-empty', '-m', 'init')
-    git(root, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', upstream, 'vendor/sub')
-    const sub = join(root, 'vendor', 'sub', 'specs')
-    mkdirSync(sub)
-    expect(await withStore((s) => s.configPath(join(sub, 'requirements.json')))).toBe(
-      join(git(sub, 'rev-parse', '--show-toplevel'), 'symspec.config.json'),
-    )
-    expect(git(sub, 'rev-parse', '--show-toplevel')).toBe(join(root, 'vendor', 'sub'))
-    // A linked work tree of the SAME repository, placed inside its main work tree.
-    const linked = join(root, 'trees', 'wt')
-    git(root, 'worktree', 'add', '-q', linked)
-    expect(await withStore((s) => s.configPath(join(linked, 'docs', 'requirements.json')))).toBe(
-      join(linked, 'symspec.config.json'),
-    )
-    // An unrelated clone the enclosing repository tracks nothing inside (git status shows it).
-    const clone = join(root, 'scratch')
-    mkdirSync(clone)
-    git(clone, 'init', '-q')
-    expect(await withStore((s) => s.configPath(join(clone, 'requirements.json')))).toBe(
-      join(clone, 'symspec.config.json'),
-    )
+  it('outside a repository it is the document`s own directory, never a parent`s', async () => {
+    const parent = realpathSync(tempDir())
+    writeFileSync(configAt(parent), '{"configVersion":1,"gate":{}}\n')
+    const dir = join(parent, 'sub')
+    mkdirSync(dir)
+    const doc = join(dir, 'requirements.json')
+    expect(await withStore((s) => s.configPath(doc))).toEqual({
+      path: configAt(dir),
+      source: 'directory',
+      document: doc,
+    })
   })
 })
 

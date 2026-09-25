@@ -100,7 +100,12 @@ import type {
 } from '../../domain/requirements/document.ts'
 import { runTerminology } from '../../domain/terminology/terminology.ts'
 import { runnableInProse } from '../../ports/command-form.ts'
-import { DocPath, DocStore } from '../../ports/doc-store.ts'
+import {
+  CONFIG_PATH_CONVENTION,
+  type ConfigLocation,
+  DocPath,
+  DocStore,
+} from '../../ports/doc-store.ts'
 import { EmbedderService } from '../../ports/embedder.ts'
 import { ErrSolverInconclusive, ErrUsage } from '../../ports/errors.ts'
 import { SolverService } from '../../ports/solver.ts'
@@ -267,8 +272,12 @@ export interface TerminologySummary {
  * the engine's `run`, byte for byte.
  */
 export interface PinnedRunDisclosure extends RunDisclosure {
-  /** The config the pins were read from: its one fixed location. */
-  readonly config?: string
+  /**
+   * The config the pins were read from, and the rule that chose it: `toplevel` (the
+   * repository's), `directory` (no repository), or `flag`/`env` (named explicitly). A CI job
+   * asserts `source` and `path` to know the committed config governed the run.
+   */
+  readonly config?: ConfigLocation
   /** The effective pins, per knob. */
   readonly pinned?: EffectivePins
   /** The knobs this run ran below their pin, each also a `run-weakened` demotion. */
@@ -371,6 +380,16 @@ const CheckInput = Schema.Struct({
         ),
       }),
     ),
+  ),
+  config: Schema.withDecodingDefaultKey<Schema.NullOr<Schema.String>>(Effect.succeed(null))(
+    Schema.NullOr(Schema.String).annotate({
+      default: null,
+      description: lines(
+        'Path to the symspec.config.json whose pins this run is compared against.',
+        CONFIG_PATH_CONVENTION,
+        'A named config that cannot be read is ERR_CONFIG_INVALID, never "no config".',
+      ),
+    }),
   ),
   timeoutMs: intFlag(
     KNOB_DEFAULTS.timeoutMs,
@@ -828,7 +847,7 @@ const runSettingsOf = (input: typeof CheckInput.Type, run: RunDisclosure): RunSe
  * that would not verify without it.
  */
 const pinnedRunOf = (
-  configPath: string,
+  config: ConfigLocation,
   gate: GatePins,
   run: RunSettings,
   docPath: string,
@@ -838,13 +857,22 @@ const pinnedRunOf = (
 } => {
   const pinned = effectivePins(gate)
   const below = belowPinned(run, pinned)
-  const command = pinnedInvocation(docPath, run, pinned)
+  const command = pinnedInvocation(
+    docPath,
+    run,
+    pinned,
+    config.source === 'flag' ? config.path : undefined,
+  )
   return {
-    disclosure: { config: configPath, pinned, belowPinned: below },
+    disclosure: {
+      config: { path: config.path, source: config.source },
+      pinned,
+      belowPinned: below,
+    },
     demotions: below.map((knob) => ({
       reason: 'run-weakened' as const,
       requirementIds: [],
-      action: pinDemotionAction(knob, run, pinned, configPath, command),
+      action: pinDemotionAction(knob, run, pinned, config.path, command),
       repair: { ops: [], commands: [command] },
     })),
   }
@@ -877,10 +905,10 @@ export const checkOp = defineOperation({
 
       yield* validate(input, path)
 
-      // The document, plus the pinned config at its ONE location and the split anchors (spec
-      // 007 AC-5-10). A config that cannot be read fails closed with ERR_CONFIG_INVALID rather
-      // than checking as though there were none.
-      const bundle = yield* store.loadBundle(path)
+      // The document, plus the pinned config (named explicitly, or at its default location) and
+      // the split anchors (spec 007 AC-5-10). A config that cannot be read fails closed with
+      // ERR_CONFIG_INVALID rather than checking as though there were none.
+      const bundle = yield* store.loadBundle(path, docPath.resolveConfig(input.config))
       const loaded = bundle.loaded
 
       // Yielding `boot` is what actually starts the WASM module, and it happens
@@ -1099,7 +1127,7 @@ export const checkOp = defineOperation({
       const pinning =
         bundle.config !== undefined
           ? pinnedRunOf(
-              bundle.config.path,
+              bundle.config,
               bundle.config.config.gate,
               runSettingsOf(input, full.run),
               path,

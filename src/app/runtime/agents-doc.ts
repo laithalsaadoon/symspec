@@ -42,6 +42,7 @@
  */
 
 import { CONFIG_FILE_NAME } from '../../domain/config/config.ts'
+import { CONFIG_PATH_CONVENTION } from '../../ports/doc-store.ts'
 import { allCodes, type CodeEntry } from './catalog.ts'
 import { renderCraft } from './craft.ts'
 import { API_VERSION } from './envelope.ts'
@@ -193,17 +194,16 @@ ${exitTable(manifest)}
 
 ### Pinned runs
 
-A committed \`${CONFIG_FILE_NAME}\` pins the run settings the gate uses. It is read from ONE
-place — the document's repository toplevel, or the document's own directory outside a work
-tree — and never searched for, so a config dropped beside the document is not read. The
-toplevel is the nearest directory whose \`.git\` is a git directory or a gitfile naming one;
-any other \`.git\` entry on the way up is \`ERR_CONFIG_INVALID\`, because it would move the
-toplevel. A repository nested in another's work tree is a toplevel of its own only when the
-enclosing one agrees: a linked work tree registered with the same repository, a registered
-submodule, or a directory the enclosing index tracks nothing inside. Anything else — a
-gitfile or symlink naming the enclosing \`.git\`, a hand-made git directory, a \`git init\`
-over committed files — is \`ERR_CONFIG_INVALID\`: git itself would take it for the toplevel,
-and \`git status\` never shows it.
+A committed \`${CONFIG_FILE_NAME}\` pins the run settings the gate uses.
+
+${CONFIG_PATH_CONVENTION}
+
+A config dropped beside the document inside a repository is not read. \`data.run.config\` is
+\`{path, source}\`, where \`source\` is \`toplevel\`, \`directory\`, \`flag\` or \`env\`. The pins are
+authoritative in a CI job on a fresh clone that asserts \`source\` is \`toplevel\` and \`path\` is its
+checkout's config. A local agent that can write \`.git/\`, pass \`--config\` or set
+\`SYMSPEC_CONFIG\` can change what a local run reads, and that run discloses it there.
+
 \`symspec init --split\` writes one pinning every knob at its default, beside skeleton intent
 and policy files, and never overwrites any of the three. A \`check\` below a pin is demoted
 \`run-weakened\` once per knob and listed in \`data.run.belowPinned\` next to
