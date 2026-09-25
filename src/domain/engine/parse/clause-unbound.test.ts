@@ -15,7 +15,17 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { preprocess } from './preprocess.ts'
 import { type ParseErrorResult, type ParseOkResult, parseLine } from './result.ts'
+import { classifyTier1 } from './tier1.ts'
+import { defaultTier2Loader, repairWithWink, type WinkAnalyzer } from './tier2.ts'
+
+/** One real analyzer for the file: a fresh wink instance per case would leak (see `./result.ts`). */
+let analyzer: Promise<WinkAnalyzer> | undefined
+const analyze = (): Promise<WinkAnalyzer> => {
+  analyzer ??= defaultTier2Loader()
+  return analyzer
+}
 
 const refused = async (line: string): Promise<ParseErrorResult> => {
   const r = await parseLine(line)
@@ -240,6 +250,80 @@ describe('AC-2-2: a dropped unbound marker is refused with ERR_CLAUSE_UNBOUND', 
     // Loud and recoverable beats silent: the author restates the line, and nothing is stored
     // stronger than written.
     await refused(line)
+  })
+})
+
+describe('AC-2-2: the dropped span is measured against the modal the tier pivoted on', () => {
+  it.each([
+    // wink reads the apostrophe-less contraction as the modal (`wo`/`sha`/`must` + `nt`), and a
+    // spaced `'ll` as `will`: that token is the pivot, so the clause before it was dropped.
+    ['Unless the door is closed, the press wont start.', 'Unless the door is closed'],
+    ['Until reset, the pump wont run.', 'Until reset'],
+    ['In case of fire, the door wont lock.', 'In case of fire'],
+    ['Before startup, the pump shant run.', 'Before startup'],
+    ['Unless the door is closed, the press mustnt start.', 'Unless the door is closed'],
+    ["Unless armed, the admin 'll stop.", 'Unless armed'],
+    // A modal word inside a hashtag or @mention is a tag, not the pivot: the clause after it and
+    // before the real modal was dropped.
+    ['[#will] Unless the door is closed, the press shall not start.', 'Unless the door is closed'],
+    ['#will: Unless the door is closed, the press shall not start.', 'Unless the door is closed'],
+    // No bracket or label ends a bare tag, so its words are named as part of the dropped span.
+    [
+      '#must-fix Unless the door is closed, the press shall not start.',
+      'must-fix Unless the door is closed',
+    ],
+    [
+      'Owner @will: unless the door is closed, the press shall not start.',
+      'unless the door is closed',
+    ],
+    ['[#must] Unless the door is closed, the press shall not start.', 'Unless the door is closed'],
+    ['(#should) Until reset, the pump shall not run.', 'Until reset'],
+    ['#shall Before startup, the pump shall not run.', 'shall Before startup'],
+  ] as const)('a pivot the regex does not see — %s', async (line, span) => {
+    expect(namedSpan(await refused(line))).toBe(span)
+  })
+
+  it.each([
+    ['The gateway shall log requests.', 'The gateway ', 'shall'],
+    ['When the door opens, the press will stop.', 'When the door opens, the press ', 'will'],
+    // `#will` has no space before `will`, so Tier 1's MAIN does not pivot on it.
+    ['While armed, the #will tag shall stop.', 'While armed, the #will tag ', 'shall'],
+  ] as const)('Tier 1 reports the modal its main clause pivoted on — %s', (line, before, modal) => {
+    const r = classifyTier1(line)
+    if (!r.ok) throw new Error(`expected a Tier-1 parse of ${line}`)
+    const text = preprocess(line)
+    expect(text.slice(0, r.pivot)).toBe(before)
+    expect(text.slice(r.pivot).startsWith(modal)).toBe(true)
+  })
+
+  it.each([
+    ['Unless the door is closed, the press wont start.', 'Unless the door is closed, the press '],
+    ["Unless armed, the admin 'll stop.", 'Unless armed, the admin '],
+    [
+      '[#will] Unless the door is closed, the press shall not start.',
+      '[#will] Unless the door is closed, the press ',
+    ],
+  ] as const)('Tier 2 reports the modal token it pivoted on — %s', async (line, before) => {
+    const r = repairWithWink(line, await analyze())
+    if (!r.ok) throw new Error(`expected a Tier-2 repair of ${line}`)
+    expect(preprocess(line).slice(0, r.pivot)).toBe(before)
+  })
+
+  it.each([
+    [
+      'The press wont start unless armed, then the pump shall stop.',
+      'nt start unless armed, then the pump shall stop',
+    ],
+    [
+      'The press wont start until armed then the pump shall stop.',
+      'nt start until armed then the pump shall stop',
+    ],
+    [
+      "The admin 'll wait unless armed, then the pump shall stop.",
+      'wait unless armed, then the pump shall stop',
+    ],
+  ] as const)('a marker after the pivot is in the response, stored as before — %s', async (line, response) => {
+    expect((await stored(line)).slots.systemResponse).toBe(response)
   })
 })
 

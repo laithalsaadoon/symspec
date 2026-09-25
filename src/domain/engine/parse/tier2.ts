@@ -87,6 +87,8 @@ export interface Tier2Ok {
   slots: Tier1Slots
   /** True when the modal carried explicit negation; `systemResponse` is the positive atom. */
   negated: boolean
+  /** Where the modal token this repair pivoted on starts in the preprocessed line (as `Tier1Ok.pivot`). */
+  pivot: number
   confidence: Confidence
   tier: 2
   /** Provenance notes: escalation triggers plus repair notes (e.g. `subject-repaired`). */
@@ -404,6 +406,23 @@ function governingNegation(
   return !negationStaysInText
 }
 
+/**
+ * The character offset of `tokens[idx]` in `text`, the line the tokens were analyzed from. wink's
+ * token values are slices of that line in order, so each is found at or after the end of the
+ * one before. A value not found (only a fake analyzer does that) leaves the cursor where it was.
+ */
+function tokenOffset(text: string, tokens: readonly WinkToken[], idx: number): number {
+  let at = 0
+  for (let i = 0; i <= idx; i++) {
+    const value = tokens[i]!.value
+    const found = text.indexOf(value, at)
+    if (found < 0) continue
+    if (i === idx) return found
+    at = found + value.length
+  }
+  return at
+}
+
 /** Join token surface forms into slot text, collapsing the whitespace the join introduces. */
 function joinTokens(tokens: WinkToken[]): string {
   return (
@@ -577,6 +596,7 @@ export function repairWithWink(
     pattern: slots.patternType,
     slots,
     negated,
+    pivot: tokenOffset(text, tokens, modalIdx),
     confidence,
     tier: 2,
     notes,

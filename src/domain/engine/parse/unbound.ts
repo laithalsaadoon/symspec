@@ -10,8 +10,12 @@
  * This is a check on the OUTCOME of a parse that already succeeded, not a second parser. It
  * compares the source words before the modal with the words of the stored slots
  * (`systemName`, `trigger`, `preCondition`, `systemResponse`), case-insensitively, and calls the
- * words no slot holds the DROPPED SPAN. When that span holds an unbound marker as whole words —
- * {@link MARKERS} — the parse lost a condition, and the line is refused naming the span.
+ * words no slot holds the DROPPED SPAN. "The modal" is the one the tier pivoted on, reported
+ * with its result as `pivot` — never re-found here: Tier 2 pivots on a wink token, which reads
+ * `wont`/`shant`/`mustnt` and a spaced `'ll` as modals and a `#will` tag or `@will` mention as
+ * not one, and any second definition of "the modal" measures the span against the wrong word.
+ * When that span holds an unbound marker as whole words — {@link MARKERS} — the parse lost a
+ * condition, and the line is refused naming the span.
  *
  * Because it reads only what was dropped, the rule is indifferent to the shape that carried the
  * marker there: brackets, list markers, tags and labels, a measure phrase spelled in words, or
@@ -62,9 +66,6 @@ const DETERMINERS: ReadonlySet<string> = new Set([
   'those',
 ])
 
-/** The first modal, contracted forms included (both tiers pivot on it). */
-const MODAL = /\b(?:shall|must|will|should)\b|\b(?:shan|won|mustn|shouldn)'t\b/i
-
 /** What ends a label or tag left of the clause: a bracket, or a colon or semicolon after it. */
 const LABEL_END = /[()[\]{}:;]/
 /** A character that joins two words into one (`Until-dates`, `until_x`, `unless's`). */
@@ -96,12 +97,15 @@ export interface DroppedClause {
  *
  * @param input  The line as given to the ladder.
  * @param slots  The slots the successful parse would store.
+ * @param pivot  Where the modal that parse pivoted on starts in the preprocessed line.
  */
-export function droppedUnboundClause(input: string, slots: Tier1Slots): DroppedClause | undefined {
+export function droppedUnboundClause(
+  input: string,
+  slots: Tier1Slots,
+  pivot: number,
+): DroppedClause | undefined {
   const text = preprocess(input)
-  const modal = MODAL.exec(text)
-  if (modal === null) return undefined
-  const words = wordsOf(text.slice(0, modal.index))
+  const words = wordsOf(text.slice(0, pivot))
   const covered = words.map(() => false)
 
   // Each slot claims the occurrence its tier took it from: the subject sits just before the

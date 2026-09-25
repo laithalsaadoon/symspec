@@ -247,7 +247,7 @@ export const resolveParseResult = (text: string, outcome: Tier2Outcome): ParseRe
   if (!compound) {
     const ok = outcome.tier2?.ok ? outcome.tier2 : outcome.tier1.ok ? outcome.tier1 : undefined
     if (ok !== undefined) {
-      const dropped = droppedUnboundClause(text, ok.slots)
+      const dropped = droppedUnboundClause(text, ok.slots, ok.pivot)
       if (dropped !== undefined) {
         return fromTier3(makeClauseUnboundEnvelope(text, dropped.span, dropped.marker), text)
       }
