@@ -51,6 +51,7 @@ import {
   type RequirementsDoc,
   SCHEMA_VERSION,
 } from '../domain/engine/core/schema.ts'
+import { emptyDocument, type RequirementsDocument } from '../domain/requirements/document.ts'
 import type { AdversarialCase } from './generate.ts'
 
 /**
@@ -703,3 +704,51 @@ export function evalRoundCases(): AdversarialCase[] {
 
   return cases
 }
+
+/**
+ * Project one of these v2-shaped rounds onto the greenfield document shape.
+ *
+ * The rounds are authored as engine documents, so anything that runs the real `check`
+ * operation over them needs the same CONTENT as a greenfield document. Deliberately in
+ * `testing/` rather than in production: nothing shipped reads a v2 document (the greenfield
+ * format has no read-compat by design — migration is the `import` op-stream replay), so a
+ * production converter would be dead code that also weakened the format boundary. It lives
+ * here, beside the rounds, because more than one gate runs them through `check`
+ * (`./adversarial.test.ts`, `./report-corpus.test.ts`) and two projections could drift.
+ */
+export const asRequirementsDocument = (doc: RequirementsDoc): RequirementsDocument => ({
+  ...emptyDocument(),
+  requirements: Object.fromEntries(
+    Object.entries(doc.requirements).map(([id, r]) => [
+      id,
+      {
+        id: r.id,
+        patternType: r.patternType,
+        systemName: r.systemName,
+        systemResponse: r.systemResponse,
+        negated: r.negated,
+        sentence: r.sentence,
+        priority: r.priority,
+        status: r.status,
+        derives: [...r.derives],
+        satisfies: [...r.satisfies],
+        verifies: [...r.verifies],
+        refines: [...r.refines],
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+        ...(r.key !== undefined ? { key: r.key } : {}),
+        ...(r.preCondition !== undefined ? { preCondition: r.preCondition } : {}),
+        ...(r.trigger !== undefined ? { trigger: r.trigger } : {}),
+        ...(r.verificationMethod !== undefined ? { verificationMethod: r.verificationMethod } : {}),
+        ...(r.verificationNote !== undefined ? { verificationNote: r.verificationNote } : {}),
+      },
+    ]),
+  ),
+  glossary: (doc.glossary ?? []).map((g) => ({ canonical: g.canonical, aliases: [...g.aliases] })),
+  antonyms: (doc.antonyms ?? []).map((a) => ({ a: a.a, b: a.b })),
+  waivers: (doc.waivers ?? []).map((w) => ({
+    code: w.code,
+    reason: w.reason,
+    ...(w.requirementId !== undefined ? { requirementId: w.requirementId } : {}),
+  })),
+})
