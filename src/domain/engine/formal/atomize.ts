@@ -230,6 +230,36 @@ export interface Atom {
    * a pair relates them over one key — see {@link contraryPairs}.
    */
   opposition?: Opposition
+  /**
+   * The ENTRY atom of the glossary entry this response names, present exactly when that entry
+   * names two contraries as one action ({@link glossaryEntryAtom}). The encoder links the two,
+   * `atom ↔ entry`, under the requirement's own guard.
+   */
+  entry?: string
+}
+
+/**
+ * The atom one glossary entry's ACTION renders to, under one system: `sys__<scope>__entry__<the
+ * entry's normalized canonical>`. Its own namespace, so it is never a slot's atom.
+ *
+ * Only an entry that names two CONTRARIES gets one ({@link glossaryGroupContraries}). Such an
+ * entry cannot merge its phrases onto one atom — "open the door" + "close the door" would read
+ * as a redundancy — so each contrary phrase keeps its own atom, where the contrary axiom relates
+ * it. What the entry still says is that every phrase names ONE action, and dropping that lost
+ * the conflict in "open the door" + "not shut the door" under open ≡ shut. So each requirement
+ * whose response is a phrase of the entry asserts `phrase ↔ entry`, guarded by its own id
+ * (`encode`). Two such requirements then share the entry atom exactly as a merge would have
+ * shared one atom, and the contrary axiom still relates their phrases.
+ *
+ * Guarded, not a background axiom: the entry together with the contrary says that neither phrase
+ * can ever happen, so as background vocabulary every one requirement using either phrase would
+ * be unsatisfiable ON ITS OWN, and a one-requirement core is not a contradiction the solver can
+ * report. Under the guard a requirement links only its own phrase, so a conflict still takes two
+ * of them. Every link is a consequence of the entry, so nothing the solver proves with it is
+ * outside what the document's own vocabulary entails.
+ */
+export function glossaryEntryAtom(scope: string, canonical: string): string {
+  return `sys__${scope}__entry__${canonical}`
 }
 
 /**
@@ -327,6 +357,8 @@ export interface AtomLit {
   ref?: AtomRef
   /** The atom's antonym-class membership, when it has one (see {@link Opposition}). */
   opposition?: Opposition
+  /** The glossary ENTRY atom a response links to, when it has one (see {@link Atom.entry}). */
+  entry?: string
 }
 
 /**
@@ -382,6 +414,7 @@ export function makeAtomize(
       negated: a.negated,
       ref: a.ref,
       ...(a.opposition !== undefined ? { opposition: a.opposition } : {}),
+      ...(a.entry !== undefined ? { entry: a.entry } : {}),
     }
   }
 }
@@ -968,8 +1001,9 @@ const NO_PHRASES: ReadonlySet<string> = new Set()
  * happen. Together they say neither ever happens — which no requirement is checked against —
  * and merging the two onto one atom read "open the door" + "close the door" as a redundancy,
  * turning FND_CONTRADICTION into `verified: true`. So {@link atomize} keeps each contrary phrase
- * on its own atom, where the contrary axiom still relates it, and `check` demotes over the
- * consequence it does not decide (`contrary-glossary-alias`). One scope stands in for every
+ * on its own atom, where the contrary axiom still relates it, links every phrase of the entry to
+ * the entry's action ({@link glossaryEntryAtom}) so the equivalence is not lost either, and
+ * `check` demotes over the consequence it does not decide (`contrary-glossary-alias`). One scope stands in for every
  * system: the phrases of one entry are always read under one system, and a key's scope never
  * decides whether two of its readings are opposed.
  */
@@ -1057,18 +1091,34 @@ export function atomize(args: AtomizeArgs): Atom {
   //
   // Except, for a RESPONSE, an alias that is a contrary of another phrase its entry names
   // ({@link glossaryGroupContraries}): it keeps its own atom, so the contrary axiom still relates
-  // the two. Merging them read "open the door" + "close the door" as a redundancy.
+  // the two. Merging them read "open the door" + "close the door" as a redundancy. What the entry
+  // still says — every phrase names one action — is carried by the ENTRY atom the response links
+  // to ({@link glossaryEntryAtom}).
   const index = args.antonyms ?? ANTONYM_INDEX
-  const contrariesOf = (canonical: string): ReadonlySet<string> =>
-    args.kind === 'resp' && args.glossary !== undefined
-      ? contraryPhrases(glossaryGroupContraries(canonical, args.glossary, index, args.terms))
+  // The entry this slot's phrase belongs to: the canonical it is an alias of, or itself when it
+  // is one. Only a response reads it; a guard is never an antonym and always merges.
+  const entryOf = (phrase: string): string | undefined => {
+    if (args.kind !== 'resp' || args.glossary === undefined) return undefined
+    const canonical = args.glossary.get(phrase)
+    if (canonical !== undefined) return canonical
+    for (const value of args.glossary.values()) if (value === phrase) return phrase
+    return undefined
+  }
+  const entryCanonical = entryOf(body)
+  const contrary =
+    entryCanonical !== undefined && args.glossary !== undefined
+      ? contraryPhrases(glossaryGroupContraries(entryCanonical, args.glossary, index, args.terms))
       : NO_PHRASES
   if (args.glossary !== undefined) {
     const canonical = args.glossary.get(body)
-    if (canonical !== undefined && !contrariesOf(canonical).has(body)) body = canonical
+    if (canonical !== undefined && !contrary.has(body)) body = canonical
   }
   // The committed phrase this slot names, before terms: the key every alias of it maps to.
   const named = body
+  const entry =
+    entryCanonical !== undefined && contrary.size > 0
+      ? glossaryEntryAtom(scope, entryCanonical)
+      : undefined
 
   // Term substitution runs AFTER the whole-body glossary lookup and BEFORE the copula strip.
   //
@@ -1108,19 +1158,24 @@ export function atomize(args: AtomizeArgs): Atom {
     // (open/shut) unifies exactly like a seed pair (grant/revoke).
     const own = antonymReading(body, scope, index)
     body = own.body
-    // Every OTHER committed phrase that names this atom — each alias whose canonical is this
-    // body — is the same action, so its contraries are this atom's too (spec 007 I-1).
+    // Every OTHER committed phrase of this atom's entry is the same action, so its contraries are
+    // this atom's too (spec 007 I-1): each alias of the canonical this atom names, and — for a
+    // contrary alias on its own atom — the canonical and the entry's other aliases. A pair the
+    // entry itself holds lands on one atom's own readings and relates nothing (contraryPairs
+    // skips an atom against itself), which is why the ENTRY link carries it, not these.
     const via: OppositionReading[] = []
     const same = (a: OppositionReading, b: OppositionReading) =>
       a.key === b.key && a.head === b.head && a.negative === b.negative
-    if (args.glossary !== undefined) {
-      // A contrary alias keeps its own atom (above), so its reading is not this atom's.
-      const contrary = contrariesOf(named)
+    if (args.glossary !== undefined && entryCanonical !== undefined) {
+      const phrases = [entryCanonical]
       for (const [alias, canonical] of args.glossary) {
-        if (canonical !== named || alias === named || contrary.has(alias)) continue
-        // The alias's own readings, through the same terms step its canonical went through.
-        const aliasBody = args.terms !== undefined ? substituteTerms(alias, args.terms) : alias
-        for (const reading of antonymReading(aliasBody, scope, index).readings) {
+        if (canonical === entryCanonical && alias !== entryCanonical) phrases.push(alias)
+      }
+      for (const phrase of phrases) {
+        if (phrase === named) continue
+        // The phrase's own readings, through the same terms step this body went through.
+        const phraseBody = args.terms !== undefined ? substituteTerms(phrase, args.terms) : phrase
+        for (const reading of antonymReading(phraseBody, scope, index).readings) {
           if (own.readings.some((r) => same(r, reading)) || via.some((r) => same(r, reading))) {
             continue
           }
@@ -1143,5 +1198,6 @@ export function atomize(args: AtomizeArgs): Atom {
     negated,
     ref,
     ...(opposition !== undefined ? { opposition } : {}),
+    ...(entry !== undefined ? { entry } : {}),
   }
 }

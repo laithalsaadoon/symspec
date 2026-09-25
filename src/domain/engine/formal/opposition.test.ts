@@ -612,10 +612,11 @@ describe('AC-2-1 with I-1 — a glossary alias carries its phrase’s contraries
     ).toEqual([[idOf(1), idOf(2)]])
   })
 
-  it('a contrary alias keeps its own atom, and the canonical does not carry its reading', () => {
-    // The alias is not the canonical's atom any more, so its contraries are not the canonical's
-    // either: "operate the door" (outside every class) reads no opposition at all, rather than
-    // both sides of open/close at once.
+  it('a contrary alias keeps its own atom, links to the entry, and lends the entry its reading', () => {
+    // Each contrary phrase keeps its own atom, so the contrary axiom still relates them, and names
+    // the ENTRY atom its requirement links to, so the entry's "one action" is not lost. Every
+    // phrase of the entry is that one action, so "operate the door" (outside every class) reads
+    // both sides of open/close: a contrary of either phrase is a contrary of it.
     const glossary = new Map([
       ['open_the_door', 'operate_the_door'],
       ['close_the_door', 'operate_the_door'],
@@ -623,11 +624,28 @@ describe('AC-2-1 with I-1 — a glossary alias carries its phrase’s contraries
     const resp = (text: string) => atomize({ kind: 'resp', text, systemName: 'door', glossary })
     expect(resp('open the door').name).toBe('sys__door__resp__open_the_door')
     expect(resp('close the door').name).toBe('sys__door__resp__close_the_door')
-    expect(resp('operate the door').opposition).toBeUndefined()
+    for (const text of ['open the door', 'close the door', 'operate the door']) {
+      expect(resp(text).entry, text).toBe('sys__door__entry__operate_the_door')
+    }
+    const operate = resp('operate the door').opposition
+    expect([operate, ...(operate?.via ?? [])].map((r) => r?.head).sort()).toEqual(['close', 'open'])
+    // An entry that names no contraries merges as it always has, and links nothing.
+    const benign = new Map([['open_the_hatch', 'open_the_door']])
+    const plain = atomize({
+      kind: 'resp',
+      text: 'open the hatch',
+      systemName: 'door',
+      glossary: benign,
+    })
+    expect(plain.name).toBe('sys__door__resp__open_the_door')
+    expect(plain.entry).toBeUndefined()
     // A guard is not a response: the antonym table never reads it, so the entry still merges it.
     expect(
       atomize({ kind: 'trig', text: 'close the door', systemName: 'door', glossary }).name,
     ).toBe(atomize({ kind: 'trig', text: 'operate the door', systemName: 'door', glossary }).name)
+    expect(
+      atomize({ kind: 'trig', text: 'close the door', systemName: 'door', glossary }).entry,
+    ).toBeUndefined()
   })
 
   it('a contrary alias demotes `verified`, and a benign alias beside it still merges', async () => {

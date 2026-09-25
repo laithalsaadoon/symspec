@@ -237,7 +237,8 @@ const MUTATE_OPTIONS: MutateOptions = {
    * committed op. Read through the document's OWN antonyms and terms, the tables the atomizer
    * uses. Defense in depth only — an antonym or term committed afterwards forms the same entry
    * with no glossary write to refuse, so the soundness guarantee is `atomize` keeping each
-   * contrary on its own atom and `check` demoting (`contrary-glossary-alias`).
+   * contrary on its own atom linked to the entry's action, and `check` demoting
+   * (`contrary-glossary-alias`) over what that leaves undecided.
    */
   validateGlossary: (document, canonical, alias) => {
     let antonyms: ReturnType<typeof buildAntonymIndexWithDoc> = ANTONYM_INDEX

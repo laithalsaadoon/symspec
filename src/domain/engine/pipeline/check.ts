@@ -2037,7 +2037,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       })
     }
     // A glossary entry naming two contraries as one action: its consequence (neither action ever
-    // happens) is not decided, because the atomizer keeps the contraries apart.
+    // happens) is not decided. The atomizer keeps the contraries apart and links each requirement's
+    // phrase to the entry under its own guard, so a conflict still takes two requirements; one
+    // requirement demanding either action is impossible alone, and no tier reports that.
     const glossaryEntries = new Map(doc.glossary.map((e) => [normalize(e.canonical), e]))
     for (const entry of glossaryContraries(
       glossaryIndex(doc.glossary),
@@ -2066,8 +2068,10 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
             .map(([p, q]) => `"${p.replace(/_/g, ' ')}" / "${q.replace(/_/g, ' ')}"`)
             .join(', ') +
           '). The antonym table says the two cannot both happen, so an entry saying they are ' +
-          'one action says neither ever happens, and nothing checks the requirements above ' +
-          'against that. The formal tier keeps each contrary phrase on its own atom instead. ' +
+          'one action says neither ever happens. The formal tier keeps each contrary phrase on ' +
+          'its own atom and links it to the entry, so two requirements the entry puts at odds ' +
+          'are still compared, but a requirement above that demands either action is impossible ' +
+          'on its own, and nothing reports that. ' +
           'If they are two actions, remove the alias that names the opposite one: ' +
           `${removals.join(' or ')}. Then re-run \`symspec check\`.`,
       })

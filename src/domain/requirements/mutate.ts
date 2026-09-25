@@ -678,8 +678,8 @@ export interface MutateOptions {
    * alias of "open the door"). The entry says the two are one action and the table says they
    * cannot both happen, so together they say neither ever does. Defense in depth — an antonym
    * or term committed afterwards can form the same entry with no glossary write to refuse, so
-   * the soundness guarantee is the atomizer keeping each contrary on its own atom, and `check`
-   * demoting over it.
+   * the soundness guarantee is the atomizer keeping each contrary on its own atom linked to the
+   * entry's action, and `check` demoting over what that leaves undecided.
    */
   readonly validateGlossary?: (
     document: RequirementsDocument,

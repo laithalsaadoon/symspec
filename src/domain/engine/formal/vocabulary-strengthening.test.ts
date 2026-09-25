@@ -2,10 +2,15 @@
  * Committed vocabulary is a STRENGTHENING move (spec 007 I-1): a term, a glossary alias or an
  * antonym may add findings and demotions, never remove one the same words earn without it.
  *
- * The route pinned here was measured on the built CLI: the opposition-candidate tier read the
- * RAW response text, so a term or alias that lines two objects up hid a same-class pair from it,
- * and `verified: true` came back over a pair the same words without the term demote on. Every
- * case runs the sentence through the real parser and the real pipeline.
+ * Two routes did remove one, each measured on the built CLI, and each pinned here through the
+ * real parser and the real pipeline:
+ *
+ * - the opposition-candidate tier read the RAW response text, so a term or alias that lines two
+ *   objects up hid a same-class pair from it, and `verified: true` came back over a pair the
+ *   same words without the term demote on;
+ * - an entry naming two contraries as one action kept the contrary alias on its own atom and
+ *   dropped the equivalence, so "open the door" + "not shut the door" under "open ≡ shut" lost
+ *   the FND_CONTRADICTION the merged atom proved.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -14,6 +19,8 @@ import { runCheck } from '../pipeline/check.ts'
 import type { Embedder } from './embed.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
+
+const idOf = (n: number) => `0a0a0a0a-0000-4000-8000-${String(n).padStart(12, '0')}`
 
 /** Parse each sentence through the real ladder and build an engine document from the slots. */
 const docOf = async (sentences: readonly string[]) => {
@@ -105,5 +112,98 @@ describe('I-1 — committed vocabulary never lifts what the raw wording already 
     const report = await checkOf([`${BUTTON} grant access.`, `${BUTTON} not grant entry.`], ACCESS)
     expect(report.findings.map((f) => f.code)).toContain('FND_CONTRADICTION')
     expect(report.findings.map((f) => f.code)).not.toContain('FND_OPPOSITION_CANDIDATE')
+  })
+})
+
+describe('I-1 — a glossary entry naming contraries keeps every conflict it entails', () => {
+  // Under the author's entry "open the door" ≡ "shut the door", "open the door" and "not shut the
+  // door" demand one action and its negation. Keeping the contrary alias on its own atom (so the
+  // contrary axiom relates it) must not also DISCARD the equivalence: open ∧ ¬shut ∧ ¬(open ∧ shut)
+  // is satisfiable, and the proven FND_CONTRADICTION became a demotion.
+  const STOPS = 'When the train stops, the door controller shall'
+  const BUTTON = 'When the operator presses the button, the c shall'
+  const contradictionsOf = async (
+    sentences: readonly string[],
+    vocabulary: Record<string, unknown>,
+  ) => {
+    const doc = (await docOf(sentences)) as unknown as Record<string, unknown>
+    Object.assign(doc, vocabulary)
+    const report = await runCheck(doc as never)
+    return report.findings
+      .filter((f) => f.code === 'FND_CONTRADICTION')
+      .map((f) => f.requirementIds)
+  }
+  const OPEN_SHUT = { a: 'open', b: 'shut' }
+
+  it('the alias at opposite polarity: open + not shut, entry open <- shut', async () => {
+    expect(
+      await contradictionsOf([`${STOPS} open the door.`, `${STOPS} not shut the door.`], {
+        glossary: [{ canonical: 'open the door', aliases: ['shut the door'] }],
+        antonyms: [OPEN_SHUT],
+      }),
+    ).toEqual([[idOf(1), idOf(2)]])
+  })
+
+  it('a seed pair, entry open <- close: open + not close', async () => {
+    expect(
+      await contradictionsOf([`${STOPS} open the door.`, `${STOPS} not close the door.`], {
+        glossary: [{ canonical: 'open the door', aliases: ['close the door'] }],
+      }),
+    ).toEqual([[idOf(1), idOf(2)]])
+  })
+
+  it('a canonical outside every class: operate + not shut, entry operate <- open, shut', async () => {
+    const vocabulary = {
+      glossary: [{ canonical: 'operate the door', aliases: ['open the door', 'shut the door'] }],
+      antonyms: [OPEN_SHUT],
+    }
+    expect(
+      await contradictionsOf(
+        [`${STOPS} operate the door.`, `${STOPS} not shut the door.`],
+        vocabulary,
+      ),
+    ).toEqual([[idOf(1), idOf(2)]])
+    // "operate the door" IS "open the door" by the entry, so a contrary of open is its contrary.
+    expect(
+      await contradictionsOf(
+        [`${STOPS} operate the door.`, `${STOPS} close the door.`],
+        vocabulary,
+      ),
+    ).toEqual([[idOf(1), idOf(2)]])
+  })
+
+  it('an entry a term turns contrary: open the door + not close the hatch', async () => {
+    expect(
+      await contradictionsOf([`${BUTTON} open the door.`, `${BUTTON} not close the hatch.`], {
+        glossary: [{ canonical: 'open the door', aliases: ['close the hatch'] }],
+        terms: [{ canonical: 'door', aliases: ['hatch'] }],
+      }),
+    ).toEqual([[idOf(1), idOf(2)]])
+  })
+
+  it('never a conflict the entry does not entail: do neither, or one side twice', async () => {
+    const vocabulary = { glossary: [{ canonical: 'open the door', aliases: ['close the door'] }] }
+    expect(
+      await contradictionsOf(
+        [`${STOPS} not open the door.`, `${STOPS} not close the door.`],
+        vocabulary,
+      ),
+    ).toEqual([])
+    // Each alone is impossible under the entry, which is the demotion's business: no PAIR of the
+    // two is a joint conflict the solver may report as one.
+    expect(
+      await contradictionsOf([`${STOPS} open the door.`, `${STOPS} open the door.`], vocabulary),
+    ).toEqual([])
+    // Across two contexts the link reads exactly as one shared atom would: the finding (or its
+    // absence) is the one the same requirements get when both spell the canonical.
+    const DEPARTS = 'When the train departs, the door controller shall'
+    expect(
+      await contradictionsOf(
+        [`${STOPS} open the door.`, `${DEPARTS} not close the door.`],
+        vocabulary,
+      ),
+    ).toEqual(
+      await contradictionsOf([`${STOPS} open the door.`, `${DEPARTS} not open the door.`], {}),
+    )
   })
 })
