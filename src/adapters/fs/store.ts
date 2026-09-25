@@ -21,7 +21,8 @@
  *
  * `loadBundle` is `load` plus the pinned `symspec.config.json` and the split intent and
  * policy it names (spec 007 AC-5-10). The config has ONE location, `configPath`: the
- * document's repository toplevel (the nearest directory up holding a `.git` entry), or the
+ * document's repository toplevel (the nearest directory up whose `.git` entry is a git
+ * directory or a gitfile naming one; any other `.git` entry is refused), or the
  * document's own directory outside a work tree. The walk looks for the repository, never for
  * a config, so a config placed between the document and the toplevel is not read. Every
  * failure to read what the config names is `ERR_CONFIG_INVALID`: fail closed, never "no config".
@@ -283,6 +284,12 @@ export const docPathLayer = Layer.sync(DocPath)(() => makeDocPath(process.env))
  * cannot collide. */
 let tempCounter = 0
 
+/** A git `HEAD`: a symbolic ref, or a detached SHA-1 or SHA-256 object name. */
+const GIT_HEAD = /^(ref: refs\/\S+|[0-9a-f]{40}|[0-9a-f]{64})\s*$/
+
+/** The prefix of a gitfile, the `.git` FILE of a linked work tree or a submodule. */
+const GITFILE_PREFIX = 'gitdir: '
+
 /**
  * The production {@link DocStore}, over the platform `FileSystem` and `Path`.
  *
@@ -357,27 +364,95 @@ export const docStoreLayer = Layer.effect(DocStore)(
         }).pipe(Effect.tapError(() => cleanup))
       })
 
+    /** The type of the entry at `target`, following links; `undefined` when there is none. */
+    const typeOf = (target: string): Effect.Effect<string | undefined> =>
+      fs.stat(target).pipe(
+        Effect.map((info): string | undefined => info.type),
+        Effect.orElseSucceed(() => undefined),
+      )
+
+    /** The text of the file at `target`; `undefined` when it cannot be read. */
+    const textOf = (target: string): Effect.Effect<string | undefined> =>
+      fs.readFileString(target).pipe(Effect.orElseSucceed(() => undefined))
+
+    /**
+     * Why `dir` is not a git directory, or `undefined` when it is one. Git's own test: a `HEAD`
+     * naming a ref or an object, and `objects/` and `refs/` directories — in the common
+     * directory a `commondir` file names, for a linked work tree's git directory.
+     */
+    const notAGitDirectory = (dir: string): Effect.Effect<string | undefined> =>
+      Effect.gen(function* () {
+        if ((yield* typeOf(dir)) !== 'Directory') return `${dir} is not a directory`
+        const head = yield* textOf(path.join(dir, 'HEAD'))
+        if (head === undefined || !GIT_HEAD.test(head)) {
+          return `${dir} has no HEAD naming a ref or a commit`
+        }
+        const commondir = (yield* textOf(path.join(dir, 'commondir')))?.trim()
+        const common = commondir ? path.resolve(dir, commondir) : dir
+        for (const sub of ['objects', 'refs']) {
+          if ((yield* typeOf(path.join(common, sub))) !== 'Directory') {
+            return `${common} has no ${sub}/ directory`
+          }
+        }
+        return undefined
+      })
+
+    /**
+     * Whether `dir` is a repository toplevel: its `.git` entry is a git directory, or a gitfile
+     * (`gitdir: <path>`, a linked work tree's or a submodule's) naming one. A `.git` entry that
+     * is neither is refused as `ERR_CONFIG_INVALID`, never skipped or trusted: an empty
+     * directory is invisible to `git status`, and trusting it would move the toplevel to it.
+     */
+    const isToplevel = (dir: string): Effect.Effect<boolean, ErrConfigInvalid> =>
+      Effect.gen(function* () {
+        const entry = path.join(dir, '.git')
+        const type = yield* typeOf(entry)
+        if (type === undefined) return false
+        let why: string | undefined
+        if (type === 'Directory') why = yield* notAGitDirectory(entry)
+        else if (type === 'File') {
+          const text = (yield* textOf(entry)) ?? ''
+          const named = text.startsWith(GITFILE_PREFIX)
+            ? text.slice(GITFILE_PREFIX.length).trim()
+            : ''
+          why =
+            named === ''
+              ? `it is a file, but not a gitfile (\`${GITFILE_PREFIX}<path>\`)`
+              : yield* notAGitDirectory(path.resolve(dir, named))
+        } else why = `it is a ${type}`
+        if (why === undefined) return true
+        return yield* Effect.fail(
+          new ErrConfigInvalid({
+            error: `${entry} marks a repository toplevel but is not a repository: ${why}. The pinned config is read at the toplevel, so this entry would move where it is read from.`,
+            suggestions: [
+              `Remove ${entry}; \`git rev-parse --show-toplevel\` prints the toplevel git resolves.`,
+              `The check does not run beside it rather than run without the toplevel's pins.`,
+            ],
+          }),
+        )
+      })
+
     /**
      * The document's repository toplevel: the nearest directory, from the document's own up,
-     * that holds a `.git` entry (a directory in a clone, a file in a linked work tree or a
-     * submodule). `undefined` outside a work tree.
+     * whose `.git` entry is a repository ({@link isToplevel}). `undefined` outside a work tree.
      *
      * This walks for the REPOSITORY, never for a config: the config is then read from exactly
      * one place under it, so a `symspec.config.json` dropped anywhere between the document and
-     * the toplevel is not read at all (spec 007 F11).
+     * the toplevel is not read at all (spec 007 F11). A nested repository (a submodule, or a
+     * complete git directory an author creates) is a toplevel of its own, as it is to git.
      */
-    const toplevelOf = (dir: string): Effect.Effect<string | undefined> =>
+    const toplevelOf = (dir: string): Effect.Effect<string | undefined, ErrConfigInvalid> =>
       Effect.gen(function* () {
         let current = dir
         for (;;) {
-          if (yield* exists(path.join(current, '.git'))) return current
+          if (yield* isToplevel(current)) return current
           const parent = path.dirname(current)
           if (parent === current) return undefined
           current = parent
         }
       })
 
-    const configPath = (target: string): Effect.Effect<string> =>
+    const configPath = (target: string): Effect.Effect<string, ErrConfigInvalid> =>
       Effect.gen(function* () {
         const dir = path.dirname(path.resolve(target))
         return path.join((yield* toplevelOf(dir)) ?? dir, CONFIG_FILE_NAME)

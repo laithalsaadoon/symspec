@@ -355,13 +355,13 @@ export class ErrClauseUnbound extends Schema.TaggedErrorClass<ErrClauseUnbound>(
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
   override readonly [Runtime.errorReported] = false
 }
-/** `symspec.config.json`, or a split intent or policy file it names, cannot be read as one (spec 007 AC-5-10). */
+/** `symspec.config.json`, or a split intent or policy file it names, cannot be read as one, or its location cannot be trusted (spec 007 AC-5-10). */
 export class ErrConfigInvalid extends Schema.TaggedErrorClass<ErrConfigInvalid>()(
   'ERR_CONFIG_INVALID',
   ErrorFields,
   {
     description:
-      '`symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, or the document carries an inline intent or policy alongside a split one. The run fails closed rather than checking without the pins. Suggestion: fix the file the message names; `symspec init --split` in an empty directory writes a valid skeleton of all three to compare against.',
+      '`symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, the document carries an inline intent or policy alongside a split one, or a `.git` entry between the document and its repository toplevel is not a repository (it would move where the config is read from). The run fails closed rather than checking without the pins. Suggestion: fix the file the message names; `symspec init --split` in an empty directory writes a valid skeleton of all three to compare against.',
   },
 ) {
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR

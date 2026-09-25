@@ -72,11 +72,15 @@ Failure:
 
 A committed `symspec.config.json` pins the run settings the gate uses. It is read from ONE
 place — the document's repository toplevel, or the document's own directory outside a work
-tree — and never searched for, so a config dropped beside the document is not read.
+tree — and never searched for, so a config dropped beside the document is not read. The
+toplevel is the nearest directory whose `.git` is a git directory or a gitfile naming one;
+any other `.git` entry on the way up is `ERR_CONFIG_INVALID`, because it would move the
+toplevel.
 `symspec init --split` writes one pinning every knob at its default, beside skeleton intent
 and policy files, and never overwrites any of the three. A `check` below a pin is demoted
 `run-weakened` once per knob and listed in `data.run.belowPinned` next to
-`data.run.pinned`; every such demotion carries the one command that runs at all the pins. The
+`data.run.pinned`; every such demotion carries the one command that runs at all the pins,
+built from the pins rather than the run's flags, so running it leaves `belowPinned` empty. The
 comparison reads the value each tier actually ran at:
 
 | Knob | Set by | Order |
@@ -777,7 +781,7 @@ one.
 | `ERR_EMBED_MODEL_MISSING` | The embedding model (core to every `check`) is not cached and remote loading is disabled — the run fails closed rather than silently skipping the semantic/opposition tier. |
 | `ERR_DUPLICATE_KEY` | A create supplied a --key that another requirement already uses; keys must be unique. |
 | `ERR_CLAUSE_UNBOUND` | The words before the modal that no stored slot holds include an unbound clause marker (Unless, Provided (that), In case, Except, Before, Until, Only if, Even if), so the requirement is refused rather than stored without its condition. |
-| `ERR_CONFIG_INVALID` | `symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, or the document carries an inline intent or policy alongside a split one. The run fails closed rather than checking without the pins. |
+| `ERR_CONFIG_INVALID` | `symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, the document carries an inline intent or policy alongside a split one, or a `.git` entry between the document and its repository toplevel is not a repository (it would move where the config is read from). The run fails closed rather than checking without the pins. |
 
 ## Finding codes (`FND_*`)
 

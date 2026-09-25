@@ -9,7 +9,7 @@
  * borrowed reason name is as visible as one under the right name.
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { NodeServices } from '@effect/platform-node'
@@ -181,9 +181,7 @@ describe('a run below a pin is run-weakened, per knob (AC-5-10)', () => {
     expect(data.run.belowPinned).toEqual(['timeoutMs', 'reachabilityTimeoutMs', 'temporalBound'])
     const commands = data.coverage.demotions.map((d) => d.repair?.commands)
     expect(new Set(commands.map((c) => JSON.stringify(c))).size).toBe(1)
-    expect(commands[0]).toEqual([
-      `symspec check ${doc} --timeout-ms 3000 --reachability-timeout-ms 3000 --temporal-bound 10`,
-    ])
+    expect(commands[0]).toEqual([`symspec check ${doc} --timeout-ms 3000 --temporal-bound 10`])
   })
 
   it('a --strict run below another pin exits 3 on the pin demotion alone', async () => {
@@ -218,10 +216,17 @@ describe('a run below a pin is run-weakened, per knob (AC-5-10)', () => {
   })
 })
 
+/** A git directory at `gitDir`: the HEAD, objects and refs git itself requires of one. */
+const gitDirAt = (gitDir: string): void => {
+  mkdirSync(join(gitDir, 'objects'), { recursive: true })
+  mkdirSync(join(gitDir, 'refs'))
+  writeFileSync(join(gitDir, 'HEAD'), 'ref: refs/heads/main\n')
+}
+
 describe('the config has ONE location (F11)', () => {
   it('under a repository, the toplevel config governs and a weaker shadow beside the document is not read', async () => {
     const root = tempDir()
-    mkdirSync(join(root, '.git'))
+    gitDirAt(join(root, '.git'))
     writeJson(join(root, CONFIG_FILE_NAME), { configVersion: 1, gate: { temporalBound: 10 } })
     const sub = join(root, 'specs', 'door')
     mkdirSync(sub, { recursive: true })
@@ -234,13 +239,53 @@ describe('the config has ONE location (F11)', () => {
   })
 
   it('a linked work tree marks its toplevel with a .git FILE, and that counts too', async () => {
+    // A linked work tree's git directory holds a HEAD and a `commondir` naming the main one.
+    const main = join(tempDir(), '.git')
+    gitDirAt(main)
+    const linked = join(main, 'worktrees', 'docs')
+    mkdirSync(linked, { recursive: true })
+    writeFileSync(join(linked, 'HEAD'), `${'a'.repeat(40)}\n`)
+    writeFileSync(join(linked, 'commondir'), '../..\n')
     const root = tempDir()
-    writeFileSync(join(root, '.git'), 'gitdir: /elsewhere\n')
+    writeFileSync(join(root, '.git'), `gitdir: ${linked}\n`)
     writeJson(join(root, CONFIG_FILE_NAME), { configVersion: 1, gate: { strict: true } })
     const sub = join(root, 'docs')
     mkdirSync(sub)
     const data = await expectData(docIn(sub))
     expect(data.run.belowPinned).toEqual(['strict'])
+  })
+
+  it('a .git entry that is not a repository fails CLOSED rather than moving the toplevel', async () => {
+    const root = tempDir()
+    gitDirAt(join(root, '.git'))
+    writeJson(join(root, CONFIG_FILE_NAME), { configVersion: 1, gate: { temporalBound: 10 } })
+    const sub = join(root, 'docs')
+    mkdirSync(sub)
+    const doc = docIn(sub, {})
+    const marker = join(sub, '.git')
+    const fakes: Record<string, () => void> = {
+      'an empty directory': () => mkdirSync(marker),
+      'a directory whose HEAD names nothing': () => {
+        gitDirAt(marker)
+        writeFileSync(join(marker, 'HEAD'), 'not a ref\n')
+      },
+      'a directory with no refs/': () => {
+        mkdirSync(join(marker, 'objects'), { recursive: true })
+        writeFileSync(join(marker, 'HEAD'), 'ref: refs/heads/main\n')
+      },
+      'a gitfile to nowhere': () => writeFileSync(marker, 'gitdir: /nonexistent\n'),
+      'a file that is not a gitfile': () => writeFileSync(marker, '{}\n'),
+    }
+    for (const [what, plant] of Object.entries(fakes)) {
+      plant()
+      expect(await check(doc, { temporalBound: 1 }), what).toEqual({
+        ok: false,
+        code: 'ERR_CONFIG_INVALID',
+      })
+      rmSync(marker, { recursive: true, force: true })
+    }
+    const data = await expectData(doc, { temporalBound: 1 })
+    expect(data.run.config).toBe(join(root, CONFIG_FILE_NAME))
   })
 
   it('outside a repository, a config in a PARENT directory is not read', async () => {

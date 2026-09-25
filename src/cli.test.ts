@@ -44,7 +44,7 @@
  */
 
 import { execFile, execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1541,6 +1541,14 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
   const REPO_MARKER = ['.', 'git'].join('')
   const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
 
+  /** Make `root` a repository toplevel: the HEAD, objects and refs a git directory holds. */
+  const repoAt = (root: string): void => {
+    const gitDir = join(root, REPO_MARKER)
+    mkdirSync(join(gitDir, 'objects'), { recursive: true })
+    mkdirSync(join(gitDir, 'refs'))
+    writeFileSync(join(gitDir, 'HEAD'), 'ref: refs/heads/main\n')
+  }
+
   /** An initialized document in `dir`, with an optional config beside it. */
   const docIn = (dir: string, gate?: Record<string, unknown>): string => {
     const doc = join(dir, 'requirements.json')
@@ -1581,7 +1589,7 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
 
   it('reads the config at the repository toplevel, never a weaker one beside the document (sabotage (c), F11)', () => {
     const root = workDir()
-    mkdirSync(join(root, REPO_MARKER))
+    repoAt(root)
     writeFileSync(join(root, CONFIG), json({ configVersion: 1, gate: { temporalBound: 10 } }))
     const sub = join(root, 'specs')
     mkdirSync(sub)
@@ -1589,6 +1597,55 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
     const { data } = checkRun(doc, '--temporal-bound', '1')
     expect(data.run.config).toBe(join(root, CONFIG))
     expect(data.run.belowPinned).toEqual(['temporalBound'])
+  })
+
+  it('a fake repository marker beside the document does not shadow the toplevel config (F11)', () => {
+    const root = workDir()
+    repoAt(root)
+    writeFileSync(join(root, CONFIG), json({ configVersion: 1, gate: { temporalBound: 10 } }))
+    const sub = join(root, 'docs')
+    mkdirSync(sub)
+    // The shadow a fake marker would promote: a config beside the document that pins nothing.
+    const doc = docIn(sub, {})
+    // An empty directory (invisible to git status), and a gitfile naming no repository.
+    const fakes: [string, () => void][] = [
+      ['an empty directory', () => mkdirSync(join(sub, REPO_MARKER))],
+      [
+        'a gitfile to nowhere',
+        () => writeFileSync(join(sub, REPO_MARKER), 'gitdir: /nonexistent\n'),
+      ],
+      ['a file that is not a gitfile', () => writeFileSync(join(sub, REPO_MARKER), 'anything\n')],
+    ]
+    for (const [what, plant] of fakes) {
+      plant()
+      const { envelope, code } = runJson('check', doc, '--temporal-bound', '1')
+      expect(code, what).toBe(2)
+      expect(envelope.code, what).toBe('ERR_CONFIG_INVALID')
+      expect(String(envelope.error), what).toContain(join(sub, REPO_MARKER))
+      rmSync(join(sub, REPO_MARKER), { recursive: true, force: true })
+    }
+    // With the fake gone, the toplevel pin holds.
+    expect(checkRun(doc, '--temporal-bound', '1').data.run.belowPinned).toEqual(['temporalBound'])
+  })
+
+  it('running the published repair discharges every pin, even one the run met by a flag', () => {
+    const doc = docIn(workDir(), { timeoutMs: 5000, temporalBound: 10, strict: true })
+    const pinRepair = (args: string[]) => {
+      const { data } = checkRun(...args)
+      const commands = data.coverage.demotions
+        .filter((d) => d.action.includes('pinned by'))
+        .map((d) => (d as { repair?: { commands: string[] } }).repair?.commands[0])
+      expect(new Set(commands).size).toBeLessThanOrEqual(1)
+      return { below: data.run.belowPinned, command: commands[0] }
+    }
+    const first = pinRepair([doc, '--temporal-bound', '10', '--strict', '--timeout-ms', '1'])
+    expect(first.below).toEqual(['timeoutMs', 'reachabilityTimeoutMs'])
+    const tokens = (first.command ?? '').split(' ')
+    // No embedder pin, so the command sets no environment: it is `symspec check <doc> ...`.
+    expect(tokens.slice(0, 3)).toEqual(['symspec', 'check', doc])
+    const second = pinRepair([doc, ...tokens.slice(3)])
+    expect(second.below).toEqual([])
+    expect(second.command).toBeUndefined()
   })
 
   it('a config that is not JSON fails closed as ERR_CONFIG_INVALID at exit 2', () => {

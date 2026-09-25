@@ -195,11 +195,15 @@ ${exitTable(manifest)}
 
 A committed \`${CONFIG_FILE_NAME}\` pins the run settings the gate uses. It is read from ONE
 place — the document's repository toplevel, or the document's own directory outside a work
-tree — and never searched for, so a config dropped beside the document is not read.
+tree — and never searched for, so a config dropped beside the document is not read. The
+toplevel is the nearest directory whose \`.git\` is a git directory or a gitfile naming one;
+any other \`.git\` entry on the way up is \`ERR_CONFIG_INVALID\`, because it would move the
+toplevel.
 \`symspec init --split\` writes one pinning every knob at its default, beside skeleton intent
 and policy files, and never overwrites any of the three. A \`check\` below a pin is demoted
 \`run-weakened\` once per knob and listed in \`data.run.belowPinned\` next to
-\`data.run.pinned\`; every such demotion carries the one command that runs at all the pins. The
+\`data.run.pinned\`; every such demotion carries the one command that runs at all the pins,
+built from the pins rather than the run's flags, so running it leaves \`belowPinned\` empty. The
 comparison reads the value each tier actually ran at:
 
 ${runWeakeningTable(manifest)}

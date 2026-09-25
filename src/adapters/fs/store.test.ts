@@ -18,8 +18,16 @@
  *    path, since that is the one failure a real user will actually hit.
  */
 
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -634,6 +642,47 @@ describe('loadBundle', () => {
     const r = await attemptStore((s) => s.loadBundle(doc))
     expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
     if (r._tag === 'Failure') expect(r.failure.error).toContain(join(dir, 'policy.json'))
+  })
+})
+
+describe('configPath reads the toplevel git resolves', () => {
+  /** Run git in `cwd`, with no inherited GIT_* variable: a hook's GIT_DIR would redirect it. */
+  const git = (cwd: string, ...args: string[]): string =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
+      cwd,
+      encoding: 'utf8',
+      env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
+    }).trim()
+
+  it('a real clone and a real linked work tree are each a toplevel', async () => {
+    // Real paths, because git prints the toplevel resolved (a temp dir can be behind a link).
+    const root = realpathSync(tempDir())
+    git(root, 'init', '-q')
+    git(root, 'commit', '-q', '--allow-empty', '-m', 'init')
+    const docs = join(root, 'docs')
+    mkdirSync(docs)
+    expect(await withStore((s) => s.configPath(join(docs, 'requirements.json')))).toBe(
+      join(git(docs, 'rev-parse', '--show-toplevel'), 'symspec.config.json'),
+    )
+    const linked = join(realpathSync(tempDir()), 'linked')
+    git(root, 'worktree', 'add', '-q', linked)
+    mkdirSync(join(linked, 'docs'))
+    expect(await withStore((s) => s.configPath(join(linked, 'docs', 'requirements.json')))).toBe(
+      join(git(join(linked, 'docs'), 'rev-parse', '--show-toplevel'), 'symspec.config.json'),
+    )
+  })
+
+  it('refuses an empty .git directory beside the document, which git status never shows', async () => {
+    const root = tempDir()
+    git(root, 'init', '-q')
+    const docs = join(root, 'docs')
+    mkdirSync(join(docs, '.git'), { recursive: true })
+    // git itself looks past it to the real toplevel; the store refuses it rather than trust it.
+    expect(git(docs, 'rev-parse', '--show-toplevel')).toBe(
+      git(root, 'rev-parse', '--show-toplevel'),
+    )
+    const r = await attemptStore((s) => s.configPath(join(docs, 'requirements.json')))
+    expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
   })
 })
 

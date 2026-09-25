@@ -184,9 +184,10 @@ export interface DocStoreShape {
   /**
    * The ONE location of the config for the document at `path`: `symspec.config.json` at the
    * document's repository toplevel, or in the document's own directory outside a work tree.
-   * Never a search for the nearest config.
+   * Never a search for the nearest config. `ERR_CONFIG_INVALID` when a `.git` entry on the way
+   * up is not a repository: it would move the toplevel, so it is refused rather than trusted.
    */
-  readonly configPath: (path: string) => Effect.Effect<string>
+  readonly configPath: (path: string) => Effect.Effect<string, ErrConfigInvalid>
   /**
    * Write `contents` to a file that must not exist yet. `ERR_DOC_EXISTS` when it does, and
    * then nothing is written: the exclusive create is the write-safety primitive for the

@@ -260,8 +260,11 @@ export interface KnobRow<K extends Knob> {
   readonly effective: (settings: RunSettings) => KnobValues[K]
   /** Whether `actual` is strictly weaker than `pinned`. */
   readonly weaker: (actual: KnobValues[K], pinned: KnobValues[K]) => boolean
-  /** The command fragments that run at `pinned`: `ENV=value` entries and flags. */
-  readonly raise: (pinned: KnobValues[K], run: RunSettings) => Raise
+  /**
+   * The command fragments that run at `pinned`: `ENV=value` entries and flags. Setting the
+   * knob to `pinned` in a command's settings is what they do, so the effective value is the pin.
+   */
+  readonly raise: (pinned: KnobValues[K]) => Raise
   /** The value, for a message. */
   readonly render: (value: KnobValues[K]) => string
 }
@@ -311,11 +314,8 @@ export const RUN_KNOBS: { readonly [K in Knob]: KnobRow<K> } = {
     effective: (s) => s.embedder,
     weaker: (actual, pinned) => EMBEDDER_RANK[actual] < EMBEDDER_RANK[pinned],
     // The stub is selected only by exactly `SYMSPEC_EMBED_STUB=1`, so `=0` loads the model for
-    // that one command; a run with the tier off also needs it back on.
-    raise: (_pinned, run) => ({
-      env: ['SYMSPEC_EMBED_STUB=0'],
-      flags: run.semantic ? [] : [{ name: '--semantic' }],
-    }),
+    // that one command. The command never turns the semantic tier off, so it needs no flag.
+    raise: () => ({ env: ['SYMSPEC_EMBED_STUB=0'], flags: [] }),
     render: (v) => v,
   },
   semanticThreshold: {
@@ -458,27 +458,53 @@ const renderPair = <K extends Knob>(knob: K, run: RunSettings, pins: EffectivePi
   }
 }
 
-/** The fragments that raise one knob to its pin. */
-const raiseOne = <K extends Knob>(knob: K, run: RunSettings, pins: EffectivePins) =>
-  RUN_KNOBS[knob].raise(pins[knob] as KnobValues[K], run)
+/**
+ * The settings a `symspec check` command with NO knob flag runs at: every flag at its default,
+ * in the run's own environment. The embedder is the environment's, which the run reports when
+ * its semantic tier ran; a run with the tier off does not say, so it counts as none.
+ */
+const commandDefaults = (run: RunSettings): RunSettings => ({
+  ...KNOB_DEFAULTS,
+  embedder: run.embedder,
+})
+
+/** One knob of a command's settings raised to its pin, and the fragments that raise it. */
+const raiseOne = <K extends Knob>(
+  knob: K,
+  settings: RunSettings,
+  pins: EffectivePins,
+): { readonly settings: RunSettings; readonly raise?: Raise } => {
+  const row: KnobRow<K> = RUN_KNOBS[knob]
+  const pinned = pins[knob] as KnobValues[K] | undefined
+  if (pinned === undefined || !row.weaker(row.effective(settings), pinned)) return { settings }
+  return { settings: { ...settings, [knob]: pinned }, raise: row.raise(pinned) }
+}
 
 /**
- * ONE command that re-runs `check` at every below-pinned knob's pin, so each `run-weakened`
- * demotion from a pin carries the same repair and running it discharges all of them.
+ * ONE command that runs `check` at or above EVERY pin, so each `run-weakened` demotion from a
+ * pin carries the same repair and running it discharges all of them.
+ *
+ * It is built from the pins, never from the run's flags: a command carries only what it says,
+ * so a knob the run met by a flag (`--strict`) would drop below its pin if the command raised
+ * only the knobs the run was below. Each pinned knob a flagless command would run below gets
+ * the flag that sets it to the pin, in table order, so a raise sees the ones before it (a
+ * raised `--timeout-ms` is the bound an inheriting reachability run resolves to).
  */
 export const pinnedInvocation = (
   docPath: string,
   run: RunSettings,
   pins: EffectivePins,
-  below: readonly Knob[],
 ): string => {
   const env = new Set<string>()
-  // Keyed on the flag name: two knobs can both ask for `--semantic`.
+  // Keyed on the flag name, so no flag is repeated.
   const flags = new Map<string, Flag>()
-  for (const knob of below) {
-    const raised = raiseOne(knob, run, pins)
-    for (const e of raised.env) env.add(e)
-    for (const flag of raised.flags) if (!flags.has(flag.name)) flags.set(flag.name, flag)
+  let settings = commandDefaults(run)
+  for (const knob of KNOBS) {
+    const raised = raiseOne(knob, settings, pins)
+    settings = raised.settings
+    for (const e of raised.raise?.env ?? []) env.add(e)
+    for (const flag of raised.raise?.flags ?? [])
+      if (!flags.has(flag.name)) flags.set(flag.name, flag)
   }
   const args = [...flags.values()].flatMap((f) =>
     f.value === undefined ? [f.name] : [f.name, f.value],

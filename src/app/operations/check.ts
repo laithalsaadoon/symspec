@@ -838,7 +838,7 @@ const pinnedRunOf = (
 } => {
   const pinned = effectivePins(gate)
   const below = belowPinned(run, pinned)
-  const command = pinnedInvocation(docPath, run, pinned, below)
+  const command = pinnedInvocation(docPath, run, pinned)
   return {
     disclosure: { config: configPath, pinned, belowPinned: below },
     demotions: below.map((knob) => ({

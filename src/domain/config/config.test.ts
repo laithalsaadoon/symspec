@@ -22,6 +22,7 @@ import {
   decodeConfig,
   type EffectivePins,
   effectivePins,
+  type GatePins,
   KNOB_DEFAULTS,
   KNOBS,
   type Knob,
@@ -280,16 +281,104 @@ describe('the reachability sentinel and the published table', () => {
   it('the pinned invocation raises every below-pinned knob to its pin in one command', () => {
     const pins = effectivePins({ temporalBound: 10, strict: true, embedder: 'model' })
     const actual = run({ embedder: 'stub' })
-    const command = pinnedInvocation('doc.json', actual, pins, belowPinned(actual, pins))
+    const command = pinnedInvocation('doc.json', actual, pins)
     expect(command).toBe('SYMSPEC_EMBED_STUB=0 symspec check doc.json --temporal-bound 10 --strict')
   })
 
   it('the pinned invocation names the EFFECTIVE reachability bound, never the 0 sentinel', () => {
+    const pins = effectivePins({ reachabilityTimeoutMs: 8000, timeoutMs: 3000 })
+    const actual = run({ timeoutMs: 3000, reachabilityTimeoutMs: 1 })
+    expect(pinnedInvocation('d.json', actual, pins)).toBe(
+      'symspec check d.json --timeout-ms 3000 --reachability-timeout-ms 8000',
+    )
+  })
+
+  it('an inheriting reachability pin is met by the raised --timeout-ms, with no second flag', () => {
+    // The run met timeoutMs by its flag; the command must carry it, and then an inheriting
+    // reachability run resolves to the pin with no --reachability-timeout-ms at all.
     const pins = effectivePins({ reachabilityTimeoutMs: 0, timeoutMs: 3000 })
     const actual = run({ timeoutMs: 3000, reachabilityTimeoutMs: 1 })
-    expect(pinnedInvocation('d.json', actual, pins, belowPinned(actual, pins))).toBe(
-      'symspec check d.json --reachability-timeout-ms 3000',
-    )
+    expect(pinnedInvocation('d.json', actual, pins)).toBe('symspec check d.json --timeout-ms 3000')
+  })
+})
+
+/**
+ * The settings a published `symspec check` command runs at, in an environment whose embedder
+ * is `environment`: every flag the command omits is at its default, because the command is run
+ * as written and carries none of the run's other flags.
+ */
+const settingsOfCommand = (command: string, environment: 'model' | 'stub'): RunSettings => {
+  const tokens = command.split(' ')
+  const at = tokens.indexOf('symspec')
+  expect(tokens.slice(at, at + 2)).toEqual(['symspec', 'check'])
+  const env = tokens.slice(0, at)
+  const args = tokens.slice(at + 3)
+  const settings: Record<string, unknown> = { ...KNOB_DEFAULTS }
+  for (let i = 0; i < args.length; i += 1) {
+    const knob = KNOBS.find((k) => RUN_KNOBS[k].flag === args[i])
+    if (knob === undefined) throw new Error(`the command carries an unknown flag ${args[i]}`)
+    settings[knob] = typeof KNOB_DEFAULTS[knob] === 'boolean' ? true : Number(args[++i])
+  }
+  for (const e of env) expect(e).toBe('SYMSPEC_EMBED_STUB=0')
+  const s = settings as unknown as RunSettings
+  return {
+    ...s,
+    embedder: !s.semantic ? 'off' : env.length > 0 ? 'model' : environment,
+  }
+}
+
+describe('the pinned invocation converges: running it discharges EVERY pin', () => {
+  const GATES: readonly GatePins[] = [
+    { timeoutMs: 5000, temporalBound: 10, strict: true },
+    { reachabilityTimeoutMs: 0, timeoutMs: 3000 },
+    { temporalBound: 10, strict: true, embedder: 'model' },
+    { semanticThreshold: 0.5, semantic: true, solverBudgetMs: 0 },
+    { solverBudgetMs: 1000, reachabilityTimeoutMs: 8000 },
+    { timeoutMs: 1000, semantic: false, strict: false },
+    skeletonConfig({}).gate,
+  ]
+  const RUNS: readonly Partial<RunSettings>[] = [
+    {},
+    { temporalBound: 10, strict: true, timeoutMs: 1 },
+    { semantic: false },
+    { timeoutMs: 9000, reachabilityTimeoutMs: 1 },
+    { semanticThreshold: 0.99, solverBudgetMs: 5 },
+    { temporalBound: 20, solverBudgetMs: 0, timeoutMs: 5000, strict: true },
+  ]
+
+  it('over every gate, run and environment, the command runs below no pin', () => {
+    let weakened = 0
+    for (const gate of GATES) {
+      const pins = effectivePins(gate)
+      for (const changes of RUNS) {
+        for (const environment of ['model', 'stub'] as const) {
+          const base = run(changes)
+          const actual = { ...base, embedder: base.semantic ? environment : ('off' as const) }
+          const below = belowPinned(actual, pins)
+          if (below.length === 0) continue
+          weakened += 1
+          const command = pinnedInvocation('doc.json', actual, pins)
+          expect(
+            belowPinned(settingsOfCommand(command, environment), pins),
+            `${JSON.stringify(gate)} / ${JSON.stringify(actual)}: ${command}`,
+          ).toEqual([])
+        }
+      }
+    }
+    // Not vacuous: most pairs are below some pin.
+    expect(weakened).toBeGreaterThan(GATES.length * 2)
+  })
+
+  it('a knob a run met by a flag stays met: the alternating repair is gone', () => {
+    // The run met temporalBound and strict by flag and was below the timeout pins only. A
+    // command raising only the below knobs drops --temporal-bound and --strict, and running it
+    // puts THOSE below their pins: two commands alternating forever.
+    const pins = effectivePins({ timeoutMs: 5000, temporalBound: 10, strict: true })
+    const actual = run({ temporalBound: 10, strict: true, timeoutMs: 1, embedder: 'stub' })
+    const command = pinnedInvocation('doc.json', actual, pins)
+    expect(command).toContain('--temporal-bound 10')
+    expect(command).toContain('--strict')
+    expect(belowPinned(settingsOfCommand(command, 'stub'), pins)).toEqual([])
   })
 })
 
