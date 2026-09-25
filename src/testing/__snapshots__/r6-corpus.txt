@@ -56,16 +56,21 @@
 "The client shall use timeout-30 for each request."	{"r6":[["error",[29,31],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The client shall use timeout:30 for each request."	{"r6":[["error",[29,31],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The client shall use timeout:60 for each request."	{"r6":[["error",[29,31],"Bare number \"60\" with no unit; specify unit (e.g., \"60 seconds\")"]]}
+"The cluster shall assign each node 64 memory below 1 GB."	{"r6":[["error",[35,37],"Bare number \"64\" with no unit; specify unit (e.g., \"64 seconds\")"]]}
+"The cluster shall assign the replica 64 storage below 1 GB."	{"r6":[["error",[37,39],"Bare number \"64\" with no unit; specify unit (e.g., \"64 seconds\")"]]}
 "The conflict is R1 \"When the passenger presses open, the door controller shall open the door\""	{"sentence":"The door controller shall open the door \".","r6":[]}
 "The console shall also type 30 characters."	{"r6":[["error",[28,30],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The controller shall add 5 delay within 10 seconds."	{"r6":[["error",[25,26],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
 "The controller shall always page 30 operators."	{"r6":[["error",[33,35],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The controller shall cap each page 20 during export."	{"r6":[["error",[35,37],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "The controller shall cap each page 50 during export."	{"r6":[["error",[35,37],"Bare number \"50\" with no unit; specify unit (e.g., \"50 seconds\")"]]}
+"The controller shall cap node 2 memory below 4 GB."	{"r6":[]}
 "The controller shall complete the infusion within 30 minutes."	{"r6":[]}
 "The controller shall complete the infusion within at most 30 minutes."	{"r6":[]}
 "The controller shall expire the idle session after at most 30 minutes."	{"r6":[]}
 "The controller shall expire the user session in no less than 60 minutes."	{"r6":[]}
+"The controller shall give each heater 80 temperature above 20 °C."	{"r6":[["error",[38,40],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
+"The controller shall give each zone 22 temperature above 18 °C."	{"r6":[["error",[36,38],"Bare number \"22\" with no unit; specify unit (e.g., \"22 seconds\")"]]}
 "The controller shall hold channel 2 at 75."	{"r6":[["error",[34,35],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"],["error",[39,41],"Bare number \"75\" with no unit; specify unit (e.g., \"75 seconds\")"]]}
 "The controller shall hold each item 30 before release."	{"r6":[["error",[36,38],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The controller shall hold each item 60 before release."	{"r6":[["error",[36,38],"Bare number \"60\" with no unit; specify unit (e.g., \"60 seconds\")"]]}
@@ -114,6 +119,7 @@
 "The controller shall keep axis 3 position within 5 mm."	{"r6":[]}
 "The controller shall keep disk 2 temperature below 5 GB."	{"r6":[["error",[31,32],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall keep disk 2 usage below 5 GB."	{"r6":[]}
+"The controller shall keep each zone 1 temperature above 20 °C."	{"r6":[["error",[36,37],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall keep heater 80 on for at least 10 minutes."	{"r6":[["error",[33,35],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "The controller shall keep heater 80 running over 10 minutes."	{"r6":[["error",[33,35],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "The controller shall keep latency 500 for each request."	{"r6":[["error",[34,37],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
@@ -179,9 +185,11 @@
 "The controller shall keep zone 1 latency above 20 °C."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall keep zone 1 temperature above 20 °C and zone 2 temperature below 5 °C."	{"unparsed":true,"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[66,67],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall limit current 20 at startup."	{"r6":[["error",[35,37],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
+"The controller shall limit disk 2 usage below 5 GB."	{"r6":[]}
 "The controller shall maintain pressure 5 during startup."	{"r6":[["error",[39,40],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
 "The controller shall maintain temperature 20 while idle."	{"r6":[["error",[42,44],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "The controller shall maintain temperature 30 while idle."	{"r6":[["error",[42,44],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
+"The controller shall maintain zone 1 temperature above 20 °C."	{"r6":[]}
 "The controller shall not hold zone 1 temperature above 20 degrees celsius during defrost."	{"r6":[["error",[35,36],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall not hold zone 1 temperature above 20 degrees celsius."	{"r6":[]}
 "The controller shall not respond within 1,500 ms."	{"r6":[]}
@@ -275,6 +283,7 @@
 "The controller shall set valve 1 to 40."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[36,38],"Bare number \"40\" with no unit; specify unit (e.g., \"40 seconds\")"]]}
 "The controller shall set valve 2 to 30 before the restart."	{"r6":[["error",[31,32],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"],["error",[36,38],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The controller shall set zone 1 and 20 while idle."	{"unparsed":true,"r6":[["error",[30,31],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[36,38],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
+"The controller shall set zone 1 temperature above 20 °C."	{"r6":[["error",[30,31],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall set zone 1 temperature to 20."	{"r6":[["error",[30,31],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[47,49],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "The controller shall set zone 1 through 20."	{"r6":[["error",[30,31],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[40,42],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "The controller shall set zone 1 to 20 while idle."	{"r6":[["error",[30,31],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[35,37],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
@@ -321,6 +330,11 @@
 "The router shall keep the throughput on links 1 and 2 above 500 Mbps."	{"unparsed":true,"r6":[["error",[46,47],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[52,53],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The scale shall read at most 5 KG."	{"r6":[]}
 "The scale shall read at most 5 mg."	{"r6":[]}
+"The scheduler shall allow each instance 30 delay below 60 seconds."	{"r6":[["error",[40,42],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
+"The scheduler shall give every worker 30 timeout below 60 seconds."	{"r6":[["error",[38,40],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
+"The scheduler shall grant each job 30 timeout below 60 seconds."	{"r6":[["error",[35,37],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
+"The scheduler shall grant each job 50 timeout below 60 seconds."	{"r6":[["error",[35,37],"Bare number \"50\" with no unit; specify unit (e.g., \"50 seconds\")"]]}
+"The scheduler shall grant job 30 timeout below 60 seconds."	{"r6":[["error",[30,32],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The scheduler shall reserve each slot 30 during peak hours."	{"r6":[["error",[38,40],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The scheduler shall retry the job at most 3 times."	{"r6":[]}
 "The scheduler shall retry the job at most 3."	{"r6":[["error",[42,43],"Bare number \"3\" with no unit; specify unit (e.g., \"3 seconds\")"]]}
@@ -364,6 +378,7 @@
 "When the export starts, the server shall cap each page 50 during export."	{"r6":[["error",[55,57],"Bare number \"50\" with no unit; specify unit (e.g., \"50 seconds\")"]]}
 "When the fan reaches 80 temperature above 20 °C, the controller shall stop."	{"r6":[["error",[21,23],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "When the fault clears, the controller shall set the delay to 30 due to the fault."	{"r6":[["error",[61,63],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
+"When the job starts, the scheduler shall grant each job 30 timeout below 60 seconds."	{"r6":[["error",[56,58],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "When the load rises, the controller shall hold the motor 3000 steady."	{"r6":[["error",[57,61],"Bare number \"3000\" with no unit; specify unit (e.g., \"3000 seconds\")"]]}
 "When the load rises, the controller shall set fan 2 to 80."	{"r6":[["error",[50,51],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"],["error",[55,57],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "When the night starts, the controller shall hold zone 1 at 20 degrees celsius."	{"r6":[["error",[54,55],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
@@ -371,6 +386,8 @@
 "When the night starts, the controller shall keep the tank 80 full."	{"r6":[["error",[58,60],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "When the night starts, the controller shall set zone 1 to 20."	{"r6":[["error",[53,54],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[58,60],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "When the night starts, the controller shall set zone 1 to 30."	{"r6":[["error",[53,54],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[58,60],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
+"When the pool starts, the cache shall allocate each worker 256 memory below 1 GB."	{"r6":[["error",[59,62],"Bare number \"256\" with no unit; specify unit (e.g., \"256 seconds\")"]]}
+"When the pool starts, the cache shall allocate each worker 512 memory below 1 GB."	{"r6":[["error",[59,62],"Bare number \"512\" with no unit; specify unit (e.g., \"512 seconds\")"]]}
 "When the pump starts, the controller shall keep the pump 50 running."	{"r6":[["error",[57,59],"Bare number \"50\" with no unit; specify unit (e.g., \"50 seconds\")"]]}
 "When the purge starts, the controller shall set the valve 30 open."	{"r6":[["error",[58,60],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "When the purge starts, the controller shall set valve 1 to 40 during the purge."	{"r6":[["error",[54,55],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[59,61],"Bare number \"40\" with no unit; specify unit (e.g., \"40 seconds\")"]]}
@@ -397,11 +414,13 @@
 "While streaming, the encoder shall target 8 latency below 10 ms."	{"r6":[["error",[42,43],"Bare number \"8\" with no unit; specify unit (e.g., \"8 seconds\")"]]}
 "While the cabin temperature is 5 °C, the climate controller shall disable the heater."	{"r6":[]}
 "While the cabin temperature is −5 °C, the climate controller shall enable the heater."	{"r6":[]}
+"While the controller keeps zone 1 temperature above 20 °C, the plant shall log the state."	{"r6":[]}
 "While the flush latency is above 500 ms, the controller shall log the event."	{"r6":[]}
 "While the link tier is provisioned at 100 MBps, the router shall disable the traffic shaper."	{"r6":[]}
 "While the link tier is provisioned at 100 Mbps, the router shall enable the traffic shaper."	{"r6":[]}
 "While the pulse width is 10 s, the gate driver shall disable the output stage."	{"r6":[]}
 "While the pulse width is 10 µs, the gate driver shall enable the output stage."	{"r6":[]}
+"While the pump runs and zone 2 temperature is below 5 °C, the controller shall log the state."	{"unparsed":true,"r6":[["error",[29,30],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "While the temperature is above 5 degrees celsius, the controller shall log the event."	{"r6":[]}
 "While the temperature is above 5 degrees celsius, when the temperature is below 3 degrees celsius, the vent controller shall log the fault."	{"r6":[]}
 "While zone 2 temperature is below 5 degrees celsius, the controller shall close the vent."	{"r6":[]}

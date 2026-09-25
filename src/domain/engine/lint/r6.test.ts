@@ -14,7 +14,8 @@
  *     (`1` in `1,500 ms`);
  *   - a numeral inside the quantity subject of a bound that tier reads with a converted unit,
  *     between a noun whose instances are numbered and the noun naming what the bound
- *     measures (`zone 1 temperature`), names WHICH quantity it is.
+ *     measures (`zone 1 temperature`), names WHICH quantity it is, when that numbered noun
+ *     is the object of a verb that governs a quantity (`hold`, `keep`) or starts a guard.
  * Everything else is an R6 error exactly as before; `src/testing/r6-corpus.test.ts` pins that.
  */
 
@@ -23,7 +24,7 @@ import { renderSentence } from '../core/render.ts'
 import type { Requirement } from '../core/schema.ts'
 import { DIMENSIONS } from '../formal/numeric.ts'
 import { runCheck } from '../pipeline/check.ts'
-import { checkGtWRules, R6_NUMBERED_NOUNS, R6_QUANTITY_NOUNS } from './gtwr.ts'
+import { checkGtWRules, R6_GOVERNING_VERBS, R6_NUMBERED_NOUNS, R6_QUANTITY_NOUNS } from './gtwr.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
 const ID_A = 'aaaaaaaa-0000-4000-8000-00000000000a'
@@ -219,6 +220,37 @@ describe('GTWR_R6 in a full check: an amount written before its quantity noun ke
       '50',
       '20',
     ],
+    // a numbered noun as the indirect object of a double-object verb, after a quantifier:
+    // `each job 30` cannot name one job, so 30 is the amount each one is given
+    [
+      ubiquitous('grant each job 30 timeout below 60 seconds', 'scheduler'),
+      ubiquitous('grant each job 50 timeout below 60 seconds', 'scheduler'),
+      '30',
+      '50',
+    ],
+    [
+      {
+        patternType: 'event-driven',
+        systemName: 'cache',
+        trigger: 'the pool starts',
+        systemResponse: 'allocate each worker 512 memory below 1 GB',
+      },
+      {
+        patternType: 'event-driven',
+        systemName: 'cache',
+        trigger: 'the pool starts',
+        systemResponse: 'allocate each worker 256 memory below 1 GB',
+      },
+      '512',
+      '256',
+    ],
+    // ... and after `the`, where only the governing verb says the numeral is an amount
+    [
+      ubiquitous('assign the replica 64 storage below 1 GB', 'cluster'),
+      ubiquitous('assign the replica 32 storage below 1 GB', 'cluster'),
+      '64',
+      '32',
+    ],
   ]
 
   for (const [a, b, amountA, amountB] of pairs) {
@@ -398,8 +430,73 @@ describe('GTWR_R6: a numeral naming which quantity a converted bound is on', () 
     ['keep pump 3 pressure below 5 bar', ['3', '5']],
     // no bound at all: `exceeds` is not a comparator the numeric tier reads
     ['hold zone 1 temperature exceeding nothing and set the fan to 80', ['1', '80']],
+    // a quantifier before the numbered noun: `each job 30` cannot name one job
+    ['grant each job 30 timeout below 60 seconds', ['30']],
+    ['give every worker 30 timeout below 60 seconds', ['30']],
+    ['assign each node 64 memory below 1 GB', ['64']],
+    ['allow each instance 30 delay below 60 seconds', ['30']],
+    ['give each heater 80 temperature above 20 °C', ['80']],
+    ['give each zone 22 temperature above 18 °C', ['22']],
+    ['allocate each worker 512 memory below 1 GB', ['512']],
+    // a verb that does not govern a quantity as its object: a double-object verb gives the
+    // numbered noun the amount, with or without a determiner, and any other verb is ambiguous
+    ['assign the replica 64 storage below 1 GB', ['64']],
+    ['grant job 30 timeout below 60 seconds', ['30']],
+    ['set zone 1 temperature above 20 °C', ['1']],
+    ['immediately grant the job 30 timeout below 60 seconds', ['30']],
   ] as const)('"%s": R6 errors on %j', (response, numerals) => {
     expect(r6Numerals(ubiquitous(response))).toEqual(numerals)
+  })
+
+  // Quantifying determiners: before a numbered noun each makes the numeral an amount per
+  // instance. None is a governing verb, so none is ever read past.
+  it.each([
+    'each',
+    'every',
+    'any',
+    'a',
+    'an',
+    'per',
+    'all',
+  ])('a quantifier `%s` before the numbered noun keeps the error', (q) => {
+    expect(r6Numerals(ubiquitous(`keep ${q} zone 7 temperature above 5 °C`))).toEqual(['7'])
+    expect(r6Numerals(ubiquitous(`keep ${q} job 7 timeout below 60 seconds`))).toEqual(['7'])
+  })
+
+  it('every governing verb reads the numeral after its numbered object as a label', () => {
+    for (const verb of R6_GOVERNING_VERBS) {
+      expect(r6Numerals(ubiquitous(`${verb} zone 7 temperature above 5 °C`)), verb).toEqual([])
+      expect(r6Numerals(ubiquitous(`${verb} the zone 7 temperature above 5 °C`)), verb).toEqual([])
+      expect(
+        r6Numerals({
+          patternType: 'state-driven',
+          systemName: 'plant',
+          preCondition: `the controller ${verb}s zone 7 temperature above 5 °C`,
+          systemResponse: 'log the state',
+        }),
+        `${verb}s`,
+      ).toEqual([])
+    }
+  })
+
+  it('reads a guard slot the same way: a quantifier or a non-governing word keeps the error', () => {
+    const pre = (preCondition: string): Slots => ({
+      patternType: 'state-driven',
+      systemName: 'controller',
+      preCondition,
+      systemResponse: 'log the state',
+    })
+    expect(r6Numerals(pre('each zone 2 temperature is below 5 °C'))).toEqual(['2'])
+    expect(r6Numerals(pre('the pump runs and zone 2 temperature is below 5 °C'))).toEqual(['2'])
+    expect(r6Numerals(pre('the zone 2 temperature is below 5 °C'))).toEqual([])
+    expect(
+      r6Numerals({
+        patternType: 'event-driven',
+        systemName: 'scheduler',
+        trigger: 'the job starts',
+        systemResponse: 'grant each job 30 timeout below 60 seconds',
+      }),
+    ).toEqual(['30'])
   })
 
   it('reads a guard slot the same way: a verb before the numeral keeps its error', () => {

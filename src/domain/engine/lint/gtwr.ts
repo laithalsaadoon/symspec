@@ -581,7 +581,8 @@ const quantityNoun = (dimension: string, word: string): boolean =>
  * noun that is also a common verb (`pump`, `scale`, `drive`, `queue`, `stage`: `pump 50
  * volume` delivers 50), since a response's verb need not be its first word (`immediately
  * pump 50 volume`). `link` is the one exception, pinned by spec 007's B8 reproducer, and
- * {@link identifierNumeral} still refuses it as a response's first word.
+ * {@link identifierNumeral} reads it only as a governed object, never as a response's
+ * first word.
  */
 export const R6_NUMBERED_NOUNS: readonly string[] = [
   'axis',
@@ -617,6 +618,25 @@ export const R6_NUMBERED_NOUNS: readonly string[] = [
 const NUMBERED_NOUNS: ReadonlySet<string> = new Set(R6_NUMBERED_NOUNS)
 
 /**
+ * The verbs whose object a numbered quantity can be — the word that has to govern the
+ * numbered noun for {@link identifierNumeral} to read the numeral after it as a label (`hold
+ * zone 1 temperature`, `keep link 2 throughput`). Each takes ONE object, the quantity it
+ * holds within the bound, so no instance-then-amount reading exists after it.
+ *
+ * Closed and fail-closed: a verb left out keeps its numeral an R6 error, which is base
+ * behaviour, while a verb let in that can take two objects reads an amount as a label. So
+ * it holds no double-object verb (`give`, `grant`, `allocate`, `assign`, `allow`: `grant
+ * each job 30 timeout` gives each job 30) and no verb that also sets a value (`set`, `run`,
+ * `target`). The third-person form (`keeps`) is read too, for a guard that names the
+ * system (`while the controller keeps zone 1 temperature above 20 °C`).
+ */
+export const R6_GOVERNING_VERBS: readonly string[] = ['cap', 'hold', 'keep', 'limit', 'maintain']
+
+const GOVERNING_WORDS: ReadonlySet<string> = new Set(
+  R6_GOVERNING_VERBS.flatMap((v) => [v, `${v}s`]),
+)
+
+/**
  * The sentence span of the numeral R6 reads as an IDENTIFIER, not an amount, in one bound
  * placed at `start` (its slot's offset in `sentence`): `1` in "hold
  * zone 1 temperature above 20 degrees celsius", `2` in "keep link 2 throughput below 100
@@ -639,10 +659,18 @@ const NUMBERED_NOUNS: ReadonlySet<string> = new Set(R6_NUMBERED_NOUNS)
  *     bound's dimension measures ({@link R6_QUANTITY_NOUNS}): `zone 1 temperature`, not
  *     `set the fan to 80`, `fan 80 while the temperature`, or `keep the room 22 constant`;
  *   - the word before it is a noun whose instances are numbered ({@link
- *     R6_NUMBERED_NOUNS}), and, in a response, not the response's first word, which is its
- *     verb. A verb or a modifier there (`target 5 latency`, `apply 30 delay`, `keep
- *     setpoint 22 temperature`) makes the numeral the amount it sets, with the measured noun
- *     standing in for a unit.
+ *     R6_NUMBERED_NOUNS}). A verb or a modifier there (`target 5 latency`, `apply 30
+ *     delay`, `keep setpoint 22 temperature`) makes the numeral the amount it sets, with the
+ *     measured noun standing in for a unit;
+ *   - that numbered noun, less one `the`, is the object of a verb that governs a quantity
+ *     ({@link R6_GOVERNING_VERBS}), or, in a guard, starts the guard: `hold zone 1
+ *     temperature`, `keep the tank 2 volume`, `while zone 2 temperature is below`. Anything
+ *     else before it is read as the amount reading, whether it makes the numeral an amount
+ *     or only might: a quantifier (`grant each job 30 timeout`: `each job 30` cannot name one
+ *     job), a double-object verb (`assign the replica 64 storage`), the response's own first
+ *     word (`link 1 throughput`), or a verb or conjunction this list does not name. A false
+ *     error there is loud and keeps the requirement out of the formal tier; a false label
+ *     would admit a unitless amount no tier compares.
  */
 function identifierNumeral(
   sentence: string,
@@ -653,7 +681,16 @@ function identifierNumeral(
   if (before === undefined || numeral === undefined || last === undefined) return undefined
   if (!quantityNoun(predicate.dimension, sentence.slice(last[0], last[1]))) return undefined
   if (!NUMBERED_NOUNS.has(sentence.slice(before[0], before[1]).toLowerCase())) return undefined
-  if (predicate.slot === 'resp' && subjectWords.length === 3) return undefined
+  const lead =
+    sentence
+      .slice(start, before[0])
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+/gu) ?? []
+  if (lead.at(-1) === 'the') lead.pop()
+  const governor = lead.at(-1)
+  if (governor === undefined ? predicate.slot === 'resp' : !GOVERNING_WORDS.has(governor)) {
+    return undefined
+  }
   return [numeral[0]!, numeral[1]!]
 }
 

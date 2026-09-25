@@ -388,3 +388,22 @@ The controller shall respond within 1,500 ms ± 5 ms.
 The controller shall respond within 1,5 ms.
 The controller shall keep the pressure below 1,500 bar.
 The controller shall set the fan to 1,500.
+The scheduler shall grant each job 30 timeout below 60 seconds.
+The scheduler shall grant each job 50 timeout below 60 seconds.
+When the job starts, the scheduler shall grant each job 30 timeout below 60 seconds.
+When the pool starts, the cache shall allocate each worker 512 memory below 1 GB.
+When the pool starts, the cache shall allocate each worker 256 memory below 1 GB.
+The scheduler shall give every worker 30 timeout below 60 seconds.
+The cluster shall assign each node 64 memory below 1 GB.
+The cluster shall assign the replica 64 storage below 1 GB.
+The scheduler shall allow each instance 30 delay below 60 seconds.
+The controller shall give each heater 80 temperature above 20 °C.
+The controller shall give each zone 22 temperature above 18 °C.
+The scheduler shall grant job 30 timeout below 60 seconds.
+The controller shall set zone 1 temperature above 20 °C.
+The controller shall keep each zone 1 temperature above 20 °C.
+The controller shall maintain zone 1 temperature above 20 °C.
+The controller shall limit disk 2 usage below 5 GB.
+The controller shall cap node 2 memory below 4 GB.
+While the controller keeps zone 1 temperature above 20 °C, the plant shall log the state.
+While the pump runs and zone 2 temperature is below 5 °C, the controller shall log the state.
