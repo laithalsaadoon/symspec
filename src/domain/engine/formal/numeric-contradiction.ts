@@ -640,12 +640,13 @@ export async function analyzeNumericBounds(
 
 /**
  * Co-live pairs of opposed bounds on ONE quantity whose units no conversion relates:
- * at least one is a unit no dimension recognizes, and the other is a different
- * unrecognized unit or no unit. The partition keeps them apart (AC-2-5: `90 days`
- * never meets `1 year`), which is the prover's safe direction; this is the
- * discloser's, because `at least 400 days` against `at most 1 year` is a conflict
- * the partition hides. Solver-free: opposition is the whole test, as in the
- * propose-only quantity-alias tier.
+ * at least one is a unit no dimension recognizes or no unit at all, and the two unit
+ * classes differ. The partition keeps them apart (AC-2-5: `90 days` never meets `1
+ * year`, `50%` never meets `0.9`), which is the prover's safe direction; this is the
+ * discloser's, because `at least 400 days` against `at most 1 year` is a conflict the
+ * partition hides, and `at least 50%` against `at most 0.9` turns on whether the bare
+ * number is a ratio. Solver-free: opposition is the whole test, as in the propose-only
+ * quantity-alias tier.
  *
  * A pair on two RECOGNIZED dimensions (`10 m` against `30 seconds`) is not reported:
  * those are two quantities, not one quantity in two units.
@@ -654,7 +655,8 @@ function uncomparedUnitPairs(
   reqPreds: readonly RequirementPredicates[],
 ): NumericUncomparedFinding[] {
   const out = new Map<string, NumericUncomparedFinding>()
-  const opaque = (p: NumericPredicate) => p.dimension === RAW_UNIT_DIMENSION || p.dimension === ''
+  const recognized = (p: NumericPredicate) =>
+    p.dimension !== RAW_UNIT_DIMENSION && p.dimension !== ''
   for (const group of planGroups(reqPreds.map((rp) => rp.contextAtoms))) {
     const live: Entry[] = []
     for (const rp of reqPreds) {
@@ -666,11 +668,9 @@ function uncomparedUnitPairs(
         const a = live[i]!
         const b = live[j]!
         if (a.id === b.id || a.pred.quantity !== b.pred.quantity) continue
-        if (!opaque(a.pred) || !opaque(b.pred)) continue
-        if (a.pred.dimension !== RAW_UNIT_DIMENSION && b.pred.dimension !== RAW_UNIT_DIMENSION) {
-          continue
-        }
         if (unitClassOf(a.pred) === unitClassOf(b.pred)) continue
+        // Two recognized dimensions that differ are two quantities, not one in two units.
+        if (recognized(a.pred) && recognized(b.pred)) continue
         if (!opposedComparators(a.pred.comparator, b.pred.comparator)) continue
         // Two prohibitions never conflict: not doing the action satisfies both.
         if (a.pred.negated === true && b.pred.negated === true) continue

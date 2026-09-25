@@ -143,6 +143,28 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
 
+  it('never compares a percent with a bare ratio, and DISCLOSES the pair instead', async () => {
+    // 50% is 0.5, inside a 0.9 ceiling, but no rule in the sentence says the bare number is a
+    // ratio: the two are on different scales unless the author restates one. Read as one
+    // unitless variable, `>= 50 ∧ <= 0.9` was an error on a consistent document.
+    const valve = (systemResponse: string): ReqSpec => ({ systemName: 'pump', systemResponse })
+    const pair = [
+      valve('keep the valve opening at least 50%'),
+      valve('keep the valve opening at most 0.9'),
+    ] as const
+    expect(await errorCodes(...pair)).toEqual([])
+    const report = await runCheck(pairDoc(...pair) as never, {})
+    expect(report.findings.map((f) => f.code)).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(report.coverage.demotions.map((d) => d.reason)).toContain('numeric-bounds-uncompared')
+    // The control: `%` and `percent` are one dimension, so 50% above a 40 percent ceiling is
+    // proved.
+    const found = await numericFindings(
+      valve('keep the valve opening at least 50%'),
+      valve('keep the valve opening at most 40 percent'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
   it('reads scientific notation with its exponent: 5e2 ms and 1e3 ms do not conflict', async () => {
     const server = (systemResponse: string): ReqSpec => ({ systemName: 'server', systemResponse })
     expect(

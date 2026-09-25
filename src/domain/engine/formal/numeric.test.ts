@@ -91,6 +91,15 @@ describe('a bound carries its dimension, its unit, and an exact value (spec 007 
     expect(one('keep the firmware image at least 64 Mb').baseUnit).toBe('Mb')
   })
 
+  it('reads `%` and `percent` as one percent dimension, never as a bare number', () => {
+    // `%` matched no unit pattern, so `at least 50%` was the unitless `50`, and it met `at
+    // most 0.9` on one variable.
+    const percent = { exact: '50/1', dimension: 'percent', baseUnit: '%' }
+    expect(one('keep the valve opening at least 50%')).toEqual(percent)
+    expect(one('keep the valve opening at least 50 %')).toEqual(percent)
+    expect(one('keep the valve opening at least 50 percent')).toEqual(percent)
+  })
+
   it('reads scientific notation exactly, never as a mantissa with the unit `e`', () => {
     // `1e3 ms` was read as `1` in the unit `e`, and `at most 1e3 ms` against `at least 5e2
     // ms` was `<= 1 ∧ >= 5`, an error on a satisfiable pair.

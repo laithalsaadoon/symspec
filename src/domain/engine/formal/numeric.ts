@@ -192,8 +192,9 @@ const k = (factor: string, offset?: string): UnitScale =>
  *   - `m` as MINUTES. `m` is the metre, as in the R6 lint unit list
  *     (`lint/gtwr.ts` `R6_RECOGNIZED_UNITS`), so `lower the hook at least 10 m`
  *     is a distance, and never meets `within 30 seconds`.
- *   - `%`/`percent` against a bare ratio. `50 percent` and `0.9` are on different
- *     scales only if the author says so, so `percent` keys on its raw text.
+ *   - `%`/`percent` against a bare ratio. `50%` and `0.9` are on one scale only if the
+ *     author says so, so a percent is its own dimension and never converts into a bare
+ *     number. `numeric-contradiction.ts` discloses such a pair rather than comparing it.
  *
  * Exported so the manifest can surface the numeric tier's recognized units (an
  * agent authoring bounds sees exactly which unit spellings normalize to a shared
@@ -379,6 +380,12 @@ export const DIMENSIONS: readonly Dimension[] = [
     },
   },
   {
+    name: 'percent',
+    base: '%',
+    symbols: { '%': k('1') },
+    words: { percent: k('1'), 'per cent': k('1') },
+  },
+  {
     name: 'volume',
     base: 'mL',
     symbols: { mL: k('1'), ml: k('1'), L: k('1000') },
@@ -535,13 +542,13 @@ const NOT_A_UNIT: ReadonlySet<string> = new Set([
 
 /**
  * The unit phrase right after a number: a spelled-out temperature scale
- * (`degrees celsius`), a degree symbol (`°C`, `℃`), or one unit token with an
+ * (`degrees celsius`), a degree symbol (`°C`, `℃`), a percent sign, or one unit token with an
  * optional `/denominator` (`km/h`, `MB/s`) or `per <word>` suffix. The suffix is
  * part of the RAW text on purpose: `100 times per minute` and `5 times per second`
  * are two rates, and dropping the suffix made them one count.
  */
 const UNIT_PHRASE =
-  /^\s*(degrees?\s+(?:celsius|centigrade|fahrenheit|c|f)(?!\p{L})|°\s?[CF](?!\p{L})|[℃℉]|[\p{L}µ]+(?:\/\p{L}+)?)(\s+per\s+\p{L}+)?/iu
+  /^\s*(degrees?\s+(?:celsius|centigrade|fahrenheit|c|f)(?!\p{L})|°\s?[CF](?!\p{L})|[℃℉]|%|[\p{L}µ]+(?:\/\p{L}+)?)(\s+per\s+\p{L}+)?/iu
 
 /**
  * Read the unit after a number. Returns the raw spelling (whitespace collapsed,
