@@ -25,9 +25,11 @@
  * symlinks are resolved, and the config is `symspec.config.json` at the toplevel
  * `git rev-parse --show-toplevel` prints in the document's real directory, or in that directory
  * when git names no repository there. Git is asked; nothing about `.git` is parsed here. The
- * trust boundary is a CI job on a fresh clone, where no `.git` content travels in a push, so
- * git's answer there is the committed repository's. The lookup never searches for a config, so
- * a config placed between the document and the toplevel is not read. Every failure to read what
+ * trust boundary is a CI job on a fresh clone, where no `.git` content travels in a push, and git
+ * is asked with implicit bare-repository discovery refused (the one repository layout committed
+ * content CAN hold), so git's answer there is the committed repository's. The lookup never
+ * searches for a config, so a config placed between the document and the toplevel is not read.
+ * Every failure to read what
  * the config names is `ERR_CONFIG_INVALID`: fail closed, never "no config". `create` is the
  * exclusive write `init --split` uses for those owner-authored files.
  *
@@ -304,6 +306,9 @@ const gitEnvironment = (): Record<string, string> => ({
   LC_ALL: 'C',
 })
 
+/** The toplevel probe's arguments; see `revParseToplevel` for why bare discovery is refused. */
+const GIT_TOPLEVEL_ARGS = ['-c', 'safe.bareRepository=explicit', 'rev-parse', '--show-toplevel']
+
 /** Git's answer outside any repository, the one failure that means "no toplevel". */
 const NOT_A_REPOSITORY = /not a git repository/i
 
@@ -396,12 +401,21 @@ export const docStoreLayer = Layer.effect(DocStore)(
         }),
       )
 
-    /** Run `git rev-parse --show-toplevel` in `dir`: its exit code, stdout and stderr. */
+    /**
+     * Run `git rev-parse --show-toplevel` in `dir`, refusing implicit bare repositories: its exit
+     * code, stdout and stderr. Git's default (`safe.bareRepository=all`) discovers ANY directory
+     * holding `HEAD`, `objects/` and `refs/` as a bare repository and honors the `core.worktree`
+     * its `config` names, and all four are committable. Unrefused, a committed directory laid out
+     * that way plus a document symlinked into it makes a fresh clone print a toplevel the commit
+     * chose. `explicit` makes git refuse it ("cannot use bare repository"), which fails closed
+     * below. A `.git` itself cannot be committed, so a real clone, linked work tree or submodule
+     * is still discovered through its `.git` as before.
+     */
     const revParseToplevel = (dir: string) =>
       Effect.scoped(
         Effect.gen(function* () {
           const handle = yield* spawner.spawn(
-            ChildProcess.make('git', ['rev-parse', '--show-toplevel'], {
+            ChildProcess.make('git', GIT_TOPLEVEL_ARGS, {
               cwd: dir,
               env: gitEnvironment(),
               extendEnv: false,
@@ -438,6 +452,7 @@ export const docStoreLayer = Layer.effect(DocStore)(
             suggestions: [
               `Run \`git -C ${dir} rev-parse --show-toplevel\` and fix what it reports.`,
               `If git refuses the repository's ownership, mark it safe: \`git config --global --add safe.directory ${dir}\`.`,
+              "If git refuses a bare repository, the document resolves into a directory laid out as one; move the document into the repository's work tree.",
               'Or name the config explicitly with --config.',
             ],
           }),

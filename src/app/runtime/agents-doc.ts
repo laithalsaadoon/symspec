@@ -198,7 +198,9 @@ A committed \`${CONFIG_FILE_NAME}\` pins the run settings the gate uses.
 
 ${CONFIG_PATH_CONVENTION}
 
-A config dropped beside the document inside a repository is not read. \`data.run.config\` is
+A config dropped beside the document inside a repository is not read, and git is asked with
+\`safe.bareRepository=explicit\`, so a document that resolves into a committed directory laid out
+as a bare repository fails closed as \`ERR_CONFIG_INVALID\`. \`data.run.config\` is
 \`{path, source}\`, where \`source\` is \`toplevel\`, \`directory\`, \`flag\` or \`env\`. The pins are
 authoritative in a CI job on a fresh clone that asserts \`source\` is \`toplevel\` and \`path\` is its
 checkout's config. A local agent that can write \`.git/\`, pass \`--config\` or set

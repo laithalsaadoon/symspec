@@ -32,7 +32,18 @@ rule: |
   clone). Everything else gets a DISCLOSURE the enforcement point can assert, not a parser. A
   blocking finding must name a bypass that is reachable through content that crosses the
   boundary.
+
+  Then audit what crosses for the thing you assumed could not. "A `.git` cannot be committed"
+  is true, but git discovers a repository WITHOUT a `.git`: any directory holding `HEAD`,
+  `objects/` and `refs/` is a bare repository under the default `safe.bareRepository=all`, and
+  its committed `config` may name a `core.worktree`. So committed content can hold a repository
+  layout after all, and the probe must refuse it: `git -c safe.bareRepository=explicit rev-parse
+  --show-toplevel`. That is a git setting, not git-internals parsing.
 evidence: |
   `git update-index --add --cacheinfo 100644,<blob>,docs/.git` fails with "Invalid path": a
   nested `.git` cannot be committed. The CLI test "on a fresh clone, committed content cannot
   move the config off the clone's toplevel" pins this.
+  The CLI test "on a fresh clone, a committed directory laid out as a bare repository is refused,
+  not a toplevel" commits `fake/{HEAD,objects,refs,config(core.worktree=wt)}` with the document
+  symlinked into `fake/wt`; without `safe.bareRepository=explicit` a fresh clone read
+  `fake/wt/symspec.config.json`, labelled `source: toplevel`, and reported `verified: true`.

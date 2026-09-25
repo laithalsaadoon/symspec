@@ -816,12 +816,15 @@ cannot drift apart. The second claim is the one to read if you read only one.
 > clone, with `symspec.config.json` and the intent and policy files it names under code-owner
 > review. There the config is read from one place, `symspec.config.json` at the toplevel `git
 > rev-parse --show-toplevel` prints for the document's real directory (symlinks resolved),
-> nothing is searched, so a config committed beside the document is not read, and
-> `data.run.config` reports `{path, source}` for the job to assert (`source` is `toplevel` and
-> `path` is its checkout's config). Outside that boundary it is a disclosure, not a guard: a
-> local agent that can write `.git/`, pass `--config` or set `SYMSPEC_CONFIG` can change which
-> config a local run reads, and that run names what it read and why in `data.run.config`. A run
-> below any pin is demoted `run-weakened`, so a config can only push `verified` toward false.
+> asked with `safe.bareRepository=explicit` so a committed directory laid out as a bare
+> repository is refused as ERR_CONFIG_INVALID rather than taken for a toplevel (git 2.38 or
+> later honors that setting; an older git ignores it), nothing is searched, so a config
+> committed beside the document is not read, and `data.run.config` reports `{path, source}` for
+> the job to assert (`source` is `toplevel` and `path` is its checkout's config). Outside that
+> boundary it is a disclosure, not a guard: a local agent that can write `.git/`, pass
+> `--config` or set `SYMSPEC_CONFIG` can change which config a local run reads, and that run
+> names what it read and why in `data.run.config`. A run below any pin is demoted
+> `run-weakened`, so a config can only push `verified` toward false.
 
 > `data.verified` is a COVERAGE claim about the whole document, not a verdict on it: it is true
 > only when every requirement that COULD be cross-compared was (each was asserted together with

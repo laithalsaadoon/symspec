@@ -1665,6 +1665,37 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
     expect(data.run.belowPinned).toEqual(['temporalBound'])
   })
 
+  it('on a fresh clone, a committed directory laid out as a bare repository is refused, not a toplevel (F11)', () => {
+    const { root, docs } = committedRepo()
+    // Git discovers any directory holding HEAD, objects/ and refs/ as a bare repository and
+    // honors a core.worktree its committed config names, so this directory is committable.
+    const fake = join(root, 'fake')
+    for (const sub of ['objects', 'refs', 'wt']) mkdirSync(join(fake, sub), { recursive: true })
+    writeFileSync(join(fake, 'HEAD'), 'ref: refs/heads/main\n')
+    writeFileSync(join(fake, 'objects', '.keep'), '')
+    writeFileSync(join(fake, 'refs', '.keep'), '')
+    writeFileSync(
+      join(fake, 'config'),
+      '[core]\n\trepositoryformatversion = 0\n\tbare = false\n\tworktree = wt\n',
+    )
+    writeFileSync(join(fake, 'wt', CONFIG), json({ configVersion: 1, gate: {} }))
+    git(root, 'mv', join(docs, 'requirements.json'), join(fake, 'wt', 'requirements.json'))
+    symlinkSync(join('..', 'fake', 'wt', 'requirements.json'), join(docs, 'requirements.json'))
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'attack')
+    const clone = join(realpathSync(workDir()), 'clone')
+    git(root, 'clone', '-q', root, clone)
+    // The default invocation, from the checkout, on the committed document path.
+    const r = spawnSync(process.execPath, [BUNDLE, 'check', '--temporal-bound', '1'], {
+      cwd: join(clone, 'docs'),
+      encoding: 'utf8',
+    })
+    const envelope = JSON.parse(r.stdout) as { code?: string; error?: string }
+    expect(r.status).toBe(2)
+    expect(envelope.code).toBe('ERR_CONFIG_INVALID')
+    expect(envelope.error).toContain('bare repository')
+  })
+
   it('a symlinked directory or document reads the config of the repository it resolves into (F11)', () => {
     const { root, docs } = committedRepo()
     // The shadow a lexical walk would read: a config beside the link, pinning nothing.

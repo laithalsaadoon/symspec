@@ -730,6 +730,21 @@ describe('configPath is the toplevel git prints for the real document directory'
     if (r._tag === 'Failure') expect(r.failure.error).toContain('git rev-parse --show-toplevel')
   })
 
+  it('refuses a directory git would discover only as a bare repository, even one naming a work tree', async () => {
+    const root = realpathSync(tempDir())
+    git(root, 'init', '-q')
+    // Every file here is committable: nothing is named `.git`.
+    const fake = join(root, 'fake')
+    for (const sub of ['objects', 'refs', 'wt']) mkdirSync(join(fake, sub), { recursive: true })
+    writeFileSync(join(fake, 'HEAD'), 'ref: refs/heads/main\n')
+    writeFileSync(join(fake, 'config'), '[core]\n\trepositoryformatversion = 0\n\tworktree = wt\n')
+    // Under git's default the fake is the toplevel; the probe must not agree.
+    expect(git(join(fake, 'wt'), 'rev-parse', '--show-toplevel')).toBe(join(fake, 'wt'))
+    const r = await attemptStore((s) => s.configPath(join(fake, 'wt', 'requirements.json')))
+    expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
+    if (r._tag === 'Failure') expect(r.failure.error).toContain('cannot use bare repository')
+  })
+
   it('outside a repository it is the document`s own directory, never a parent`s', async () => {
     const parent = realpathSync(tempDir())
     writeFileSync(configAt(parent), '{"configVersion":1,"gate":{}}\n')

@@ -361,7 +361,7 @@ export class ErrConfigInvalid extends Schema.TaggedErrorClass<ErrConfigInvalid>(
   ErrorFields,
   {
     description:
-      '`symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, the document carries an inline intent or policy alongside a split one, a config named by --config or SYMSPEC_CONFIG does not exist, or `git rev-parse --show-toplevel` fails in the document directory for a reason other than "not a git repository" (so where the config lives cannot be known). The run fails closed rather than checking without the pins. Suggestion: fix the file the message names; `symspec init --split` in an empty directory writes a valid skeleton of all three to compare against.',
+      '`symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, the document carries an inline intent or policy alongside a split one, a config named by --config or SYMSPEC_CONFIG does not exist, or `git rev-parse --show-toplevel` fails in the document directory for a reason other than "not a git repository", including git refusing a bare repository the document resolves into (so where the config lives cannot be known). The run fails closed rather than checking without the pins. Suggestion: fix the file the message names; `symspec init --split` in an empty directory writes a valid skeleton of all three to compare against.',
   },
 ) {
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
