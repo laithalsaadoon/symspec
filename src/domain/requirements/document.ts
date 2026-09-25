@@ -1,5 +1,21 @@
 /**
- * DOCUMENT FORMAT v3 — the on-disk requirements document, as an Effect Schema.
+ * DOCUMENT FORMATS v3 AND v4 — the on-disk requirements document, as an Effect Schema.
+ *
+ * ## v4: the vocabulary and the anchors, under their own version number
+ *
+ * v4 is v3 plus three optional top-level keys ({@link V4_ONLY_DOCUMENT_KEYS}: the
+ * {@link Vocabulary}, the `intent` and the `policy`) and two optional requirement keys
+ * ({@link V4_ONLY_REQUIREMENT_KEYS}: `intentRef` and `derived`). One schema reads both
+ * versions, and two rules keep them apart:
+ *
+ * - A v4-only key under `docVersion: 3` is a decode error that names the upgrade. Without
+ *   the refusal, a vocabulary could sit in a file an older build reads as v3, where it would
+ *   be preserved as an unknown key and ignored.
+ * - None of the five keys has a decoding default. A default would materialize on every v3
+ *   document and a save would write it back, so a v3 file would no longer save byte-for-byte
+ *   as it was read. Readers that want the empty value ask for it ({@link vocabularyOf}).
+ *
+ * `DOC_VERSION` stays 3: a document is written as v4 only once it carries a v4 key.
  *
  * ## What changed from v2, and why there is no read-compat
  *
@@ -71,7 +87,7 @@
  * throws at construction time on a field with no reachable description, so the
  * discipline is enforced rather than merely intended.
  *
- * ## Two beta.102 traps this module works around
+ * ## Three beta.102 traps this module works around
  *
  * - `Schema.Record(uuidSchema, …)` SILENTLY DROPS entries whose key fails the key
  *   schema — even with `{onExcessProperty:'error', errors:'all'}` (probed). A
@@ -82,9 +98,15 @@
  * - `.annotate({default})` applied AFTER `withDecodingDefaultKey` does not reach
  *   the JSON Schema; it must sit on the INNER schema (probed). {@link withDefault}
  *   encapsulates the correct order so no field site can get it wrong.
+ * - `.annotate({description})` applied AFTER a custom `Schema.makeFilter` check is
+ *   DROPPED from the JSON Schema: the annotation lands on the filter, and a filter with
+ *   no JSON-Schema form is lowered to nothing (probed). Every struct here that carries
+ *   such a check is annotated first and checked second, and `document.test.ts` walks
+ *   the whole published schema for a property with no description.
  */
 
 import { Effect, Schema } from 'effect'
+import { Intent, IntentId, Policy, Sha256Hex } from '../anchor/anchor.ts'
 import { renderSentence } from './render.ts'
 import { RESERVED_WORDS } from './state-expr.ts'
 
@@ -103,8 +125,32 @@ import { RESERVED_WORDS } from './state-expr.ts'
  */
 export const DOC_VERSION = 3 as const
 
-/** The type of {@link DOC_VERSION}. */
-export type DocVersion = typeof DOC_VERSION
+/**
+ * The document-format version of a document that carries a vocabulary, an intent, a policy,
+ * or a requirement bound to one (`intentRef` / `derived`).
+ *
+ * A separate number rather than a silent extension of v3, because an older build must REFUSE
+ * such a document rather than misread it. A build that knows only v3 refuses `docVersion: 4`
+ * through `ERR_SCHEMA_VERSION`. Without the bump, a nested requirement key would fail there as
+ * `ERR_DOC_PARSE`, and a top-level `vocabulary` would be preserved as an unknown key and
+ * IGNORED, so the older build would check the document as if no symbol had been declared.
+ */
+export const DOC_VERSION_VOCAB = 4 as const
+
+/** Every document-format version this build reads, oldest first. */
+export const ACCEPTED_DOC_VERSIONS = [DOC_VERSION, DOC_VERSION_VOCAB] as const
+
+/** A document-format version this build reads. */
+export type DocVersion = (typeof ACCEPTED_DOC_VERSIONS)[number]
+
+/**
+ * The top-level keys that exist only in format v4. Under `docVersion: 3` each is a decode
+ * error that names the upgrade (see {@link RequirementsDocument}).
+ */
+export const V4_ONLY_DOCUMENT_KEYS = ['vocabulary', 'intent', 'policy'] as const
+
+/** The requirement keys that exist only in format v4, refused under `docVersion: 3` likewise. */
+export const V4_ONLY_REQUIREMENT_KEYS = ['intentRef', 'derived'] as const
 
 // ---------------------------------------------------------------------------
 // Closed enums — the shared vocabulary
@@ -497,6 +543,19 @@ const verificationNoteDescription = lines(
   "Examples: 'Hypothesis property suite in tests/property/test_auth.py'; 'integration test in it/auth_flow_test.ts'.",
 )
 
+const intentRefDescription = lines(
+  'The id of the intent item this requirement serves (document format v4).',
+  'Every requirement names one intent item, or is marked `derived` instead; a requirement',
+  'carries one of the two and never both. Same format as a requirement key.',
+  "Example: 'I1'.",
+)
+
+const derivedDescription = lines(
+  'Marks a requirement that serves no single intent item: it follows from others, such as an',
+  'interface contract two obligations share (document format v4). The literal `true`; omit the',
+  'key otherwise. A requirement carries this or an `intentRef`, and never both.',
+)
+
 const idDescription = lines(
   'Stable UUID identifying the requirement node.',
   'Assigned once at creation and never reused. All edges reference nodes by this UUID,',
@@ -851,6 +910,8 @@ export const Requirement = Schema.Struct({
   verificationNote: Schema.optionalKey(
     NonEmpty.annotate({ description: verificationNoteDescription }),
   ),
+  intentRef: Schema.optionalKey(IntentId.annotate({ description: intentRefDescription })),
+  derived: Schema.optionalKey(Schema.Literal(true).annotate({ description: derivedDescription })),
   derives: withDefault(
     Schema.Array(Uuid),
     [],
@@ -1089,6 +1150,321 @@ export const TermEntry = Schema.Struct({
 export type TermEntry = typeof TermEntry.Type
 
 // ---------------------------------------------------------------------------
+// The vocabulary (document format v4)
+// ---------------------------------------------------------------------------
+
+/**
+ * The SymbolId format: lowercase snake case, a leading letter, no empty segment, at most 64
+ * characters (the length bound is a separate check, since a pattern would state it badly).
+ *
+ * Chosen so the engine's scope normalizer is the identity on it: no uppercase, no article,
+ * no punctuation, nothing a normalizer would rewrite. Flagless, because it lowers into the
+ * published JSON Schema as a `pattern`.
+ */
+export const SYMBOL_ID_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/
+
+/** The longest SymbolId. */
+const SYMBOL_ID_MAX = 64
+
+/** A vocabulary symbol's id. */
+export const SymbolId = Schema.String.pipe(
+  Schema.check(Schema.isPattern(SYMBOL_ID_PATTERN), Schema.isMaxLength(SYMBOL_ID_MAX)),
+)
+export type SymbolId = typeof SymbolId.Type
+
+/**
+ * The six kinds of thing a requirement names. Each requirement slot resolves to symbols of
+ * particular kinds: the system name to a `system`, a trigger to an `event` or `state`, a
+ * state-driven pre-condition to a `state`, a feature pre-condition to a `feature`, the response
+ * to an `action`, and each numeric label to a `quantity`.
+ */
+export const SYMBOL_KINDS = ['system', 'feature', 'event', 'state', 'action', 'quantity'] as const
+export type SymbolKind = (typeof SYMBOL_KINDS)[number]
+
+/**
+ * The dimension a quantity is measured in: the numeric tier's dimension names, plus its two
+ * other readings of a bound. `unrecognized` is a unit token no dimension recognizes (the tier
+ * compares such bounds on the raw unit text), and `none` is a number with no unit at all, such
+ * as a count. The set is asserted equal to the tier's own list by a test, so the two cannot
+ * drift; it is spelled out here because this module does not import the engine.
+ */
+export const QUANTITY_DIMENSIONS = [
+  'time',
+  'distance',
+  'information',
+  'data-rate',
+  'frequency',
+  'temperature',
+  'mass',
+  'percent',
+  'volume',
+  'unrecognized',
+  'none',
+] as const
+export type QuantityDimension = (typeof QUANTITY_DIMENSIONS)[number]
+
+/** Whether a quantity takes integer or real values. */
+export const NUMBER_TYPES = ['int', 'real'] as const
+export type NumberType = (typeof NUMBER_TYPES)[number]
+
+/** The fields every symbol kind shares, as a function so each branch gets fresh schemas. */
+const symbolBase = (kind: SymbolKind, what: string) => ({
+  id: SymbolId.annotate({
+    description: lines(
+      'The symbol`s stable id: lowercase snake case, a leading letter, at most 64 characters.',
+      'Unique within the vocabulary. Requirements are checked against the symbol through this id,',
+      "so it never changes. Examples: 'sys_door_controller'; 'act_open_door'; 'qty_dwell_time'.",
+    ),
+  }),
+  kind: Schema.Literal(kind).annotate({ description: `Discriminant: ${what}` }),
+  canonical: NonEmpty.annotate({
+    description: lines(
+      'The one phrase that names this symbol. Fixed once declared: renaming a symbol would change',
+      'what every requirement that uses it says.',
+      "Examples: 'door controller'; 'open the door'.",
+    ),
+  }),
+  aliases: withDefault(
+    Schema.Array(NonEmpty),
+    [],
+    lines(
+      'Other phrases that name the same symbol. A requirement written with an alias means exactly',
+      'what it would mean written with the canonical phrase. Defaults to [].',
+      "Example: ['rolling stock'] for 'train'.",
+    ),
+  ),
+  note: Schema.optionalKey(
+    NonEmpty.annotate({
+      description: 'A free-text note for a reader. Read by no tier.',
+    }),
+  ),
+})
+
+const parentDescription = lines(
+  'The system this system is part of: the id of another `system` symbol. Omit for a top-level',
+  'system. The part-of chain has no cycles.',
+)
+
+const symbolVariableDescription = (what: string): string =>
+  lines(
+    `The declared state-model variable this ${what} reads, by name. Omit when the ${what} is not`,
+    'modelled in `stateModel`.',
+  )
+
+/** A `system` symbol: a thing that has obligations. */
+const SystemSymbol = Schema.Struct({
+  ...symbolBase('system', 'a system, the subject of a requirement.'),
+  parent: Schema.optionalKey(SymbolId.annotate({ description: parentDescription })),
+}).annotate({ description: 'A system: the subject named in `the <system> shall ...`.' })
+
+/** A `feature` symbol: an optional capability that gates a requirement. */
+const FeatureSymbol = Schema.Struct({
+  ...symbolBase('feature', 'an optional feature, the gate of an optional-feature requirement.'),
+}).annotate({ description: 'A feature: the condition in `Where <feature>, ...`.' })
+
+/** An `event` symbol: an environment input. */
+const EventSymbol = Schema.Struct({
+  ...symbolBase('event', 'an event, an input from the environment that triggers a requirement.'),
+  variable: Schema.optionalKey(
+    StateVarName.annotate({ description: symbolVariableDescription('event') }),
+  ),
+}).annotate({ description: 'An event: an environment input, as in `When <event>, ...`.' })
+
+/** A `state` symbol: one condition class, optionally tied to a state-model variable. */
+const StateSymbol = Schema.Struct({
+  ...symbolBase('state', 'a state, one condition the system can be in.'),
+  variable: Schema.optionalKey(
+    StateVarName.annotate({ description: symbolVariableDescription('state') }),
+  ),
+  value: Schema.optionalKey(
+    NonEmpty.annotate({
+      description: lines(
+        'The value of `variable` this state stands for. The domain of a variable is the set of',
+        'state symbols that name it, together with its `stateModel` declaration.',
+        "Example: 'MOVING' for variable 'motion'.",
+      ),
+    }),
+  ),
+}).annotate({
+  description: 'A state: one condition, as in `While <state>, ...`, optionally a variable value.',
+})
+
+/** An `action` symbol: a system output. */
+const ActionSymbol = Schema.Struct({
+  ...symbolBase('action', 'an action, a system output.'),
+  effects: Schema.optionalKey(
+    NonEmpty.annotate({
+      description: lines(
+        'Reserved: the state change this action makes, in the `stateEffect` language. Read by no',
+        'tier yet. The action`s contraries are not stored here: they are derived from the antonym',
+        'table, which stays the one source of opposition.',
+      ),
+    }),
+  ),
+}).annotate({ description: 'An action: what the system shall do, the response of a requirement.' })
+
+/** A `quantity` symbol: a measured value a bound is placed on. */
+const QuantitySymbol = Schema.Struct({
+  ...symbolBase('quantity', 'a quantity, a measured value a numeric bound constrains.'),
+  dimension: Schema.Literals(QUANTITY_DIMENSIONS).annotate({
+    description: lines(
+      'What the quantity measures: one of the numeric tier`s dimensions, `unrecognized` for a unit',
+      'no dimension recognizes, or `none` for a number with no unit (a count).',
+    ),
+  }),
+  unit: Schema.String.annotate({
+    description: lines(
+      "The unit the quantity is stated in, as written. Examples: 'ms'; 'MW'; 'widgets'. Empty",
+      'exactly when `dimension` is `none`.',
+    ),
+  }),
+  numberType: Schema.Literals(NUMBER_TYPES).annotate({
+    description: 'Whether the quantity takes integer (`int`) or real (`real`) values.',
+  }),
+})
+  .annotate({ description: 'A quantity: a measured value, with its dimension, unit and type.' })
+  .pipe(
+    Schema.check(
+      Schema.makeFilter((q: { readonly dimension: QuantityDimension; readonly unit: string }) =>
+        (q.dimension === 'none') === (q.unit === '')
+          ? undefined
+          : {
+              path: ['unit'],
+              issue:
+                q.dimension === 'none'
+                  ? 'a quantity with dimension `none` has no unit; set `unit` to ""'
+                  : `a quantity with dimension \`${q.dimension}\` needs a unit`,
+            },
+      ),
+    ),
+  )
+
+/**
+ * One vocabulary symbol, discriminated on `kind`. A union rather than one struct with every
+ * kind-specific field optional, so a field that belongs to another kind is an excess property
+ * the decoder refuses, and the schema states the per-kind shape itself.
+ */
+export const VocabSymbol = Schema.Union([
+  SystemSymbol,
+  FeatureSymbol,
+  EventSymbol,
+  StateSymbol,
+  ActionSymbol,
+  QuantitySymbol,
+])
+export type VocabSymbol = typeof VocabSymbol.Type
+
+/** An unordered pair of distinct symbols. */
+const symbolPairFields = {
+  a: SymbolId.annotate({ description: 'One symbol of the pair, by id.' }),
+  b: SymbolId.annotate({ description: 'The other symbol of the pair, by id. Not `a`.' }),
+}
+
+const refuseSelfPair = Schema.makeFilter((pair: { readonly a: string; readonly b: string }) =>
+  pair.a === pair.b
+    ? { path: ['b'], issue: `a pair names two symbols; both are ${pair.a}` }
+    : undefined,
+)
+
+/** A committed alias edge between two symbols. */
+const SymbolMerge = Schema.Struct(symbolPairFields)
+  .annotate({
+    description: lines(
+      'A committed statement that two symbols name the same thing. Unordered. Merges compose',
+      'transitively, so the symbols a chain of merges connects form one class.',
+    ),
+  })
+  .pipe(Schema.check(refuseSelfPair))
+
+/** A triage record: the author states two symbols are different things. */
+const SymbolDistinct = Schema.Struct({
+  ...symbolPairFields,
+  reason: NonEmpty.annotate({
+    description:
+      "Why the two symbols are different things. Example: 'fill and drain are opposites'.",
+  }),
+})
+  .annotate({
+    description: lines(
+      'A triage record stating that two symbols are different things, with the reason. Unordered.',
+      'It stores no basis: whether the distinction is supported is decided when the document is',
+      'checked, not recorded here.',
+    ),
+  })
+  .pipe(Schema.check(refuseSelfPair))
+
+/**
+ * The document's controlled vocabulary: every system, feature, event, state, action and
+ * quantity a requirement names, each declared once with an id.
+ */
+export const Vocabulary = Schema.Struct({
+  symbols: withDefault(
+    Schema.Array(VocabSymbol),
+    [],
+    lines(
+      'The declared symbols. Each has a unique id, one canonical phrase and any number of aliases.',
+      'Defaults to [].',
+    ),
+  ),
+  merges: withDefault(
+    Schema.Array(SymbolMerge),
+    [],
+    'Committed alias edges between symbols, each naming two symbol ids. Defaults to [].',
+  ),
+  distinct: withDefault(
+    Schema.Array(SymbolDistinct),
+    [],
+    'Pairs of symbols the author states are different things, each with a reason. Defaults to [].',
+  ),
+  frozenTables: Schema.optionalKey(
+    Schema.Struct({
+      sha256: Sha256Hex.annotate({
+        description: lines(
+          'The sha256 of the document`s `glossary` and `terms` at the moment the vocabulary was',
+          'adopted, as 64 lowercase hex digits. With a vocabulary those two tables are frozen, and',
+          'this digest is what a later edit to either one is compared against.',
+        ),
+      }),
+    }).annotate({
+      description: 'The digest of the glossary and term tables as they were when frozen.',
+    }),
+  ),
+})
+  .annotate({
+    description: lines(
+      'The controlled vocabulary (document format v4): every system, feature, event, state, action',
+      'and quantity the requirements name, declared once, plus the committed merges between them',
+      'and the pairs stated to be distinct.',
+    ),
+  })
+  .pipe(
+    Schema.check(
+      Schema.makeFilter((v: { readonly symbols: readonly { readonly id: string }[] }) => {
+        const seen = new Set<string>()
+        const repeated = new Set<string>()
+        for (const s of v.symbols) (seen.has(s.id) ? repeated : seen).add(s.id)
+        return repeated.size === 0
+          ? undefined
+          : {
+              path: ['symbols'],
+              issue: `symbol ids must be unique; repeated: ${[...repeated].sort().join(', ')}`,
+            }
+      }),
+    ),
+  )
+export type Vocabulary = typeof Vocabulary.Type
+
+/** An EMPTY vocabulary. A function so no caller shares mutable state with another. */
+export const emptyVocabulary = (): Vocabulary => ({ symbols: [], merges: [], distinct: [] })
+
+/**
+ * The document's vocabulary, reading an absent one as empty. The key is optional rather than
+ * defaulted so a document that has none (every v3 document) is written back without one.
+ */
+export const vocabularyOf = (document: Pick<RequirementsDocument, 'vocabulary'>): Vocabulary =>
+  document.vocabulary ?? emptyVocabulary()
+
+// ---------------------------------------------------------------------------
 // Diagnostics — the V27 disclosure channel
 // ---------------------------------------------------------------------------
 
@@ -1129,6 +1505,39 @@ export interface DocumentDiagnostic {
 // The document
 // ---------------------------------------------------------------------------
 
+/** The part of a decoded document the v3 refusal reads. */
+interface DocumentShape {
+  readonly docVersion: DocVersion
+  readonly requirements: Readonly<Record<string, object>>
+}
+
+/**
+ * The refusal of a v4-only key under `docVersion: 3`, one issue per key found, each naming the
+ * upgrade.
+ *
+ * A refusal rather than an acceptance, because accepting would put a vocabulary document on
+ * disk under a version an older build reads: that build would preserve `vocabulary` as an
+ * unknown key and check the document as if nothing had been declared. With the refusal, the
+ * only way to write one of these keys is under `docVersion: 4`, which the older build refuses.
+ */
+const v4KeysUnderV3 = (doc: DocumentShape): readonly Schema.FilterIssue[] => {
+  if (doc.docVersion !== DOC_VERSION) return []
+  const upgrade = `is a document format v${DOC_VERSION_VOCAB} key; this document declares docVersion ${DOC_VERSION}. Declare docVersion ${DOC_VERSION_VOCAB} to use it (a build that reads only v${DOC_VERSION} then refuses the file instead of ignoring the key)`
+  const issues: Schema.FilterIssue[] = []
+  for (const key of V4_ONLY_DOCUMENT_KEYS) {
+    if (Object.hasOwn(doc, key)) issues.push({ path: [key], issue: `\`${key}\` ${upgrade}` })
+  }
+  for (const id of Object.keys(doc.requirements).sort()) {
+    const requirement = doc.requirements[id] ?? {}
+    for (const key of V4_ONLY_REQUIREMENT_KEYS) {
+      if (Object.hasOwn(requirement, key)) {
+        issues.push({ path: ['requirements', id, key], issue: `\`${key}\` ${upgrade}` })
+      }
+    }
+  }
+  return issues
+}
+
 /**
  * The v3 requirements document, as persisted.
  *
@@ -1137,9 +1546,13 @@ export interface DocumentDiagnostic {
  * it — {@link decodeDocument} partitions those out first and reports them.
  */
 export const RequirementsDocument = Schema.Struct({
-  docVersion: Schema.Literal(DOC_VERSION).annotate({
+  docVersion: Schema.Literals(ACCEPTED_DOC_VERSIONS).annotate({
     description: lines(
-      'The document-format version. Exactly 3 for this format.',
+      `The document-format version: ${ACCEPTED_DOC_VERSIONS.join(' or ')}.`,
+      `  - ${DOC_VERSION}: requirements, the state model and the four side tables.`,
+      `  - ${DOC_VERSION_VOCAB}: all of that, plus ${V4_ONLY_DOCUMENT_KEYS.map((k) => `\`${k}\``).join(', ')} and the requirement keys`,
+      `    ${V4_ONLY_REQUIREMENT_KEYS.map((k) => `\`${k}\``).join(' and ')}. A v${DOC_VERSION} document that carries one of them is refused, so a`,
+      `    build that reads only v${DOC_VERSION} can never ignore one.`,
       'Named `docVersion` (not v2`s `schemaVersion`) so a v2 file and a v3 file differ by KEY, and a v2',
       'document handed to v5 fails with the migration path instead of being misread as a v3 with a',
       'wrong number. Distinct from the envelope `apiVersion` and the package version.',
@@ -1196,14 +1609,25 @@ export const RequirementsDocument = Schema.Struct({
       'requirements written later. Defaults to [].',
     ),
   ),
-}).annotate({
-  description: lines(
-    'The whole requirements document as persisted to disk: a version tag, the UUID-keyed requirement',
-    'map, the declared state model, and the four committed side tables (glossary, antonyms, waivers,',
-    'terms). Unknown TOP-LEVEL keys are preserved and disclosed as info diagnostics rather than',
-    'stripped (v4 finding V27); unknown keys anywhere deeper are a hard failure.',
-  ),
+  // Format v4. OPTIONAL rather than defaulted, all three: a default would materialize on
+  // every v3 document and a save would write it back, so a v3 file would stop being v3.
+  // Each carries its own description, set before its filter: on this Effect version an
+  // `.annotate` applied AFTER a custom `Schema.makeFilter` check is dropped from the JSON
+  // Schema, so re-annotating here would publish no description at all.
+  vocabulary: Schema.optionalKey(Vocabulary),
+  intent: Schema.optionalKey(Intent),
+  policy: Schema.optionalKey(Policy),
 })
+  .annotate({
+    description: lines(
+      'The whole requirements document as persisted to disk: a version tag, the UUID-keyed requirement',
+      'map, the declared state model, the four committed side tables (glossary, antonyms, waivers,',
+      'terms) and, in format v4, the vocabulary, intent and policy. Unknown TOP-LEVEL keys are',
+      'preserved and disclosed as info diagnostics rather than stripped (v4 finding V27); unknown keys',
+      'anywhere deeper are a hard failure.',
+    ),
+  })
+  .pipe(Schema.check(Schema.makeFilter((doc: DocumentShape) => v4KeysUnderV3(doc))))
 export type RequirementsDocument = typeof RequirementsDocument.Type
 
 /** The set of top-level keys this build knows, derived from the schema itself so
@@ -1275,6 +1699,7 @@ export const partitionTopLevelKeys = (
  */
 const unknownKeyDiagnostics = (
   unknownKeys: Readonly<Record<string, unknown>>,
+  version: DocVersion,
 ): readonly DocumentDiagnostic[] => {
   const keys = Object.keys(unknownKeys).sort()
   if (keys.length === 0) return []
@@ -1283,7 +1708,7 @@ const unknownKeyDiagnostics = (
       kind: 'unknown-top-level-key',
       severity: 'info',
       detail:
-        `${keys.length} top-level key(s) are not part of document format v${DOC_VERSION} and are ` +
+        `${keys.length} top-level key(s) are not part of document format v${version} and are ` +
         `not interpreted by this build: ${keys.join(', ')}. They are PRESERVED verbatim — a save ` +
         'writes them back unchanged — so a document written by a newer symspec survives a round trip ' +
         'through this one. If a key is a typo rather than a newer feature, remove it; nothing reads it.',
@@ -1354,7 +1779,10 @@ export const decodeDocument = (raw: unknown): Effect.Effect<LoadedDocument, Sche
     (document) => ({
       document,
       unknownKeys,
-      diagnostics: [...unknownKeyDiagnostics(unknownKeys), ...sentenceDriftDiagnostics(document)],
+      diagnostics: [
+        ...unknownKeyDiagnostics(unknownKeys, document.docVersion),
+        ...sentenceDriftDiagnostics(document),
+      ],
     }),
   )
 }
