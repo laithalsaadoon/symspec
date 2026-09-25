@@ -861,7 +861,7 @@ export const NOT_APPLICABLE_YET: readonly PendingMove[] = [
   { id: 'edit-policy', clause: 'edit `policy`', direction: 'weakening', needs: 'AC-5-2' },
   {
     id: 'refine-exceeds-conflict',
-    clause: 'submit a `refine` whose carve-out exceeds the conflict region',
+    clause: 'submit a `narrow` whose carve-out exceeds the conflict region',
     direction: 'weakening',
     needs: 'AC-5-3',
   },
@@ -920,7 +920,7 @@ export const AC_8_2: readonly { readonly clause: string; readonly moves: readonl
   { clause: 'edit `intent`', moves: ['edit-intent'] },
   { clause: 'edit `policy`', moves: ['edit-policy'] },
   {
-    clause: 'submit a `refine` whose carve-out exceeds the conflict region',
+    clause: 'submit a `narrow` whose carve-out exceeds the conflict region',
     moves: ['refine-exceeds-conflict'],
   },
   { clause: 'yield against the policy order', moves: ['yield-against-policy'] },
@@ -1036,7 +1036,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       move,
       'AC-5-9',
       ['contrary-pair', 'temporal-conflict', 'glossary-bridged', 'term-bridged'],
-      "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `refine` certificate.",
+      "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `narrow` certificate.",
     ),
   ),
   ...(['alias-contraries-term@forward', 'alias-contraries-term@reverse'] as const).flatMap((move) =>
