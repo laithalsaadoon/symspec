@@ -68,11 +68,6 @@ const contradictionsOf = async (
     .filter((f) => f.code === 'FND_CONTRADICTION')
     .map((f) => f.requirementIds)
 
-const errorsOf = async (sentences: readonly string[]) =>
-  (await runCheck(await docOf(sentences))).findings
-    .filter((f) => f.severity === 'error')
-    .map((f) => f.code)
-
 /** The report over two responses under one trigger, with an embedder that relates nothing. */
 const reportOf = async (x: string, y: string) =>
   runCheck(await docOf([`${BUTTON} ${x}.`, `${BUTTON} ${y}.`]), {
@@ -80,6 +75,12 @@ const reportOf = async (x: string, y: string) =>
       embedder: async (texts) =>
         texts.map((_, i) => Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1])),
     },
+  })
+
+/** As {@link reportOf}, with every text on one vector, so no cosine floor masks the rule. */
+const reportParallel = async (x: string, y: string) =>
+  runCheck(await docOf([`${BUTTON} ${x}.`, `${BUTTON} ${y}.`]), {
+    semantic: { embedder: async (texts) => texts.map(() => Float32Array.from([1, 0])) },
   })
 
 const resp = (text: string) => atomize({ kind: 'resp', text, systemName: 'controller' })
@@ -95,9 +96,6 @@ describe("the first place preposition is the verb's own place, when the verb gov
     ['authorize permission on the repository', 'revoke permission to the repository'],
     ['allow access into the vault', 'revoke access to the vault'],
     ['suspend access to the account', 'resume access on the account'],
-    // A spatial `within` names the place as `in` does.
-    ['enable the alarm within the zone', 'disable the alarm in the zone'],
-    ['include the file within the set', 'exclude the file from the set'],
   ] as const
   for (const [x, y] of PROVED) {
     it(`${x} / ${y} is FND_CONTRADICTION`, async () => {
@@ -141,14 +139,36 @@ describe("the first place preposition is the verb's own place, when the verb gov
     }
   })
 
-  it('a deadline `within` is no place: start within 5 seconds / stop in 5 seconds is no error', async () => {
+  it("`within` is no row's place: every in/within pair demotes, never proves", async () => {
+    // Whether "within X" names a place or a deadline is a phrase-classification guess no row
+    // states ("start the pump within 5 seconds" / "stop the pump in 5 seconds" is consistent, and
+    // so is "in a moment" / "within a moment"), and a guess may not create a proof (spec 007 C1).
+    // No verb governs `within`, so each pair below is two keys, and the preposition-variant rule
+    // demotes it (C2): the spatial ones base 669c0e9 proved, and the deadline ones it fabricated.
     for (const [x, y] of [
+      ['start the pump in a moment', 'stop the pump within a moment'],
+      ['lock the screen in an instant', 'unlock the screen within an instant'],
+      ['start the pump in five seconds', 'stop the pump within five seconds'],
       ['start the pump within 5 seconds', 'stop the pump in 5 seconds'],
       ['enable the alarm within the hour', 'disable the alarm in the hour'],
       ['open the gate within one minute', 'close the gate at one minute'],
+      ['enable the alarm within the zone', 'disable the alarm in the zone'],
+      ['include the file within the set', 'exclude the file from the set'],
     ] as const) {
-      expect(await errorsOf([`${BUTTON} ${x}.`, `${BUTTON} ${y}.`]), `${x} / ${y}`).toEqual([])
+      const report = await reportParallel(x, y)
+      expect(
+        report.findings.filter((f) => f.severity === 'error').map((f) => f.code),
+        `${x} / ${y}`,
+      ).toEqual([])
+      expect(
+        report.findings.map((f) => f.code),
+        `${x} / ${y}`,
+      ).toContain('FND_OPPOSITION_CANDIDATE')
+      expect(report.verified, `${x} / ${y}`).toBe(false)
     }
+    expect(
+      areContrary(resp('start the pump in a moment'), resp('stop the pump within a moment')),
+    ).toBe(false)
   })
 
   it('a left-out locative is no key: the pair demotes, never certifies', async () => {

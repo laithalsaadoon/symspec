@@ -902,76 +902,6 @@ const PLACE_PREPOSITIONS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * The words that make a `within` a DEADLINE rather than a place ("within 5 seconds", "within the
- * hour", "within one day"): time units, as the numeric tier spells them and the calendar units it
- * deliberately does not convert, and the spelled-out numbers. A closed list; a deadline it misses
- * reads as a place, and base 669c0e9 read every `within` as one.
- */
-const DEADLINE_WORDS: ReadonlySet<string> = new Set([
-  'cycle',
-  'cycles',
-  'day',
-  'days',
-  'deadline',
-  'eight',
-  'fifteen',
-  'five',
-  'four',
-  'h',
-  'half',
-  'hour',
-  'hours',
-  'hr',
-  'hrs',
-  'hundred',
-  'interval',
-  'microsecond',
-  'microseconds',
-  'millisecond',
-  'milliseconds',
-  'min',
-  'mins',
-  'minute',
-  'minutes',
-  'month',
-  'months',
-  'ms',
-  'nanosecond',
-  'nanoseconds',
-  'nine',
-  'ns',
-  'one',
-  'period',
-  's',
-  'sec',
-  'second',
-  'seconds',
-  'secs',
-  'seven',
-  'six',
-  'sixty',
-  'ten',
-  'thirty',
-  'three',
-  'tick',
-  'ticks',
-  'time',
-  'timeout',
-  'twelve',
-  'twenty',
-  'two',
-  'us',
-  'week',
-  'weeks',
-  'year',
-  'years',
-])
-
-/** Whether the words after a `within` open a deadline: a number or a time word within three. */
-const opensDeadline = (after: readonly string[]): boolean =>
-  after.slice(0, 3).some((t) => /\d/.test(t) || DEADLINE_WORDS.has(t))
-
-/**
  * The GOVERNED opposition-key remainders of an antonym-class response (A4). The remainder's
  * first place preposition ({@link PLACE_PREPOSITIONS}, or one the head governs) after its first
  * token is the verb's own place when the head ITSELF governs it ({@link AntonymEntry.governs}),
@@ -979,8 +909,9 @@ const opensDeadline = (after: readonly string[]): boolean =>
  * for the outside ({@link AntonymEntry.outside}). So "hide the alarm from the display" and "show
  * the alarm on the display" both read `the_alarm__the_display` and are contraries: for those verbs
  * the HEAD carries the direction (show vs hide) and the preposition only introduces the place.
- * When that first preposition is one the head does not govern, or a `within` that opens a
- * deadline, the remainder has no governed key: the preposition after it modifies something else.
+ * When that first preposition is one the head does not govern (`within`, which no verb governs,
+ * among them), the remainder has no governed key: the preposition after it modifies something
+ * else, or names a deadline rather than a place.
  *
  * Marked, not dropped, and per verb. The mark keeps the position, and `normalize` never emits an
  * empty token, so a governed key can meet only another governed key with the same mark in the
@@ -1013,7 +944,6 @@ function governedReadings(rest: string, entry: AntonymEntry): readonly string[] 
   if (i === -1) return []
   const token = tokens[i] as string
   if (!entry.governs.includes(token)) return []
-  if (token === 'within' && opensDeadline(tokens.slice(i + 1))) return []
   const outside = entry.outside.includes(token)
   const marked = [...tokens]
   // `_` joins to `a___b`: two empty tokens, which neither `normalize` nor the place mark emits.

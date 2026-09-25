@@ -90,28 +90,28 @@ describe('the resolved seed index', () => {
       canonical: 'conceal',
       negated: false,
       opposes: ['expose', 'unseal'],
-      governs: ['at', 'from', 'in', 'inside', 'on', 'within'],
+      governs: ['at', 'from', 'in', 'inside', 'on'],
       outside: [],
     })
     expect(ANTONYM_INDEX.get('conceal')).toEqual({
       canonical: 'conceal',
       negated: false,
       opposes: ['expose'],
-      governs: ['at', 'from', 'in', 'inside', 'on', 'within'],
+      governs: ['at', 'from', 'in', 'inside', 'on'],
       outside: [],
     })
     expect(ANTONYM_INDEX.get('expose')).toEqual({
       canonical: 'conceal',
       negated: true,
       opposes: ['conceal', 'seal'],
-      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to', 'within'],
+      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to'],
       outside: [],
     })
     expect(ANTONYM_INDEX.get('unseal')).toEqual({
       canonical: 'conceal',
       negated: true,
       opposes: ['seal'],
-      governs: ['at', 'in', 'inside', 'on', 'within'],
+      governs: ['at', 'in', 'inside', 'on'],
       outside: [],
     })
   })
@@ -129,16 +129,8 @@ describe('the resolved seed index', () => {
       'on',
       'onto',
       'to',
-      'within',
     ])
-    expect(ANTONYM_INDEX.get('exclude')?.governs).toEqual([
-      'at',
-      'from',
-      'in',
-      'inside',
-      'on',
-      'within',
-    ])
+    expect(ANTONYM_INDEX.get('exclude')?.governs).toEqual(['at', 'from', 'in', 'inside', 'on'])
     expect(ANTONYM_INDEX.get('connect')?.governs).toEqual([
       'at',
       'in',
@@ -148,16 +140,8 @@ describe('the resolved seed index', () => {
       'onto',
       'to',
       'with',
-      'within',
     ])
-    expect(ANTONYM_INDEX.get('disconnect')?.governs).toEqual([
-      'at',
-      'from',
-      'in',
-      'inside',
-      'on',
-      'within',
-    ])
+    expect(ANTONYM_INDEX.get('disconnect')?.governs).toEqual(['at', 'from', 'in', 'inside', 'on'])
     expect(ANTONYM_INDEX.get('grant')?.governs).toEqual([
       'at',
       'in',
@@ -166,19 +150,15 @@ describe('the resolved seed index', () => {
       'on',
       'onto',
       'to',
-      'within',
     ])
     // revoke and suspend take away a right, which names its place with `to` as grant does
     // ("revoke access to the server" / "grant access on the server").
-    expect(ANTONYM_INDEX.get('revoke')?.governs).toEqual([
-      'at',
-      'from',
-      'in',
-      'inside',
-      'on',
-      'to',
-      'within',
-    ])
+    expect(ANTONYM_INDEX.get('revoke')?.governs).toEqual(['at', 'from', 'in', 'inside', 'on', 'to'])
+    // No verb governs `within`: whether it names a place or a deadline is a guess about the words
+    // after it ("in a moment" / "within a moment"), and a guess may not create a proof.
+    for (const [verb, entry] of ANTONYM_INDEX) {
+      expect(entry.governs, verb).not.toContain('within')
+    }
     // No verb that does not remove its object FROM the place governs `from`, and no verb that
     // does governs a goal, but for the `to` of the two removers of a right: those prepositions
     // carry direction ("allow calls to" / "deny calls from", "remove the item to the trash").
@@ -267,21 +247,21 @@ describe('a document pair that touches a seed class', () => {
       canonical: 'commit',
       negated: false,
       opposes: ['roll_back', 'rollback'],
-      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to', 'within'],
+      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to'],
       outside: [],
     })
     expect(merged.get('commit')).toEqual({
       canonical: 'abort',
       negated: true,
       opposes: ['abort', 'roll_back', 'rollback'],
-      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to', 'within'],
+      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to'],
       outside: [],
     })
     expect(merged.get('roll_back')).toEqual({
       canonical: 'abort',
       negated: false,
       opposes: ['commit'],
-      governs: ['at', 'from', 'in', 'inside', 'on', 'within'],
+      governs: ['at', 'from', 'in', 'inside', 'on'],
       outside: [],
     })
   })

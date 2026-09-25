@@ -142,10 +142,11 @@ export type GovernedPlace = 'place' | 'outside'
 
 /**
  * The locative prepositions every row's verbs name a place with: "on the display", "at the site",
- * "within the zone". A `within` that opens a deadline ("within 5 seconds") names no place, and the
- * key marks it out only when it opens a place (atomize.ts `governedReadings`).
+ * "inside the cabinet". Not `within`: it opens a deadline as readily as a place ("start the pump
+ * within 5 seconds" / "stop the pump in 5 seconds" is consistent), and telling the two apart is a
+ * phrase-classification guess no row states, so no verb governs it (spec 007 demote-not-prove C1).
  */
-const LOCATIVE = ['at', 'in', 'inside', 'on', 'within'] as const
+const LOCATIVE = ['at', 'in', 'inside', 'on'] as const
 
 /** The goal prepositions a verb that puts its object somewhere names the place with. */
 const GOAL = ['into', 'onto', 'to'] as const
@@ -246,7 +247,7 @@ const places = (
  * a ROW with may name the same place with a different one. Applied row by row:
  *
  *   - Every verb: the {@link LOCATIVE}s ("enable the feature on the device" / "disable the feature
- *     in the device", "enable the alarm within the zone" / "disable the alarm in the zone").
+ *     in the device").
  *   - A verb that puts its object in, on or to the place against a contrary that removes it FROM
  *     there ({@link PUTTERS}: grant/revoke, show/hide, publish/retract, add/remove, commit/roll
  *     back, …) adds the {@link GOAL}s, and deny/forbid, which take the place as grant does ("deny
@@ -273,11 +274,12 @@ const places = (
  *     same-place verb, where it names a direction, a target value, or the object's own complement
  *     ("open the door to the garden", "raise the level to 5", "enable transfers to the account").
  *   - `of` after drain, which is overwhelmingly possessive ("drain the tank of the pump").
- * A `within` that opens a deadline is no place either ("start the pump within 5 seconds" and
- * "stop the pump in 5 seconds" are consistent), which the key reads off the words after it. An
- * unlisted preposition keeps its place in every key, so it can only miss a contrary, never invent
- * one; the opposition-candidate tier demotes `verified` over a same-class pair one preposition
- * apart, or one preposition added.
+ *   - `within` after any verb: it names a deadline as readily as a place ("start the pump within
+ *     5 seconds" and "stop the pump in 5 seconds" are consistent; so are "in a moment" and "within
+ *     a moment"), and which one it names is a guess about the phrase after it.
+ * An unlisted preposition keeps its place in every key, so it can only miss a contrary, never
+ * invent one; the opposition-candidate tier demotes `verified` over every such pair whose
+ * remainders are equal once their prepositions are removed (semantic.ts `prepositionVariant`).
  *
  * The set is per VERB ({@link AntonymEntry.governs}), never the union over its class. `connect`
  * governs `to` and `disconnect` governs `from`; a class-wide union let `connect` drop `from` as
@@ -312,7 +314,7 @@ export const GOVERNED_PREPOSITIONS: ReadonlyMap<
   add(['quarantine'], [...places([...LOCATIVE, ...GOAL]), ...places(['from'], 'outside')])
   add(
     ['release'],
-    [...places(['at', 'in', 'inside', 'within', 'from']), ...places([...GOAL, 'on'], 'outside')],
+    [...places(['at', 'in', 'inside', 'from']), ...places([...GOAL, 'on'], 'outside')],
   )
   return new Map([...table].map(([verb, entries]) => [verb, new Map(entries)]))
 })()
