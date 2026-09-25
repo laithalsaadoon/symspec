@@ -80,7 +80,7 @@ import {
   type Requirement,
   type RequirementsDocument,
 } from '../domain/requirements/document.ts'
-import { foldOps } from '../domain/requirements/mutate.ts'
+import { foldOps, type MutateOptions } from '../domain/requirements/mutate.ts'
 import type { AddOp, DocumentOp, OpVerb } from '../domain/requirements/ops.ts'
 import { resolveRef } from '../domain/requirements/resolve.ts'
 import { DocPath, DocStore, makeDocPath } from '../ports/doc-store.ts'
@@ -1038,20 +1038,6 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `narrow` certificate.",
     ),
   ),
-  ...(['alias-contraries-term@forward', 'alias-contraries-term@reverse'] as const).flatMap((move) =>
-    escapes(
-      move,
-      'AC-4-6',
-      ['contrary-pair'],
-      'The term table accepts the same contrary merge the glossary does, through the noun-phrase path, in either direction, with the same effect.',
-    ),
-  ),
-  ...escapes(
-    'alias-contraries-term@reverse',
-    'AC-4-2',
-    ['term-bridged'],
-    'Making `charge the customer order` canonical for `charge the purchase order` SWAPS the two responses rather than merging them. Term substitution is one longest-match pass: TRM-R1 now rewrites to `charge the customer order`, while TRM-R2 still rewrites through the committed `customer order` -> `purchase order` term to `charge the purchase order`. The two atoms stay distinct and the conflict the fixture seeds disappears. An alias only identifies phrases, so this is a STRENGTHENING move that escapes (I-1). The forward direction is caught because it rewrites TRM-R2 onto TRM-R1. The op path in `apply` refuses this op at write time: the canonical contains a committed term alias. That fence is defence in depth: `check` accepts the same table from a stored document, and the contradiction disappears there too. AC-4-6 does not close this row, because the two phrases are not contraries. AC-4-2 does: once atoms are scoped by vocabulary id, an alias is a merge of two ids and cannot depend on which phrase is canonical.',
-  ),
   ...escapes(
     'unglossary',
     'AC-5-7',
@@ -1152,20 +1138,36 @@ export const editVerbs = (edit: Edit, ctx: MoveContext): readonly OpVerb[] => {
 // Applying a move — pure, apart from the parse
 // ---------------------------------------------------------------------------
 
-/** Fold `ops` atomically; a refusal names the op and the fold's code. */
+/**
+ * Fold `ops` atomically; a refusal names the op and the fold's code.
+ *
+ * Under `apply`'s OWN options, handed in through {@link GamingWiring.mutateOptions}. A bare
+ * `foldOps` runs no write-time fence at all (the normalizer is a trim and no validator is
+ * wired), so a harness folding that way reports escapes through ops `apply` refuses — moves no
+ * agent can make — and cannot see a fence a later story adds. The options are REQUIRED here, so
+ * there is no default for a caller to fall into.
+ *
+ * A move refused here is caught at WRITE time only. The same table written into the stored
+ * document by hand never meets the fold, so whether `check` catches it too is a separate
+ * question, and one a registry of op moves cannot ask.
+ */
 const fold = (
   doc: RequirementsDocument,
   ops: readonly DocumentOp[],
+  options: MutateOptions,
 ): { readonly doc: RequirementsDocument } | Refused => {
-  const folded = foldOps(doc, ops, TS)
+  const folded = foldOps(doc, ops, TS, options)
   if (folded.abortedAt === undefined) return { doc: folded.document }
   const failure = folded.results.find((r) => !r.ok)
   return { kind: 'refused', by: `${failure?.op ?? '?'}:${failure?.code ?? '?'}` }
 }
 
 /** Build a fixture document from its ops. A fixture the fold refuses is a harness bug. */
-export const buildDoc = (ops: readonly DocumentOp[]): RequirementsDocument => {
-  const built = fold(emptyDocument(), ops)
+export const buildDoc = (
+  ops: readonly DocumentOp[],
+  options: MutateOptions,
+): RequirementsDocument => {
+  const built = fold(emptyDocument(), ops, options)
   if ('kind' in built) throw new Error(`gaming fixture ops refused: ${built.by}`)
   return built.doc
 }
@@ -1201,7 +1203,11 @@ type Applied =
 const sameDoc = (a: RequirementsDocument, b: RequirementsDocument): boolean =>
   JSON.stringify(a) === JSON.stringify(b)
 
-const applyEdit = async (edit: Edit, doc: RequirementsDocument): Promise<Applied> => {
+const applyEdit = async (
+  edit: Edit,
+  doc: RequirementsDocument,
+  options: MutateOptions,
+): Promise<Applied> => {
   switch (edit.kind) {
     case 'inapplicable':
       return edit
@@ -1218,11 +1224,15 @@ const applyEdit = async (edit: Edit, doc: RequirementsDocument): Promise<Applied
       if (parsed.outcome !== 'ok') {
         return { kind: 'refused', by: parsed.outcome === 'error' ? parsed.code : 'parse:skipped' }
       }
-      const moved = fold(doc, [
-        { op: 'delete', ref: edit.ref },
-        { ...parsed.proposedOp, key: edit.ref },
-        ...reparseTail(req(doc, edit.ref)),
-      ])
+      const moved = fold(
+        doc,
+        [
+          { op: 'delete', ref: edit.ref },
+          { ...parsed.proposedOp, key: edit.ref },
+          ...reparseTail(req(doc, edit.ref)),
+        ],
+        options,
+      )
       // The parse normalizes the modal, so the re-added requirement may be identical in every
       // slot — which is the property under test: whether the tool reads the edited sentence as
       // the same obligation. So the moved DOCUMENT cannot show the move happened, and `changed`
@@ -1238,7 +1248,7 @@ const applyEdit = async (edit: Edit, doc: RequirementsDocument): Promise<Applied
           }
     }
     case 'ops': {
-      const moved = fold(doc, edit.ops)
+      const moved = fold(doc, edit.ops, options)
       return 'kind' in moved
         ? moved
         : {
@@ -1289,6 +1299,11 @@ export interface GamingWiring {
   readonly solver: Layer.Layer<SolverService>
   /** The env-selected embedder service — the stub under `SYMSPEC_EMBED_STUB=1`. */
   readonly envEmbedder: Layer.Layer<EmbedderService>
+  /**
+   * `apply`'s mutate options (`app/operations/mutate-options.ts`), so every fixture and every
+   * move is folded behind exactly the write-time fences an agent's `apply` meets.
+   */
+  readonly mutateOptions: MutateOptions
 }
 
 /**
@@ -1444,15 +1459,22 @@ export const runMatrix = async (
     try {
       const run = (doc: RequirementsDocument, knobs: Knobs, embedder: EmbedderChoice) =>
         runCheck(wiring, runtime, doc, knobs, embedder, fixture.signal)
-      const doc = buildDoc(fixture.ops)
+      const doc = buildDoc(fixture.ops, wiring.mutateOptions)
       const baseline = await run(doc, ARMED, 'orthogonal')
       baselines.set(fixture.id, baseline)
       if ('ops' in fixture.control) {
-        controls.set(fixture.id, await run(buildDoc(fixture.control.ops), ARMED, 'orthogonal'))
+        controls.set(
+          fixture.id,
+          await run(buildDoc(fixture.control.ops, wiring.mutateOptions), ARMED, 'orthogonal'),
+        )
       }
       const baselineCodes = baseline.kind === 'ran' ? baseline.codes : []
       for (const move of moves) {
-        const applied = await applyEdit(move.edit({ fixture, doc, baselineCodes }), doc)
+        const applied = await applyEdit(
+          move.edit({ fixture, doc, baselineCodes }),
+          doc,
+          wiring.mutateOptions,
+        )
         const outcome: Outcome =
           applied.kind === 'check'
             ? await run(applied.doc, applied.knobs, applied.embedder)

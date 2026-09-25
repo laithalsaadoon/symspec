@@ -7,8 +7,8 @@ glossary-bridged	rename-system@second	exit 3 verified=false signal=gone errors=[
 glossary-bridged	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
 glossary-bridged	alias-contraries-glossary@forward	inapplicable
 glossary-bridged	alias-contraries-glossary@reverse	refused glossary:ERR_USAGE
-glossary-bridged	alias-contraries-term@forward	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-glossary-bridged	alias-contraries-term@reverse	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	alias-contraries-term@forward	refused term:ERR_USAGE
+glossary-bridged	alias-contraries-term@reverse	refused term:ERR_USAGE
 glossary-bridged	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 glossary-bridged	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 glossary-bridged	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -40,7 +40,7 @@ term-bridged	split-system	exit 3 verified=false signal=gone errors=[] demotions=
 term-bridged	alias-contraries-glossary@forward	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 term-bridged	alias-contraries-glossary@reverse	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 term-bridged	alias-contraries-term@forward	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-term-bridged	alias-contraries-term@reverse	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	alias-contraries-term@reverse	refused term:ERR_USAGE
 term-bridged	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]

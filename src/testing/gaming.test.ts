@@ -11,6 +11,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { MUTATE_OPTIONS } from '../app/operations/mutate-options.ts'
 import { OP_VERBS, type OpVerb } from '../domain/requirements/ops.ts'
 import {
   AC_8_2,
@@ -85,7 +86,11 @@ describe('the gaming registry', () => {
     // codes, so it gets a placeholder: which codes it waives does not change which verb it uses.
     const emitted = new Map<string, Set<OpVerb>>()
     for (const fixture of FIXTURES) {
-      const ctx = { fixture, doc: buildDoc(fixture.ops), baselineCodes: ['FND_PLACEHOLDER'] }
+      const ctx = {
+        fixture,
+        doc: buildDoc(fixture.ops, MUTATE_OPTIONS),
+        baselineCodes: ['FND_PLACEHOLDER'],
+      }
       for (const move of MOVES) {
         const verbs = emitted.get(move.id) ?? new Set<OpVerb>()
         for (const verb of editVerbs(move.edit(ctx), ctx)) verbs.add(verb)
@@ -118,7 +123,7 @@ describe('the gaming registry', () => {
     const moves = MOVES.filter((m) => m.id.startsWith('shall-to-should@'))
     expect(moves.map((m) => m.id)).toEqual(['shall-to-should@first', 'shall-to-should@second'])
     for (const fixture of FIXTURES) {
-      const doc = buildDoc(fixture.ops)
+      const doc = buildDoc(fixture.ops, MUTATE_OPTIONS)
       const ctx = { fixture, doc, baselineCodes: [] }
       for (const move of moves) {
         const edit = move.edit(ctx)
