@@ -101,16 +101,33 @@ describe('GTWR_R6 in a full check: identifier numerals in a consistent document'
     })
   }
 
-  it('the control reaches the solver: one zone, opposed bounds, one contradiction', async () => {
+  it('the control reaches the solver: one link, opposed time bounds, one contradiction', async () => {
     // Admitting the requirement is what makes this proof possible at all: under the old R6
-    // error both sides were excluded and nothing was compared.
+    // error both sides were excluded and nothing was compared. A holding verb's TIME bound is
+    // held whatever its object (`numeric.ts` `unheldBy`), so the numeric tier proves it.
+    const report = await checkPair(
+      ubiquitous('keep link 1 latency above 20 milliseconds', 'network controller'),
+      ubiquitous('keep link 1 latency below 5 milliseconds', 'network controller'),
+    )
+    const codes = report.findings.map((f) => f.code)
+    expect(codes).toContain('FND_NUMERIC_CONTRADICTION')
+    expect(codes).not.toContain('FND_EXCLUDED_FROM_FORMAL')
+  })
+
+  it('the zone control is admitted and disclosed, never proved: `hold` holds no compound', async () => {
+    // `hold zone 1 temperature` is admitted by R6, so nothing is excluded. The numeric tier
+    // proves a non-time bound only after a holding verb and ONE noun (`unheldBy`, a244027):
+    // `zone 1 temperature` may be a state the zone is held in, so the opposed pair is
+    // disclosed and `verified` is false.
     const report = await checkPair(
       ubiquitous('hold zone 1 temperature above 20 degrees celsius', 'refrigeration controller'),
       ubiquitous('hold zone 1 temperature below 5 degrees celsius', 'refrigeration controller'),
     )
     const codes = report.findings.map((f) => f.code)
-    expect(codes).toContain('FND_NUMERIC_CONTRADICTION')
+    expect(codes).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(codes).not.toContain('FND_NUMERIC_CONTRADICTION')
     expect(codes).not.toContain('FND_EXCLUDED_FROM_FORMAL')
+    expect(report.verified).toBe(false)
   })
 })
 

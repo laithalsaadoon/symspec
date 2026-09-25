@@ -23,7 +23,9 @@ import {
   areContrary,
   atomize,
   deInflectHead,
+  makeAtomize,
   normalize,
+  normalizeScope,
   type Opposition,
 } from './atomize.ts'
 import type { Embedder } from './embed.ts'
@@ -220,6 +222,31 @@ const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|$
 const keyBody = (atom: ResponseAtom): string | undefined => atom.opposition?.body ?? atom.body
 
 /**
+ * Whether ANY two key bodies of the atoms — every reading of an opposition ({@link keyBody} is the
+ * first), else the atom body, else the raw response — satisfy `test`. An atom in a governed class
+ * reads the literal remainder and the one with its own governed preposition marked out, and a
+ * pair can meet on either: "include the file in the box" and "exclude the file in the boxes" meet
+ * only on the literal one, "include the tile in the view" and "exclude the tiles from the view"
+ * only on the governed one.
+ */
+function someKeyPair(
+  a: ResponseAtom,
+  b: ResponseAtom,
+  raw: readonly [string, string],
+  test: (x: string, y: string) => boolean,
+): boolean {
+  const bodies = (atom: ResponseAtom): readonly string[] =>
+    atom.opposition !== undefined
+      ? [atom.opposition.body, ...(atom.opposition.via ?? []).map((r) => r.body)]
+      : atom.body !== undefined
+        ? [atom.body]
+        : []
+  const [xs, ys] = [bodies(a), bodies(b)]
+  if (xs.length === 0 || ys.length === 0) return test(raw[0], raw[1])
+  return xs.some((x) => ys.some((y) => test(x, y)))
+}
+
+/**
  * True when two response atoms would CONFLICT if their words named one thing (spec 007 AC-2-1
  * semantics). On one side of a class, or outside any class, an atom is only its own opposite, so
  * the pair conflicts exactly when the polarities differ (`X` against `¬X`). On OPPOSITE sides of
@@ -307,9 +334,12 @@ function areContraryPhrases(
   const ax = responseAtom({ id: '', systemName, systemResponse: x }, options)
   const ay = responseAtom({ id: '', systemName, systemResponse: y }, options)
   if (!wouldConflict(ax, ay)) return false
-  const [bx, by] = [keyBody(ax), keyBody(ay)]
-  const [wx, wy] = bx !== undefined && by !== undefined ? [bx, by] : [x, y]
-  return normalize(wx) === normalize(wy) || differsOnlyByInflection(wx, wy)
+  return someKeyPair(
+    ax,
+    ay,
+    [x, y],
+    (wx, wy) => normalize(wx) === normalize(wy) || differsOnlyByInflection(wx, wy),
+  )
 }
 
 /**
@@ -442,8 +472,9 @@ export async function findSimilarSemantic(
     for (let j = i + 1; j < reqs.length; j++) {
       const a = reqs[i] as SemanticRequirement
       const b = reqs[j] as SemanticRequirement
-      // Same-system only (per-system atom scoping, AC-4-2a).
-      if (a.systemName !== b.systemName) continue
+      // Same-system only (per-system atom scoping, AC-4-2a), by the scope the atoms carry: two
+      // spellings of one system ("Access Controller" / "access controller") are one scope.
+      if (normalizeScope(a.systemName) !== normalizeScope(b.systemName)) continue
 
       // Skip pairs already unified by atomize (glossary/identical), and contraries the seed
       // table already relates (AC-2-1) — a synonym proposal for those would be a merge of opposites.
@@ -479,18 +510,13 @@ export async function findSimilarSemantic(
       // set of key words, by polarity or by the table, so an antonym link has nothing to add.
       // Offering one hands an agent a command that commits a pair the table already holds, or
       // none at all.
-      const keyA = keyBody(atomA)
-      const keyB = keyBody(atomB)
-      const [wordsA, wordsB] =
-        keyA !== undefined && keyB !== undefined
-          ? [keyA, keyB]
-          : [a.systemResponse, b.systemResponse]
       const oppositePolarityVariant =
-        wouldConflict(atomA, atomB) && differsOnlyByInflection(wordsA, wordsB)
+        wouldConflict(atomA, atomB) &&
+        someKeyPair(atomA, atomB, [a.systemResponse, b.systemResponse], differsOnlyByInflection)
       let antonymHint = ''
       if (sameTrigger && !oppositePolarityVariant) {
-        const [headA] = fuseNegatingPrefix(normalize(a.systemResponse))
-        const [headB] = fuseNegatingPrefix(normalize(b.systemResponse))
+        const [headA] = headOf(normalize(a.systemResponse), ANTONYM_INDEX)
+        const [headB] = headOf(normalize(b.systemResponse), ANTONYM_INDEX)
         antonymHint =
           headA !== '' && headB !== '' && headA !== headB
             ? ` These fire under the SAME trigger, so if they are polar OPPOSITES rather than ` +
@@ -506,7 +532,10 @@ export async function findSimilarSemantic(
       // (key `close_the_door` against `close_the_doors`), so a raw-text test would never match
       // that pair. Raw text is the fallback only for an atomizer that reports no canonical body.
       // (Computed above, before the antonym hint it suppresses.)
-      const waiver = `\`symspec waive add FND_SIMILAR_SEMANTIC --ref ${hi} --reason "…"\``
+      // The pair's own waiver is the demotion's repair op, scoped to exactly these two
+      // requirements as written; a `symspec waive` can scope to one requirement at most, and
+      // that discharges every near-duplicate naming it, triaged or not.
+      const waiver = "the demotion's repair waiver, which is scoped to exactly this pair"
       // The merge is chosen in the same canonical space as the test above, never aliases a
       // phrase to its own opposite, and never breaks a unification the document already has;
       // when no candidate survives, the message withholds it.
@@ -615,6 +644,23 @@ function fuseNegatingPrefix(body: string): [string, string] {
 }
 
 /**
+ * Split a normalized response body into its de-inflected HEAD and rest the way the atomizer does
+ * (atomize.ts `antonymReading`): a two-token head the antonym table lists ("roll back", "rolls
+ * back") is read whole before the one-token one, and otherwise {@link fuseNegatingPrefix} applies.
+ * Reading only the first token made "roll back the batch from the ledger" the head `roll` with rest
+ * `back_the_batch_…`, which met no class and lined up with nothing, so a pair the table relates
+ * escaped the candidate tier and `verified` came back true over it.
+ */
+function headOf(body: string, antonyms: ReadonlyMap<string, AntonymEntry>): [string, string] {
+  const tokens = body.split('_')
+  if (tokens.length >= 2) {
+    const two = `${deInflectHead(tokens[0] as string)}_${tokens[1] as string}`
+    if (antonyms.has(two)) return [two, tokens.slice(2).join('_')]
+  }
+  return fuseNegatingPrefix(body)
+}
+
+/**
  * True when two de-inflected verb heads relate by a negating prefix —
  * `de-`/`un-`/`dis-` — i.e. one is exactly the other with the prefix attached
  * (energize/de_energize → deenergize after normalize drops the hyphen? No:
@@ -635,6 +681,137 @@ function isNegatingPrefixPair(a: string, b: string): boolean {
 }
 
 /**
+ * Every preposition a remainder may name a place with: the ones the antonym-remainder rule used to
+ * drop after ANY antonym head (669c0e9), and `with`, which the governed-preposition table also
+ * reads as a place (`connect`/`engage`). A PROPOSE signal only ({@link prepositionFree}): the
+ * decide key marks a preposition only where the head verb's own row governs it
+ * (`GOVERNED_PREPOSITIONS` in antonyms.ts), and otherwise keeps every one.
+ */
+const PREPOSITIONS: ReadonlySet<string> = new Set([
+  'at',
+  'from',
+  'in',
+  'inside',
+  'into',
+  'on',
+  'onto',
+  'to',
+  'with',
+  'within',
+])
+
+/**
+ * An object remainder with EVERY preposition token removed, at any position and however many:
+ * "access to only admins" and "access only from admins" are both `access_only_admins`, "the pump
+ * on Monday" and "the pump Monday" both `the_pump_monday`. Base 669c0e9 dropped the first
+ * preposition after the remainder's first token wherever it sat, so any two remainders it read as
+ * one object are equal here too; this is strictly coarser, which is the safe direction for a rule
+ * that only ever demotes.
+ */
+const prepositionFree = (rest: string): string =>
+  rest
+    .split('_')
+    .filter((t) => !PREPOSITIONS.has(t))
+    .join('_')
+
+/**
+ * THE preposition-variant rule, the one propose-tier rule for two responses the decide tier keeps
+ * apart only by their prepositions (spec 007, demote-not-prove C2). It holds when two responses'
+ * remainders DIFFER but are equal once every preposition is removed ({@link prepositionFree}),
+ * and the heads could conflict were the two remainders one object:
+ *
+ *   - `same-verb`: one antonym-table verb at OPPOSITE polarity ("stop the pump on Monday" / "shall
+ *     not stop the pump Monday"), which would be one atom, `X ∧ ¬X`;
+ *   - `contrary`: two verbs an explicit seeded or committed row relates, BOTH asserted ("grant
+ *     access to only admins" / "revoke access only from admins"), which would be one key on
+ *     opposite sides, `¬(A ∧ B)` violated. With either side negated no reading conflicts —
+ *     "do neither" and "do one, not the other" are consistent — so there is no edit that could make
+ *     the pair provable, and nothing to propose;
+ *   - `class`: two other verbs of one antonym class (one side, `grant`/`allow`, or two rows apart,
+ *     `conceal`/`unseal`), which the table relates by no row, at any polarity: the author decides
+ *     what they are.
+ *
+ * It never proves. The decide key cannot tell "on Monday" from "Monday", or `to` from `from`,
+ * without a grammar guess, and a guess may not create a proof (C1); so the pair is proposed and
+ * demotes `verified` until the author aligns the preposition or commits a glossary entry, either of
+ * which puts the two on one exact key the solver decides, or waives it. Undefined when the rule
+ * does not hold.
+ */
+function prepositionVariant(
+  a: { readonly head: string; readonly rest: string; readonly negated: boolean },
+  b: { readonly head: string; readonly rest: string; readonly negated: boolean },
+  antonyms: ReadonlyMap<string, AntonymEntry>,
+): 'same-verb' | 'contrary' | 'class' | undefined {
+  if (a.rest === b.rest || prepositionFree(a.rest) !== prepositionFree(b.rest)) return undefined
+  const entryA = antonyms.get(a.head)
+  const entryB = antonyms.get(b.head)
+  if (entryA === undefined || entryB === undefined) return undefined
+  if (a.head === b.head) return a.negated !== b.negated ? 'same-verb' : undefined
+  if (entryA.canonical !== entryB.canonical) return undefined
+  if (!entryA.opposes.includes(b.head)) return 'class'
+  return !a.negated && !b.negated ? 'contrary' : undefined
+}
+
+/** The structural opposition shape of one response pair ({@link oppositionShapesOf}). */
+interface OppositionShape {
+  readonly headA: string
+  readonly restA: string
+  readonly headB: string
+  readonly restB: string
+  /** Both heads sit in one antonym class (either side), or are one antonym-table verb. */
+  readonly sameClass: boolean
+  /** Both heads sit on one polarity side of their class (never true across a row). */
+  readonly sameSide: boolean
+  /** Which {@link prepositionVariant} the pair is, when its remainders differ. */
+  readonly variant: 'same-verb' | 'contrary' | 'class' | undefined
+  /** The shape was read off the committed-vocabulary bodies, not the raw wording. */
+  readonly committed: boolean
+}
+
+/**
+ * The readings of a response pair that have the opposition shape — a shared object remainder under
+ * two different heads, or a {@link prepositionVariant} — the RAW normalized wording first, then
+ * the atom bodies after the committed glossary and terms. Empty when neither reading has it.
+ */
+function oppositionShapesOf(
+  raw: readonly [string, string],
+  committed: readonly [string, string] | undefined,
+  negated: readonly [boolean, boolean],
+  antonyms: ReadonlyMap<string, AntonymEntry>,
+): OppositionShape[] {
+  const readings: Array<readonly [string, string, boolean]> = [[raw[0], raw[1], false]]
+  if (committed !== undefined) readings.push([committed[0], committed[1], true])
+  const shapes: OppositionShape[] = []
+  for (const [x, y, fromCommitted] of readings) {
+    const [headA, restA] = headOf(x, antonyms)
+    const [headB, restB] = headOf(y, antonyms)
+    if (restA === '') continue
+    const variant = prepositionVariant(
+      { head: headA, rest: restA, negated: negated[0] },
+      { head: headB, rest: restB, negated: negated[1] },
+      antonyms,
+    )
+    if (variant === undefined && (restA !== restB || headA === headB)) continue
+    const entryA = antonyms.get(headA)
+    const entryB = antonyms.get(headB)
+    const sameClass =
+      entryA !== undefined && entryB !== undefined && entryA.canonical === entryB.canonical
+    const sameSide = sameClass && entryA.negated === entryB.negated
+    shapes.push({
+      headA,
+      restA,
+      headB,
+      restB,
+      sameClass,
+      sameSide,
+      variant,
+      committed: fromCommitted,
+    })
+  }
+  return shapes
+}
+
+/**
  * Propose opposition candidates (#6): same-system response pairs that share an
  * object remainder but differ on the leading verb and are NOT already unified as
  * antonyms. Propose-only (info-tier) — it suggests `symspec antonym add`, which
@@ -645,6 +822,13 @@ function isNegatingPrefixPair(a: string, b: string): boolean {
  * The `antonyms` index (default {@link ANTONYM_INDEX}, or a doc-augmented one) is
  * consulted so a pair the antonym tables ALREADY unify is skipped — that pair is
  * a proven-or-provable conflict, not a candidate needing confirmation.
+ *
+ * The shape is read twice: off the author's RAW wording, and off the atom body the solver
+ * reads — after the committed glossary and terms (`atomize`, the pipeline's own atomizer when
+ * the caller supplies it). Either one proposes. Committed vocabulary is a strengthening move
+ * (spec 007 I-1), and a term ("access" ≡ "entry") or an alias is exactly what lines up two
+ * objects the raw text keeps apart: read off the raw text alone, committing the term lifted the
+ * demotion the same words earn without it, and `verified: true` came back over the pair.
  */
 export async function findOppositionCandidates(
   reqs: readonly SemanticRequirement[],
@@ -653,6 +837,8 @@ export async function findOppositionCandidates(
     cosineFloor?: number
     glossary?: ReadonlyMap<string, string>
     antonyms?: ReadonlyMap<string, AntonymEntry>
+    /** The document's atomizer (glossary, terms and antonyms), as every solver tier reads it. */
+    atomize?: Atomize
   } = {},
 ): Promise<OppositionCandidateFinding[]> {
   const floor = options.cosineFloor ?? DEFAULT_OPPOSITION_COSINE_FLOOR
@@ -661,6 +847,8 @@ export async function findOppositionCandidates(
 
   const { cosine } = await import('./embed.ts')
   const vectors = await embedder(reqs.map((r) => r.systemResponse))
+  const atomizer = options.atomize ?? makeAtomize(options.glossary, antonyms)
+  const atoms = reqs.map((r) => responseAtom(r, { atomize: atomizer }))
 
   const findings: OppositionCandidateFinding[] = []
   const seen = new Set<string>()
@@ -669,51 +857,62 @@ export async function findOppositionCandidates(
     for (let j = i + 1; j < reqs.length; j++) {
       const a = reqs[i] as SemanticRequirement
       const b = reqs[j] as SemanticRequirement
-      if (a.systemName !== b.systemName) continue
+      // One system by the scope its atoms carry, never by the raw name: "Access Controller" and
+      // "access controller" are one scope to the solver, and a pair skipped here on spelling alone
+      // is a pair the decide tier may not relate either, so nothing demotes over it.
+      if (normalizeScope(a.systemName) !== normalizeScope(b.systemName)) continue
 
-      // Already unified (glossary/antonym/identical) ⇒ not a candidate.
-      const atomA = responseAtom(a, {
-        ...(options.glossary !== undefined ? { glossary: options.glossary } : {}),
-      })
-      const atomB = responseAtom(b, {
-        ...(options.glossary !== undefined ? { glossary: options.glossary } : {}),
-      })
-      if (atomA.name === atomB.name) continue
+      // Already one atom (glossary, terms, identical) ⇒ the solver compares them at polarity; a
+      // pair the antonym tables ALREADY relate ⇒ the solver relates them by a contrary axiom.
+      // Neither is a candidate. ONLY those: two verbs that merely share a class (`grant`/`allow`
+      // on one side, `conceal`/`unseal` two pairs apart) are two unrelated atoms to the solver
+      // (AC-2-1), and so are two objects a direction-carrying preposition apart ("allow calls
+      // to the number" / "deny calls from the number"), which the key keeps. The table's own
+      // evidence that such a pair is related is proposed like a negating prefix, regardless of
+      // cosine, and demotes until the author commits a glossary entry or an antonym, rewrites
+      // one, or waives it.
+      const atomA = atoms[i] as ResponseAtom
+      const atomB = atoms[j] as ResponseAtom
+      if (atomA.name === atomB.name || areContrary(atomA, atomB)) continue
 
       // Structural opposition shape: same object remainder, different verb head.
       // Heads are de-inflected (opens/open) and a negating prefix token
       // (de-/un-/dis-, split off by punctuation normalization: "de-energize" →
       // `de_energize`) is fused back onto the verb so prefix opposites compare
       // as one head against their base form.
-      const [headA, restA] = fuseNegatingPrefix(normalize(a.systemResponse))
-      const [headB, restB] = fuseNegatingPrefix(normalize(b.systemResponse))
-      if (restA === '' || restA !== restB) continue
-      if (headA === headB) continue
-
-      // Skip pairs the antonym tables ALREADY relate — those unify (handled
-      // above) or are a real conflict, not a candidate to propose.
-      const entryA = antonyms.get(headA)
-      const entryB = antonyms.get(headB)
-      if (entryA !== undefined && entryB !== undefined && entryA.canonical === entryB.canonical) {
-        continue
-      }
+      const shapes = oppositionShapesOf(
+        [normalize(a.systemResponse), normalize(b.systemResponse)],
+        atomA.body !== undefined && atomB.body !== undefined ? [atomA.body, atomB.body] : undefined,
+        [atomA.negated, atomB.negated],
+        antonyms,
+      )
+      if (shapes.length === 0) continue
 
       const key = pairKey(a.id, b.id)
       if (seen.has(key)) continue
 
       // A negating-prefix pair (seal/unseal, energize/de-energize) is opposition
       // by MORPHOLOGY — deterministic structure, no embedding needed — so it is
-      // proposed regardless of the topical cosine floor.
-      const prefixPair = isNegatingPrefixPair(headA, headB)
+      // proposed regardless of the topical cosine floor, as is a pair of one class.
+      // Cosine is a topical-relatedness FLOOR only (antonyms embed close), not
+      // the opposition signal — the shared-object/different-verb structure is.
       const va = vectors[i]
       const vb = vectors[j]
       const score = va !== undefined && vb !== undefined ? cosine(va, vb) : 0
-      // Cosine is a topical-relatedness FLOOR only (antonyms embed close), not
-      // the opposition signal — the shared-object/different-verb structure is.
-      if (!prefixPair && score < floor) continue
+      const shape = shapes.find(
+        (s) => s.sameClass || isNegatingPrefixPair(s.headA, s.headB) || score >= floor,
+      )
+      if (shape === undefined) continue
+      const { headA, restA, headB, restB } = shape
 
       seen.add(key)
       const [lo, hi] = a.id < b.id ? [a.id, b.id] : [b.id, a.id]
+      // Read through the committed vocabulary, the verbs and objects above need not be the
+      // author's own words for either requirement, so the message says where they came from.
+      const through = shape.committed
+        ? ' (Read through the committed glossary and terms, which the formal tier applies: ' +
+          `"${phraseOf(`${headA}_${restA}`)}" vs "${phraseOf(`${headB}_${restB}`)}".)`
+        : ''
       findings.push({
         code: 'FND_OPPOSITION_CANDIDATE',
         severity: 'info',
@@ -721,17 +920,96 @@ export async function findOppositionCandidates(
         verbs: [headA, headB],
         cosine: round3(score),
         message:
-          `${lo} and ${hi} respond under the same system with the same object but different ` +
-          `leading verbs ("${headA}" vs "${headB}"). These verbs differ, but embeddings CANNOT ` +
-          'tell opposites (open/shut) from synonyms (delete/remove) — decide which these are: ' +
-          `if they are polar OPPOSITES, run \`symspec antonym add ${headA} ${headB}\` (the formal ` +
-          'tier will then treat them as contraries — they cannot both hold — and can prove a conflict); ' +
-          `if they are SYNONYMS, run \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\` ` +
-          'instead. Committing the WRONG one manufactures a false contradiction, so confirm the ' +
-          'direction before applying. This is a suggestion, not a verdict.',
+          shape.variant !== undefined
+            ? variantMessage(lo, hi, shape, a, b, through)
+            : oppositionMessage(lo, hi, headA, headB, a, b, through),
       })
     }
   }
 
   return findings
+}
+
+/**
+ * The message for a {@link prepositionVariant} candidate, naming the exact edit that makes the pair
+ * provable: the second requirement ({@link b}) rewritten with the first one's object — for one verb
+ * the first response verbatim, so the two are one atom at opposite polarity; for a contrary row
+ * the second verb over the first object, so the two are one key on opposite sides — or the
+ * glossary entry that says the same. A `class` pair is two verbs no row relates, so aligning the
+ * object alone decides nothing, and the message says which table entry would.
+ */
+function variantMessage(
+  lo: string,
+  hi: string,
+  shape: OppositionShape,
+  a: SemanticRequirement,
+  b: SemanticRequirement,
+  through: string,
+): string {
+  const { headA, restA, headB, restB, variant } = shape
+  const objects = `("${phraseOf(restA)}" vs "${phraseOf(restB)}")`
+  const why =
+    'The formal tier does not read those as one object, because a preposition can name a ' +
+    'different place or carry direction (to/from), so it compared nothing between them.'
+  const tail = ` If they are different objects, waive this finding.${through} This is a suggestion, not a verdict.`
+  if (variant === 'same-verb') {
+    return (
+      `${lo} and ${hi} respond under the same system with the same verb ("${headA}"), one of them ` +
+      `under "shall not", over objects that differ only by prepositions ${objects}. ${why} If they ` +
+      'name ONE object, make the pair provable: align the preposition with ' +
+      `\`symspec update --ref ${b.id} systemResponse "${a.systemResponse}"\`, or commit the two ` +
+      `phrasings as one action with \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\`; ` +
+      'either puts both on one atom at opposite polarity, and the solver decides the conflict.' +
+      tail
+    )
+  }
+  if (variant === 'contrary') {
+    const aligned = phraseOf(`${headB}_${restA}`)
+    return (
+      `${lo} and ${hi} respond under the same system with verbs an antonym row relates ` +
+      `("${headA}" vs "${headB}") over objects that differ only by prepositions ${objects}. ${why} ` +
+      'If they name ONE object, make the pair provable: align the preposition with ' +
+      `\`symspec update --ref ${b.id} systemResponse "${aligned}"\`, or commit the rewording as ` +
+      `one action with \`symspec glossary add "${aligned}" "${b.systemResponse}"\`; either puts ` +
+      'both on one key on opposite sides of the row, and the solver decides the conflict.' +
+      tail
+    )
+  }
+  // Two verbs no row relates: one side of a class ("grant" / "allow") may be one action, which a
+  // rewrite in the other's words makes one atom; two sides may be opposites, which a row makes
+  // contraries once the objects are aligned.
+  const repair = shape.sameSide
+    ? `If they ARE one action on one object, rewrite one requirement in the other's words ` +
+      `(\`symspec update --ref ${b.id} systemResponse "${a.systemResponse}"\`), so the two share ` +
+      'one atom and the solver decides the conflict.'
+    : 'If they are opposites acting on one object, align the preposition ' +
+      `(\`symspec update --ref ${b.id} systemResponse "${phraseOf(`${headB}_${restA}`)}"\`) and ` +
+      `commit the pair (\`symspec antonym add ${headA} ${headB}\`), so the solver decides the conflict.`
+  return (
+    `${lo} and ${hi} respond under the same system with verbs one antonym class holds but no row ` +
+    `relates ("${headA}" vs "${headB}"), over objects that differ only by prepositions ${objects}. ` +
+    `${why} ${repair}${tail}`
+  )
+}
+
+/** The message for a same-object, different-verb opposition candidate. */
+function oppositionMessage(
+  lo: string,
+  hi: string,
+  headA: string,
+  headB: string,
+  a: SemanticRequirement,
+  b: SemanticRequirement,
+  through: string,
+): string {
+  return (
+    `${lo} and ${hi} respond under the same system with the same object but different ` +
+    `leading verbs ("${headA}" vs "${headB}"). These verbs differ, but embeddings CANNOT ` +
+    'tell opposites (open/shut) from synonyms (delete/remove) — decide which these are: ' +
+    `if they are polar OPPOSITES, run \`symspec antonym add ${headA} ${headB}\` (the formal ` +
+    'tier will then treat them as contraries — they cannot both hold — and can prove a conflict); ' +
+    `if they are SYNONYMS, run \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\` ` +
+    'instead. Committing the WRONG one manufactures a false contradiction, so confirm the ' +
+    `direction before applying.${through} This is a suggestion, not a verdict.`
+  )
 }

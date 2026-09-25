@@ -49,7 +49,7 @@
  * conflict with) stays silent.
  */
 
-import { normalize } from './atomize.ts'
+import { normalize, normalizeScope } from './atomize.ts'
 
 /** One requirement's projection for relational/aggregate shape detection. */
 export interface RelationalInput {
@@ -144,7 +144,9 @@ export function findRelationalUnchecked(
     // composite, therefore strictly more disclosure.
     for (const slot of [r.preCondition, r.trigger]) {
       if (slot === undefined || slot === '') continue
-      const key = `${normalize(r.systemName)}||${normalize(slot)}`
+      // The system by its ATOM scope: `normalize` keeps a unit's case ("5 MW" vs "5 mW") where
+      // the scope folds it, and a key finer than the solver's deletes a disclosure.
+      const key = `${normalizeScope(r.systemName)}||${normalize(slot)}`
       const g = groups.get(key)
       if (g === undefined) groups.set(key, [r])
       else g.push(r)

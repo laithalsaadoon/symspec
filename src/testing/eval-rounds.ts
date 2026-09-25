@@ -4,19 +4,21 @@
  *
  * Twelve documents reconstructed from the Run 1-3 red-team eval: the rounds where a
  * proposer authored specs whose z3-confirmed contradictions symspec certified clean
- * (`exit 0`, `data.verified: true`, under `--strict --semantic --temporal`). Nine plant a
- * contradiction a sound extractor can reach; three plant one it cannot, where the required
+ * (`exit 0`, `data.verified: true`, under `--strict --semantic --temporal`). Eight plant a
+ * contradiction a sound extractor can reach; four plant one it cannot, where the required
  * behavior is to decline rather than to guess.
  *
  * Each case reproduces one WINNING PATTERN and pins the fix that closes it:
  *   - lexicon rounds (commit/rollback, seal/expose, quarantine/release, publish/retract,
- *     suspend/resume in 3sg, exclude-from/include-in) prove `FND_CONTRADICTION` through the
- *     expanded antonym seeds, de-inflection, and the preposition rule;
+ *     suspend/resume in 3sg) prove `FND_CONTRADICTION` through the expanded antonym seeds,
+ *     de-inflection, and the preposition rule;
  *   - bridge-chain rounds (grant-vs-deny behind authenticated -> verified -> trusted ->
  *     privileged; "keeps the reactor online" behind a copula guard) prove through the
  *     widened establish-verb lexicon, copula normalization, and the
  *     grant/allow/permit-deny class merge;
- *   - the beyond-the-lexicon rounds assert that `verified` DEMOTES instead of certifying.
+ *   - the beyond-the-lexicon rounds assert that `verified` DEMOTES instead of certifying; the
+ *     exclude-from/include-in round is one of them, because no verb governs a locative (`in`
+ *     names a time as readily as a place, spec 007 demote-not-prove C1).
  *
  * ## Ground truth, never a verdict
  *
@@ -461,13 +463,16 @@ export function evalRoundCases(): AdversarialCase[] {
     cases.push({
       id: 'eval-feedback-exclude-include',
       kind: 'contradiction',
-      tier: 4,
-      expectedCodes: ['FND_CONTRADICTION'],
+      tier: 5,
+      expectedCodes: [],
       culpritIds: [rid(t, 1), rid(t, 2)],
       doc: docOf(reqs),
       note:
-        'The FEEDBACK residual: include/exclude was seeded but "from"/"in" kept the remainders ' +
-        'distinct. Closed by: the antonym-hit preposition rule (A4).',
+        'The FEEDBACK residual: include/exclude is seeded, but "from"/"in" keep the remainders ' +
+        'distinct. No verb governs a locative, since `in` names a time as readily as a place ' +
+        '("include the tile in time"), so no key proves the pair; the preposition-variant rule ' +
+        'must DEMOTE verified with a named repair (align the preposition), never certify. A ' +
+        'phrase bound to one declared symbol (spec 007 Story 4) is what proves it again.',
     })
   }
 

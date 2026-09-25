@@ -28,7 +28,7 @@
  */
 
 import type { ReqView } from '../solvers/types.ts'
-import { type AtomKind, normalize } from './atomize.ts'
+import { type AtomKind, DIGIT_SEPARATOR, normalize, normalizeScope } from './atomize.ts'
 import { type NumericComparator, toEncodable } from './encode.ts'
 
 /**
@@ -81,6 +81,14 @@ export interface NumericPredicate {
    */
   readonly difference?: Rational
   /**
+   * The bound's length in CIVIL DAYS, present only for a calendar unit (`day`, `week`).
+   * `exact` is then the nominal 24-hour reading, which is only right on a day with no
+   * daylight-saving change: a civil day runs 23 to 25 hours. `numeric-contradiction.ts`
+   * proves a conflict against a day length bounded by those two, and discloses a pair that
+   * conflicts only at the nominal length.
+   */
+  readonly days?: Rational
+  /**
    * The unit dimension the bound is on: a {@link DIMENSIONS} name (`time`,
    * `distance`, …) when the unit is recognized, {@link RAW_UNIT_DIMENSION} when a
    * unit token is present but recognized by no dimension, `''` when the number has
@@ -90,7 +98,7 @@ export interface NumericPredicate {
   /**
    * The unit the value is expressed in: the dimension's base when the unit is
    * recognized (`ms`, `m`, `B`, …), the unit's RAW TEXT, case preserved, when it is
-   * not (`days`, `percent`, `Mb`), and `''` when there is no unit.
+   * not (`months`, `times per minute`, `Mb`), and `''` when there is no unit.
    */
   readonly baseUnit: string
   /**
@@ -101,6 +109,40 @@ export interface NumericPredicate {
   readonly role: BoundRole
   /** Which EARS slot the bound was read out of — guard role vs response role. */
   readonly slot: PredicateSlot
+  /**
+   * Present when the bound is read out of a PROHIBITION (`shall not keep the door unlocked
+   * above 30 seconds`, spec 007 AC-2-6). `comparator` is then the negated comparison, and it
+   * holds only IF the action happens: the requirement is `NOT (A ∧ x > 30 s)`, which is `A →
+   * x <= 30 s`, not `x <= 30 s`. A bound without this flag is an obligation, and its
+   * requirement asserts `A`. `numeric-contradiction.ts` encodes `A` as one occurrence literal
+   * per quantity, so two prohibitions are satisfied together by never doing the action.
+   */
+  readonly negated?: true
+  /**
+   * The text that follows the bound in its slot (`when the mode is heating`, `in heating
+   * mode`, `after the tank fills`, `of logs`), lowercased, whitespace-collapsed, and stripped
+   * of edge punctuation; absent when only punctuation follows. It may be a condition the bound
+   * holds under or the referent it counts, and this tier reads neither out of it, so it is
+   * part of the comparison class: two bounds meet only under the same qualifier text, and a
+   * pair split by one is disclosed rather than compared (spec 007 AC-2-6). `parse` leaves such
+   * a clause inside the response, and read without it `keep the temperature above 30 °C when
+   * the mode is heating` against `... below 20 °C when the mode is cooling` was a conflict
+   * everywhere; `run the pump at most 2 minutes after the tank fills` is a delay from an
+   * event, not a bound on how long the pump runs; `30 days of logs` and `2 hours of video`
+   * bound two things. A bound that is itself inside such a clause, or after another bound in
+   * the slot, carries the whole clause, itself included, and a response bound not read as its
+   * obligation ({@link unheldBy}) carries the whole slot ({@link qualifierAt}).
+   */
+  readonly qualifier?: string
+  /**
+   * What put the bound INSIDE its own {@link NumericPredicate.qualifier}, when something did: `the
+   * connective "during"`, `the finite verb "is"`, `an earlier bound`, or the first word of a
+   * response's subject that keeps the bound from being read as its obligation (`the word
+   * "every"`, `the plural "payments"`, `the verb "log"`: {@link unheldBy}). Evidence for the
+   * disclosure only, never part of a key: it names the word the author can restate to have the
+   * bound compared (`numeric-contradiction.ts` `uncomparedPairs`).
+   */
+  readonly clause?: string
   /** The original slot substring the predicate came from (evidence). */
   readonly sourceText: string
 }
@@ -113,8 +155,11 @@ export interface NumericPredicate {
  *     measured from the trigger.
  *   - `duration` — `for at least 30 s`: how LONG the response lasts.
  *   - `period` — `at least once every 5 s`: the INTERVAL between repetitions.
- *   - `''` — no role marker: a magnitude of the quantity itself (`at most 2 km`,
- *     `above 30 seconds`).
+ *   - `anchored` — no role marker, on a time-like unit, with text after the bound
+ *     ({@link NumericPredicate.qualifier}): `at least 5 seconds after the door opens` may be
+ *     a DELAY from the clause's event rather than how long or by when the response happens.
+ *   - `''` — no role marker and nothing after the bound: a magnitude of the quantity itself
+ *     (`at most 2 km`, `above 30 seconds`).
  *
  * "Sound the siren within 2 seconds" and "sound the siren for at least 30 seconds"
  * are one quantity key and two roles; read as one variable they were `<= 2 s ∧ >=
@@ -126,9 +171,17 @@ export interface NumericPredicate {
  * (`FND_NUMERIC_UNCOMPARED`), because "complete the infusion within 30 minutes" and
  * "... for at least 60 minutes" is that shape too, and it is a real conflict.
  *
+ * An unmarked bound followed by other text is not known to be a magnitude of the whole
+ * response: `run the pump at most 2 minutes after the tank fills` is a delay from an event.
+ * Its {@link NumericPredicate.qualifier} keeps it apart from every bound without that same
+ * clause, and its `anchored` role from every marked bound WITH it: `sound the siren at least
+ * 5 seconds after the door opens` against `... for at most 3 seconds after the door opens`
+ * shared the clause, and the unmarked bound was asserted on the duration's variable. Either
+ * way the pair is disclosed, and two anchored bounds under one clause still meet.
+ *
  * A role is a TIME role: `keep the positioning error within 5 mm` is a tolerance on a
  * distance, not a deadline, and carries no role. A unit this tier does not recognize
- * (`days`) or no unit at all may still be a time, so those keep their marker.
+ * (`months`) or no unit at all may still be a time, so those keep their marker.
  *
  * `within` BEFORE another comparator (`complete the infusion within at most 30
  * minutes`) stays in the quantity label, so the key already names the deadline
@@ -137,7 +190,7 @@ export interface NumericPredicate {
  * a label that names its own role is the author's statement that the two are one
  * quantity.
  */
-export type BoundRole = 'deadline' | 'duration' | 'period' | ''
+export type BoundRole = 'deadline' | 'duration' | 'period' | 'anchored' | ''
 
 /** The {@link NumericPredicate.dimension} of a unit token no dimension recognizes. */
 export const RAW_UNIT_DIMENSION = 'unrecognized'
@@ -151,6 +204,11 @@ export const RAW_UNIT_DIMENSION = 'unrecognized'
 export interface UnitScale {
   readonly factor: string
   readonly offset?: string
+  /**
+   * The unit's length in civil days, for a calendar unit whose `factor` is only its
+   * nominal length (`day`: `"1"`, `week`: `"7"`). See {@link NumericPredicate.days}.
+   */
+  readonly days?: string
 }
 
 /**
@@ -173,19 +231,30 @@ export interface Dimension {
 const k = (factor: string, offset?: string): UnitScale =>
   offset === undefined ? { factor } : { factor, offset }
 
+/** A calendar unit: `days` civil days, nominally 24 hours each. */
+const civil = (days: string): UnitScale => ({
+  factor: String(BigInt(days) * 86_400_000n),
+  days,
+})
+
 /**
  * Known unit dimensions. Extend conservatively: a spelling that is not listed is
  * not dropped, it keys on its raw text, which only ever SPLITS a comparison.
  *
  * Deliberately absent:
- *   - `day`, `week`, `month`, `year`. A calendar month and year have no fixed
- *     length, and a civil day is 23 or 25 hours across a DST change, so none of
- *     them converts into milliseconds exactly. Each keys on its own raw text.
+ *   - `month`, `year`. A calendar month and year have no fixed length, so neither
+ *     converts into milliseconds. Each keys on its own raw text, and a bound in one is
+ *     disclosed against a bound in any other unit rather than compared.
+ *   - `day` and `week` as FIXED lengths. A civil day is 23 or 25 hours across a DST
+ *     change, so each is listed as a time with its length in civil days
+ *     ({@link UnitScale.days}), and the decide tier reads it against a bounded day length
+ *     rather than as 86 400 000 ms.
  *   - `m` as MINUTES. `m` is the metre, as in the R6 lint unit list
  *     (`lint/gtwr.ts` `R6_RECOGNIZED_UNITS`), so `lower the hook at least 10 m`
  *     is a distance, and never meets `within 30 seconds`.
- *   - `%`/`percent` against a bare ratio. `50 percent` and `0.9` are on different
- *     scales only if the author says so, so `percent` keys on its raw text.
+ *   - `%`/`percent` against a bare ratio. `50%` and `0.9` are on one scale only if the
+ *     author says so, so a percent is its own dimension and never converts into a bare
+ *     number. `numeric-contradiction.ts` discloses such a pair rather than comparing it.
  *
  * Exported so the manifest can surface the numeric tier's recognized units (an
  * agent authoring bounds sees exactly which unit spellings normalize to a shared
@@ -222,6 +291,10 @@ export const DIMENSIONS: readonly Dimension[] = [
       hrs: k('3600000'),
       hour: k('3600000'),
       hours: k('3600000'),
+      day: civil('1'),
+      days: civil('1'),
+      week: civil('7'),
+      weeks: civil('7'),
     },
   },
   {
@@ -371,6 +444,12 @@ export const DIMENSIONS: readonly Dimension[] = [
     },
   },
   {
+    name: 'percent',
+    base: '%',
+    symbols: { '%': k('1') },
+    words: { percent: k('1'), 'per cent': k('1') },
+  },
+  {
     name: 'volume',
     base: 'mL',
     symbols: { mL: k('1'), ml: k('1'), L: k('1000') },
@@ -403,7 +482,7 @@ function rational(numerator: bigint, denominator: bigint): Rational {
 }
 
 /**
- * Parse an exact rational literal: a decimal (`"12345.67"`, `"-5"`) or a
+ * Parse an exact rational literal: a decimal (`"12345.67"`, `"-5"`, `"1.5e-3"`) or a
  * fraction of two integers (`"1609344/1000"`, `"-160/9"`). Throws on anything
  * else, because every caller passes a literal this module owns or a number the
  * NUMBER pattern already matched.
@@ -411,11 +490,14 @@ function rational(numerator: bigint, denominator: bigint): Rational {
 export function parseRational(text: string): Rational {
   const frac = /^(-?\d+)\/(\d+)$/.exec(text)
   if (frac !== null) return rational(BigInt(frac[1]!), BigInt(frac[2]!))
-  const dec = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text)
+  const dec = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(text)
   if (dec === null) throw new RangeError(`numeric: not a rational literal: ${text}`)
   const fraction = dec[3] ?? ''
   const digits = BigInt(`${dec[2]!}${fraction}`)
-  return rational(dec[1] === '-' ? -digits : digits, 10n ** BigInt(fraction.length))
+  // `m × 10^e` with `f` fraction digits is `m_digits × 10^(e − f)`, exactly.
+  const shift = BigInt(dec[4] ?? '0') - BigInt(fraction.length)
+  const signed = dec[1] === '-' ? -digits : digits
+  return shift >= 0n ? rational(signed * 10n ** shift, 1n) : rational(signed, 10n ** -shift)
 }
 
 const mulR = (a: Rational, b: Rational): Rational =>
@@ -485,8 +567,503 @@ const COMPARATOR_LEXICON: ReadonlyArray<{ phrase: string; comparator: NumericCom
  * `respond in at least 3_000 ms`, which is consistent. Reading the whole group instead would be a
  * rule R6 does not share: its digit run treats each such group as its own number (`gtwr.ts`). So
  * the number is declined, and a declined number is no predicate and no proof.
+ *
+ * Scientific notation is read with its exponent (`1e3 ms` is 1000 ms, `1.5E-3 s` is 1.5
+ * ms). Without it, `1e3 ms` was the number `1` in the unit `e`, and `at most 1e3 ms`
+ * against `at least 5e2 ms` was `<= 1 ∧ >= 5`. An exponent of more than three digits is
+ * refused whole by the same lookahead, never read as a prefix of itself.
  */
-const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?!\d|[.,_'\u2019]\d|\s\d{3}(?!\d))`
+const NUMBER = String.raw`((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d{1,3})?)(?!\d|[.,_'\u2019]\d|[eE][+-]?\d|\s\d{3}(?!\d))`
+
+/**
+ * The normalized {@link NumericPredicate.qualifier} of the text after a bound: ALL of it,
+ * whatever its words, when it carries a letter or a digit.
+ *
+ * Not a list of condition words. Any list leaves a phrasing out, and every phrasing it left
+ * out was read as unconditional: `in heating mode`, `as long as the mode is heating`,
+ * `provided that`, `in case of frost`, `following the door opening`, `from the moment the
+ * tank fills`, `since the alarm cleared`, and the referent of `30 days of logs` against `2
+ * hours of video`. Text this tier does not read only SPLITS the bound's comparison class, the
+ * prover's safe direction, and the split is disclosed (`numeric-contradiction.ts`
+ * `uncomparedPairs`). `negateResponse` reads trailing text the same way, and declines.
+ */
+function qualifierOf(after: string): string | undefined {
+  if (!/[\p{L}\p{N}]/u.test(after)) return undefined
+  const clause = after
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s.,;:!?(]+|[\s.,;:!?)]+$/gu, '')
+    .trim()
+  return clause === '' ? undefined : clause
+}
+
+/**
+ * A connective in the text BEFORE a bound (`open the valve when the pressure is above 5
+ * bar`): the bound may be inside the response's condition, not the obligation it imposes.
+ *
+ * The closed class of English subordinators that open a condition or a time, the multiword
+ * ones included (`as soon as`, `in the event that`, `each time`, `the moment`), and the
+ * prepositions that open one on a noun (`during`, `upon`, `following`). Unlike
+ * {@link qualifierOf}, the text before a bound is its subject, so no rule can take ALL of it;
+ * but a connective is not the only mark of a clause, and a response's other subjects are read
+ * by {@link unheldBy}.
+ *
+ * A match is a SPELLING, and nothing reads the words around it to excuse one (spec 007, the
+ * demote-not-prove contract): a bound after a connective carries its whole clause, itself
+ * included, as {@link NumericPredicate.qualifier}, so it is compared with no bound that is not
+ * spelled identically, and `numeric-contradiction.ts` discloses the pair instead
+ * (`FND_NUMERIC_UNCOMPARED`, naming both requirements and the restatement that makes them
+ * comparable). `keep the latency during peak hours below 200 milliseconds`, `retain the following
+ * events for at most 30 days`, and `keep the height after the drone flew above 100 meters` are
+ * all read so. Telling the span a kept measure is taken over, or a noun's modifier, from a
+ * condition is a grammar guess, and every guess this tier made in the proving direction was
+ * either a consistent pair proved contradictory (`after the drone flew` read as a noun phrase
+ * because `flew` was missing from a word list) or a list that needed another word. A
+ * disclosure is always sound. The one rule that is not a guess is {@link governsBound}: a
+ * connective that is the bound's own preposition has no clause material to hold.
+ *
+ * A member inside a hyphenated compound (`once-daily`) is part of a word: the pattern matches
+ * whole tokens only. `numeric.test.ts` pins every member, so a dropped one is a red test.
+ */
+const CONDITION_WORD =
+  /(?:^|[\s,;(])(?:when|whenever|while|whilst|if|unless|until|till|after|before|once|during|upon|provided|providing|following|since|where|wherever|whereupon|assuming|as\s+soon\s+as|as\s+long\s+as|so\s+long\s+as|in\s+case|in\s+the\s+event|in\s+the\s+case|on\s+condition|any\s*time|each\s+time|every\s+time|the\s+moment|the\s+instant|by\s+the\s+time|now\s+that|given\s+that)(?![\p{L}\p{N}-])/giu
+
+/**
+ * The {@link CONDITION_WORD} members that are also PREPOSITIONS taking a length of time as
+ * their object: `expire the idle session after at most 30 minutes` is a delay of at most 30
+ * minutes, and `after` opens no clause. Right before a time bound, one of these is the bound's
+ * own word, in the label as `within` before another comparator is ({@link BoundRole}), so two
+ * such bounds share a key and are compared. Before any other bound it still opens a clause:
+ * `after at least 5 people arrive` has a subject and a verb.
+ */
+const TIME_PREPOSITION = /^(?:after|before|until|till|upon|following|since|during)$/i
+
+/**
+ * The finite forms of `be`, `have`, and `do`, and the modals. A response's own verb follows
+ * `shall` in its base form (`keep`, `open`, `be`), so one of these in the text before a bound is
+ * some nested clause's verb: `open the drain the moment the level is above 5 meters`, `... whose
+ * level can rise above 5 meters`, the complement's copula in `ensure that the response time is
+ * below 200 milliseconds`. Named first when a subject holds one ({@link unheldBy}), because the
+ * restatement it calls for is the plainest: state the bound as the obligation.
+ */
+const FINITE_VERB: ReadonlySet<string> = new Set([
+  'is',
+  'are',
+  'was',
+  'were',
+  'has',
+  'had',
+  'does',
+  'did',
+  'can',
+  'cannot',
+  'could',
+  'will',
+  "won't",
+  'won’t',
+  'would',
+  'may',
+  'might',
+  'must',
+  'should',
+  'shall',
+])
+
+/**
+ * The closed classes of English function words, less the finite verbs ({@link FINITE_VERB}):
+ * determiners, quantifiers, pronouns (relative ones included), prepositions and particles,
+ * conjunctions and subordinators, and the non-finite forms of `be`/`have`/`do`. Closed classes
+ * need no upkeep: no word joins one. A response's object that holds one has STRUCTURE (a
+ * prepositional phrase, a clause, a quantifier, a second noun phrase), and structure is where a
+ * bound may pick out what the response acts on instead of bounding what it holds: `sound the
+ * alarm for readings above 90 degrees celsius`, `log every request above 200 milliseconds`, `keep
+ * the height of the drone that flew above 100 meters`, and, with no pronoun at all, `stop the
+ * pump the float slid below 3 meters`. The object's own leading `the` is its article.
+ */
+const FUNCTION_WORD: ReadonlySet<string> = new Set([
+  // Determiners and quantifiers.
+  'the',
+  'a',
+  'an',
+  'this',
+  'that',
+  'these',
+  'those',
+  'my',
+  'your',
+  'his',
+  'her',
+  'its',
+  'our',
+  'their',
+  'whose',
+  'every',
+  'each',
+  'all',
+  'any',
+  'some',
+  'no',
+  'none',
+  'both',
+  'either',
+  'neither',
+  'few',
+  'many',
+  'much',
+  'more',
+  'most',
+  'less',
+  'least',
+  'several',
+  'other',
+  'another',
+  'such',
+  'only',
+  // Pronouns, relative and interrogative ones included.
+  'i',
+  'me',
+  'we',
+  'us',
+  'you',
+  'he',
+  'him',
+  'she',
+  'it',
+  'they',
+  'them',
+  'one',
+  'ones',
+  'who',
+  'whom',
+  'which',
+  'what',
+  'whatever',
+  'whichever',
+  'whoever',
+  'itself',
+  'themselves',
+  // Prepositions and particles.
+  'of',
+  'in',
+  'on',
+  'at',
+  'for',
+  'with',
+  'from',
+  'to',
+  'by',
+  'into',
+  'onto',
+  'over',
+  'under',
+  'above',
+  'below',
+  'during',
+  'after',
+  'before',
+  'until',
+  'till',
+  'near',
+  'inside',
+  'outside',
+  'across',
+  'through',
+  'throughout',
+  'between',
+  'among',
+  'about',
+  'around',
+  'behind',
+  'beyond',
+  'beneath',
+  'beside',
+  'besides',
+  'per',
+  'via',
+  'within',
+  'without',
+  'against',
+  'along',
+  'toward',
+  'towards',
+  'upon',
+  'off',
+  'up',
+  'down',
+  'out',
+  'since',
+  'like',
+  'than',
+  'except',
+  'past',
+  'as',
+  'following',
+  'regarding',
+  'concerning',
+  'versus',
+  'vs',
+  // Conjunctions and subordinators.
+  'and',
+  'or',
+  'but',
+  'nor',
+  'so',
+  'yet',
+  'if',
+  'unless',
+  'because',
+  'although',
+  'though',
+  'while',
+  'whilst',
+  'whether',
+  'when',
+  'whenever',
+  'where',
+  'wherever',
+  'whereas',
+  'once',
+  'then',
+  'how',
+  'why',
+  'not',
+  'never',
+  // Non-finite `be`, `have`, `do`.
+  'be',
+  'been',
+  'being',
+  'have',
+  'having',
+  'do',
+  'doing',
+  'done',
+])
+
+/**
+ * The verbs whose object a bound after it is held to: `keep the latency below 200 milliseconds`
+ * obliges the latency to be below 200 milliseconds. Any other verb's object is a thing the
+ * response acts on, and a bound after it may pick out WHICH (`reject the payment exceeding 1000
+ * dollars`, `stop the pump running above 3000 rpm`); the pair is disclosed. Closed on purpose,
+ * and small: a verb left out only demotes, and the disclosure names this list as the repair
+ * ({@link HOLDING_VERBS}). `hold` (an order is put ON hold: `hold the order above 1000 dollars`)
+ * and `limit` (a limit may be ON what the bound picks out: `limit the withdrawal above 1000
+ * dollars`) each have a second sense in which the bound restricts the object, so neither is one.
+ */
+const HOLDING_VERB: ReadonlySet<string> = new Set(['keep', 'maintain', 'have'])
+
+/** The {@link HOLDING_VERB}s, in the order a disclosure names them as the repair. */
+export const HOLDING_VERBS: readonly string[] = [...HOLDING_VERB]
+
+/**
+ * A lowercase word ending in `s` after any letter but `s`, `i`, or `u`: it may be a plural, a set of
+ * things a bound picks members out of (`reject payments exceeding 1000 dollars`, `keep the readings
+ * above 90 degrees celsius`, where `keep` means retain). `-ss`, `-is`, and `-us` end singulars
+ * (`pass`, `axis`, `radius`, `bus`), whose plurals end in `-es`. A spelling, and it only ever
+ * demotes: `the gas pressure` and `the lens temperature` are disclosed for it, and an irregular
+ * plural it misses (`fish`) is left to the other rules. An acronym (`ISIS`) and a possessive
+ * (`tank's`) are not lowercase words.
+ */
+const PLURAL_LOOKING = /^[a-z]*[a-hj-rtv-z]s$/
+
+/**
+ * The words at the end of a bound's subject that belong to the bound, not the subject: the label's
+ * trailing filler (`respond in`, `fill the can with`), `within` before another comparator, and a
+ * {@link TIME_PREPOSITION} right before its time bound ({@link governsBound}).
+ */
+const BOUND_OWN_WORD: ReadonlySet<string> = new Set([
+  'in',
+  'of',
+  'to',
+  'for',
+  'by',
+  'at',
+  'a',
+  'an',
+  'the',
+  'no',
+  'with',
+  'be',
+  'is',
+  'are',
+  'within',
+  'after',
+  'before',
+  'until',
+  'till',
+  'upon',
+  'following',
+  'since',
+  'during',
+])
+
+/** The words of `text`, edge punctuation stripped: `unlocked,` is `unlocked`, `is-alive` one word. */
+function wordsOf(text: string): string[] {
+  return text
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''))
+    .filter((w) => w !== '')
+}
+
+/** The first {@link FINITE_VERB} in `subject`, as a {@link NumericPredicate.clause}. */
+function finiteVerbIn(subject: string): string | undefined {
+  const verb = wordsOf(subject).find((w) => FINITE_VERB.has(w.toLowerCase()))
+  return verb === undefined ? undefined : `the finite verb "${verb.toLowerCase()}"`
+}
+
+/**
+ * Why a RESPONSE's bound, whose subject is `subject`, is NOT read as the obligation on what the
+ * response holds to it, or `undefined` when it is. Spec 007 C1/C2: the subject key is exact, but
+ * that the subject names one quantity with a bound is a reading of the sentence, and this tier
+ * proves a bound only in the shapes where one noun, or the action itself, is all the bound can be
+ * about. `dimension` is the bound's ({@link NumericPredicate.dimension}).
+ *
+ *   - The response's verb alone, on a TIME bound (`respond within 200 milliseconds`, `run for at
+ *     least 10 seconds`): a length of time is the action's own. On any other dimension the bound
+ *     is a condition on a quantity the sentence does not name (`sound above 90 degrees celsius`,
+ *     `open above 5 bar`: a high/low alarm and a relief valve), except after `be`, whose bound is
+ *     the system's own value (`be below 5 meters`).
+ *   - A {@link HOLDING_VERB} and ONE noun (`keep the latency below 200 milliseconds`), or, on a
+ *     time bound, any object of content words (`keep the door unlocked for at least 30 seconds`:
+ *     how long the state is held). A second content word may be the state the object is held in,
+ *     and the bound when it holds (`keep the pump stopped above 5 meters`); nothing but its sense
+ *     tells it from a compound (`keep the tank level below 3 meters`), so both are disclosed.
+ *   - A time bound its own role word introduces (`marker`: `for`, `in`, `within`, `every`, or a
+ *     governing time preposition) right after ONE noun (`expire the session after at most 30
+ *     minutes`, `retain the logs for at least 90 days`, where the noun may be a plural). That the
+ *     role word's phrase is the action's and not the noun's is a reading no closed-class word
+ *     marks (`flag calls for over 60 minutes`: calls that last an hour), recorded as an open gap
+ *     in `testing/recorded-gaps.test.ts`. A TIME bound: `dimension` is exactly `time`.
+ *     A role word before a unit no dimension recognizes, or before no unit, marks no span or
+ *     point of the action (`approve the loan for over 50000 dollars`, `waive the fee for at least
+ *     10 items`, `retain the log for at least 9 months`: which loan, which fee, and a calendar
+ *     word nothing converts), after any verb, a holding one included. After a second word, that
+ *     word may be a postmodifier the time belongs to: `close the session idle for at least 30
+ *     minutes` and `escalate the ticket unresolved after at least 3 days` each pick out a session
+ *     or a ticket, and nothing but its sense tells it from a compound (`retain audit logs for`).
+ *
+ * Every other subject has structure a bound may restrict (a finite verb, a function word, a plural,
+ * a second content word) or a verb that does not hold its object to anything, and the answer names
+ * the first such word. The caller then gives the bound its whole slot as qualifier, so it is
+ * compared with no bound not spelled identically, and `numeric-contradiction.ts` discloses the
+ * pair. What this cannot see is a sense no closed-class word marks: a plural no `-s` marks (`keep
+ * the fish above 3 meters`), or `keep` meaning retain on a singular (`keep the reading above 90
+ * degrees celsius`); the object is then read as the quantity, as it is written, a gap recorded in
+ * `testing/recorded-gaps.test.ts`.
+ */
+function unheldBy(
+  subject: string,
+  marker: TimeMarker | undefined,
+  dimension: string,
+): string | undefined {
+  // A role word marks a span or a point of the action only on a recognized time. `roleOf` gives
+  // a role to a raw unit and to a bare number too (`for over 50000 dollars`, `for at least 10
+  // items`, `in over 3 currencies`, `for over 10`), where the bound picks out the object.
+  const timeMarked = marker !== undefined && dimension === 'time'
+  const tokens = wordsOf(subject)
+  while (tokens.length > 1 && BOUND_OWN_WORD.has(tokens[tokens.length - 1]!.toLowerCase())) {
+    tokens.pop()
+  }
+  const [verb, ...object] = tokens.map((w) => w.toLowerCase())
+  if (tokens.length <= 1) {
+    if (dimension === 'time' || verb === undefined || verb === 'be') return undefined
+    return `the verb "${verb}" alone, on a bound that is not a time`
+  }
+  const finite = finiteVerbIn(subject)
+  if (finite !== undefined) return finite
+  const word = object.find((w, i) => FUNCTION_WORD.has(w) && !(i === 0 && w === 'the'))
+  if (word !== undefined) return `the word "${word}"`
+  const plural = tokens
+    .slice(1)
+    .find((w, i) => PLURAL_LOOKING.test(w) && !(timeMarked && i === object.length - 1))
+  if (plural !== undefined) return `the plural "${plural}"`
+  if (marker !== undefined && !timeMarked)
+    return `the verb "${verb!}", on a bound that is not a time`
+  const nouns = object[0] === 'the' ? object.slice(1) : object
+  const oneNoun = nouns.length <= 1
+  if (HOLDING_VERB.has(verb!)) {
+    return oneNoun || dimension === 'time'
+      ? undefined
+      : `the verb "${verb!}" and the words "${nouns.join(' ')}"`
+  }
+  if (!timeMarked) return `the verb "${verb!}"`
+  if (oneNoun) return undefined
+  return `the verb "${verb!}" and the words "${nouns.join(' ')}"`
+}
+
+/**
+ * How a time bound's own word marks it ({@link unheldBy}): a `span` of the action (a duration,
+ * `for`, or a period, `every`), or a `point` in time (a deadline, `within`/`in`, or a delay a
+ * {@link TIME_PREPOSITION} governs, `expire the idle session after at most 30 minutes`).
+ */
+type TimeMarker = 'span' | 'point'
+
+/**
+ * The {@link NumericPredicate.qualifier} of a bound at `[start, end)` in `text`, where
+ * `firstEnd` is the end of the slot's first claimed bound, if it is another one, and the
+ * {@link NumericPredicate.clause} that put the bound inside it, when one did. `dimension` is the
+ * bound's; it is `undefined` for an action's occurrence, which has no bound
+ * ({@link actionOccurrences}).
+ *
+ *   - After another bound, the qualifier is the whole text after THAT bound, this one
+ *     included. `run for at least 10 seconds when the level is above 5 meters` holds `above 5
+ *     meters` inside the first bound's clause, and read on its own it was an obligation on
+ *     `run for at least 10 seconds when the level`: two requirements with one obligation under
+ *     two level conditions were `> 5 ∧ < 3`, an error. Whatever joins the two bounds, the tier
+ *     cannot tell a condition from a second conjunct (`and keep the level below 3 meters`), so
+ *     it neither asserts the later bound unconditionally nor drops it: two such bounds meet
+ *     only under identical clauses, and a pair whose clauses differ is disclosed.
+ *   - After a {@link CONDITION_WORD} in its subject, it is that clause from the word on, this
+ *     bound included, for the same reason. A {@link TIME_PREPOSITION} right before a time bound
+ *     ({@link governsBound}) opens no clause and is skipped.
+ *   - When `unheld` names why a response's bound is not its obligation ({@link unheldBy}; for an
+ *     action's occurrence, the {@link FINITE_VERB} in its subject), it is the whole slot: where a
+ *     clause or a restriction starts is not marked, and the slot contains it.
+ *   - Otherwise, the text after the bound's unit ({@link qualifierOf}).
+ *
+ * In the first three the qualifier holds the bound's own comparator and number, so it is equal
+ * to another bound's only when the two are spelled identically, and no two different bounds in a
+ * clause are ever asserted together: a proof needs identical subjects and identical qualifiers,
+ * and the pair that has neither is disclosed.
+ */
+function qualifierAt(
+  text: string,
+  start: number,
+  end: number,
+  firstEnd: number | undefined,
+  dimension: string | undefined,
+  unheld: string | undefined,
+): { readonly qualifier?: string; readonly clause?: string } {
+  const within = (at: number, clause: string) => {
+    const qualifier = qualifierOf(text.slice(at))
+    return qualifier === undefined ? {} : { qualifier, clause }
+  }
+  if (firstEnd !== undefined && firstEnd <= start) return within(firstEnd, 'an earlier bound')
+  const subject = text.slice(0, start)
+  const condition = [...subject.matchAll(CONDITION_WORD)].find(
+    (m) => !(dimension === 'time' && governsBound(subject, m)),
+  )
+  if (condition !== undefined) {
+    const word = condition[0]
+      .replace(/^[\s,;(]+/, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+    return within(condition.index, `the connective "${word}"`)
+  }
+  if (unheld !== undefined) return within(0, unheld)
+  const qualifier = qualifierOf(text.slice(end))
+  return qualifier === undefined ? {} : { qualifier }
+}
+
+/**
+ * Whether a {@link CONDITION_WORD} match is a {@link TIME_PREPOSITION} with nothing after it
+ * but the bound: the bound's own word, not a clause (the caller asks only of a time bound). Not
+ * a guess about where a clause ends: no word stands between the preposition and the bound, so
+ * there is no clause material, and the preposition stays in both bounds' subject.
+ */
+function governsBound(subject: string, m: RegExpMatchArray): boolean {
+  const word = m[0].replace(/^[\s,;(]+/, '')
+  return TIME_PREPOSITION.test(word) && subject.slice(m.index! + m[0].length).trim() === ''
+}
 
 /** A tolerance after the number (`200 ± 5`): the bound is a range, not the point. */
 const TOLERANCE = /^\s*(?:±|\+\/-|\+-)/
@@ -527,13 +1104,13 @@ const NOT_A_UNIT: ReadonlySet<string> = new Set([
 
 /**
  * The unit phrase right after a number: a spelled-out temperature scale
- * (`degrees celsius`), a degree symbol (`°C`, `℃`), or one unit token with an
+ * (`degrees celsius`), a degree symbol (`°C`, `℃`), a percent sign, or one unit token with an
  * optional `/denominator` (`km/h`, `MB/s`) or `per <word>` suffix. The suffix is
  * part of the RAW text on purpose: `100 times per minute` and `5 times per second`
  * are two rates, and dropping the suffix made them one count.
  */
 const UNIT_PHRASE =
-  /^\s*(degrees?\s+(?:celsius|centigrade|fahrenheit|c|f)(?!\p{L})|°\s?[CF](?!\p{L})|[℃℉]|[\p{L}µ]+(?:\/\p{L}+)?)(\s+per\s+\p{L}+)?/iu
+  /^\s*(degrees?\s+(?:celsius|centigrade|fahrenheit|c|f)(?!\p{L})|°\s?[CF](?!\p{L})|[℃℉]|%|[\p{L}µ]+(?:\/\p{L}+)?)(\s+per\s+\p{L}+)?/iu
 
 /**
  * Read the unit after a number. Returns the raw spelling (whitespace collapsed,
@@ -572,14 +1149,20 @@ export function opensConvertedUnit(rest: string): boolean {
 /**
  * Normalize a number and its raw unit into the bound's dimension, base unit, and
  * exact value. An unrecognized unit is not dropped: it keys on its own raw text, so
- * `90 days` meets `30 days` and never `1 year`. Keyed on `''`, every unknown unit
+ * `9 months` meets `3 months` and never `1 year`. Keyed on `''`, every unknown unit
  * was the unitless bound, and `at least 90 days` against `at most 1 year` was
  * `>= 90 ∧ <= 1`.
  */
 function normalizeBound(
   numberText: string,
   rawUnit: string,
-): { exact: Rational; difference?: Rational; dimension: string; baseUnit: string } {
+): {
+  exact: Rational
+  difference?: Rational
+  days?: Rational
+  dimension: string
+  baseUnit: string
+} {
   const magnitude = parseRational(numberText.replace(/,/g, ''))
   if (rawUnit === '') return { exact: magnitude, dimension: '', baseUnit: '' }
   const resolved = resolveUnit(rawUnit)
@@ -587,6 +1170,14 @@ function normalizeBound(
     return { exact: magnitude, dimension: RAW_UNIT_DIMENSION, baseUnit: rawUnit }
   }
   const scaled = mulR(magnitude, parseRational(resolved.scale.factor))
+  if (resolved.scale.days !== undefined) {
+    return {
+      exact: scaled,
+      days: mulR(magnitude, parseRational(resolved.scale.days)),
+      dimension: resolved.dimension,
+      baseUnit: resolved.base,
+    }
+  }
   if (resolved.scale.offset === undefined) {
     return { exact: scaled, dimension: resolved.dimension, baseUnit: resolved.base }
   }
@@ -651,7 +1242,7 @@ export function opposedComparators(a: NumericComparator, b: NumericComparator): 
  * keep naming only the first. Comparability is a property of a PAIR of predicates,
  * so the unit belongs in the comparison partition, not the identity: see
  * {@link unitClassOf}, which `numeric-contradiction.ts` (`comparisonKey`) groups on
- * so a unitless bound, a `days` bound, and an `ms` bound are never compared with
+ * so a unitless bound, a `months` bound, and an `ms` bound are never compared with
  * one another — and which `quantity-alias.ts` requires to agree before it pairs.
  * Folding the unit in here would also rename the `quantity` in every emitted
  * `evidence.numeric` block and every SMT-LIB2 Real const, changing observable
@@ -662,7 +1253,10 @@ function quantityKey(
   label: string,
   quantityAliases?: ReadonlyMap<string, string>,
 ): string {
-  const sys = systemName.trim().toLowerCase().replace(/\s+/g, '_')
+  // The ATOM scope, so two bounds share a quantity exactly when their responses share a system:
+  // "access-controller" and "access controller" are one system to every atom, and were two
+  // quantities to a key that only lower-cased and joined spaces.
+  const sys = normalizeScope(systemName)
   // Canonicalize the label through the alias map first (keyed on the same
   // `normalize` form the glossary index uses), then fall through to the
   // existing atom-style normalization so a non-aliased label keys exactly as
@@ -672,10 +1266,18 @@ function quantityKey(
     .trim()
     .toLowerCase()
     .replace(/^the\s+/, '')
-    .replace(/[^\p{L}\p{N}]+/gu, '_')
+    .replace(KEY_PUNCTUATION, '_')
     .replace(/^_+|_+$/g, '')
   return `sys__${sys}__qty__${q}`
 }
+
+/**
+ * What {@link quantityKey} folds to `_`: every run of characters that are neither letters nor
+ * digits, except a {@link DIGIT_SEPARATOR}, which stays inside its number. `zone 1,500 door` and
+ * `zone 1.500 door` are zones 1500 and 1.5 to this tier's own NUMBER reader; with the separator
+ * deleted both keyed `zone_1_500_door`, one Real, and two zones' bounds were one proved conflict.
+ */
+const KEY_PUNCTUATION = new RegExp(String.raw`(?:(?!${DIGIT_SEPARATOR})[^\p{L}\p{N}])+`, 'gu')
 
 /**
  * The quantity subject of a bound: its {@link NumericPredicate.label}, and where each of
@@ -717,6 +1319,13 @@ interface Subject {
  * — but the monotonicity argument above cannot be used to wave a label-width
  * change through while a glossary is in play. Both directions are pinned as
  * observed behavior in `app/operations/check.test.ts`.
+ *
+ * An identical label is an exact key, but that the label NAMES ONE QUANTITY THE BOUND HOLDS is a
+ * second claim, about the sentence: `sound the alarm for readings above 90 degrees celsius` and
+ * `... below 5 degrees celsius` share this label and hold together, because the bound picks out
+ * readings. A response's bound enters a proof on its label only in the shapes {@link unheldBy}
+ * reads off closed-class words; any other carries its whole slot as its qualifier, and its pairs
+ * are disclosed (spec 007 C1/C2).
  */
 function subjectBefore(text: string, comparatorStart: number): Subject | null {
   const before = text.slice(0, comparatorStart)
@@ -771,6 +1380,11 @@ function subjectBefore(text: string, comparatorStart: number): Subject | null {
   // joined on single spaces and the pattern needs whitespace after the stopword.
   const kept = label === phrase ? words : words.slice(1)
   return { label, words: kept.map((w) => w.span) }
+}
+
+/** The {@link NumericPredicate.label} {@link subjectBefore} reads, without its word spans. */
+function labelBefore(text: string, comparatorStart: number): string | null {
+  return subjectBefore(text, comparatorStart)?.label ?? null
 }
 
 /** The comparator of `NOT (x <c> v)`: exact, because the comparison is atomic. */
@@ -867,12 +1481,19 @@ function roleOf(
   // `within` before another comparator is the last word of the LABEL, so the key
   // already names the deadline; see {@link BoundRole}.
   if (prev === 'within') return { role: '', invert: false }
-  const timeLike = dimension === 'time' || dimension === RAW_UNIT_DIMENSION || dimension === ''
-  if (!timeLike) return { role: '', invert: false }
+  if (!timeLike(dimension)) return { role: '', invert: false }
   if (phrase === 'within' || prev === 'in') return { role: 'deadline', invert: false }
   if (prev === 'for') return { role: 'duration', invert: false }
   if (prev === 'every') return { role: 'period', invert: false }
   return { role: '', invert: false }
+}
+
+/**
+ * Whether a bound on `dimension` may be a time, and so carry a time role: a recognized time,
+ * a unit no dimension recognizes (`months`), or no unit at all.
+ */
+function timeLike(dimension: string): boolean {
+  return dimension === 'time' || dimension === RAW_UNIT_DIMENSION || dimension === ''
 }
 
 /** The whitespace-delimited word ending at `end`, lowercased, with where it starts. */
@@ -887,6 +1508,10 @@ function precedingWord(text: string, end: number): { word: string; start: number
  * `shall not keep the door unlocked above 30 seconds` bounds the door at `<= 30 s`.
  * Ignoring the flag asserted `> 30 s`, the opposite obligation, and proved it
  * against `below 10 seconds` at error severity.
+ *
+ * The negated comparison holds only where the action happens, so the predicate carries
+ * {@link NumericPredicate.negated}: `NOT (A ∧ x > 30 s)` is `A → x <= 30 s`, and two
+ * prohibitions on one action are jointly satisfied by never doing it.
  *
  * The negation is exact only for ONE atomic comparison. `NOT (A ∧ B)` is `¬A ∨ ¬B`,
  * not `¬A ∧ ¬B`, and a response that says anything besides its bound (a second
@@ -918,6 +1543,7 @@ function negateResponse(
       predicate: {
         ...predicate,
         comparator: NEGATE[predicate.comparator],
+        negated: true,
         sourceText: `not ${predicate.sourceText}`,
       },
     },
@@ -977,7 +1603,17 @@ function readBounds(
   if (negated && slot !== 'resp') {
     throw new RangeError('numeric: only a response is negated by its modal')
   }
-  const out: SubjectBound[] = []
+  // Each bound with the span it was read from, so its qualifier can be settled once every
+  // bound in the slot is claimed (`qualifierAt`), and with where its subject words and its
+  // number sit, for R6 (`SubjectBound`).
+  const out: Array<{
+    pred: Omit<NumericPredicate, 'qualifier'>
+    start: number
+    end: number
+    unheld: string | undefined
+    subjectWords: SubjectBound['subjectWords']
+    numberSpan: SubjectBound['numberSpan']
+  }> = []
   const lower = text.toLowerCase()
   // Comparator phrases that introduced a bound this function then declined to read.
   // A negated response is read only when it carries exactly one bound and nothing
@@ -1066,16 +1702,17 @@ function readBounds(
       }
       const { label } = subject
 
-      const { exact, difference, dimension, baseUnit } = bound
+      const { exact, difference, days, dimension, baseUnit } = bound
 
       out.push({
-        predicate: {
+        pred: {
           quantity: quantityKey(systemName, label, quantityAliases),
           label,
           comparator: cmpr,
           value: toDisplayNumber(exact),
           exact,
           ...(difference !== undefined ? { difference } : {}),
+          ...(days !== undefined ? { days } : {}),
           dimension,
           baseUnit,
           role: reading.role,
@@ -1087,20 +1724,148 @@ function readBounds(
           idx + phrase.length + m[0].length - m[1]!.length,
           idx + phrase.length + m[0].length,
         ],
+        start: idx,
+        end,
+        // A guard's subject is predicated by its own copula: the guard, not an obligation.
+        unheld:
+          slot === 'resp'
+            ? unheldBy(
+                text.slice(0, labelEnd),
+                reading.role === 'duration' || reading.role === 'period'
+                  ? 'span'
+                  : reading.role === 'deadline' ||
+                      (timeLike(dimension) &&
+                        prev !== null &&
+                        (prev.word === 'within' || TIME_PREPOSITION.test(prev.word)))
+                    ? 'point'
+                    : undefined,
+                dimension,
+              )
+            : undefined,
       })
     }
   }
 
-  const bounds = dedupe(out)
-  if (!negated) return bounds
-  return negateResponse(text, bounds, declined, claimed)
+  // The first bound the slot claimed, declined ones included: a bound after a toleranced
+  // `30 ± 5 ms` is in that bound's clause as much as one after a read bound is.
+  const first = claimed.reduce<readonly [number, number] | undefined>(
+    (min, span) => (min === undefined || span[0] < min[0] ? span : min),
+    undefined,
+  )
+  const preds = dedupe(
+    out.map(({ pred, start, end, unheld, subjectWords, numberSpan }): SubjectBound => {
+      const { qualifier, clause } = qualifierAt(
+        text,
+        start,
+        end,
+        first?.[0] === start ? undefined : first?.[1],
+        pred.dimension,
+        unheld,
+      )
+      if (qualifier === undefined) return { predicate: pred, subjectWords, numberSpan }
+      // An unmarked time bound before other text may be a delay from its event, not a
+      // magnitude of the response ({@link BoundRole} `anchored`).
+      const anchored = pred.role === '' && timeLike(pred.dimension)
+      return {
+        predicate: {
+          ...pred,
+          ...(anchored ? { role: 'anchored' as const } : {}),
+          qualifier,
+          ...(clause !== undefined ? { clause } : {}),
+        },
+        subjectWords,
+        numberSpan,
+      }
+    }),
+  )
+  if (!negated) return preds
+  return negateResponse(text, preds, declined, claimed)
+}
+
+/**
+ * Whether a response of `systemName` MAY perform the action a bound on `quantity` (read from
+ * `label`) bounds, though no key of it is that quantity: the response is the same system's, and
+ * holds the label's words in order, articles aside. `immediately keep the door unlocked`, `also
+ * keep the door unlocked`, `continue to keep the door unlocked`, and `keep door unlocked` each
+ * hold `keep the door unlocked`, and each does it; {@link actionOccurrences} keys only a
+ * response's prefixes, so none of them was a performer, and two prohibitions that together
+ * forbid the action certified against it. This is a disclosure test only
+ * (`numeric-contradiction.ts` `uncomparedProhibitionSets`): a response it admits is never
+ * asserted in a cell or proved against, so admitting one that does not do the action costs a
+ * disclosure, and `keep the door locked` or `log the entry` is not admitted at all.
+ */
+export function mayPerform(
+  text: string,
+  systemName: string,
+  quantity: string,
+  label: string,
+): boolean {
+  if (!quantity.startsWith(quantityKey(systemName, ''))) return false
+  const words = (s: string) =>
+    s
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((w) => w !== '' && w !== 'the' && w !== 'a' && w !== 'an')
+  const want = words(label)
+  if (want.length === 0) return false
+  let i = 0
+  for (const w of words(text)) {
+    if (w === want[i]) i += 1
+    if (i === want.length) return true
+  }
+  return false
+}
+
+/** An action a response with no bound performs: its quantity key, and the text after it. */
+export interface ActionOccurrence {
+  readonly quantity: string
+  /** The text after the action, read as a bound's {@link NumericPredicate.qualifier} is. */
+  readonly qualifier?: string
+}
+
+/**
+ * The actions a response with NO bound performs, each keyed by the rule a bound's subject is:
+ * {@link labelBefore} at the place a bound would stand, then {@link quantityKey}, with the text
+ * after that place as its qualifier by {@link qualifierAt}. Nothing marks where the action ends
+ * and the rest begins, so every word end is such a place, and each distinct key is kept once,
+ * with the shortest qualifier. The whole response is one of them, with no qualifier.
+ *
+ * `keep the door unlocked` does the action `shall not keep the door unlocked above 30 seconds`
+ * bounds only IF it happens ({@link NumericPredicate.negated}), so it asserts that quantity's
+ * occurrence as a bound obligation does. So does `keep the door unlocked until the guard
+ * arrives`, whose subject is the same, and whose `until the guard arrives` is the qualifier a
+ * bound in that place would carry; keyed on the whole response, it named a quantity no
+ * prohibition bounds, and two opposed ones certified against it. A qualified occurrence is never
+ * asserted in a cell without that same qualifier (`numeric-contradiction.ts`), so a key this
+ * reads too short (`keep the door unlocked cover`) can only cost a disclosure. The caller passes
+ * only a response it read no bound out of, and never a prohibition's, which does not do its
+ * action.
+ */
+export function actionOccurrences(
+  text: string,
+  systemName: string,
+  quantityAliases?: ReadonlyMap<string, string>,
+): ActionOccurrence[] {
+  const ends = [...text.matchAll(/\S+/gu)].map((m) => m.index + m[0].length)
+  const out = new Map<string, ActionOccurrence>()
+  for (const at of ends.reverse()) {
+    const label = labelBefore(text, at)
+    if (label === null) continue
+    const quantity = quantityKey(systemName, label, quantityAliases)
+    if (out.has(quantity)) continue
+    const subject = text.slice(0, at)
+    const { qualifier } = qualifierAt(text, at, at, undefined, undefined, finiteVerbIn(subject))
+    out.set(quantity, qualifier === undefined ? { quantity } : { quantity, qualifier })
+  }
+  return [...out.values()]
 }
 
 /**
  * Drop exact-duplicate predicates.
  *
  * The key names every field of the record that carries a claim — slot, quantity,
- * comparator, exact value, difference reading, dimension, base unit, role — so two
+ * comparator, exact value, difference reading, civil days, dimension, base unit, role,
+ * negation, qualifier, clause — so two
  * predicates that differ anywhere both survive. `sourceText` is excluded deliberately: it
  * is the audit substring, and two spellings of one bound in one slot are one claim.
  *
@@ -1121,9 +1886,13 @@ function dedupe(bounds: SubjectBound[]): SubjectBound[] {
       p.comparator,
       `${p.exact.numerator}/${p.exact.denominator}`,
       p.difference === undefined ? '' : `${p.difference.numerator}/${p.difference.denominator}`,
+      p.days === undefined ? '' : `${p.days.numerator}/${p.days.denominator}`,
       p.dimension,
       p.baseUnit,
       p.role,
+      p.negated === true,
+      p.qualifier ?? '',
+      p.clause ?? '',
     ])
     if (seen.has(key)) continue
     seen.add(key)

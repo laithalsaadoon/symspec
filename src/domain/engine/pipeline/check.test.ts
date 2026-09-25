@@ -394,9 +394,9 @@ const guardVsResponseBoundDoc = () => {
   return {
     requirements: {
       [ID_A]: stateReq(ID_A, 'raise the backlog alarm'),
-      [ID_B]: stateReq(ID_B, 'hold the flush latency below 100 ms'),
+      [ID_B]: stateReq(ID_B, 'keep the flush latency below 100 ms'),
     },
-    glossary: [{ canonical: 'flush latency', aliases: ['hold the flush latency'] }],
+    glossary: [{ canonical: 'flush latency', aliases: ['keep the flush latency'] }],
     antonyms: [],
     waivers: [],
     terms: [],

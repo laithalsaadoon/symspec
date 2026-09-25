@@ -53,7 +53,13 @@ import {
   type AntonymEntry,
   buildAntonymIndexWithDoc,
 } from '../engine/formal/antonyms.ts'
-import { GUARD_KINDS, glossaryIndex, normalize, renderAtom } from '../engine/formal/atomize.ts'
+import {
+  GUARD_KINDS,
+  glossaryIndex,
+  normalize,
+  normalizeScope,
+  renderAtom,
+} from '../engine/formal/atomize.ts'
 import { contextAtomsOf, liveIn, planContextGroups } from '../engine/formal/contradiction.ts'
 import type { Embedder } from '../engine/formal/embed.ts'
 import type { EncodedRequirement } from '../engine/formal/encode.ts'
@@ -622,12 +628,12 @@ interface Node {
   /**
    * `normalize(phrase)` — the AUTHOR'S wording, and the key `glossaryIndex` looks up.
    *
-   * Deliberately NOT the atom name's body. The atom body is post-canonicalization: an
-   * antonym class is re-based on its lexicographically smallest member, so "seal the
-   * vault" atomizes through the seed class `seal—unseal—expose—conceal` and arrives as
-   * `conceal_the_vault`. Reading the head off the atom would tell an author to run
-   * `symspec antonym close conceal` — naming a verb that appears nowhere in their
-   * document. `findOppositionCandidates` reads the raw response for the same reason.
+   * Deliberately NOT the atom name's body. The atom body is post-canonicalization — the
+   * glossary, terms and head de-inflection have all run — so reading a head off the atom
+   * could name a verb or phrase that appears nowhere in the author's document. `check`'s
+   * `findOppositionCandidates` reads the raw response FIRST for the same reason; it also reads
+   * the atom body, but only to demote, and its message then says the words are the committed
+   * vocabulary's. This report proposes and does not demote, so it reads the author's words only.
    */
   readonly body: string
   /**
@@ -687,7 +693,9 @@ const antonymIndexOf = (doc: Doc): ReadonlyMap<string, AntonymEntry> => {
  * corpus used to re-encode the document a second time just to count requirements.
  */
 const nodesOf = (doc: Doc): NodeScan => {
-  const systemById = new Map(listRequirements(doc).map((r) => [r.id, normalize(r.systemName)]))
+  // A node's system is its atoms' scope, so a class spans exactly the spellings the solver reads
+  // as one system ("Pump 5 MW" / "pump 5 mW": `normalize` keeps a unit's case, the scope folds it).
+  const systemById = new Map(listRequirements(doc).map((r) => [r.id, normalizeScope(r.systemName)]))
   type Bucket = {
     system: string
     phrases: Set<string>
@@ -1371,9 +1379,11 @@ export const buildGlossaryPlan = async (
 
   // ---- Document-scale oppositions -----------------------------------------
   //
-  // Every signalled pair the sweep saw, gated exactly the way `findOppositionCandidates`
-  // gates: a morphological pair is admitted regardless of cosine, everything else must clear
-  // the topical floor. Cosine is disclosed on the record and decides nothing.
+  // Every signalled pair the sweep saw, gated the way `findOppositionCandidates` gates a
+  // morphological pair: admitted regardless of cosine, while everything else must clear the
+  // topical floor. (`check`'s candidate tier also admits two heads of one antonym class
+  // regardless of cosine, because it demotes on them; this report does not.) Cosine is
+  // disclosed on the record and decides nothing.
   const oppositions: OppositionPair[] = []
   for (const [pairKey, hit] of signals) {
     const [left, right] = pairKey.split('|')

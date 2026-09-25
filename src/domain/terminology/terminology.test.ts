@@ -172,6 +172,27 @@ describe('FND_TERM_INCONSISTENT', () => {
     expect(drift[0]?.suggestion).toContain('symspec term "<canonical>" "token" --remove')
   })
 
+  it('groups two spellings of one system as the one scope its atoms share', async () => {
+    // "Auth Service" and "auth service" are one atom scope, so the term drifts inside ONE
+    // system. Grouped on the raw name, the two sites sat in two groups of one and the drift
+    // was never compared.
+    const doc = docOf(
+      [
+        req('Auth Service', {
+          trigger: 'the token expires',
+          systemResponse: 'revoke the active session',
+        }),
+        req('auth service', {
+          trigger: 'the player places the token on the board',
+          systemResponse: 'advance the turn',
+        }),
+      ],
+      { terms: [{ canonical: 'token', aliases: [] }] },
+    )
+    const report = await runTerminology(doc, angleEmbedder({ [AUTH_SLOTS]: 0, [GAME_SLOTS]: 55 }))
+    expect(report.findings.filter((f) => f.code === 'FND_TERM_INCONSISTENT')).toHaveLength(1)
+  })
+
   it('stays silent when the same term is used coherently', async () => {
     const doc = docOf(
       [

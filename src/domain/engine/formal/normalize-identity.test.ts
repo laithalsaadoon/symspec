@@ -82,6 +82,31 @@ describe('AC-2-4 — each reproducer pair lands on two distinct atoms', () => {
     expect(normalize('−5 °C')).toBe(normalize('-5 °C'))
   })
 
+  it('every dash that leads a number is the same minus sign', () => {
+    // A word processor substitutes an en dash for a typed leading minus, and CJK input methods
+    // produce the fullwidth hyphen-minus. Deleted as punctuation, `–20 °C` read as `20 °C`, so two
+    // exclusive guards shared one atom.
+    for (const dash of [
+      '‐', // hyphen
+      '‑', // non-breaking hyphen
+      '‒', // figure dash
+      '–', // en dash
+      '—', // em dash
+      '―', // horizontal bar
+      '﹣', // small hyphen-minus
+      '－', // fullwidth hyphen-minus
+    ]) {
+      const code = `U+${dash.codePointAt(0)?.toString(16).toUpperCase()}`
+      expect(normalize(`${dash}20 °C`), code).toBe(normalize('-20 °C'))
+      expect(guard(`the temperature reaches ${dash}20 °C`), code).not.toBe(
+        guard('the temperature reaches 20 °C'),
+      )
+      // Still a SIGN only: between two numbers or inside a word it stays a separator.
+      expect(normalize(`10${dash}20`), code).toBe('10_20')
+      expect(normalize(`de${dash}energize`), code).toBe('de_energize')
+    }
+  })
+
   it('unit-token case', () => {
     expect(guard('the link carries 100 Mbps')).not.toBe(guard('the link carries 100 MBps'))
     expect(guard('the link carries 100Mbps')).not.toBe(guard('the link carries 100MBps'))
@@ -159,6 +184,21 @@ describe('AC-2-4 — what normalization still does', () => {
       '🔴 light ❤️',
     ]) {
       expect(normalize(normalize(text))).toBe(normalize(text))
+    }
+  })
+})
+
+describe('AC-2-4 — a dash-signed guard is not the unsigned guard', () => {
+  it('"reaches –20 degrees celsius" and "reaches 20 degrees celsius" are two conditions', async () => {
+    for (const dash of ['–', '－']) {
+      const report = await runCheck(
+        await docOf([
+          `When the ambient temperature reaches ${dash}20 degrees celsius, the heater controller shall start the heater.`,
+          'When the ambient temperature reaches 20 degrees celsius, the heater controller shall not start the heater.',
+        ]),
+      )
+      const errors = report.findings.filter((f) => f.severity === 'error').map((f) => f.code)
+      expect(errors, `U+${dash.codePointAt(0)?.toString(16)}`).toEqual([])
     }
   })
 })
@@ -296,9 +336,10 @@ describe('AC-2-4 — a thousands separator never proves a conflict the numbers d
       'The api gateway shall respond within 1.500 ms.',
       'The api gateway shall not respond within 1,500 ms.',
     ],
+    // `keep` and one noun: the shape the numeric tier proves a non-time bound in (`unheldBy`).
     [
-      'The furnace shall hold the chamber temperature above 1,020 °C.',
-      'The furnace shall not hold the chamber temperature above 1.020 °C.',
+      'The furnace shall keep the temperature above 1,020 °C.',
+      'The furnace shall not keep the temperature above 1.020 °C.',
     ],
   ])('"%s" / "%s": the real clash is proved on the numbers', async (a, b) => {
     const report = await checkRendered([a, b])

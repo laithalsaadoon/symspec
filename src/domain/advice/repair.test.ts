@@ -465,13 +465,17 @@ describe('a pair demotion repair is scoped to its own pair', () => {
     expect(suppresses(waive, brake)).toBe(false)
   })
 
-  // The reviewed-waiver discharges bind the FINDING, not one of its ids: a ref-scoped waiver
-  // still discharges every same-code finding naming the ref — the relational cluster a third
-  // requirement joined, or the same pair after its partner was rewritten.
+  // Every pair discharge binds the FINDING, not one of its ids: a ref-scoped waiver still
+  // discharges every same-code finding naming the ref — the relational cluster a third
+  // requirement joined, the opposition candidate a third requirement forms with one side (a
+  // pair 669c0e9 PROVED), or the same pair after its partner was rewritten.
   const REVIEWED: readonly [CoverageDemotion['reason'], string][] = [
     ['relational-reasoning-not-attempted', 'FND_RELATIONAL_UNCHECKED'],
     ['numeric-bounds-uncompared', 'FND_NUMERIC_UNCOMPARED'],
     ['number-spelling-candidate', 'FND_NUMBER_SPELLING_CANDIDATE'],
+    ['open-opposition-candidate', 'FND_OPPOSITION_CANDIDATE'],
+    ['opposite-polarity-near-duplicate', 'FND_SIMILAR_SEMANTIC'],
+    ['quantity-alias-candidate', 'FND_QUANTITY_ALIAS_CANDIDATE'],
   ]
 
   it.each(REVIEWED)('%s: the op names the exact set and its content hash', (reason, code) => {
@@ -514,17 +518,41 @@ describe('a pair demotion repair is scoped to its own pair', () => {
     expect(waive).not.toHaveProperty('contentHash')
   })
 
-  it('scopes to the id the finding message names (the higher one)', () => {
-    const door = pairFinding('FND_SIMILAR_SEMANTIC', ['door-lo', 'door-hi'], 'merge')
+  it.each(REVIEWED)('%s: in a four-cycle, each op discharges its own pair only', (reason, code) => {
+    // Every id is in two pairs, so no one-requirement scope is exact: the old pick fell back to a
+    // shared id and one triage discharged a second pair.
+    const cycle = [
+      pairFinding(code, ['a', 'b'], 'ab'),
+      pairFinding(code, ['c', 'b'], 'cb'),
+      pairFinding(code, ['c', 'd'], 'cd'),
+      pairFinding(code, ['a', 'd'], 'ad'),
+    ]
+    for (const own of cycle) {
+      const repair = repairForDemotion(
+        { reason, requirementIds: [...own.requirementIds], action: 'x' } as CoverageDemotion,
+        { ...CONTEXT, findings: cycle },
+      )
+      const waive = repair.ops[0] as { code?: string; refs?: readonly string[] }
+      expect(cycle.filter((f) => suppresses(waive, f))).toEqual([own])
+    }
+  })
+
+  it("carries no one-requirement `symspec waive` a finding's message spells", () => {
+    const pair = pairFinding(
+      'FND_SIMILAR_SEMANTIC',
+      ['a', 'b'],
+      'run `symspec glossary add "one" "two"`, or `symspec waive add FND_SIMILAR_SEMANTIC --ref b --reason "…"`',
+    )
     const repair = repairForDemotion(
       {
         reason: 'opposite-polarity-near-duplicate',
-        requirementIds: ['door-lo', 'door-hi'],
+        requirementIds: ['a', 'b'],
         action: 'x',
       } as CoverageDemotion,
-      { ...CONTEXT, findings: [door] },
+      { ...CONTEXT, findings: [pair] },
     )
-    expect(repair.ops).toEqual([expect.objectContaining({ ref: 'door-hi' })])
+    expect(repair.commands).toContain('symspec glossary "one" "two"')
+    expect(repair.commands.some((c) => c.startsWith('symspec waive'))).toBe(false)
   })
 
   it('avoids an id a SIBLING pair shares, when the pair has one of its own', () => {
@@ -628,6 +656,12 @@ describe('AC-3-6: the near-duplicate repair, followed verbatim, surfaces the con
       (d) => d.reason === 'opposite-polarity-near-duplicate',
     )
     expect(demotion?.requirementIds).toEqual(['R1', 'R2'])
+    // Neither the message nor the action hands out a `symspec waive`: it scopes to one
+    // requirement at most, and that discharges every near-duplicate naming it.
+    const similar = before.findings.filter((f) => f.code === 'FND_SIMILAR_SEMANTIC')
+    expect(similar.length).toBeGreaterThan(0)
+    for (const f of similar) expect(f.message).not.toMatch(/symspec waive/)
+    expect(demotion?.action).not.toMatch(/symspec waive/)
     const repair = repairForDemotion(demotion as CoverageDemotion, {
       ...CONTEXT,
       findings: before.findings,

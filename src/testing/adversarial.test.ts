@@ -18,8 +18,8 @@
  *
  * ## The scoreboard
  *
- * The scoreboard is 15 over the 12 pinned rounds in `../adversarial/eval-rounds.ts`: 9 PROOF
- * cases (a planted contradiction that must fire and localize every culprit), 3 ABSTAIN cases
+ * The scoreboard is 15 over the 12 pinned rounds in `../adversarial/eval-rounds.ts`: 8 PROOF
+ * cases (a planted contradiction that must fire and localize every culprit), 4 ABSTAIN cases
  * (no conflict is reachable by a sound extractor, so the tool must not fabricate one), and 3
  * whole-set claims — the win condition unreachable on every round, every demotion actionable,
  * and the convergence gradient coherent with the report beside it. A 16th case pins the
@@ -177,16 +177,17 @@ describe('ADVERSARIAL — the greenfield holds the v4 15/15 scoreboard', () => {
   const proofCases = cases.filter((c) => c.expectedCodes.length > 0)
   const abstainCases = cases.filter((c) => c.expectedCodes.length === 0)
 
-  it('has the 12 pinned rounds, split 9 proof / 3 abstain', () => {
+  it('has the 12 pinned rounds, split 8 proof / 4 abstain', () => {
     // Pins the SHAPE of the scoreboard, so a fixture quietly changing category (or
-    // disappearing) is a failure rather than a smaller green run. 9 + 3 + the 3
-    // whole-set claims below is the 15.
+    // disappearing) is a failure rather than a smaller green run. 8 + 4 + the 3
+    // whole-set claims below is the 15. The exclude-from/include-in round moved from proof to
+    // abstain on purpose: no verb governs a locative (spec 007 demote-not-prove C1).
     expect(cases).toHaveLength(12)
-    expect(proofCases).toHaveLength(9)
-    expect(abstainCases).toHaveLength(3)
+    expect(proofCases).toHaveLength(8)
+    expect(abstainCases).toHaveLength(4)
   })
 
-  // ---- The 9 PROOF cases -------------------------------------------------
+  // ---- The 8 PROOF cases -------------------------------------------------
   it.each(
     proofCases.map((c) => [c.id, c] as const),
   )('PROOF %s — the planted conflict fires AND localizes', async (_id, testCase) => {
@@ -209,7 +210,7 @@ describe('ADVERSARIAL — the greenfield holds the v4 15/15 scoreboard', () => {
     expect(payload.counts.error).toBeGreaterThan(0)
   })
 
-  // ---- The 3 ABSTAIN cases ----------------------------------------------
+  // ---- The 4 ABSTAIN cases ----------------------------------------------
   it.each(
     abstainCases.map((c) => [c.id, c] as const),
   )('ABSTAIN %s — does not FABRICATE, whichever way it answers', async (_id, testCase) => {
@@ -226,7 +227,7 @@ describe('ADVERSARIAL — the greenfield holds the v4 15/15 scoreboard', () => {
     // What is genuinely forbidden is a conflict the tool cannot justify — the cardinal
     // sin under sound-modulo-atomization, and worse than the miss it would replace.
     if (contradictions.length === 0) {
-      // Abstained: then it must DISCLOSE, not certify. This is the branch all three
+      // Abstained: then it must DISCLOSE, not certify. This is the branch all four
       // rounds take today.
       expect(payload.verified, testCase.note).toBe(false)
       expect(payload.strictGate).toBe('fail')

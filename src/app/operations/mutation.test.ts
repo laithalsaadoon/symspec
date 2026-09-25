@@ -431,6 +431,65 @@ describe('the injected fold options reach the fold', () => {
     ])
   })
 
+  it('REFUSES a glossary alias that names a contrary of its entry, using the real tables', async () => {
+    // "close the door" as an alias of "open the door" says they are one action, and the seed
+    // pair open/close says they cannot both happen: together, neither ever happens. Accepted,
+    // it turned FND_CONTRADICTION into `verified: true`. The same merge as a PROPOSAL was already
+    // withheld (AC-3-6); the committed op now refuses it too, on every path that writes one.
+    for (const [canonical, alias] of [
+      ['open the door', 'close the door'],
+      ['Close the door', 'open the door'],
+      ['grant access', 'revoke access'],
+    ] as const) {
+      const fs = fresh()
+      const result = await run(GLOSSARY, { canonical, alias, file: 'doc.json' }, fs)
+      expect(result._tag, `${canonical} / ${alias}`).toBe('Failure')
+      if (result._tag !== 'Failure') return
+      expect(result.failure._tag).toBe('ERR_USAGE')
+      expect(result.failure.error).toContain('contrar')
+      expect(fs.document.glossary).toEqual([])
+    }
+    // The second alias that brings the other side into one entry is refused as well.
+    const fs = fresh()
+    await ok(
+      GLOSSARY,
+      { canonical: 'operate the door', alias: 'open the door', file: 'doc.json' },
+      fs,
+    )
+    const second = await run(
+      GLOSSARY,
+      { canonical: 'operate the door', alias: 'close the door', file: 'doc.json' },
+      fs,
+    )
+    expect(second._tag).toBe('Failure')
+    expect(fs.document.glossary).toEqual([
+      { canonical: 'operate the door', aliases: ['open the door'] },
+    ])
+    // And through `apply`, which folds the same op.
+    const batch = fresh()
+    const data = await ok(
+      APPLY,
+      { file: 'doc.json' },
+      batch,
+      '{"op":"glossary","canonical":"open the door","alias":"close the door"}\n',
+    )
+    expect(data.written).toBe(false)
+    expect(data.results[0]?.code).toBe('ERR_USAGE')
+    expect(batch.document.glossary).toEqual([])
+  })
+
+  it('COMMITS a glossary alias that is no contrary of its entry', async () => {
+    const fs = fresh()
+    await ok(
+      GLOSSARY,
+      { canonical: 'open the door', alias: 'open the hatch', file: 'doc.json' },
+      fs,
+    )
+    expect(fs.document.glossary).toEqual([
+      { canonical: 'open the door', aliases: ['open the hatch'] },
+    ])
+  })
+
   it('REFUSES an inconsistent antonym pair, using the real union-find', async () => {
     // The false-contradiction guard, running against the transplanted
     // `buildAntonymIndexWithDoc` rather than a stub. `grant`/`revoke` are already polar
