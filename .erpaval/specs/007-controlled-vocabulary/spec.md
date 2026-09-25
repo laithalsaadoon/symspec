@@ -284,6 +284,11 @@ same pair for "sound the chime". Today: `verified: true`, `--strict` exit 0. Req
 `verified: false`, `--strict` exit 3.
 Sabotage: count atom-sharing as participation; the reproducer goes red.
 Note: this is the detect-and-demote bridge. Story 6 replaces it with a decision.
+Note (with AC-2-1): "constrain the same response atom at opposite polarity" reads as the AC-3-6
+"would conflict" rule, exactly: one atom at opposite polarity, or two contraries (opposite sides
+of one opposition key) both asserted. So "open the door" under the button press and "close the
+door" while the train is moving demote, and restating "shall not open" as the stronger "shall
+close" never clears the demotion. Both negated ("do neither") is consistent and does not demote.
 
 AC-3-3 [P]
 Ubiquitous: Trigger and precondition slots shall resolve into one guard namespace, so "When the

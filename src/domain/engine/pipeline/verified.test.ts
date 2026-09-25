@@ -477,6 +477,121 @@ describe('AC-3-2: opposite polarity on one response atom under guards no checked
   })
 })
 
+/**
+ * AC-3-2 read in the AC-2-1 contrary model. An antonym pair is two DISTINCT atoms under the
+ * axiom `¬(A ∧ B)`, so "open the door" under the button press and "close the door" while the
+ * train is moving share no atom and neither is negated — yet they would conflict wherever both
+ * guards hold, exactly as the `shall not open` form does. "Would conflict" is the AC-3-6 rule
+ * (`wouldConflict` in `formal/semantic.ts`): one atom at opposite polarity, or both asserted on
+ * opposite sides of one opposition key, and "do neither" (both negated) is consistent.
+ */
+describe('AC-3-2: contraries under guards no checked group joins (AC-2-1)', () => {
+  /** The door/train document with `second` as the moving-train response. */
+  const contraryDoc = (
+    second: string,
+    o: { negated?: boolean; firstNegated?: boolean; antonyms?: readonly object[] } = {},
+  ) => {
+    const doc = docOf([
+      {
+        id: D1,
+        systemName: 'door controller',
+        trigger: PRESS,
+        systemResponse: 'open the door',
+        negated: o.firstNegated === true,
+      },
+      {
+        id: D2,
+        systemName: 'door controller',
+        preCondition: MOVING,
+        systemResponse: second,
+        negated: o.negated === true,
+      },
+      { id: C1, systemName: 'door controller', trigger: PRESS, systemResponse: 'sound the chime' },
+      {
+        id: C2,
+        systemName: 'door controller',
+        preCondition: MOVING,
+        systemResponse: 'show the warning light',
+      },
+    ]) as unknown as { antonyms: unknown[] }
+    doc.antonyms = [...(o.antonyms ?? [])]
+    return doc as never
+  }
+
+  it('demotes a SEEDED contrary pair ("open" / "close"), naming both ids and the union of contexts', async () => {
+    const report = await runCheck(contraryDoc('close the door'), { ...SEMANTIC(), strict: true })
+    // Premise: nothing is proven and every requirement participates through its sibling, so
+    // without the pair demotion this is the `verified: true` of the review.
+    expect(report.findings.filter((f) => f.severity === 'error')).toEqual([])
+    expect(report.coverage.requirements.every((r) => r.participates)).toBe(true)
+    const demotions = conditional(report)
+    expect(demotions.map((d) => d.requirementIds)).toEqual([[D1, D2]])
+    const [d] = demotions
+    expect(d?.action).toContain(PRESS)
+    expect(d?.action).toContain(MOVING)
+    expect(d?.action).toContain('"open the door"')
+    expect(d?.action).toContain('"close the door"')
+    // Negative guard: a contrary pair is not "the same response at opposite polarity".
+    expect(d?.action).not.toMatch(/the same response/)
+    expect(reasons(report)).toEqual(['conditional-conflict-unchecked'])
+    expect(report.verified).toBe(false)
+    expect(report.strictGate).toBe('fail')
+  })
+
+  it('demotes a DOC-committed contrary pair ("open" / "shut")', async () => {
+    const report = await runCheck(
+      contraryDoc('shut the door', { antonyms: [{ a: 'open', b: 'shut' }] }),
+      SEMANTIC(),
+    )
+    expect(conditional(report).map((d) => d.requirementIds)).toEqual([[D1, D2]])
+    expect(report.verified).toBe(false)
+  })
+
+  it('control: without the committed pair, "shut" is just another verb', async () => {
+    const report = await runCheck(contraryDoc('shut the door'), SEMANTIC())
+    expect(conditional(report)).toEqual([])
+    expect(report.verified).toBe(true)
+  })
+
+  it('control: a contrary pair with one side NEGATED does not demote ("open" and "not close")', async () => {
+    const report = await runCheck(contraryDoc('close the door', { negated: true }), SEMANTIC())
+    expect(conditional(report)).toEqual([])
+    expect(report.verified).toBe(true)
+  })
+
+  it('control: BOTH sides negated does not demote — "do neither" is consistent', async () => {
+    const report = await runCheck(
+      contraryDoc('close the door', { negated: true, firstNegated: true }),
+      SEMANTIC(),
+    )
+    expect(conditional(report)).toEqual([])
+    expect(report.verified).toBe(true)
+  })
+
+  it('is monotone: restating "shall not open" as the stronger "shall close" keeps the demotion', async () => {
+    const weak = await runCheck(contraryDoc('open the door', { negated: true }), SEMANTIC())
+    const strong = await runCheck(contraryDoc('close the door'), SEMANTIC())
+    expect(conditional(weak).map((d) => d.requirementIds)).toEqual([[D1, D2]])
+    expect(conditional(strong).map((d) => d.requirementIds)).toEqual([[D1, D2]])
+  })
+
+  it('does not fire once a checked group makes both live — the solver then proves the pair', async () => {
+    const doc = docOf([
+      { id: D1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door' },
+      {
+        id: D2,
+        systemName: 'door controller',
+        preCondition: MOVING,
+        trigger: PRESS,
+        systemResponse: 'close the door',
+      },
+    ])
+    const report = await runCheck(doc, SEMANTIC())
+    expect(report.findings.map((f) => f.code)).toContain('FND_CONTRADICTION')
+    expect(conditional(report)).toEqual([])
+  })
+})
+
 // ---------------------------------------------------------------------------
 // AC-3-6 — an opposite-polarity pair that differs only in inflection or number
 // ---------------------------------------------------------------------------
@@ -848,5 +963,57 @@ describe('differsOnlyByInflection', () => {
     ['open the gas valve', 'open the gap valve', false],
   ] as const)('%s / %s -> %s', (a, b, expected) => {
     expect(differsOnlyByInflection(a, b)).toBe(expected)
+  })
+})
+
+/**
+ * Following the AC-3-6 discharge the tool itself offers must never reach `verified: true` over
+ * the conflict it was raised on. The committed merge lands "open the door" and "close the doors"
+ * on ONE opposition key as contraries; under two guards no checked group joins, the solver still
+ * never asserts them together, so the AC-3-2 detector — which reads contraries through the same
+ * `literalsConflict` rule — has to take over the demotion.
+ */
+describe('AC-3-6 discharge under guards no checked group joins', () => {
+  const guardedDoc = (glossary: readonly object[] = []) => {
+    const doc = docOf([
+      { id: P1, systemName: 'door controller', trigger: PRESS, systemResponse: 'open the door' },
+      {
+        id: P2,
+        systemName: 'door controller',
+        preCondition: MOVING,
+        systemResponse: 'close the doors',
+      },
+      { id: C1, systemName: 'door controller', trigger: PRESS, systemResponse: 'sound the chime' },
+      {
+        id: C2,
+        systemName: 'door controller',
+        preCondition: MOVING,
+        systemResponse: 'illuminate the warning lamp',
+      },
+    ]) as unknown as { glossary: unknown[] }
+    doc.glossary = [...glossary]
+    return doc as never
+  }
+  const embedder = () => tableEmbedder([['open the door', 'close the doors']])
+
+  it('before the merge: the near-duplicate demotes, and its action does not promise a comparison', async () => {
+    const report = await runCheck(guardedDoc(), { semantic: { embedder: embedder() } })
+    const [d] = nearDuplicate(report)
+    expect(d?.requirementIds).toEqual([P1, P2])
+    expect(d?.action).toContain('conditional-conflict-unchecked')
+    // Negative guard: the old text promised an unconditional comparison, which the solver never
+    // makes when the two guards are never asserted together.
+    expect(d?.action).not.toContain('compares like any other pair')
+  })
+
+  it('after the offered merge: the pair demotes as conditional-conflict-unchecked', async () => {
+    const report = await runCheck(
+      guardedDoc([{ canonical: 'close the door', aliases: ['close the doors'] }]),
+      { semantic: { embedder: embedder() }, strict: true },
+    )
+    expect(nearDuplicate(report)).toEqual([])
+    expect(conditional(report).map((d) => d.requirementIds)).toEqual([[P1, P2]])
+    expect(report.verified).toBe(false)
+    expect(report.strictGate).toBe('fail')
   })
 })

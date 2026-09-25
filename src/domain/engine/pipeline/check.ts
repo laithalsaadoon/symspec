@@ -128,6 +128,7 @@ import {
   findOppositionCandidates,
   findSimilarSemantic,
   type GlossaryMerge,
+  literalsConflict,
 } from '../formal/semantic.ts'
 import { findSimilarUnunified } from '../formal/similar.ts'
 import { checkSubsumption } from '../formal/subsumption.ts'
@@ -392,8 +393,9 @@ export interface CoverageDemotion {
     // happened to finish. Recorded where the `unknown` happened, never inferred from
     // another tier. Discharged by raising `--timeout-ms`; there is no finding to waive.
     | 'solver-unknown'
-    // AC-3-2: two requirements under one system constrain the same response atom at
-    // opposite polarity, and no context group makes both live — so the solver never
+    // AC-3-2: two requirements under one system demand responses that conflict as written —
+    // the same response atom at opposite polarity, or two contraries (AC-2-1) both asserted —
+    // and no context group makes both live — so the solver never
     // asserted them together and never asked whether they can hold at once. The
     // detect-and-demote bridge for a conflict whose reachability (can the two guards
     // co-occur?) this tier cannot decide. Not waivable: there is no finding behind it.
@@ -1038,12 +1040,18 @@ function coLiveParticipants(
   return participants
 }
 
-/** One AC-3-2 pair: opposite polarity on one response atom, never co-live. */
+/**
+ * One AC-3-2 pair: two responses that conflict as written ({@link literalsConflict}) — one
+ * atom at opposite polarity, or contraries both asserted — never co-live.
+ */
 interface ConditionalConflict {
   readonly a: string
   readonly b: string
-  /** The response slot text of the lexicographically-first requirement. */
-  readonly response: string
+  /** Each requirement's response slot text. */
+  readonly responseA: string
+  readonly responseB: string
+  /** True for two contrary atoms (AC-2-1), false for one atom at opposite polarity. */
+  readonly contrary: boolean
   /** Each requirement's guard slot texts (empty = unconditional). */
   readonly contextA: readonly string[]
   readonly contextB: readonly string[]
@@ -1062,10 +1070,18 @@ function describeContext(context: readonly string[]): string {
 const pairKeyOf = (x: string, y: string): string => (x < y ? `${x}\u0000${y}` : `${y}\u0000${x}`)
 
 /**
- * AC-3-2: every pair of included requirements that constrain the SAME response atom at
- * OPPOSITE polarity while no planned context group makes both live.
+ * AC-3-2: every pair of included requirements whose responses CONFLICT as written while no
+ * planned context group makes both live. "Conflict" is {@link literalsConflict}, the reading
+ * the AC-3-6 near-duplicate rule uses: the SAME response atom at OPPOSITE polarity, or two
+ * contraries (spec 007 AC-2-1: distinct atoms on opposite sides of one opposition key) both
+ * asserted. Both negated ("do neither") satisfies the contrary axiom and is not a pair. Without
+ * the contrary half, "open the door" / "close the door" under two guards certified where
+ * "open the door" / "shall not open the door" demoted, so the positive restatement GtWR
+ * recommends (and the STRONGER claim under the axiom) cleared the demotion.
  *
- * The atom name is system-scoped, so "under one system" is carried by the key. Planned
+ * Rows are bucketed by opposition key when the atom has one, else by atom: one atom always
+ * carries one key, and contraries share theirs, so every candidate pair meets in one bucket.
+ * Both names are system-scoped, so "under one system" is carried by the bucket. Planned
  * groups rather than decided ones: a pair co-live in a group the solver did not decide is
  * disclosed by `solver-unknown` (or the budget demotion when the tier never ran), and
  * naming it here too would claim its contexts were never asserted together when they
@@ -1085,13 +1101,29 @@ function conditionalConflicts(
       for (const y of f.requirementIds) if (x !== y) contradicted.add(pairKeyOf(x, y))
   }
 
-  const byAtom = new Map<string, { enc: EncodedRequirement; negated: boolean; text: string }[]>()
+  interface RespRow {
+    readonly enc: EncodedRequirement
+    readonly lit: { name: string; negated: boolean; opposition?: Opposition }
+    readonly text: string
+  }
+  const buckets = new Map<string, RespRow[]>()
   for (const enc of encoded) {
     for (const row of enc.atoms) {
       if (row.kind !== 'resp') continue
-      const list = byAtom.get(row.atom) ?? []
-      list.push({ enc, negated: row.negated, text: row.slotText })
-      byAtom.set(row.atom, list)
+      // U+0000 cannot occur in an atom name or a key, so the two namespaces cannot collide.
+      const bucket =
+        row.opposition !== undefined ? `key\u0000${row.opposition.key}` : `atom\u0000${row.atom}`
+      const list = buckets.get(bucket) ?? []
+      list.push({
+        enc,
+        lit: {
+          name: row.atom,
+          negated: row.negated,
+          ...(row.opposition !== undefined ? { opposition: row.opposition } : {}),
+        },
+        text: row.slotText,
+      })
+      buckets.set(bucket, list)
     }
   }
 
@@ -1099,23 +1131,26 @@ function conditionalConflicts(
     e.atoms.filter((r) => r.kind === 'pre' || r.kind === 'trig').map((r) => r.slotText)
 
   const out = new Map<string, ConditionalConflict>()
-  for (const rows of byAtom.values()) {
-    for (const pos of rows) {
-      if (pos.negated) continue
-      for (const neg of rows) {
-        if (!neg.negated || neg.enc.id === pos.enc.id) continue
-        const key = pairKeyOf(pos.enc.id, neg.enc.id)
+  for (const rows of buckets.values()) {
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length; j++) {
+        const x = rows[i] as RespRow
+        const y = rows[j] as RespRow
+        if (x.enc.id === y.enc.id || !literalsConflict(x.lit, y.lit)) continue
+        const key = pairKeyOf(x.enc.id, y.enc.id)
         if (out.has(key) || contradicted.has(key)) continue
-        const ctxPos = contextAtomsOf(pos.enc)
-        const ctxNeg = contextAtomsOf(neg.enc)
-        if (groups.some((g) => liveIn(g, ctxPos) && liveIn(g, ctxNeg))) continue
-        const [first, second] = pos.enc.id < neg.enc.id ? [pos, neg] : [neg, pos]
+        const ctxX = contextAtomsOf(x.enc)
+        const ctxY = contextAtomsOf(y.enc)
+        if (groups.some((g) => liveIn(g, ctxX) && liveIn(g, ctxY))) continue
+        const [first, second] = x.enc.id < y.enc.id ? [x, y] : [y, x]
         const contextA = guardTexts(first.enc)
         const contextB = guardTexts(second.enc)
         out.set(key, {
           a: first.enc.id,
           b: second.enc.id,
-          response: first.text,
+          responseA: first.text,
+          responseB: second.text,
+          contrary: first.lit.name !== second.lit.name,
           contextA,
           contextB,
           union: [...new Set([...contextA, ...contextB])],
@@ -1916,16 +1951,21 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         action: row.suggestion ?? '',
       })
     }
-    // AC-3-2: two requirements constraining ONE response atom at opposite polarity, under
-    // guards no planned context group makes both live, are a conflict the solver never
-    // looked for — it asserts each guard set on its own. Detect and demote: whether the
-    // guards can co-occur is not something this tier can decide.
+    // AC-3-2: two requirements whose responses conflict as written — one response atom at
+    // opposite polarity, or contraries both asserted (AC-2-1) — under guards no planned
+    // context group makes both live, are a conflict the solver never looked for: it asserts
+    // each guard set on its own. Detect and demote: whether the guards can co-occur is not
+    // something this tier can decide.
     for (const c of conditionalConflicts(coverageEncoded, formal)) {
+      const what = c.contrary
+        ? `demand contrary responses ("${c.responseA}" and "${c.responseB}": opposite sides of ` +
+          'one antonym pair, which cannot both hold)'
+        : `constrain the same response ("${c.responseA}") at opposite polarity`
       demotions.push({
         reason: 'conditional-conflict-unchecked',
         requirementIds: [c.a, c.b],
         action:
-          `${c.a} and ${c.b} constrain the same response ("${c.response}") at opposite polarity, ` +
+          `${c.a} and ${c.b} ${what}, ` +
           `under contexts that are never asserted together: ${c.a} applies ${describeContext(c.contextA)}` +
           ` and ${c.b} applies ${describeContext(c.contextB)}. No context group the solver checked ` +
           'makes both live, so it never tested whether they can hold at once — and if ' +
@@ -2018,7 +2058,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           (hasMerge
             ? "If they are the same, commit the `symspec glossary add` merge from the finding's " +
               'message: it puts both on one atom at opposite polarity, or on one antonym key as ' +
-              'contraries, which the solver then compares like any other pair. '
+              'contraries. The solver then compares them wherever a checked context makes both ' +
+              'live; if their guards are never asserted together, the pair stays demoted as ' +
+              '`conditional-conflict-unchecked` until you settle whether the guards can overlap. '
             : "If they are the same, rewrite one to use the other's words: no glossary merge is " +
               'offered, because every merge of these phrasings aliases a phrase to its own ' +
               'opposite or splits an atom the document already shares. ') +
