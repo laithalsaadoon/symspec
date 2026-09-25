@@ -115,6 +115,7 @@ import {
   type EncodableRequirement,
   type EncodedRequirement,
   encode,
+  toEncodable,
 } from '../formal/encode.ts'
 import { attachEvidenceToAll, type Evidence } from '../formal/finding.ts'
 import { buildSimilarityGraph, type GraphRequirement } from '../formal/graph.ts'
@@ -124,7 +125,7 @@ import {
   type GroupChecker,
   SolverBudgetExceededError,
 } from '../formal/needs-review.ts'
-import { extractNumericPredicates } from '../formal/numeric.ts'
+import { requirementBounds } from '../formal/numeric.ts'
 import { analyzeNumericBounds } from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
 import { findRelationalUnchecked } from '../formal/relational.ts'
@@ -142,7 +143,7 @@ import { earsToTemporal, G, tAnd, tAtom, tNot } from '../formal/temporal-pattern
 import { checkVacuity } from '../formal/vacuity.ts'
 import { checkGtWRules, checkGtWRulesSet } from '../lint/gtwr.ts'
 import { type FormalTierResult, runSolvers } from '../solvers/index.ts'
-import { asView, type ReqView } from '../solvers/types.ts'
+import { asView } from '../solvers/types.ts'
 import { type Exclusion, excludedIds, gateRequirements, namesExactly } from './gate.ts'
 
 /** Which pipeline tier produced a finding. */
@@ -733,33 +734,6 @@ function docAntonymIndex(doc: Doc): ReadonlyMap<string, AntonymEntry> | undefine
     return buildAntonymIndexWithDoc(normalized)
   } catch {
     return undefined
-  }
-}
-
-/**
- * Conservative leading-negator scan for stored response text (see header). `not only`
- * opens "not only X but also Y", a positive obligation, so it is not a negator.
- */
-const LEADING_NEGATOR = /^(?:(?:do(?:es)?\s+)?not(?!\s+only\b)|never)\s+/i
-
-/**
- * Project a stored requirement into the encodable view, resolving negation.
- *
- * The persisted `negated` flag (C1) is authoritative: when it is set, the
- * stored `systemResponse` is already the positive atom, so it passes through
- * untouched with `negated: true`. Only when the flag is absent/false do we
- * fall back to the conservative leading-negator text scan (for hand-authored
- * docs that baked "not …" into the response), stripping it to the positive
- * atom.
- */
-export function toEncodable(view: ReqView): EncodableRequirement {
-  if (view.negated === true) return { ...view, negated: true }
-  const match = LEADING_NEGATOR.exec(view.systemResponse)
-  if (match === null) return view
-  return {
-    ...view,
-    systemResponse: view.systemResponse.slice(match[0].length),
-    negated: true,
   }
 }
 
@@ -1450,34 +1424,15 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // co-assert its bounds with everything. `encode` is pure and Z3-free, so the
       // extra encodings cost no solver time.
       const quantityAliases = glossaryIndex(doc.glossary)
-      // The response is read through the SAME negation view the propositional tier
-      // encodes (`toEncodable`): the stored `negated` flag, or a leading `not`/`never`
-      // stripped from hand-authored text. `shall not … above 30 seconds` bounds the
-      // quantity at `<= 30 s`; read without the flag it asserted `> 30 s` (spec 007
-      // AC-2-6).
-      const responseBounds = (r: (typeof reqs)[number]) => {
-        const view = toEncodable(r)
-        const negated = view.negated === true
-        return extractNumericPredicates(
-          view.systemResponse,
-          r.systemName,
-          'resp',
-          quantityAliases,
-          negated,
-        )
-      }
+      // `requirementBounds` reads the response through the SAME negation view the
+      // propositional tier encodes (`toEncodable`): the stored `negated` flag, or a leading
+      // `not`/`never` stripped from hand-authored text. `shall not … above 30 seconds`
+      // bounds the quantity at `<= 30 s`; read without the flag it asserted `> 30 s` (spec
+      // 007 AC-2-6).
       const numericReqPreds = reqs.map((r) => ({
         id: r.id,
         contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
-        predicates: [
-          ...responseBounds(r),
-          ...(r.trigger !== undefined
-            ? extractNumericPredicates(r.trigger, r.systemName, 'trig', quantityAliases)
-            : []),
-          ...(r.preCondition !== undefined
-            ? extractNumericPredicates(r.preCondition, r.systemName, 'pre', quantityAliases)
-            : []),
-        ],
+        predicates: requirementBounds(r, quantityAliases).map((b) => b.predicate),
       }))
       // The decide half (`contradictions`) and what it declined to decide (`uncompared`,
       // demotion-only): a proof must hold under every reading of a role or a temperature,

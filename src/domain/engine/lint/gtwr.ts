@@ -11,8 +11,14 @@
  * Cite: research-ears-incose.md §2 (~24 rules checkability rollup)
  */
 
+import { renderSentenceSlots, type SlotOffsets } from '../core/render.ts'
 import type { Requirement } from '../core/schema.ts'
-import { opensConvertedUnit } from '../formal/numeric.ts'
+import {
+  NOT_A_UNIT,
+  opensConvertedUnit,
+  type PredicateSlot,
+  requirementBounds,
+} from '../formal/numeric.ts'
 import { KW } from '../parse/tier1.ts'
 
 export interface GtWRFinding {
@@ -348,7 +354,7 @@ export function checkGtWRules(requirement: Requirement, sentence: string): GtWRF
   checkR5IndefiniteArticle(sentence, findings)
 
   // R6 — Missing units (bare number)
-  checkR6MissingUnits(sentence, findings)
+  checkR6MissingUnits(requirement, sentence, findings)
 
   // R7 — Vague terms (weasel lexicon, from AC-3-1)
   checkR7Vague(sentence, findings)
@@ -485,7 +491,11 @@ function checkR5IndefiniteArticle(sentence: string, findings: GtWRFinding[]): vo
 // R6 — Bare number check
 // ============================================================================
 
-function checkR6MissingUnits(sentence: string, findings: GtWRFinding[]): void {
+function checkR6MissingUnits(
+  requirement: Requirement,
+  sentence: string,
+  findings: GtWRFinding[],
+): void {
   // A bare number (digit run) is a finding unless it is immediately followed by
   // a recognized unit — the whitelist lives in the exported R6_RECOGNIZED_UNITS
   // / R6_MULTIWORD_UNITS / R6_SYMBOL_UNITS lists compiled into R6_BARE_NUMBER
@@ -494,6 +504,7 @@ function checkR6MissingUnits(sentence: string, findings: GtWRFinding[]): void {
   // module-level /g regex shared across calls.
   R6_BARE_NUMBER.lastIndex = 0
   const matches = getMatches(sentence, R6_BARE_NUMBER)
+  let identifiers: ReadonlyArray<readonly [number, number]> | undefined
   for (const match of matches) {
     // Skip numbers that are part of a standard's name (e.g. "RFC 9457",
     // "HTTP 401") — those are identifiers, not units-less quantities.
@@ -503,8 +514,11 @@ function checkR6MissingUnits(sentence: string, findings: GtWRFinding[]): void {
     // score/cosine/fusion-constant, not a quantity missing a unit. Integers and
     // decimals >1 stay flagged (see isDimensionlessRatio).
     if (num !== undefined && isDimensionlessRatio(num)) continue
+    const end = match.index + matched.length
     // A unit the numeric tier converts is a unit (see opensConvertedUnit).
-    if (opensConvertedUnit(sentence.slice(match.index + matched.length))) continue
+    if (opensConvertedUnit(sentence.slice(end))) continue
+    identifiers ??= identifierNumerals(requirement, sentence)
+    if (identifiers.some(([s, e]) => s === match.index && e === end)) continue
     findings.push({
       code: 'GTWR_R6_MISSING_UNITS',
       severity: 'error',
@@ -513,6 +527,88 @@ function checkR6MissingUnits(sentence: string, findings: GtWRFinding[]): void {
       suggestion: `${num} <unit>`,
     })
   }
+}
+
+/** Where the text of the slot a bound was read from starts in the rendered sentence. */
+function slotStart(offsets: SlotOffsets, slot: PredicateSlot): number | undefined {
+  if (slot === 'resp') return offsets.systemResponse
+  return slot === 'trig' ? offsets.trigger : offsets.preCondition
+}
+
+/**
+ * The nouns that name what a converted dimension MEASURES — the word a bound's subject has
+ * to end in for a numeral before it to be read as naming which one ({@link
+ * identifierNumerals}). Keyed by the numeric tier's `DIMENSIONS` names. Closed and deliberately short: a
+ * noun left out keeps its numeral an R6 error, which is base behaviour, while a word let in
+ * that does not name the measured quantity (`running`, `constant`, `spinning`) would read a
+ * setpoint as a label.
+ */
+export const R6_QUANTITY_NOUNS: Readonly<Record<string, readonly string[]>> = {
+  time: ['latency', 'delay', 'timeout', 'duration', 'interval', 'period'],
+  distance: ['distance', 'length', 'height', 'width', 'depth', 'position', 'clearance', 'gap'],
+  information: ['size', 'capacity', 'memory', 'storage', 'usage', 'quota'],
+  'data-rate': ['throughput', 'bandwidth', 'bitrate'],
+  frequency: ['frequency', 'clock'],
+  temperature: ['temperature', 'temp'],
+  mass: ['mass', 'weight', 'load'],
+  volume: ['volume', 'capacity'],
+}
+
+const QUANTITY_NOUNS_BY_DIMENSION: ReadonlyMap<string, ReadonlySet<string>> = new Map(
+  Object.entries(R6_QUANTITY_NOUNS).map(([dimension, nouns]) => [
+    dimension,
+    new Set(nouns.flatMap((n) => [n, `${n}s`])),
+  ]),
+)
+
+const quantityNoun = (dimension: string, word: string): boolean =>
+  QUANTITY_NOUNS_BY_DIMENSION.get(dimension)?.has(word.toLowerCase()) ?? false
+
+/**
+ * The sentence spans of the numerals R6 reads as IDENTIFIERS, not amounts: `1` in "hold
+ * zone 1 temperature above 20 degrees celsius", `2` in "keep link 2 throughput below 100
+ * Mbps" (spec 007 AC-2-6: "no error for any of them").
+ *
+ * The numeral has to lie inside the quantity SUBJECT of a bound the numeric tier itself
+ * reads out of this requirement ({@link requirementBounds}, the one function `check` hands
+ * the decide tier its predicates from), and that bound has to carry a unit the tier
+ * converts. The subject is part of the bound's quantity key, so `zone 1 temperature` and
+ * `zone 2 temperature` are two quantities, each compared arithmetically on its own scale:
+ * nothing about the numeral is left for R6 to guard.
+ *
+ * Lying inside the subject is necessary, not sufficient. The subject is every word before
+ * the comparator, so it can hold an amount no tier compares — "set the fan to 80 while the
+ * zone temperature is above 20 degrees celsius" has `80` in the subject of a temperature
+ * bound, and admitting it would let "... to 20 while ..." sit beside it with the setpoint
+ * clash unseen. So the numeral also has to sit exactly where it can only name WHICH
+ * quantity the bound is on:
+ *   - it is the subject's second-to-last word, and the last word is a noun for what the
+ *     bound's dimension measures ({@link R6_QUANTITY_NOUNS}): `zone 1 temperature`, not
+ *     `set the fan to 80`, `fan 80 while the temperature`, or `keep the room 22 constant`;
+ *   - the word before it is not one the numeric tier reads as "no unit follows"
+ *     ({@link NOT_A_UNIT}: `to 80 temperature`, `at 80 temperature`), which is where an
+ *     amount stands.
+ *
+ * Only a sentence that IS this requirement's rendering is read, because the spans come
+ * from its slots; any other sentence keeps every numeral a finding.
+ */
+function identifierNumerals(
+  requirement: Requirement,
+  sentence: string,
+): ReadonlyArray<readonly [number, number]> {
+  const { sentence: rendered, offsets } = renderSentenceSlots(requirement)
+  if (rendered !== sentence) return []
+  const out: Array<readonly [number, number]> = []
+  for (const { predicate, subjectWords } of requirementBounds(requirement)) {
+    const start = slotStart(offsets, predicate.slot)
+    if (start === undefined) continue
+    const [before, numeral, last] = subjectWords.slice(-3).map(([s, e]) => [start + s, start + e])
+    if (before === undefined || numeral === undefined || last === undefined) continue
+    if (!quantityNoun(predicate.dimension, sentence.slice(last[0], last[1]))) continue
+    if (NOT_A_UNIT.has(sentence.slice(before[0], before[1]).toLowerCase())) continue
+    out.push([numeral[0]!, numeral[1]!])
+  }
+  return out
 }
 
 // ============================================================================
