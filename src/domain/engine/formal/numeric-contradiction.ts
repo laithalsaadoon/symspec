@@ -920,6 +920,9 @@ async function uncomparedPairs(
     const unitOf = (p: NumericPredicate) => (p.baseUnit === '' ? 'no unit' : `"${p.baseUnit}"`)
     const qualifierOf = (p: NumericPredicate) =>
       p.qualifier === undefined ? 'none' : `"${p.qualifier}"`
+    const clauses = [a, b].flatMap((e) =>
+      e.pred.clause === undefined ? [] : [`${e.id}: after ${e.pred.clause}`],
+    )
     out.set(key, {
       code: 'FND_NUMERIC_UNCOMPARED',
       severity: 'info',
@@ -931,21 +934,33 @@ async function uncomparedPairs(
             `${unitOf(b.pred)}), so it never compared them. Restate both in one unit it ` +
             'recognizes so any conflict is proved, or waive this finding if they are ' +
             'consistent. This is a disclosure, not a verdict.'
-          : shape === 'qualifiers'
+          : shape === 'qualifiers' && clauses.length > 0
             ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
-              'that conflict if both apply at once to one thing, under different trailing text ' +
-              `(${qualifierOf(a.pred)} and ${qualifierOf(b.pred)}) the numeric tier does not read ` +
-              '(a condition on where a bound applies, or what it counts), so it never compared ' +
-              "them. Move each condition into the requirement's trigger or precondition, or " +
-              'restate both bounds on one referent, so the tier can tell where and to what each ' +
-              'bound applies; or waive this finding once you have checked they cannot apply ' +
-              'together. Then re-run `symspec check`. This is a disclosure, not a verdict.'
-            : `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
-              'that conflict if both apply at once, under guards no context group the numeric ' +
-              'tier checked asserts together, so it never compared them. If the two contexts ' +
-              'can hold at once, change one requirement so it no longer contradicts the other ' +
-              'there; if they cannot, waive this finding. Then re-run `symspec check`. This is ' +
-              'a disclosure, not a verdict.',
+              'that conflict if both apply at once to one thing, but the numeric tier reads a bound ' +
+              `inside a clause (${clauses.join('; ')}), where it may be a condition's rather than ` +
+              'the obligation, and it does not guess where such a clause ends, so it never compared ' +
+              'them. To have any conflict proved, restate each so its bound directly follows what ' +
+              'it bounds, with no connective or finite verb before it: move a condition into the ' +
+              'trigger or precondition ("While <condition>, the <system> shall keep <quantity> ' +
+              'below <N>"), or state the bound itself as the obligation ("keep <quantity> below ' +
+              '<N>" for "ensure that <quantity> is below <N>"); or waive this finding once you have ' +
+              'checked they cannot apply together. Then re-run `symspec check`. This is a ' +
+              'disclosure, not a verdict.'
+            : shape === 'qualifiers'
+              ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
+                'that conflict if both apply at once to one thing, under different trailing text ' +
+                `(${qualifierOf(a.pred)} and ${qualifierOf(b.pred)}) the numeric tier does not read ` +
+                '(a condition on where a bound applies, or what it counts), so it never compared ' +
+                "them. Move each condition into the requirement's trigger or precondition, or " +
+                'restate both bounds on one referent, so the tier can tell where and to what each ' +
+                'bound applies; or waive this finding once you have checked they cannot apply ' +
+                'together. Then re-run `symspec check`. This is a disclosure, not a verdict.'
+              : `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
+                'that conflict if both apply at once, under guards no context group the numeric ' +
+                'tier checked asserts together, so it never compared them. If the two contexts ' +
+                'can hold at once, change one requirement so it no longer contradicts the other ' +
+                'there; if they cannot, waive this finding. Then re-run `symspec check`. This is ' +
+                'a disclosure, not a verdict.',
     })
   }
   return [...out.values()]

@@ -132,6 +132,13 @@ export interface NumericPredicate {
    * the slot, carries the whole clause, itself included ({@link qualifierAt}).
    */
   readonly qualifier?: string
+  /**
+   * What put the bound INSIDE its own {@link NumericPredicate.qualifier}, when something did: `the
+   * connective "during"`, `the finite verb "is"`, or `an earlier bound`. Evidence for the
+   * disclosure only, never part of a key: it names the word the author can move out of the
+   * response to have the bound compared (`numeric-contradiction.ts` `uncomparedPairs`).
+   */
+  readonly clause?: string
   /** The original slot substring the predicate came from (evidence). */
   readonly sourceText: string
 }
@@ -580,22 +587,30 @@ function qualifierOf(after: string): string | undefined {
 
 /**
  * A connective in the text BEFORE a bound (`open the valve when the pressure is above 5
- * bar`): the bound is inside the response's condition, not the obligation it imposes.
+ * bar`): the bound may be inside the response's condition, not the obligation it imposes.
  *
  * The closed class of English subordinators that open a condition or a time, the multiword
  * ones included (`as soon as`, `in the event that`, `each time`, `the moment`), and the
  * prepositions that open one on a noun (`during`, `upon`, `following`). Unlike
  * {@link qualifierOf}, the text before a bound is its subject, so no rule can take ALL of it;
- * but a connective is not the only mark of a clause: see {@link FINITE_VERB}. Either only
- * ever SPLITS: a bound they match carries its whole clause as
- * {@link NumericPredicate.qualifier}, which the prover never asserts across, and a phrasing
- * neither matches keeps the reading every bound had before. `numeric.test.ts` pins every
- * member, so a dropped one is a red test. A member inside a hyphenated compound
- * (`once-daily`) is part of a word, a {@link TIME_PREPOSITION} right before a time bound is
- * that bound's own word, a member that {@link modifiesNoun} is a noun phrase's word (`the
- * following events`), and a preposition that names a kept measure's span
- * ({@link namesSpan}: `keep the delay before the retry below 5 seconds`) holds no clause; none
- * of them opens one.
+ * but a connective is not the only mark of a clause: see {@link FINITE_VERB}.
+ *
+ * A match is a SPELLING, and nothing reads the words around it to excuse one (spec 007, the
+ * demote-not-prove contract): a bound after a connective carries its whole clause, itself
+ * included, as {@link NumericPredicate.qualifier}, so it is compared with no bound that is not
+ * spelled identically, and `numeric-contradiction.ts` discloses the pair instead
+ * (`FND_NUMERIC_UNCOMPARED`, naming both requirements and the restatement that makes them
+ * comparable). `keep the latency during peak hours below 200 milliseconds`, `retain the following
+ * events for at most 30 days`, and `keep the height after the drone flew above 100 meters` are
+ * all read so. Telling the span a kept measure is taken over, or a noun's modifier, from a
+ * condition is a grammar guess, and every guess this tier made in the proving direction was
+ * either a consistent pair proved contradictory (`after the drone flew` read as a noun phrase
+ * because `flew` was missing from a word list) or a list that needed another word. A
+ * disclosure is always sound. The one rule that is not a guess is {@link governsBound}: a
+ * connective that is the bound's own preposition has no clause material to hold.
+ *
+ * A member inside a hyphenated compound (`once-daily`) is part of a word: the pattern matches
+ * whole tokens only. `numeric.test.ts` pins every member, so a dropped one is a red test.
  */
 const CONDITION_WORD =
   /(?:^|[\s,;(])(?:when|whenever|while|whilst|if|unless|until|till|after|before|once|during|upon|provided|providing|following|since|where|wherever|whereupon|assuming|as\s+soon\s+as|as\s+long\s+as|so\s+long\s+as|in\s+case|in\s+the\s+event|in\s+the\s+case|on\s+condition|any\s*time|each\s+time|every\s+time|the\s+moment|the\s+instant|by\s+the\s+time|now\s+that|given\s+that)(?![\p{L}\p{N}-])/giu
@@ -611,376 +626,32 @@ const CONDITION_WORD =
 const TIME_PREPOSITION = /^(?:after|before|until|till|upon|following|since|during)$/i
 
 /**
- * A finite verb or modal in a RESPONSE's text before a bound: `open the drain the moment the
- * level is above 5 meters`, `... whose level can rise above 5 meters`. A response's own verb
- * follows `shall` in its base form (`keep`, `open`, `be`), so a finite form of `be`, `have`,
- * or `do`, or a modal, is some nested clause's verb, and the bound is in that clause whatever
- * connective, or none, opened it. The paradigm is closed, where connectives run on
- * (`as soon as`, `in the event that`, `any time`, `so long as`, each once an error). Not a
- * guard's: `the level is above 5 meters` predicates the guard's own subject.
+ * A finite verb or modal SPELLING in a RESPONSE's text before a bound: `open the drain the moment
+ * the level is above 5 meters`, `... whose level can rise above 5 meters`. A response's own verb
+ * follows `shall` in its base form (`keep`, `open`, `be`), so a finite form of `be`, `have`, or
+ * `do`, or a modal, may be some nested clause's verb, and the bound may be in that clause whatever
+ * connective, or none, opened it. The paradigm is closed, where connectives run on (`as soon as`,
+ * `in the event that`, `any time`, `so long as`, each once an error). Not a guard's: `the level is
+ * above 5 meters` predicates the guard's own subject.
  *
- * A spelling right after an article, quantifier, possessive, or preposition is a noun (`fill the
- * can with at most 2 liters`, `each will`, `logs from May`), and one inside a hyphenated compound
- * is a word part (`can-opener`); neither is a verb, and reading either as one split a real
- * conflict. {@link finiteVerbs} drops two more nouns the pattern cannot see. Every
- * rule here that splits is pinned against a pair it must leave in one cell
- * (`pipeline/numeric-qualifier.test.ts`), because a split that fires on a subject with no
- * clause only ever drops a proof.
+ * Matched as a spelling, like {@link CONDITION_WORD}, with nothing read around it: `fill the can
+ * with at most 2 liters`, `retain logs from May ...`, and the complement's copula in `ensure that
+ * the response time is below 200 milliseconds` each hold one, and each such bound is disclosed
+ * rather than proved. Whether a spelling is a noun, a complement's copula, or a relative clause's
+ * verb is where this tier's grammar guesses lived, and one that guessed wrong proved a consistent
+ * pair (`the latency, which the client observes, is` and `the pressure in that tank is` were
+ * each misread the other way, as a clause that never closed); the restatement the disclosure names
+ * (`keep the response time below 200 milliseconds`) is proved.
  */
 const FINITE_VERB =
-  /(?:^|[\s,;(])(?<!(?:^|[\s,;(])(?:the|a|an|each|every|per|any|no|its|their|his|her|our|your|my|of|from|in|on|at|by|for|with|into|through|during|since|until|till)\s+)(?:is|are|was|were|has|had|does|did|can|cannot|could|will|won['’]t|would|may|might|must|should|shall)(?![\p{L}\p{N}-])/giu
-
-/** A modal spelling: never followed by a number, which only a noun takes (`can 3`). */
-const MODAL = /^(?:can|cannot|could|will|won['’]t|would|may|might|must|should|shall)$/i
-
-/**
- * The {@link FINITE_VERB} matches in `text` that are verbs: less a modal spelling followed by a
- * number, which is a numbered noun (`fill can 3`), and which the pattern's lookbehind cannot see.
- * Reading it as a verb split a real conflict.
- */
-function finiteVerbs(text: string): RegExpMatchArray[] {
-  return [...text.matchAll(FINITE_VERB)].filter((m) => {
-    const word = m[0].replace(/^[\s,;(]+/, '')
-    return !(MODAL.test(word) && /^\s+#?\d/.test(text.slice(m.index! + m[0].length)))
-  })
-}
-
-/** A finite spelling as a whole word, for a word already split out. */
-const FINITE_SPELLING =
-  /^(?:is|are|was|were|has|had|does|did|can|cannot|could|will|won['’]t|would|may|might|must|should|shall)$/i
-
-/** An article or possessive: a noun follows it, never a verb or a connective. */
-const ARTICLE = /^(?:the|a|an|its|their|our|your|his|her|my)$/i
-
-/** A determiner: an {@link ARTICLE}, a demonstrative, or a quantifier. */
-const DETERMINER =
-  /^(?:the|a|an|its|their|our|your|his|her|my|this|these|those|each|every|any|all|some|no)$/i
-
-/**
- * The single-word {@link CONDITION_WORD} members that are also adjectives: after a
- * {@link DETERMINER} (`retain the following events`, `store the provided data`) one modifies its
- * noun, and no connective ever follows a determiner.
- */
-const MODIFIER_CONDITION = /^(?:following|provided|providing)$/i
-
-/**
- * The {@link CONDITION_WORD} members that are also prepositions taking a noun phrase, the only
- * ones {@link namesSpan} reads as naming a span rather than opening a clause.
- */
-const SPAN_PREPOSITION = /^(?:before|after|since|until|till|during|upon|following)$/i
-
-/**
- * A response verb that REQUIRES a complement a bound can be: `keep the pressure below 5 bar` holds
- * the pressure there, and `keep the pressure`, `limit the wait`, `cap the load` alone state no
- * obligation, so a bound after one is its complement whatever phrase comes between. Not
- * `maintain`, `hold`, or `regulate`, each a whole obligation on its own (`maintain the temperature
- * after the water [is] above 60 degrees celsius`), where a bound may sit in a condition.
- */
-const BOUND_VERB = /^(?:keep|limit|cap|restrict)$/i
-
-/** A {@link NumericPredicate} dimension, or a raw unit's lowercased text, a noun measures. */
-type Measures = (dimension: string, baseUnit: string) => boolean
-const inDimensions =
-  (...names: string[]): Measures =>
-  (dimension) =>
-    names.includes(dimension)
-const inRawUnits =
-  (...units: string[]): Measures =>
-  (dimension, baseUnit) =>
-    dimension === RAW_UNIT_DIMENSION && units.includes(baseUnit.toLowerCase())
-
-/**
- * A noun that names a measure, with what the measure is read in. {@link namesSpan} reads a
- * preposition after one as naming the span or phase it is measured over only when the bound is
- * read in that measure: `keep the temperature during a flood above 5 meters` bounds the flood,
- * and is left in its clause. Closed on purpose: a noun this table leaves out only keeps the
- * clause reading, which splits.
- */
-const MEASURE_NOUN: Readonly<Record<string, Measures>> = (() => {
-  const time = inDimensions('time')
-  const extent = inDimensions('distance', 'percent')
-  const share = inDimensions('percent')
-  return {
-    time,
-    delay: time,
-    interval: time,
-    duration: time,
-    period: time,
-    latency: time,
-    age: time,
-    wait: time,
-    timeout: time,
-    lag: time,
-    lifetime: time,
-    uptime: time,
-    downtime: time,
-    temperature: inDimensions('temperature'),
-    pressure: inRawUnits('bar', 'mbar', 'psi', 'pa', 'kpa', 'mpa', 'hpa', 'atm'),
-    current: inRawUnits('a', 'ma', 'ka'),
-    voltage: inRawUnits('v', 'mv', 'kv'),
-    power: inRawUnits('w', 'kw', 'mw'),
-    level: extent,
-    height: extent,
-    depth: extent,
-    distance: inDimensions('distance'),
-    length: inDimensions('distance'),
-    width: inDimensions('distance'),
-    load: share,
-    utilization: share,
-    humidity: share,
-    usage: share,
-    size: inDimensions('information'),
-    weight: inDimensions('mass'),
-    mass: inDimensions('mass'),
-    volume: inDimensions('volume'),
-    frequency: inDimensions('frequency'),
-  }
-})()
-
-/**
- * A word that marks a clause, not a noun phrase: a subject pronoun, a relative, a coordinator,
- * the infinitive `to`, or a negation.
- */
-const CLAUSE_WORD =
-  /^(?:i|you|he|she|it|we|they|there|who|whom|whose|which|that|and|or|but|nor|to|not|never|than|be|been|being)$/i
-
-/** A {@link CONDITION_WORD} member spelled as one word. */
-const CONNECTIVE_WORD =
-  /^(?:when|whenever|while|whilst|if|unless|until|till|after|before|once|during|upon|provided|providing|following|since|where|wherever|whereupon|assuming)$/i
-
-/**
- * Irregular past forms and plural nouns: the first a verb's no inflection marks (`the water got`),
- * the second a noun that takes a plural verb (`the people get`), which {@link nounPhrase} reads
- * as it reads `-ed` and `-s`.
- */
-const IRREGULAR_PAST =
-  /^(?:got|rose|fell|went|came|grew|ran|held|kept|sat|stood|became|began|broke|drove|hit|set|put|cut|read|led|left|lost|met|paid|said|sent|spent|took|told|thought|won|froze|blew|shook|sank|shrank|stuck|struck)$/i
-const IRREGULAR_PLURAL =
-  /^(?:people|children|men|women|staff|data|media|personnel|police|crew|feet|mice|geese)$/i
-
-/**
- * Whether `text` is a noun phrase with no verb: at most six words, no punctuation, none a
- * {@link FINITE_SPELLING}, {@link CLAUSE_WORD}, or {@link CONNECTIVE_WORD}, no word inflected
- * like a verb (`-s`, `-ed`, `-ing`, an {@link IRREGULAR_PAST} form) except first or after a
- * determiner or `of`, where it is a noun (`the retries`, `the heating phase`, `the set point`),
- * and no word after a plural (`the tanks go`: a plural is its phrase's head, and what follows it
- * is its verb). `the alarm sounds` fails on `sounds`. A clause with no verb at all (`after the
- * water above 60 degrees celsius`) is not English this reads as a clause; a verb this cannot see
- * is why {@link namesSpan} also asks for a {@link BOUND_VERB} and a {@link MEASURE_NOUN}.
- */
-function nounPhrase(text: string): boolean {
-  if (/[^\p{L}\p{N}\s'’-]/u.test(text)) return false
-  const words = text
-    .trim()
-    .split(/\s+/)
-    .filter((w) => w !== '')
-  if (words.length === 0 || words.length > 6) return false
-  return words.every((w, i) => {
-    if (FINITE_SPELLING.test(w) || CLAUSE_WORD.test(w) || CONNECTIVE_WORD.test(w)) return false
-    const prev = words[i - 1]
-    if (prev === undefined) return true
-    if (/(?:[^siu]s)$/i.test(prev) || IRREGULAR_PLURAL.test(prev)) {
-      if (!DETERMINER.test(prev) && !/^of$/i.test(w)) return false
-    }
-    if (DETERMINER.test(prev) || /^of$/i.test(prev)) return true
-    return !/(?:[^siu]s|ed|ing)$/i.test(w) && !IRREGULAR_PAST.test(w)
-  })
-}
-
-/**
- * Whether a {@link CONDITION_WORD} match in a response's `subject` names the span a kept measure
- * is taken over rather than opening a clause around the bound: `keep the delay before the retry
- * below 5 seconds`, `keep the time since the last calibration below 30 days`, `keep the pressure
- * during startup below 5 bar`. All of these must hold, each because a pair that fails it is
- * consistent and was pinned against it:
- *
- *   - the word is a {@link SPAN_PREPOSITION} (`when` never takes a noun phrase);
- *   - the response is a {@link BOUND_VERB} and a noun phrase, with no verb and no punctuation,
- *     ending in a {@link MEASURE_NOUN} right before the word (`record the level during a flood
- *     above 5 meters` may bound the flood);
- *   - the bound is read in what that noun measures (`dimension`, `baseUnit`), or there is no
- *     bound, for an action's occurrence: `keep the temperature during a flood above 5 meters`
- *     bounds the flood;
- *   - the comparator is not a verb (`upon the water exceeding 60 degrees celsius` is the
- *     phrase's own clause);
- *   - the text from the word to the bound is a {@link nounPhrase} (`before the water rises`).
- */
-function namesSpan(
-  subject: string,
-  m: RegExpMatchArray,
-  comparator: string,
-  dimension: string | undefined,
-  baseUnit: string,
-): boolean {
-  if (!SPAN_PREPOSITION.test(m[0].replace(/^[\s,;(]+/, ''))) return false
-  if (/^(?:not\s+)?exceed/i.test(comparator)) return false
-  const head = subject.slice(0, m.index).trim()
-  if (/[^\p{L}\p{N}\s'’-]/u.test(head) || finiteVerbs(head).length > 0) return false
-  const words = head.split(/\s+/)
-  if (words.length < 2 || !BOUND_VERB.test(words[0]!)) return false
-  const measures = MEASURE_NOUN[words.at(-1)!.toLowerCase()]
-  if (measures === undefined) return false
-  if (dimension !== undefined && !measures(dimension, baseUnit)) return false
-  // The bound's own preposition (`limit the wait after the last attempt to at most 5 seconds`)
-  // is no part of the phrase.
-  const object = subject
-    .slice(m.index! + m[0].length)
-    .replace(/\s+(?:to|in|at|by|for|with|of)\s*$/i, '')
-  return nounPhrase(object)
-}
-
-/**
- * Whether a {@link CONDITION_WORD} match is a noun phrase's word, not a connective: a
- * {@link MODIFIER_CONDITION} after a determiner (`retain the following events`), or `the moment`
- * or `the instant` right after a response's {@link BOUND_VERB} (`keep the instant current below 5
- * A`), which read as a connective would leave that verb with no object.
- */
-function modifiesNoun(subject: string, m: RegExpMatchArray): boolean {
-  const word = m[0].replace(/^[\s,;(]+/, '')
-  const before = subject.slice(0, m.index).trim().split(/\s+/)
-  if (/^the\s+(?:moment|instant)$/i.test(word)) {
-    return before.length === 1 && BOUND_VERB.test(before[0]!)
-  }
-  if (!MODIFIER_CONDITION.test(word)) return false
-  const prev = before.at(-1)
-  return prev !== undefined && DETERMINER.test(prev)
-}
-
-/**
- * A response whose own verb asserts the clause it takes (`ensure that the response time is below
- * 200 milliseconds`, `verify the pressure is at most 5 bar`, `make sure that ...`, `see to it
- * that ...`): the complement clause IS the obligation, and its one finite verb is its copula, not
- * a condition's. Closed on purpose, because a verb that REPORTS its complement keeps the
- * {@link FINITE_VERB} reading: `report that the level is above 5 meters` and `log that ...` each
- * assert a message, and `verify whether` asserts nothing. The verbs that name a check or a
- * guarantee may drop `that`; the rest (`require`, `enforce`, `maintain`, `assert`, `see to it`)
- * take a complement only through it. An adverb from a closed list may stand before `that`
- * (`ensure at all times that`, `verify, at all times, that`, `check continuously that`), but only
- * one of those: `ensure the tank that is above 5 meters is drained` has no complementizer, and its
- * `that` is a relative, and a noun that merely ends in `-ly` (`supply`) is no adverb.
- */
-const ASSERTING_COMPLEMENT = (() => {
-  const adverb = String.raw`(?:always|also|still|further|additionally|continuously|continually|constantly|consistently|periodically|regularly|repeatedly|automatically|independently|at\s+all\s+times|at\s+any\s+time|in\s+all\s+cases|in\s+every\s+case)`
-  const beforeThat = String.raw`(?:[\s,]+${adverb}){0,2}[\s,]+that`
-  const notWhether = String.raw`(?!(?:whether|if)(?![\p{L}\p{N}-]))`
-  const optional = String.raw`(?:ensure|verify|confirm|guarantee|assure|check|validate|make\s+sure|make\s+certain)(?:${beforeThat})?`
-  const required = String.raw`(?:require|enforce|maintain|assert|see\s+to\s+it)${beforeThat}`
-  return new RegExp(String.raw`^\s*(?:${optional}|${required})[\s,]+${notWhether}`, 'iu')
-})()
-
-/**
- * A relative pronoun: a clause inside the complement that picks WHICH thing, not the claim. A
- * {@link closesBefore closed} one leaves the complement's own copula outside it.
- */
-const RELATIVE = /(?:^|[\s,;(])(?:who|whom|whose|which|that)(?![\p{L}\p{N}-])/giu
-
-/** A preposition before a relative's head noun (`the percentage of requests that fail`). */
-const PREPOSITION =
-  /^(?:of|for|from|in|on|at|with|by|per|across|among|between|into|about|via|through)$/i
-
-/** A coordinator or clause punctuation: what joins a conjunct, which the tier cannot tell apart. */
-const COORDINATOR = /(?:^|[\s(])(?:and|or|but|nor)(?![\p{L}\p{N}-])|[,;]/iu
-
-/**
- * Whether the relative pronoun `r` in an {@link ASSERTING_COMPLEMENT}'s `clause` closes before the
- * complement's copula at `copula`, so the copula is the complement's and not the relative's:
- *
- *   - `which`, `who`, or `whom` with at least two words before the copula (`the latency which
- *     the client observes is`, `the tank which is full is`): with fewer (`the tank which is
- *     above`, `which still is`) the verb is the relative's;
- *   - `that` after a noun that itself follows an {@link ARTICLE} or a {@link PREPOSITION}
- *     (`the latency that the client observes is`, `of requests that fail is`), with at least one
- *     word before the copula, not a verbless {@link DETERMINER}-led {@link nounPhrase}, and
- *     nothing after the bound but a {@link trailingCondition} (`restClear`). After a verb `that`
- *     opens a second complement (`the display reports that`, `each confirms that`); with no
- *     word before the copula the verb is the relative's (`the tank that is above`); and a `that`
- *     clause completing its noun has a subject and no gap (`the reports that the latency is`),
- *     or is followed by the complement's own verb (`the warning that the level is above 5 meters
- *     appears`);
- *   - never `whose`, which takes the next verb (`whose level is`).
- *
- * No coordinator may stand between the pronoun and the copula: `the pump which runs is off and
- * the level is` holds a conjunct.
- */
-function closesBefore(
-  clause: string,
-  r: RegExpMatchArray,
-  copula: number,
-  restClear: boolean,
-): boolean {
-  const pronoun = r[0].replace(/^[\s,;(]+/, '').toLowerCase()
-  const from = r.index! + r[0].length
-  if (pronoun === 'whose' || from > copula) return false
-  const between = clause.slice(from, copula)
-  if (COORDINATOR.test(between)) return false
-  const words = between.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length
-  if (pronoun !== 'that') return words >= 2
-  const before = clause.slice(0, r.index).trim().split(/\s+/)
-  const marker = before.at(-2)
-  if (marker === undefined || !(ARTICLE.test(marker) || PREPOSITION.test(marker))) return false
-  const first = between.trim().split(/\s+/)[0]
-  if (first !== undefined && DETERMINER.test(first) && nounPhrase(between)) return false
-  return restClear && words >= 1
-}
-
-/**
- * Whether `rest`, the text after a bound, is one condition clause that runs to its end and has
- * a subject of its own: a {@link CONDITION_WORD} first, then either no finite verb (`when the
- * alarm sounds`, `when needed`) or exactly one, after a {@link DETERMINER}-led
- * {@link nounPhrase} or a pronoun (`when the load is high`, `while it is idle`). Its verb is the
- * condition's, not the complement's: `... is below 200 milliseconds when the load is high` bounds
- * the latency under that condition. `when needed is off` has no subject before `is`, which is
- * then the complement's own verb, and stays a nested-clause mark.
- */
-function trailingCondition(rest: string): boolean {
-  const text = ` ${rest.replace(/^[\s,]+/, '')}`
-  const m = text.matchAll(CONDITION_WORD).next().value
-  if (m === undefined || m.index !== 0) return false
-  const after = text.slice(m[0].length)
-  const verbs = finiteVerbs(after)
-  if (verbs.length === 0) return true
-  if (verbs.length > 1) return false
-  const subject = after.slice(0, verbs[0]!.index).trim()
-  if (/^(?:it|they|this|these|those)$/i.test(subject)) return true
-  const first = subject.split(/\s+/)[0]
-  return first !== undefined && DETERMINER.test(first) && nounPhrase(subject)
-}
-
-/**
- * The {@link finiteVerbs} in a response's `subject` that mark a nested clause: all of them,
- * except in an {@link ASSERTING_COMPLEMENT}, whose LAST one is its copula. There none do when
- * the complement holds no relative pronoun and one verb, or when every relative
- * {@link closesBefore closes} before the copula, every earlier verb lies inside one (`the number
- * of alarms that are active is`), and no finite verb follows the bound (`rest`) outside a
- * {@link trailingCondition}: `... whose level is above 5 meters is drained` holds the
- * complement's verb there. A complement with two verbs and no relative (`ensure that the pump is
- * off and the level is above 5 meters`) keeps both, because the tier cannot tell a conjunct from
- * a condition.
- */
-function nestedClauseVerbs(subject: string, rest: string): number {
-  const verbs = finiteVerbs(subject)
-  const complement = ASSERTING_COMPLEMENT.exec(subject)
-  if (complement === null || verbs.length === 0) return verbs.length
-  const offset = complement[0].length
-  const clause = subject.slice(offset)
-  const relatives = [...clause.matchAll(RELATIVE)]
-  if (relatives.length === 0) return verbs.length === 1 ? 0 : verbs.length
-  const trailing = trailingCondition(rest)
-  if (!trailing && finiteVerbs(rest).length > 0) return verbs.length
-  const copula = verbs.at(-1)!.index! - offset
-  const restClear = trailing || qualifierOf(rest) === undefined
-  if (!relatives.every((r) => closesBefore(clause, r, copula, restClear))) return verbs.length
-  const inside = verbs
-    .slice(0, -1)
-    .every((v) => relatives.some((r) => r.index! + r[0].length <= v.index! - offset))
-  return inside ? 0 : verbs.length
-}
+  /(?:^|[\s,;(])(is|are|was|were|has|had|does|did|can|cannot|could|will|won['’]t|would|may|might|must|should|shall)(?![\p{L}\p{N}-])/iu
 
 /**
  * The {@link NumericPredicate.qualifier} of a bound at `[start, end)` in `text`, where
- * `firstEnd` is the end of the slot's first claimed bound, if it is another one. `dimension` and
- * `baseUnit` are the bound's; `dimension` is `undefined` for an action's occurrence, which has
- * no bound ({@link actionOccurrences}).
+ * `firstEnd` is the end of the slot's first claimed bound, if it is another one, and the
+ * {@link NumericPredicate.clause} that put the bound inside it, when one did. `dimension` is the
+ * bound's; it is `undefined` for an action's occurrence, which has no bound
+ * ({@link actionOccurrences}).
  *
  *   - After another bound, the qualifier is the whole text after THAT bound, this one
  *     included. `run for at least 10 seconds when the level is above 5 meters` holds `above 5
@@ -991,13 +662,16 @@ function nestedClauseVerbs(subject: string, rest: string): number {
  *     it neither asserts the later bound unconditionally nor drops it: two such bounds meet
  *     only under identical clauses, and a pair whose clauses differ is disclosed.
  *   - After a {@link CONDITION_WORD} in its subject, it is that clause from the word on, this
- *     bound included, for the same reason. A {@link TIME_PREPOSITION} right before a time bound,
- *     a word that {@link modifiesNoun}, and a preposition that {@link namesSpan} open no clause
- *     and are skipped.
+ *     bound included, for the same reason. A {@link TIME_PREPOSITION} right before a time bound
+ *     ({@link governsBound}) opens no clause and is skipped.
  *   - After a {@link FINITE_VERB} in a response's subject, it is the whole slot: the clause's
- *     start is not marked, and the slot contains it. The copula of an
- *     {@link ASSERTING_COMPLEMENT} is not such a verb ({@link nestedClauseVerbs}).
+ *     start is not marked, and the slot contains it.
  *   - Otherwise, the text after the bound's unit ({@link qualifierOf}).
+ *
+ * In the first three the qualifier holds the bound's own comparator and number, so it is equal
+ * to another bound's only when the two are spelled identically, and no two different bounds in a
+ * clause are ever asserted together: a proof needs identical subjects and identical qualifiers,
+ * and the pair that has neither is disclosed.
  */
 function qualifierAt(
   text: string,
@@ -1006,25 +680,34 @@ function qualifierAt(
   firstEnd: number | undefined,
   slot: PredicateSlot,
   dimension: string | undefined,
-  baseUnit = '',
-): string | undefined {
-  if (firstEnd !== undefined && firstEnd <= start) return qualifierOf(text.slice(firstEnd))
+): { readonly qualifier?: string; readonly clause?: string } {
+  const within = (at: number, clause: string) => {
+    const qualifier = qualifierOf(text.slice(at))
+    return qualifier === undefined ? {} : { qualifier, clause }
+  }
+  if (firstEnd !== undefined && firstEnd <= start) return within(firstEnd, 'an earlier bound')
   const subject = text.slice(0, start)
-  const comparator = text.slice(start)
   const condition = [...subject.matchAll(CONDITION_WORD)].find(
-    (m) =>
-      !(dimension === 'time' && governsBound(subject, m)) &&
-      !(slot === 'resp' && modifiesNoun(subject, m)) &&
-      !(slot === 'resp' && namesSpan(subject, m, comparator, dimension, baseUnit)),
+    (m) => !(dimension === 'time' && governsBound(subject, m)),
   )
-  if (condition !== undefined) return qualifierOf(text.slice(condition.index))
-  if (slot === 'resp' && nestedClauseVerbs(subject, text.slice(end)) > 0) return qualifierOf(text)
-  return qualifierOf(text.slice(end))
+  if (condition !== undefined) {
+    const word = condition[0]
+      .replace(/^[\s,;(]+/, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+    return within(condition.index, `the connective "${word}"`)
+  }
+  const verb = slot === 'resp' ? FINITE_VERB.exec(subject) : null
+  if (verb !== null) return within(0, `the finite verb "${verb[1]!.toLowerCase()}"`)
+  const qualifier = qualifierOf(text.slice(end))
+  return qualifier === undefined ? {} : { qualifier }
 }
 
 /**
  * Whether a {@link CONDITION_WORD} match is a {@link TIME_PREPOSITION} with nothing after it
- * but the bound: the bound's own word, not a clause (the caller asks only of a time bound).
+ * but the bound: the bound's own word, not a clause (the caller asks only of a time bound). Not
+ * a guess about where a clause ends: no word stands between the preposition and the bound, so
+ * there is no clause material, and the preposition stays in both bounds' subject.
  */
 function governsBound(subject: string, m: RegExpMatchArray): boolean {
   const word = m[0].replace(/^[\s,;(]+/, '')
@@ -1611,20 +1294,24 @@ export function extractNumericPredicates(
   )
   const preds = dedupe(
     out.map(({ pred, start, end }) => {
-      const qualifier = qualifierAt(
+      const { qualifier, clause } = qualifierAt(
         text,
         start,
         end,
         first?.[0] === start ? undefined : first?.[1],
         slot,
         pred.dimension,
-        pred.baseUnit,
       )
       if (qualifier === undefined) return pred
       // An unmarked time bound before other text may be a delay from its event, not a
       // magnitude of the response ({@link BoundRole} `anchored`).
       const anchored = pred.role === '' && timeLike(pred.dimension)
-      return { ...pred, ...(anchored ? { role: 'anchored' as const } : {}), qualifier }
+      return {
+        ...pred,
+        ...(anchored ? { role: 'anchored' as const } : {}),
+        qualifier,
+        ...(clause !== undefined ? { clause } : {}),
+      }
     }),
   )
   if (!negated) return preds
@@ -1702,7 +1389,7 @@ export function actionOccurrences(
     if (label === null) continue
     const quantity = quantityKey(systemName, label, quantityAliases)
     if (out.has(quantity)) continue
-    const qualifier = qualifierAt(text, at, at, undefined, 'resp', undefined)
+    const { qualifier } = qualifierAt(text, at, at, undefined, 'resp', undefined)
     out.set(quantity, qualifier === undefined ? { quantity } : { quantity, qualifier })
   }
   return [...out.values()]
@@ -1713,7 +1400,7 @@ export function actionOccurrences(
  *
  * The key names every field of the record that carries a claim — slot, quantity,
  * comparator, exact value, difference reading, civil days, dimension, base unit, role,
- * negation, qualifier — so two
+ * negation, qualifier, clause — so two
  * predicates that differ anywhere both survive. `sourceText` is excluded deliberately: it
  * is the audit substring, and two spellings of one bound in one slot are one claim.
  *
@@ -1739,6 +1426,7 @@ function dedupe(preds: NumericPredicate[]): NumericPredicate[] {
       p.role,
       p.negated === true,
       p.qualifier ?? '',
+      p.clause ?? '',
     ])
     if (seen.has(key)) continue
     seen.add(key)

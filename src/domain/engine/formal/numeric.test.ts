@@ -358,44 +358,89 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
     expect(guard?.qualifier).toBeUndefined()
   })
 
-  it('splits no bound off on a subject that holds no clause', () => {
+  it('splits no bound off on a subject that holds no clause spelling', () => {
     const qualifier = (text: string) =>
       extractNumericPredicates(text, 'svc', 'resp').map((p) => p.qualifier)
-    // Each would pass the clause rules above, and each is one obligation with no condition.
+    // The two exact rules: a time preposition that is the bound's own word, and a connective
+    // inside a hyphenated compound, which is part of a word.
     for (const text of [
-      // The complement clause of a verb that asserts it: its copula is the obligation's.
-      'ensure that the response time is below 200 milliseconds',
-      'verify that the response time is below 200 milliseconds',
-      'confirm the water can reach at most 60 degrees celsius',
-      // A time preposition governing the time bound itself.
       'expire the idle session after at most 30 minutes',
       'hold the lock until at most 5 seconds',
-      // A connective inside a hyphenated compound, and a modal spelling used as a noun.
       'keep the once-daily dose below 5 milligrams',
-      'fill the can with at most 2 liters',
     ]) {
       expect(qualifier(text), text).toEqual([undefined])
     }
-    // The controls: each still holds a clause, and keeps it.
-    for (const [text, clause] of [
-      ['report that the level is above 5 meters', 'report that the level is above 5 meters'],
-      ['verify whether the level is above 5 meters', 'verify whether the level is above 5 meters'],
+  })
+
+  it('reads a clause spelling as a clause, with no guess about the words around it', () => {
+    // Spec 007, the demote-not-prove contract: whether `is` is a complement's copula, `can` a
+    // noun, `during` a span, or `following` a modifier is a grammar guess, and a guess may never
+    // widen a proof. Each bound here is inside its own qualifier, and names what put it there.
+    const read = (text: string) =>
+      extractNumericPredicates(text, 'svc', 'resp').map((p) => [p.qualifier, p.clause])
+    for (const [text, qualifier, clause] of [
       [
-        'ensure that the tank whose level is above 5 meters is drained',
-        'ensure that the tank whose level is above 5 meters is drained',
+        'ensure that the response time is below 200 milliseconds',
+        'ensure that the response time is below 200 milliseconds',
+        'the finite verb "is"',
       ],
       [
-        'ensure that the pump is off and the level is above 5 meters',
-        'ensure that the pump is off and the level is above 5 meters',
+        'confirm the water can reach at most 60 degrees celsius',
+        'confirm the water can reach at most 60 degrees celsius',
+        'the finite verb "can"',
       ],
-      ['open the door after at least 5 people arrive', 'after at least 5 people arrive'],
+      [
+        'fill the can with at most 2 liters',
+        'fill the can with at most 2 liters',
+        'the finite verb "can"',
+      ],
+      [
+        'keep the latency during peak hours below 200 milliseconds',
+        'during peak hours below 200 milliseconds',
+        'the connective "during"',
+      ],
+      [
+        'retain the following events for at most 30 days',
+        'following events for at most 30 days',
+        'the connective "following"',
+      ],
+      [
+        'keep the height after the drone flew above 100 meters',
+        'after the drone flew above 100 meters',
+        'the connective "after"',
+      ],
+      [
+        'keep the instant current below 500 mA',
+        'the instant current below 500 ma',
+        'the connective "the instant"',
+      ],
+      [
+        'report that the level is above 5 meters',
+        'report that the level is above 5 meters',
+        'the finite verb "is"',
+      ],
+      [
+        'open the door after at least 5 people arrive',
+        'after at least 5 people arrive',
+        'the connective "after"',
+      ],
       [
         'expire the session after the user leaves at most 30 minutes',
         'after the user leaves at most 30 minutes',
+        'the connective "after"',
       ],
     ] as const) {
-      expect(qualifier(text), text).toEqual([clause])
+      expect(read(text), text).toEqual([[qualifier, clause]])
     }
+    // Text after the bound is a qualifier with no clause: the bound is not inside it.
+    expect(read('keep the temperature above 30 degrees celsius when heating')).toEqual([
+      ['when heating', undefined],
+    ])
+    // A later bound is inside the first one's trailing text.
+    expect(read('run for at least 10 seconds when the level is above 5 meters')).toEqual([
+      ['when the level is above 5 meters', undefined],
+      ['when the level is above 5 meters', 'an earlier bound'],
+    ])
   })
 
   it('does not read a comparator inside a longer word', () => {

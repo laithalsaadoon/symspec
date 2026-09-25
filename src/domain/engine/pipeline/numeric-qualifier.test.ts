@@ -21,15 +21,22 @@ const ID_B = 'aaaaaaaa-0000-4000-8000-00000000000b'
 interface ReqSpec {
   readonly systemName: string
   readonly systemResponse: string
+  /** A `While` precondition: the requirement is state-driven when present. */
+  readonly preCondition?: string
 }
 
 const reqOf = (id: string, s: ReqSpec) => ({
   id,
-  patternType: 'ubiquitous' as const,
+  ...(s.preCondition === undefined
+    ? { patternType: 'ubiquitous' as const }
+    : { patternType: 'state-driven' as const, preCondition: s.preCondition }),
   systemName: s.systemName,
   systemResponse: s.systemResponse,
   negated: false,
-  sentence: `The ${s.systemName} shall ${s.systemResponse}.`,
+  sentence:
+    s.preCondition === undefined
+      ? `The ${s.systemName} shall ${s.systemResponse}.`
+      : `While ${s.preCondition}, the ${s.systemName} shall ${s.systemResponse}.`,
   priority: 'medium' as const,
   status: 'draft' as const,
   createdAt: TS,
@@ -49,20 +56,24 @@ const pairDoc = (a: ReqSpec, b: ReqSpec) => ({
   stateModel: { variables: [] },
 })
 
-/** The error codes of the pair, and the id sets of its numeric disclosures. */
-const verdict = async (system: string, a: string, b: string) => {
+/**
+ * The error codes of the pair, and the id sets and messages of its numeric disclosures. With
+ * `preCondition`, both requirements are state-driven under it.
+ */
+const verdict = async (system: string, a: string, b: string, preCondition?: string) => {
+  const pre = preCondition === undefined ? {} : { preCondition }
   const report = await runCheck(
     pairDoc(
-      { systemName: system, systemResponse: a },
-      { systemName: system, systemResponse: b },
+      { systemName: system, systemResponse: a, ...pre },
+      { systemName: system, systemResponse: b, ...pre },
     ) as never,
     {},
   )
+  const uncompared = report.findings.filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
   return {
     errors: report.findings.filter((f) => f.severity === 'error').map((f) => f.code),
-    uncompared: report.findings
-      .filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
-      .map((f) => f.requirementIds),
+    uncompared: uncompared.map((f) => f.requirementIds),
+    messages: uncompared.map((f) => f.message),
   }
 }
 
@@ -268,10 +279,12 @@ describe('AC-2-6: an unmarked time bound before other text is its own role', () 
 })
 
 describe('AC-2-6: every rule that splits a bound off is tested against a pair that shares one', () => {
-  // A qualifier rule only ever SPLITS a comparison class, and a split can only drop a proof. It
-  // drops a REAL one whenever the rule fires on a subject that holds no clause, so each rule
-  // below is pinned against a conflicting pair it must leave in one cell, next to the control
-  // it exists for.
+  // A qualifier rule only ever SPLITS a comparison class, and a split can only drop a proof. Under
+  // the demote-not-prove contract (spec 007) a split that fires on a subject holding no clause is
+  // acceptable only when the pair it drops is DISCLOSED, naming both requirements and the
+  // restatement that proves it. Two rules are exact, not guesses, and keep a pair in one cell: a
+  // time preposition that is the bound's own word, and a connective inside a hyphenated compound.
+  // Every other exemption the tier held was a grammar guess in the proving direction, and is gone.
 
   it('PROVES two time bounds a time preposition introduces, and discloses a clause it opens', async () => {
     // `expire the idle session after at most 30 minutes`: `after` governs the bound itself, a
@@ -313,178 +326,202 @@ describe('AC-2-6: every rule that splits a bound off is tested against a pair th
     expect(out.errors).toEqual(['FND_NUMERIC_CONTRADICTION'])
   })
 
-  it('PROVES two bounds whose subject holds a modal spelling used as a noun', async () => {
-    // `the can` is a container, not a modal: nothing in `fill the can with at most 2 liters`
-    // is a nested clause. The control, `whose level can rise`, is.
-    const out = await verdict(
-      'filler',
-      'fill the can with at most 2 liters',
-      'fill the can with at least 5 liters',
-    )
-    expect(out.errors).toEqual(['FND_NUMERIC_CONTRADICTION'])
-    const clause = await verdict(
-      'pump controller',
-      'open the drain of a tank whose level can rise above 5 meters',
-      'open the drain of a tank whose level can rise below 3 meters',
-    )
-    expect(clause.errors).toEqual([])
-    expect(clause.uncompared).toEqual([[ID_A, ID_B]])
+  it('DISCLOSES, and never proves, a bound behind a finite-verb spelling, whatever the word is', async () => {
+    // `fill the can with ...`, `retain logs from May ...`, `fill can 3 ...`: a spelling of a modal
+    // is matched as a spelling (spec 007, the demote-not-prove contract). Reading it as a noun
+    // was a grammar guess that could only widen a proof, and each pair, which 669c0e9 proved, is
+    // now disclosed, naming both requirements and the verb that split it.
+    for (const [system, a, b, verb] of [
+      [
+        'filler',
+        'fill the can with at most 2 liters',
+        'fill the can with at least 5 liters',
+        'can',
+      ],
+      [
+        'archiver',
+        'retain logs from May for at most 30 days',
+        'retain logs from May for at least 60 days',
+        'may',
+      ],
+      ['filler', 'fill can 3 with at most 2 liters', 'fill can 3 with at least 3 liters', 'can'],
+      [
+        'pump controller',
+        'open the drain of a tank whose level can rise above 5 meters',
+        'open the drain of a tank whose level can rise below 3 meters',
+        'can',
+      ],
+      [
+        'archiver',
+        'retain logs whose size may grow for at most 30 days',
+        'retain logs whose size may grow for at least 60 days',
+        'may',
+      ],
+    ] as const) {
+      const out = await verdict(system, a, b)
+      expect(out.errors, a).not.toContain('FND_NUMERIC_CONTRADICTION')
+      expect(out.uncompared, a).toEqual([[ID_A, ID_B]])
+      expect(out.messages.join(' '), a).toContain(`after the finite verb "${verb}"`)
+    }
   })
 
-  it('PROVES two bounds on a kept measure whose prepositional phrase names a span, not a clause', async () => {
-    // `keep the delay before the retry below 5 seconds`: `before the retry` names which delay,
-    // and `keep` takes the bound as its complement. The condition-word rule read every such
-    // preposition as opening a clause around the bound, and a conflict 669c0e9 proved became a
-    // disclosure. `bar` and `mA` are no units the lint knows (GTWR R6), which is not this tier's
-    // verdict, so only the tier's own codes are compared.
-    for (const [system, a, b] of [
+  it('DISCLOSES, and never proves, a bound behind a connective, whatever phrase it opens', async () => {
+    // A span a kept measure is taken over (`keep the delay before the retry below 5 seconds`), a
+    // modifier (`the following events`), and a condition (`before the water rises`) are one
+    // spelling apart, and no rule the tier held told them apart without a word list: a verb
+    // missing from it (`flew`, `slid`, `shot`, `swung`, `dove`, the plural `fish`) turned a
+    // consistent pair below into a proof. A proof rests only on identical subjects and identical
+    // qualifiers, so every pair here is disclosed, never proved.
+    const conflicting = [
       [
         'retry controller',
         'keep the delay before the retry below 5 seconds',
         'keep the delay before the retry above 10 seconds',
+        'before',
       ],
       [
         'calibration monitor',
         'keep the time since the last calibration below 30 days',
         'keep the time since the last calibration above 60 days',
+        'since',
       ],
       [
         'boiler controller',
         'keep the pressure during startup below 5 bar',
         'keep the pressure during startup above 8 bar',
+        'during',
       ],
       [
-        'shutdown timer',
-        'keep the time until shutdown above 30 seconds',
-        'keep the time until shutdown below 10 seconds',
-      ],
-      [
-        'alarm',
-        'keep the time after the alarm below 5 seconds',
-        'keep the time after the alarm above 10 seconds',
-      ],
-      [
-        'charger',
-        'keep the current during charging below 500 mA',
-        'keep the current during charging above 800 mA',
-      ],
-    ] as const) {
-      const out = await verdict(system, a, b)
-      expect(
-        out.errors.filter((code) => code.startsWith('FND_')),
-        a,
-      ).toEqual(['FND_NUMERIC_CONTRADICTION'])
-    }
-    // The controls, each the same shape with one property changed, each a consistent pair: a
-    // verb that needs no bound, an object that is no measure (`the drain open` has its
-    // complement), a measure the bound's unit does not measure, a comparator that is the
-    // phrase's own verb, and a phrase that holds a verb.
-    for (const [system, a, b] of [
-      [
-        'drain controller',
-        'open the drain during a flood above 5 meters',
-        'open the drain during a flood below 3 meters',
-      ],
-      [
-        'recorder',
-        'record the level during a flood above 5 meters',
-        'record the level during a flood below 3 meters',
+        'server',
+        'keep the latency during peak hours below 200 milliseconds',
+        'keep the latency during peak hours above 500 milliseconds',
+        'during',
       ],
       [
         'heater',
-        'maintain the temperature after the water above 60 degrees celsius',
-        'maintain the temperature after the water below 40 degrees celsius',
+        'keep the temperature during cold nights below 20 degrees celsius',
+        'keep the temperature during cold nights above 30 degrees celsius',
+        'during',
       ],
       [
-        'pump',
-        'keep the level until the tanks go below 3 meters',
-        'keep the level until the tanks go above 5 meters',
+        'governor',
+        'keep the speed during startup below 100 rpm',
+        'keep the speed during startup above 200 rpm',
+        'during',
       ],
-      [
-        'drain controller',
-        'keep the drain open during a flood above 5 meters',
-        'keep the drain open during a flood below 3 meters',
-      ],
-      [
-        'heater',
-        'keep the temperature during a flood above 5 meters',
-        'keep the temperature during a flood below 3 meters',
-      ],
-      [
-        'heater',
-        'keep the temperature upon the water exceeding 60 degrees celsius',
-        'keep the temperature upon the water not exceeding 40 degrees celsius',
-      ],
-      [
-        'heater',
-        'keep the temperature before the water rises above 60 degrees celsius',
-        'keep the temperature before the water rises below 40 degrees celsius',
-      ],
-    ] as const) {
-      const out = await verdict(system, a, b)
-      expect(out.errors, a).toEqual([])
-      expect(out.uncompared, a).toEqual([[ID_A, ID_B]])
-    }
-  })
-
-  it('PROVES two bounds whose subject holds a condition word used as a modifier', async () => {
-    // After an article, `following` and `provided` modify the noun (`the following events`); a
-    // connective never follows one. The condition-word rule split each off into its own clause.
-    for (const [system, a, b] of [
       [
         'archiver',
         'retain the following events for at most 30 days',
         'retain the following events for at least 60 days',
+        'following',
       ],
       [
         'archiver',
         'store the provided data for at most 30 days',
         'store the provided data for at least 60 days',
+        'provided',
       ],
-      // `the instant` read as a connective would leave `keep` with no object.
-      ['meter', 'keep the instant current below 500 mA', 'keep the instant current above 800 mA'],
-    ] as const) {
+      [
+        'meter',
+        'keep the instant current below 500 mA',
+        'keep the instant current above 800 mA',
+        'the instant',
+      ],
+    ] as const
+    const consistent = [
+      [
+        'drone controller',
+        'keep the height after the drone flew above 100 meters',
+        'keep the height after the drone flew below 10 meters',
+        'after',
+      ],
+      [
+        'pump controller',
+        'keep the level until the float slid below 3 meters',
+        'keep the level until the float slid above 5 meters',
+        'until',
+      ],
+      [
+        'heater',
+        'keep the temperature after the reading shot above 90 degrees celsius',
+        'keep the temperature after the reading shot below 5 degrees celsius',
+        'after',
+      ],
+      [
+        'heater',
+        'keep the temperature after the reading swung above 90 degrees celsius',
+        'keep the temperature after the reading swung below 5 degrees celsius',
+        'after',
+      ],
+      [
+        'pump controller',
+        'keep the level after the float dove below 3 meters',
+        'keep the level after the float dove above 5 meters',
+        'after',
+      ],
+      [
+        'pump controller',
+        'keep the level until the fish swim below 3 meters',
+        'keep the level until the fish swim above 5 meters',
+        'until',
+      ],
+      [
+        'heater',
+        'keep the temperature before the water rises above 60 degrees celsius',
+        'keep the temperature before the water rises below 40 degrees celsius',
+        'before',
+      ],
+      [
+        'drain controller',
+        'open the drain during a flood above 5 meters',
+        'open the drain during a flood below 3 meters',
+        'during',
+      ],
+      [
+        'heater',
+        'keep the temperature during a flood above 5 meters',
+        'keep the temperature during a flood below 3 meters',
+        'during',
+      ],
+      [
+        'heater',
+        'maintain the temperature after the water above 60 degrees celsius',
+        'maintain the temperature after the water below 40 degrees celsius',
+        'after',
+      ],
+      [
+        'drain controller',
+        'open the drain the instant the level rises above 5 meters',
+        'open the drain the instant the level rises below 3 meters',
+        'the instant',
+      ],
+    ] as const
+    for (const [system, a, b, word] of [...conflicting, ...consistent]) {
       const out = await verdict(system, a, b)
-      expect(
-        out.errors.filter((code) => code.startsWith('FND_')),
-        a,
-      ).toEqual(['FND_NUMERIC_CONTRADICTION'])
+      expect(out.errors, a).not.toContain('FND_NUMERIC_CONTRADICTION')
+      expect(out.uncompared, a).toEqual([[ID_A, ID_B]])
+      const message = out.messages.join(' ')
+      expect(message, a).toContain(`after the connective "${word}"`)
+      expect(message, a).toContain('While <condition>')
     }
-    // The control: after a verb with an object, `the instant` opens a clause.
-    const clause = await verdict(
-      'drain controller',
-      'open the drain the instant the level rises above 5 meters',
-      'open the drain the instant the level rises below 3 meters',
-    )
-    expect(clause.errors).toEqual([])
-    expect(clause.uncompared).toEqual([[ID_A, ID_B]])
   })
 
-  it('PROVES two bounds whose subject holds a month or a numbered noun spelled like a modal', async () => {
-    // `May` mid-sentence is the month, and a modal is never followed by a number: `can 3` is a
-    // container. The finite-verb rule read each as a nested clause's verb.
-    for (const [system, a, b] of [
-      [
-        'archiver',
-        'retain logs from May for at most 30 days',
-        'retain logs from May for at least 60 days',
-      ],
-      ['filler', 'fill can 3 with at most 2 liters', 'fill can 3 with at least 3 liters'],
-    ] as const) {
-      const out = await verdict(system, a, b)
-      expect(
-        out.errors.filter((code) => code.startsWith('FND_')),
-        a,
-      ).toEqual(['FND_NUMERIC_CONTRADICTION'])
-    }
-    // The control: a lowercase modal before a verb still opens a clause.
-    const clause = await verdict(
-      'archiver',
-      'retain logs whose size may grow for at most 30 days',
-      'retain logs whose size may grow for at least 60 days',
+  it('PROVES the restatement a clause disclosure names, so the repair it offers is real', async () => {
+    // The condition moved into the precondition, and the bound stated as the obligation: each
+    // subject and qualifier is then identical, and the conflict the disclosure hid is proved.
+    const stated = await verdict(
+      'server',
+      'keep the latency below 200 milliseconds',
+      'keep the latency above 500 milliseconds',
+      'peak hours are active',
     )
-    expect(clause.errors).toEqual([])
-    expect(clause.uncompared).toEqual([[ID_A, ID_B]])
+    expect(stated.errors).toEqual(['FND_NUMERIC_CONTRADICTION'])
+    const complement = await verdict(
+      'server',
+      'keep the response time below 200 milliseconds',
+      'keep the response time above 500 milliseconds',
+    )
+    expect(complement.errors).toEqual(['FND_NUMERIC_CONTRADICTION'])
   })
 
   it('DISCLOSES a bound after a nested clause that ends in a participle, whose bound it may be', async () => {
