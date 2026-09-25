@@ -526,9 +526,11 @@ function resolveUnit(unit: string): { dimension: string; base: string; scale: Un
 
 /**
  * Comparator lexicon. Each phrasing maps to the comparator it asserts on the
- * quantity. "within/under/at most/no more than/below/up to/a maximum of" are upper
+ * quantity. "within/under/at most/no more than/below/a maximum of" are upper
  * bounds; "at least/over/above/more than/no less than/a minimum of" are lower bounds;
- * "exactly" is equality.
+ * "exactly" is equality. "up to" is deliberately NOT an entry: it is a particle as often as a
+ * bound (`up to date`, `back up to`), and an entry claimed the number of a later `within`, so its
+ * quantity is left to {@link unreadQuantities}, which discloses it instead.
  *
  * The order is the MATCH order: {@link readBounds} claims each phrase's span in this
  * order, and a later phrase never matches inside a claimed one. So a phrase precedes
@@ -557,7 +559,6 @@ export const COMPARATOR_LEXICON: ReadonlyArray<{
   { phrase: 'at least', comparator: '>=' },
   { phrase: 'a maximum of', comparator: '<=' },
   { phrase: 'a minimum of', comparator: '>=' },
-  { phrase: 'up to', comparator: '<=' },
   { phrase: 'less than or equal to', comparator: '<=' },
   { phrase: 'greater than or equal to', comparator: '>=' },
   { phrase: 'less than', comparator: '<' },
@@ -1982,7 +1983,8 @@ export interface UnreadQuantity {
  * sentence's own comma or period is not part of it. {@link NUMBER} declines several of these
  * spellings, and a declined one must still be seen whole here, never as its trailing group.
  */
-const NUMERAL_RUN = /(?<![\p{L}\p{N}_.,'’])\d(?:\d|[.,_'’](?=\d)|[eE][+-]?\d|\s(?=\d{3}(?!\d)))*/gu
+const NUMERAL_RUN =
+  /(?<![\p{L}\p{N}_.,'’])(?:\.(?=\d))?\d(?:\d|[.,_'’](?=\d)|[eE][+-]?\d|\s(?=\d{3}(?!\d)))*/gu
 
 /**
  * Every quantity the response of `r` states in a unit {@link DIMENSIONS} converts that no bound

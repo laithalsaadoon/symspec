@@ -625,7 +625,6 @@ describe('every comparator phrase, alone, yields exactly its comparator', () => 
     ['at least', '>='],
     ['a maximum of', '<='],
     ['a minimum of', '>='],
-    ['up to', '<='],
     ['less than or equal to', '<='],
     ['greater than or equal to', '>='],
     ['less than', '<'],
@@ -698,6 +697,10 @@ describe('a quantity in a converted unit that no bound reads is reported unread'
 
   it('names a quantity no comparator phrase introduces', () => {
     expect(unread('poll the sensor every 5 seconds')).toEqual(['5 seconds'])
+    // A leading-decimal spelling is a quantity too; NUMBER declines it, so the guard must see it.
+    expect(unread('respond in at least .5 s')).toEqual(['.5 s'])
+    // `up to` is not a comparator (`up to date`, `back up to`), so its quantity is unread.
+    expect(unread('store up to 5 MB')).toEqual(['5 MB'])
     expect(unread('lock the account after 5 minutes')).toEqual(['5 minutes'])
     expect(unread('respond within 200 ms and retry after 3 s')).toEqual(['3 s'])
     expect(unread('heat the tank to 60 degrees celsius')).toEqual(['60 degrees celsius'])
@@ -730,5 +733,19 @@ describe('a quantity in a converted unit that no bound reads is reported unread'
     expect(unread('respond within 200 ms', { trigger: 'the queue is idle for 5 minutes' })).toEqual(
       [],
     )
+  })
+})
+
+describe('`up to` is not a comparator: it is a particle as often as a bound', () => {
+  it('never reads `up to` as a bound, so `up to date … within 5 minutes` keeps its deadline', () => {
+    const preds = extractNumericPredicates(
+      'keep the cache up to date within 5 minutes',
+      'API gateway',
+      'resp',
+    )
+    expect(preds).toHaveLength(1)
+    expect(preds[0]?.comparator).toBe('<=')
+    expect(preds[0]?.quantity).not.toMatch(/__keep_the_cache$/)
+    expect(extractNumericPredicates('store up to 5 MB', 'API gateway', 'resp')).toEqual([])
   })
 })

@@ -128,3 +128,24 @@ describe('C6: a comparator phrase the lexicon reads is proved, one it does not i
     expect(report.verified).toBe(false)
   })
 })
+
+describe('two verifier repros after the lexicon change', () => {
+  it('`up to date … within 5 minutes` is never proved against a duration on `keep the cache`', async () => {
+    // With `up to` as an entry, it claimed the `within` number, lost the deadline role, and
+    // proved a consistent pair contradictory at error severity.
+    const report = await gateway(
+      'keep the cache up to date within 5 minutes',
+      'keep the cache for at least 10 minutes',
+    )
+    expect(report.findings.map((f) => f.code)).not.toContain('FND_NUMERIC_CONTRADICTION')
+  })
+
+  it('a leading-decimal quantity is disclosed, so a conflict it hides cannot verify', async () => {
+    // `.5 s` is declined by NUMBER; before the guard saw it, `within 200 ms` against `at least
+    // .5 s` (a real conflict) verified with exit 0.
+    const report = await gateway('respond within 200 ms', 'respond in at least .5 s')
+    const unread = report.findings.filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
+    expect(unread.map((f) => f.requirementIds)).toEqual([[ID_B]])
+    expect(report.verified).toBe(false)
+  })
+})
