@@ -36,10 +36,11 @@
  *          "the session authenticated" name one guard state;
  *        - when (and only when) the head is in an ANTONYM class, the atom gains an
  *          {@link Opposition} naming the class and the verbs a pair opposes to it,
- *          and one preposition token is dropped from the remainder
+ *          and a preposition the head's class governs is dropped from that KEY
  *          ({@link canonicalizeAntonymRest}), so "include X in the view" /
  *          "exclude X from the view" share one opposition key and are contraries.
- *          The head is never renamed: `approve` and `accept` are two atoms.
+ *          The body is never touched: `approve` and `accept` are two atoms, and so
+ *          are "allow calls to X" and "allow calls from X".
  *      Everything else stays near-exact: aggressive normalization is the one
  *      false-positive risk class (AC-4-11), so we buy only what closed rules
  *      can honestly deliver.
@@ -814,37 +815,26 @@ function stripCopula(body: string): string {
 }
 
 /**
- * Prepositions dropped from an antonym-class response remainder (A4). Fires
- * ONLY after an antonym head hit, and drops exactly ONE token — the first
- * preposition appearing after at least one non-preposition token — so
- * "exclude that tile from the default gallery view" and "include that tile in
- * the default gallery view" share one opposition key and are contraries. Direction within an
- * antonym class is carried by the HEAD (include vs exclude), never by the
- * preposition, which is what makes this sound; verbs outside the antonym
- * table ("move X to A" / "move X from A") are never touched, and differing
- * landing sites ("…gallery A" vs "…gallery B") still produce distinct atoms
- * because only the preposition itself is dropped, never the noun phrase.
- * It applies to the atom BODY as well as the key, so the partition is exactly the
- * pre-AC-2-1 one refined by head: nothing that was two atoms became one.
+ * The opposition-KEY remainder of an antonym-class response (A4): `rest` with the first
+ * preposition the head's CLASS governs ({@link AntonymEntry.governs}) dropped, when one appears
+ * after at least one other token. So "exclude that tile from the default gallery view" and
+ * "include that tile in the default gallery view" share one key and are contraries: for those
+ * verbs the HEAD carries the direction (include vs exclude) and the preposition only introduces
+ * the place. The set is the class's, not the verb's, so an identical remainder is one key.
+ *
+ * Only a governed preposition, and only in the key. "allow calls to the number" and "allow calls
+ * from the number" are different acts, and the rule that dropped the first of
+ * `in into from within inside to onto at on` for every antonym head — from the atom BODY as well
+ * — made them one atom, so the pair was an error-severity FND_CONTRADICTION. Differing landing
+ * sites ("…gallery A" vs "…gallery B") still produce distinct keys, because only the preposition
+ * is dropped, never the noun phrase; and the atom body keeps every token, so no two remainders
+ * that differ in a word share an atom.
  */
-const REST_PREPOSITIONS: ReadonlySet<string> = new Set([
-  'in',
-  'into',
-  'from',
-  'within',
-  'inside',
-  'to',
-  'onto',
-  'at',
-  'on',
-])
-
-/** Drop the first mid-remainder preposition token (antonym-hit responses only). */
-function canonicalizeAntonymRest(rest: string): string {
-  if (rest === '') return rest
+function canonicalizeAntonymRest(rest: string, governs: readonly string[]): string {
+  if (rest === '' || governs.length === 0) return rest
   const tokens = rest.split('_')
   for (let i = 1; i < tokens.length; i++) {
-    if (REST_PREPOSITIONS.has(tokens[i] as string)) {
+    if (governs.includes(tokens[i] as string)) {
       tokens.splice(i, 1)
       return tokens.join('_')
     }
@@ -908,9 +898,9 @@ export function atomize(args: AtomizeArgs): Atom {
   // The antonym lookup applies only to responses (spec AC-4-2a: "polar-opposite
   // responses"). The leading verb is de-inflected (closed 3sg rule) and looked
   // up longest-prefix-first — two tokens ("roll_back") before one ("roll") — so
-  // multiword opposites like commit/roll-back resolve. On a hit one remainder
-  // preposition is dropped (see canonicalizeAntonymRest) and the atom records its
-  // class-and-remainder key; the rest of the remainder must still be
+  // multiword opposites like commit/roll-back resolve. On a hit the atom records its
+  // class-and-remainder key, with the head's governed preposition dropped from the KEY
+  // only (see canonicalizeAntonymRest); the rest of the remainder must still be
   // byte-identical, so "grant access"/"revoke access" are contraries but "grant
   // access"/"revoke permission" are unrelated. Either way the de-inflected head
   // replaces the surface head, so "opens the valve" and "open the valve" collide.
@@ -930,14 +920,14 @@ export function atomize(args: AtomizeArgs): Atom {
     if (entry) {
       const head = twoEntry !== undefined ? (twoTok as string) : tok1
       const rest = tokens.slice(headLen).join('_')
-      const canonRest = canonicalizeAntonymRest(rest)
+      const keyRest = canonicalizeAntonymRest(rest, entry.governs)
       // The atom's head is the author's own verb, so `reject the order` is its own atom rather
       // than `accept the order` at flipped polarity, and `approve the order` is its own atom
       // rather than `accept the order` (AC-2-1: the table relates pairs by a contrary axiom and
-      // asserts no synonymy). The class canonical goes into the opposition KEY only, and polarity
-      // is the parse's `negated` and nothing else.
-      body = canonRest === '' ? head : `${head}_${canonRest}`
-      const classBody = canonRest === '' ? entry.canonical : `${entry.canonical}_${canonRest}`
+      // asserts no synonymy). The class canonical and the governed-preposition drop go into the
+      // opposition KEY only, and polarity is the parse's `negated` and nothing else.
+      body = rest === '' ? head : `${head}_${rest}`
+      const classBody = keyRest === '' ? entry.canonical : `${entry.canonical}_${keyRest}`
       opposition = {
         key: renderAtom({ scope, kind: 'resp', body: classBody }),
         body: classBody,

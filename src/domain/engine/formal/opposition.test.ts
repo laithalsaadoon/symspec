@@ -377,3 +377,70 @@ describe('AC-2-1 — the needs-review tier checks the same problem the contradic
     expect(guarded.map(([, status]) => status)).toEqual(['unsat'])
   })
 })
+
+describe('AC-2-1 — a preposition that carries direction is never dropped', () => {
+  // The antonym-remainder rule used to drop the first preposition after an antonym head from the
+  // atom BODY and the key alike, so "calls to the number" and "calls from the number" were one
+  // atom and "to"/"from" a spelling detail. Direction is carried by the head only for the verbs
+  // whose complement the verb itself governs (include IN / exclude FROM); elsewhere the
+  // preposition belongs to the object.
+  const BLOCK = 'When the user blocks a number, the call filter shall'
+  const FROZEN = 'While the account is frozen, the bank shall'
+  const errorsOf = async (sentences: readonly string[]) =>
+    (await runCheck(await docOf(sentences))).findings
+      .filter((f) => f.severity === 'error')
+      .map((f) => f.code)
+
+  it('allow calls TO / not allow calls FROM the number is no error', async () => {
+    expect(
+      await errorsOf([
+        `${BLOCK} allow calls to the number.`,
+        `${BLOCK} not allow calls from the number.`,
+      ]),
+    ).toEqual([])
+  })
+
+  it('enable transfers TO / not enable transfers FROM the account is no error', async () => {
+    expect(
+      await errorsOf([
+        `${FROZEN} enable transfers to the account.`,
+        `${FROZEN} not enable transfers from the account.`,
+      ]),
+    ).toEqual([])
+  })
+
+  it('allow calls TO / deny calls FROM the number is no error — the KEY keeps it too', async () => {
+    expect(
+      await errorsOf([
+        `${BLOCK} allow calls to the number.`,
+        `${BLOCK} deny calls from the number.`,
+      ]),
+    ).toEqual([])
+  })
+
+  it('a verb-governed complement still opposes: include IN / exclude FROM, add TO / remove FROM', async () => {
+    for (const [x, y] of [
+      ['include the tile in the view', 'exclude the tile from the view'],
+      ['include the file in the box', 'exclude the file in the box'],
+      ['add the user to the group', 'remove the user from the group'],
+      ['insert the card into the reader', 'withdraw the card from the reader'],
+      ['connect the pump to the tank', 'disconnect the pump from the tank'],
+    ] as const) {
+      const report = await runCheck(await docOf([`${BLOCK} ${x}.`, `${BLOCK} ${y}.`]))
+      const found = report.findings.filter((f) => f.code === 'FND_CONTRADICTION')
+      expect(
+        found.map((f) => f.requirementIds),
+        `${x} / ${y}`,
+      ).toEqual([[idOf(1), idOf(2)]])
+    }
+  })
+
+  it('keeps every preposition in the atom body', () => {
+    const name = (text: string) => atomize({ kind: 'resp', text, systemName: 'filter' }).name
+    expect(name('allow calls to the number')).toBe('sys__filter__resp__allow_calls_to_the_number')
+    expect(name('allow calls to the number')).not.toBe(name('allow calls from the number'))
+    expect(name('exclude the tile from the view')).toBe(
+      'sys__filter__resp__exclude_the_tile_from_the_view',
+    )
+  })
+})

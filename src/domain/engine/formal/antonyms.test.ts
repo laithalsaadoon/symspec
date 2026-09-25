@@ -33,12 +33,14 @@ import { atomize, contraryPairs } from './atomize.ts'
 const SEED_VERBS = [...new Set(SEED_ANTONYM_PAIRS.flat())].sort()
 
 /**
- * One row per member: `<canonical>  <polarity>  <verb>  <opposes>`, sorted, so a diff names the
- * verb. The last column is the whole relation the table asserts about `verb` (AC-2-1).
+ * One row per member: `<canonical>  <polarity>  <verb>  <opposes>  <governs>`, sorted, so a diff
+ * names the verb. `opposes` is the whole relation the table asserts about `verb` (AC-2-1), and
+ * `governs` the prepositions its class's opposition key drops.
  */
 const render = (index: ReadonlyMap<string, AntonymEntry>): string => {
   const rows = [...index].map(
-    ([verb, e]) => `${e.canonical}\t${e.negated ? '-' : '+'}\t${verb}\t${e.opposes.join(',')}`,
+    ([verb, e]) =>
+      `${e.canonical}\t${e.negated ? '-' : '+'}\t${verb}\t${e.opposes.join(',')}\t${e.governs.join(',')}`,
   )
   return `${rows.sort().join('\n')}\n`
 }
@@ -87,22 +89,40 @@ describe('the resolved seed index', () => {
       canonical: 'accept',
       negated: false,
       opposes: ['decline', 'reject'],
+      governs: [],
     })
     expect(ANTONYM_INDEX.get('approve')).toEqual({
       canonical: 'accept',
       negated: false,
       opposes: ['reject'],
+      governs: [],
     })
     expect(ANTONYM_INDEX.get('reject')).toEqual({
       canonical: 'accept',
       negated: true,
       opposes: ['accept', 'approve'],
+      governs: [],
     })
     expect(ANTONYM_INDEX.get('decline')).toEqual({
       canonical: 'accept',
       negated: true,
       opposes: ['accept'],
+      governs: [],
     })
+  })
+
+  it('gives every member of a class ONE governed-preposition set', () => {
+    // Per class, not per verb: "include the file in the box" and "exclude the file in the box"
+    // must compute one key, and a per-verb drop removed `in` from the include key alone.
+    expect(ANTONYM_INDEX.get('include')?.governs).toEqual(['from', 'in', 'into', 'within'])
+    expect(ANTONYM_INDEX.get('exclude')?.governs).toEqual(['from', 'in', 'into', 'within'])
+    expect(ANTONYM_INDEX.get('allow')?.governs).toEqual([])
+    const byClass = new Map<string, string>()
+    for (const e of ANTONYM_INDEX.values()) {
+      const seen = byClass.get(e.canonical)
+      if (seen === undefined) byClass.set(e.canonical, e.governs.join(','))
+      else expect(e.governs.join(','), e.canonical).toBe(seen)
+    }
   })
 
   it('opposes exactly the pairs in the table — every edge, both ways, and nothing else', () => {
@@ -144,16 +164,19 @@ describe('a document pair that touches a seed class', () => {
       canonical: 'commit',
       negated: false,
       opposes: ['roll_back', 'rollback'],
+      governs: [],
     })
     expect(merged.get('commit')).toEqual({
       canonical: 'abort',
       negated: true,
       opposes: ['abort', 'roll_back', 'rollback'],
+      governs: [],
     })
     expect(merged.get('roll_back')).toEqual({
       canonical: 'abort',
       negated: false,
       opposes: ['commit'],
+      governs: [],
     })
   })
 

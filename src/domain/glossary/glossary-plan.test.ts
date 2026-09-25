@@ -240,10 +240,9 @@ describe('applying the plan leaves a SOUND glossary index', () => {
   /**
    * The canonical names the AUTHOR'S wording, not the internal atom spelling.
    *
-   * An atom spelling is not an author's phrase — `atomize` de-inflects the head, drops a leading
-   * article and a preposition after an antonym head, so "grants access to the vault" arrives on
-   * `..._resp__grant_access_the_vault`, a spelling the document never contains. Picking by atom
-   * position would put a canonical in the glossary
+   * An atom spelling is not an author's phrase — `atomize` folds case and de-inflects the
+   * head, so "Grants access" arrives on `..._resp__grant_access`, a spelling the
+   * document never contains. Picking by atom position would put a canonical in the glossary
    * that the author cannot find in their own spec, which is the same defect class as reading
    * an antonym-class canonical out as a verb head. The pin stays on the phrase so no future
    * atom spelling can reintroduce that.

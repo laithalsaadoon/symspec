@@ -1,5 +1,5 @@
-eval-rounds/eval-feedback-exclude-include	resp	sys__gallery_service__resp__exclude_that_tile_the_default_gallery_view	<- exclude that tile from the default gallery view
-eval-rounds/eval-feedback-exclude-include	resp	sys__gallery_service__resp__include_that_tile_the_default_gallery_view	<- include that tile in the default gallery view
+eval-rounds/eval-feedback-exclude-include	resp	sys__gallery_service__resp__exclude_that_tile_from_the_default_gallery_view	<- exclude that tile from the default gallery view
+eval-rounds/eval-feedback-exclude-include	resp	sys__gallery_service__resp__include_that_tile_in_the_default_gallery_view	<- include that tile in the default gallery view
 eval-rounds/eval-feedback-exclude-include	trig	sys__gallery_service__guard__curator_hides_a_tile	<- the curator hides a tile
 eval-rounds/eval-issue2-infusion-proven-via-glossary	resp	sys__infusion_pump__resp__complete_the_infusion_within_at_most_30_minutes	<- complete the infusion within at most 30 minutes
 eval-rounds/eval-issue2-infusion-proven-via-glossary	resp	sys__infusion_pump__resp__run_the_infusion_for_at_least_60_minutes	<- run the infusion for at least 60 minutes
@@ -17,8 +17,8 @@ eval-rounds/eval-issue2-ring-odd-cycle	trig	sys__controller__guard__ring_bus_ini
 eval-rounds/eval-r2-reactor-keeps-online	pre	sys__controller__guard__coolant_pump_engaged	<- the coolant pump is engaged
 eval-rounds/eval-r2-reactor-keeps-online	pre	sys__controller__guard__reactor_online	<- the reactor is online
 eval-rounds/eval-r2-reactor-keeps-online	pre	sys__controller__guard__reactor_overheating	<- the reactor is overheating
-eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__deny_power_the_distribution_grid	<- deny power to the distribution grid
-eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__grant_power_the_distribution_grid	<- grant power to the distribution grid
+eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__deny_power_to_the_distribution_grid	<- deny power to the distribution grid
+eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__grant_power_to_the_distribution_grid	<- grant power to the distribution grid
 eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__keep_the_reactor_online	<- keeps the reactor online
 eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__mark_the_coolant_pump_engaged	<- mark the coolant pump engaged
 eval-rounds/eval-r3-commit-rollback	pre	sys__engine__guard__transaction_reconciled	<- the transaction is reconciled
@@ -35,8 +35,8 @@ eval-rounds/eval-r3-privchain	pre	sys__controller__guard__session_trusted	<- the
 eval-rounds/eval-r3-privchain	pre	sys__controller__guard__session_verified	<- the session is verified
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__audit_the_vault_access	<- audit the vault access
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__clear_the_session	<- clear the session
-eval-rounds/eval-r3-privchain	resp	sys__controller__resp__deny_access_the_vault	<- deny access to the vault
-eval-rounds/eval-r3-privchain	resp	sys__controller__resp__grant_access_the_vault	<- grant access to the vault
+eval-rounds/eval-r3-privchain	resp	sys__controller__resp__deny_access_to_the_vault	<- deny access to the vault
+eval-rounds/eval-r3-privchain	resp	sys__controller__resp__grant_access_to_the_vault	<- grant access to the vault
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__mark_the_session_authenticated	<- mark the session authenticated
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__mark_the_session_privileged	<- mark the session privileged
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__mark_the_session_trusted	<- mark the session trusted

@@ -24,8 +24,8 @@
  *     table deliberately keeps apart — curation IS the architecture here.
  *   - A contrary requires the (de-inflected) leading verbs to be one seeded or
  *     committed pair AND the object remainder to be identical after
- *     normalization + the antonym-hit preposition drop (see atomize.ts): "grant
- *     access" is a contrary of "revoke access" but not of "revoke permission".
+ *     normalization + the governed-preposition drop ({@link GOVERNED_PREPOSITIONS}):
+ *     "grant access" is a contrary of "revoke access" but not of "revoke permission".
  *
  * Shared-member semantics (why a signed union-find, and why it is not a synonym table):
  *   Some seed pairs share a member — `accept↔reject`, `approve↔reject`, and
@@ -110,6 +110,36 @@ export const SEED_ANTONYM_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['extend', 'retract'],
 ]
 
+/**
+ * The prepositions a seed verb GOVERNS: the one that introduces its own complement, where the
+ * verb, not the preposition, carries the direction. "include X in V" and "exclude X from V" name
+ * one place, so the opposition KEY drops the governed preposition and the two are contraries
+ * (atomize.ts `canonicalizeAntonymRest`). Nothing else is dropped, and never from the atom body.
+ *
+ * A closed, curated table in the same category as the seed pairs. A verb is listed only when its
+ * contrary takes a DIFFERENT preposition for the same place — two members that take the same one
+ * ("grant power to the grid" / "deny power to the grid") already share a key without any drop.
+ * An unlisted class keeps every preposition in its key: "allow calls to the number" and "deny
+ * calls from the number" are two different calls, and a rule that dropped `to` and `from` for
+ * every antonym head made them contraries.
+ *
+ * The drop is per CLASS ({@link AntonymEntry.governs}, the union over its members), never per
+ * verb: "include the file in the box" and "exclude the file in the box" must share a key, and a
+ * per-verb drop removed `in` from the first key only. A class a doc-committed pair joins inherits
+ * the union; a class of doc verbs alone gets nothing, so its remainders must match word for word,
+ * which can only miss a contrary, never invent one.
+ */
+export const GOVERNED_PREPOSITIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['include', new Set(['in', 'into', 'within'])],
+  ['exclude', new Set(['from'])],
+  ['add', new Set(['to', 'into'])],
+  ['remove', new Set(['from'])],
+  ['insert', new Set(['into', 'in'])],
+  ['withdraw', new Set(['from'])],
+  ['connect', new Set(['to'])],
+  ['disconnect', new Set(['from'])],
+])
+
 /** A resolved antonym-class membership for one verb. */
 export interface AntonymEntry {
   /**
@@ -125,6 +155,12 @@ export interface AntonymEntry {
    * by one of these over the same key, and of nothing else in the class (spec 007 AC-2-1).
    */
   opposes: readonly string[]
+  /**
+   * The prepositions the opposition key drops for EVERY member of this verb's class: the union
+   * of {@link GOVERNED_PREPOSITIONS} over the class, sorted. One set per class, so two members
+   * over one remainder always compute one key.
+   */
+  governs: readonly string[]
 }
 
 /**
@@ -191,7 +227,8 @@ export function buildAntonymIndex(
     // Re-base sign relative to the canonical (which we pin to positive).
     const negated = (sign.get(verb) as boolean) !== (sign.get(canonical) as boolean)
     const opposes = [...new Set(adj.get(verb) ?? [])].sort()
-    index.set(verb, { canonical, negated, opposes })
+    const governs = [...new Set(members.flatMap((m) => [...(GOVERNED_PREPOSITIONS.get(m) ?? [])]))]
+    index.set(verb, { canonical, negated, opposes, governs: governs.sort() })
   }
   return index
 }
