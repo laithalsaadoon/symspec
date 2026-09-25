@@ -1003,20 +1003,22 @@ async function uncomparedPairs(
             ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
               'that conflict if each is the obligation on one quantity, but the numeric tier does ' +
               `not read every one of them so (${clauses.join('; ')}): a bound after a connective, ` +
-              "a finite verb, or another bound may be a condition's, and one after a function word " +
-              `or a plural, or on the object of a verb other than ${HOLDING_VERBS.join(', ')}, ` +
-              'may pick out what the response acts on rather than bound what it holds. It does ' +
-              'not guess which, so it never compared them. To have any conflict proved, restate ' +
-              'each in a shape the tier proves: the bound as the obligation of a holding verb, ' +
-              '"keep <quantity> below <N>" for "ensure that <quantity> is below <N>" (or ' +
-              `${HOLDING_VERBS.filter((v) => v !== 'keep').join(', ')} for keep), with the quantity ` +
-              'named by content words alone ("the endpoint response time", not "the response time ' +
-              'of the endpoint"); a time bound its own role word (for, in, within, every) ' +
-              'introduces right after the action, a duration or period after one noun or a plural ' +
-              '("run the pump for at least <N> ' +
-              'minutes"), or the verb alone ("respond within <N> milliseconds"); move a condition ' +
-              'into the trigger or precondition ("While <condition>, the <system> shall keep ' +
-              '<quantity> below <N>"). Or waive this finding once you have checked they cannot ' +
+              "a finite verb, or another bound may be a condition's, one after a function word, " +
+              'a plural, or a second content word may pick out what the response acts on or the ' +
+              `state it holds, one on the object of a verb other than ${HOLDING_VERBS.join(', ')} ` +
+              'may pick out what the response acts on, and one after a verb alone that is not a ' +
+              'time may be a condition on a quantity the sentence does not name. It does not ' +
+              'guess which, so it never compared them. To have any conflict proved, restate each ' +
+              'in a shape the tier proves: the bound as the obligation of a holding verb on ONE ' +
+              'noun, "keep <quantity> below <N>" for "ensure that <quantity> is below <N>" (or ' +
+              `${HOLDING_VERBS.filter((v) => v !== 'keep').join(', ')} for keep), a compound ` +
+              'named in one word ("keep the level", not "keep the tank level"); a time bound on a ' +
+              'holding verb ("keep the door unlocked for at least <N> seconds"); a time bound its ' +
+              'own role word (for, in, within, every, or a time preposition such as after) ' +
+              'introduces right after one noun, a plural included ("run the pump for at least <N> ' +
+              'minutes"); or the verb alone on a time ("respond within <N> milliseconds"). Move a ' +
+              'condition into the trigger or precondition ("While <condition>, the <system> shall ' +
+              'keep <quantity> below <N>"). Or waive this finding once you have checked they cannot ' +
               'apply together. Then re-run `symspec check`. This is a disclosure, not a verdict.'
             : shape === 'qualifiers'
               ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +

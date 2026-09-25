@@ -831,14 +831,16 @@ const FUNCTION_WORD: ReadonlySet<string> = new Set([
 ])
 
 /**
- * The verbs whose object a bound after it is held to: `keep the latency below 200
- * milliseconds` obliges the latency to be below 200 milliseconds. Any other verb's object is a
- * thing the response acts on, and a bound after it may pick out WHICH (`reject the payment
- * exceeding 1000 dollars`, `stop the pump running above 3000 rpm`); the pair is disclosed. Closed
- * on purpose: a verb left out only demotes, and the disclosure names this list as the repair
- * ({@link HOLDING_VERBS}).
+ * The verbs whose object a bound after it is held to: `keep the latency below 200 milliseconds`
+ * obliges the latency to be below 200 milliseconds. Any other verb's object is a thing the
+ * response acts on, and a bound after it may pick out WHICH (`reject the payment exceeding 1000
+ * dollars`, `stop the pump running above 3000 rpm`); the pair is disclosed. Closed on purpose,
+ * and small: a verb left out only demotes, and the disclosure names this list as the repair
+ * ({@link HOLDING_VERBS}). `hold` (an order is put ON hold: `hold the order above 1000 dollars`)
+ * and `limit` (a limit may be ON what the bound picks out: `limit the withdrawal above 1000
+ * dollars`) each have a second sense in which the bound restricts the object, so neither is one.
  */
-const HOLDING_VERB: ReadonlySet<string> = new Set(['keep', 'maintain', 'hold', 'have', 'limit'])
+const HOLDING_VERB: ReadonlySet<string> = new Set(['keep', 'maintain', 'have'])
 
 /** The {@link HOLDING_VERB}s, in the order a disclosure names them as the repair. */
 export const HOLDING_VERBS: readonly string[] = [...HOLDING_VERB]
@@ -903,51 +905,67 @@ function finiteVerbIn(subject: string): string | undefined {
  * Why a RESPONSE's bound, whose subject is `subject`, is NOT read as the obligation on what the
  * response holds to it, or `undefined` when it is. Spec 007 C1/C2: the subject key is exact, but
  * that the subject names one quantity with a bound is a reading of the sentence, and this tier
- * proves a bound only in the three shapes where the reading is fixed by closed-class words:
+ * proves a bound only in the shapes where one noun, or the action itself, is all the bound can be
+ * about. `dimension` is the bound's ({@link NumericPredicate.dimension}).
  *
- *   - the response's verb alone (`respond within 200 milliseconds`, `be below 5 meters`): there is
- *     no object for the bound to pick anything out of;
- *   - a {@link HOLDING_VERB} and a quantity named by content words alone (`keep the response time
- *     below 200 milliseconds`, `keep the door unlocked for at least 30 seconds`);
- *   - a time bound its own role word introduces (`marker`: `for`, `in`, `within`, `every`, or a
- *     governing time preposition) right after an action named by content words alone (`expire
- *     the idle session after at most 30 minutes`), where a plural may stand last (`retain the logs
- *     for at least 90 days`) because nothing follows it for the bound to modify. A span (`for`,
- *     `every`) needs one noun or a plural head before it: after another word, that word may be a
- *     postmodifier the span belongs to (`close the session idle for at least 30 minutes` picks
- *     out a session).
+ *   - The response's verb alone, on a TIME bound (`respond within 200 milliseconds`, `run for at
+ *     least 10 seconds`): a length of time is the action's own. On any other dimension the bound
+ *     is a condition on a quantity the sentence does not name (`sound above 90 degrees celsius`,
+ *     `open above 5 bar`: a high/low alarm and a relief valve), except after `be`, whose bound is
+ *     the system's own value (`be below 5 meters`).
+ *   - A {@link HOLDING_VERB} and ONE noun (`keep the latency below 200 milliseconds`), or, on a
+ *     time bound, any object of content words (`keep the door unlocked for at least 30 seconds`:
+ *     how long the state is held). A second content word may be the state the object is held in,
+ *     and the bound when it holds (`keep the pump stopped above 5 meters`); nothing but its sense
+ *     tells it from a compound (`keep the tank level below 3 meters`), so both are disclosed.
+ *   - A time bound its own role word introduces (`marker`: `for`, `in`, `within`, `every`, or a
+ *     governing time preposition) right after ONE noun (`expire the session after at most 30
+ *     minutes`, `retain the logs for at least 90 days`, where the noun may be a plural because
+ *     nothing follows it for the bound to modify). After a second word, that word may be a
+ *     postmodifier the time belongs to: `close the session idle for at least 30 minutes` and
+ *     `escalate the ticket unresolved after at least 3 days` each pick out a session or a ticket,
+ *     and nothing but its sense tells it from a compound (`retain audit logs for`).
  *
- * Every other subject has structure a bound may restrict (a finite verb, a function word, a plural)
- * or a verb that does not hold its object to anything, and the answer names the first such word.
- * The caller then gives the bound its whole slot as qualifier, so it is compared with no bound not
- * spelled identically, and `numeric-contradiction.ts` discloses the pair. What this cannot see is a
- * plural no `-s` marks (`keep the fish above 3 meters`), or a content-word postmodifier inside a
- * holding verb's object; the object is then read as the quantity, as it is written.
+ * Every other subject has structure a bound may restrict (a finite verb, a function word, a plural,
+ * a second content word) or a verb that does not hold its object to anything, and the answer names
+ * the first such word. The caller then gives the bound its whole slot as qualifier, so it is
+ * compared with no bound not spelled identically, and `numeric-contradiction.ts` discloses the
+ * pair. What this cannot see is a sense no closed-class word marks: a plural no `-s` marks (`keep
+ * the fish above 3 meters`), or `keep` meaning retain on a singular (`keep the reading above 90
+ * degrees celsius`); the object is then read as the quantity, as it is written.
  */
-function unheldBy(subject: string, marker: TimeMarker | undefined): string | undefined {
+function unheldBy(
+  subject: string,
+  marker: TimeMarker | undefined,
+  dimension: string,
+): string | undefined {
   const timeMarked = marker !== undefined
   const tokens = wordsOf(subject)
   while (tokens.length > 1 && BOUND_OWN_WORD.has(tokens[tokens.length - 1]!.toLowerCase())) {
     tokens.pop()
   }
-  if (tokens.length <= 1) return undefined
+  const [verb, ...object] = tokens.map((w) => w.toLowerCase())
+  if (tokens.length <= 1) {
+    if (dimension === 'time' || verb === undefined || verb === 'be') return undefined
+    return `the verb "${verb}" alone, on a bound that is not a time`
+  }
   const finite = finiteVerbIn(subject)
   if (finite !== undefined) return finite
-  const [verb, ...object] = tokens.map((w) => w.toLowerCase())
   const word = object.find((w, i) => FUNCTION_WORD.has(w) && !(i === 0 && w === 'the'))
   if (word !== undefined) return `the word "${word}"`
   const plural = tokens
     .slice(1)
     .find((w, i) => PLURAL_LOOKING.test(w) && !(timeMarked && i === object.length - 1))
   if (plural !== undefined) return `the plural "${plural}"`
-  if (HOLDING_VERB.has(verb!)) return undefined
-  if (marker === undefined) return `the verb "${verb!}"`
-  // A span (`for`, `every`) attaches as readily to a postmodifier of the object as to the action
-  // (`close the session idle for at least 30 minutes`), so after a word that may be one, a span is
-  // not read as the action's: only after one noun, or a plural head (`retain audit logs for`).
   const nouns = object[0] === 'the' ? object.slice(1) : object
-  if (marker === 'point' || nouns.length <= 1) return undefined
-  if (PLURAL_LOOKING.test(tokens[tokens.length - 1]!)) return undefined
+  const oneNoun = nouns.length <= 1
+  if (HOLDING_VERB.has(verb!)) {
+    return oneNoun || dimension === 'time'
+      ? undefined
+      : `the verb "${verb!}" and the words "${nouns.join(' ')}"`
+  }
+  if (marker === undefined) return `the verb "${verb!}"`
+  if (oneNoun) return undefined
   return `the verb "${verb!}" and the words "${nouns.join(' ')}"`
 }
 
@@ -1619,6 +1637,7 @@ export function extractNumericPredicates(
                         (prev.word === 'within' || TIME_PREPOSITION.test(prev.word)))
                     ? 'point'
                     : undefined,
+                dimension,
               )
             : undefined,
       })

@@ -241,9 +241,99 @@ const RESTRICTING: ReadonlyArray<readonly [string, string, string]> = [
   ],
 ]
 
+/**
+ * Every pair here holds together too: the bound is a CONDITION on an unnamed quantity, not a
+ * value of what the sentence names. Each was proved contradictory by 669c0e9, 2aaa8e8, and
+ * b2b16cd (the point-marked ones by b2b16cd alone, or by all three), and nothing but the sense of
+ * one content word tells any of them from a proved shape: a holding verb's object that is more
+ * than one noun (`the pump stopped`, `the backup generator online`), a single object under a verb
+ * with a second sense (`hold the order`: put on hold), a verb alone on a bound that is not a
+ * time, and a time point after an object with a postmodifier (`the ticket unresolved`).
+ */
+const AMBIENT: ReadonlyArray<readonly [string, string, string]> = [
+  // A holding verb whose object ends in a state: the bound is when the state holds.
+  ['controller', 'keep the pump stopped above 5 meters', 'keep the pump stopped below 1 meter'],
+  [
+    'thermostat',
+    'keep the heater running below 5 degrees celsius',
+    'keep the heater running above 30 degrees celsius',
+  ],
+  ['controller', 'keep the valve closed above 8 bar', 'keep the valve closed below 2 bar'],
+  [
+    'plant',
+    'maintain the backup generator online above 40 degrees celsius',
+    'maintain the backup generator online below 10 degrees celsius',
+  ],
+  [
+    'monitor',
+    'have the alarm active above 90 degrees celsius',
+    'have the alarm active below 5 degrees celsius',
+  ],
+  ['controller', 'have the pump idle above 5 bar', 'have the pump idle below 1 bar'],
+  [
+    'car',
+    'hold the window closed above 50 kilometers per hour',
+    'hold the window closed below 5 kilometers per hour',
+  ],
+  ['controller', 'limit the pump speed above 5 bar', 'limit the pump speed below 1 bar'],
+  // A verb with a second sense: `hold` an order is to put it on hold.
+  ['order system', 'hold the order above 1000 dollars', 'hold the order below 5 dollars'],
+  // The verb alone, on a bound that is not a time: an ordinary high/low alarm.
+  ['alarm', 'sound above 90 degrees celsius', 'sound below 5 degrees celsius'],
+  ['relief valve', 'open above 5 bar', 'open below 1 bar'],
+  ['hvac unit', 'activate above 30 degrees celsius', 'activate below 5 degrees celsius'],
+  // A time point after a postmodifier: it picks out which ticket, not when to escalate.
+  [
+    'helpdesk',
+    'escalate the ticket unresolved after at least 3 days',
+    'escalate the ticket unresolved after at most 1 day',
+  ],
+  [
+    'account system',
+    'delete the account inactive after at least 90 days',
+    'delete the account inactive after at most 10 days',
+  ],
+  [
+    'quality monitor',
+    'flag the call dropped after at most 2 seconds',
+    'flag the call dropped after at least 60 minutes',
+  ],
+  [
+    'server',
+    'flag the session idle after at least 30 minutes',
+    'flag the session idle after at most 1 minute',
+  ],
+  [
+    'call center system',
+    'flag the call answered in under 2 seconds',
+    'flag the call answered in over 60 seconds',
+  ],
+  [
+    'logistics system',
+    'flag the order delivered before at least 2 days',
+    'flag the order delivered before at most 1 hour',
+  ],
+  [
+    'helpdesk',
+    'reward the agent rated after at least 3 days',
+    'reward the agent rated after at most 1 day',
+  ],
+]
+
 describe('spec 007 C1/C2: a bound is proved only as what its response holds to it', () => {
   it('DISCLOSES, and never proves, a bound that may pick out what the response acts on', async () => {
     for (const [system, a, b] of RESTRICTING) {
+      const out = await check(system, [a, b])
+      const pair = [...out.ids].sort()
+      expect(out.errors, a).toEqual([])
+      expect(out.uncompared, a).toContainEqual(pair)
+      expect(out.demoted, a).toContainEqual(pair)
+      expect(out.verified, a).toBe(false)
+    }
+  })
+
+  it('DISCLOSES, and never proves, a bound that may be a condition on an unnamed quantity', async () => {
+    for (const [system, a, b] of AMBIENT) {
       const out = await check(system, [a, b])
       const pair = [...out.ids].sort()
       expect(out.errors, a).toEqual([])
@@ -277,12 +367,7 @@ describe('spec 007 C1/C2: a bound is proved only as what its response holds to i
 
   it('PROVES the shapes whose bound is the obligation, each read off closed-class words', async () => {
     for (const [system, a, b] of [
-      // A state verb and a quantity named by content words alone.
-      [
-        'server',
-        'keep the response time below 200 milliseconds',
-        'keep the response time above 500 milliseconds',
-      ],
+      // A holding verb on one noun, or on content words and a time.
       [
         'server',
         'maintain the latency at most 200 milliseconds',
@@ -290,21 +375,21 @@ describe('spec 007 C1/C2: a bound is proved only as what its response holds to i
       ],
       [
         'heater',
-        'hold the water temperature under 20 degrees celsius',
-        'hold the water temperature over 30 degrees celsius',
+        'keep the temperature under 20 degrees celsius',
+        'keep the temperature over 30 degrees celsius',
       ],
       ['pump controller', 'have the level below 3 meters', 'have the level above 5 meters'],
       [
         'server',
-        'limit the latency to at most 200 milliseconds',
-        'limit the latency to at least 500 milliseconds',
+        'keep the response time below 200 milliseconds',
+        'keep the response time above 500 milliseconds',
       ],
       [
         'door controller',
         'keep the door unlocked for at most 30 seconds',
         'keep the door unlocked for at least 60 seconds',
       ],
-      // The response's verb alone: no object for a bound to restrict.
+      // The response's verb alone, on a time: no object for a bound to restrict.
       ['server', 'respond within 200 milliseconds', 'respond in at least 500 milliseconds'],
       ['recorder', 'store at least 30 days of logs', 'store at most 2 hours of logs'],
       // A time bound its own role word introduces, right after the action.
@@ -317,12 +402,62 @@ describe('spec 007 C1/C2: a bound is proved only as what its response holds to i
       ['archiver', 'retain the logs for at least 90 days', 'retain the logs for at most 30 days'],
       [
         'auth service',
-        'expire the idle session after at most 30 minutes',
-        'expire the idle session after at least 60 minutes',
+        'expire the session after at most 30 minutes',
+        'expire the session after at least 60 minutes',
       ],
     ] as const) {
       const out = await check(system, [a, b])
       expect(out.proved, a).toContainEqual([...out.ids].sort())
+    }
+  })
+
+  it('DISCLOSES a conflicting pair outside those shapes: a demotion, never silence (C3)', async () => {
+    // Each pair conflicts, and 669c0e9 proved it. Nothing but a content word's sense tells it
+    // from an AMBIENT pair above, so it is disclosed, naming both ids and the restatement.
+    for (const [system, a, b] of [
+      [
+        'heater',
+        'hold the water temperature under 20 degrees celsius',
+        'hold the water temperature over 30 degrees celsius',
+      ],
+      [
+        'server',
+        'limit the latency to at most 200 milliseconds',
+        'limit the latency to at least 500 milliseconds',
+      ],
+      [
+        'auth service',
+        'expire the idle session after at most 30 minutes',
+        'expire the idle session after at least 60 minutes',
+      ],
+      [
+        'pump controller',
+        'keep the tank level below 3 meters',
+        'keep the tank level above 5 meters',
+      ],
+      [
+        'cache',
+        'flush the write cache within 2 seconds',
+        'flush the write cache in at least 5 seconds',
+      ],
+      ['plant controller', 'run above 3000 rpm', 'run below 500 rpm'],
+      [
+        'archiver',
+        'retain audit logs for at least 90 days',
+        'retain audit logs for at most 30 days',
+      ],
+      [
+        'auth service',
+        'lock idle accounts for at least 30 minutes',
+        'lock idle accounts for at most 1 minute',
+      ],
+    ] as const) {
+      const out = await check(system, [a, b])
+      const pair = [...out.ids].sort()
+      expect(out.errors, a).toEqual([])
+      expect(out.uncompared, a).toContainEqual(pair)
+      expect(out.demoted, a).toContainEqual(pair)
+      expect(out.verified, a).toBe(false)
     }
   })
 })

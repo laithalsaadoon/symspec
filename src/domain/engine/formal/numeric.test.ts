@@ -349,7 +349,7 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
       expect(qualifier(text), verb).toEqual([text])
     }
     // The controls: a subject with neither is the obligation's own, with no qualifier.
-    expect(qualifier('keep the tank temperature below 5 degrees celsius')).toEqual([undefined])
+    expect(qualifier('keep the temperature below 5 degrees celsius')).toEqual([undefined])
     expect(qualifier('be open for at most 5 seconds')).toEqual([undefined])
     // And a guard's subject is predicated by its own `is`: that is the guard, not a clause in it.
     const [guard] = extractNumericPredicates('the level is above 5 meters', 'svc', 'trig')
@@ -383,29 +383,56 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
         'run the backup once-daily for at most 2 hours',
         'the verb "run" and the words "backup once-daily"',
       ],
+      // A point in time after a postmodifier: which ticket, not when to escalate.
+      [
+        'escalate the ticket unresolved after at least 3 days',
+        'the verb "escalate" and the words "ticket unresolved"',
+      ],
+      [
+        'expire the idle session after at most 30 minutes',
+        'the verb "expire" and the words "idle session"',
+      ],
+      [
+        'flag the call answered in under 2 seconds',
+        'the verb "flag" and the words "call answered"',
+      ],
+      // Nor is a compound told from a noun and its postmodifier: both are disclosed.
+      ['flush the write cache within 2 seconds', 'the verb "flush" and the words "write cache"'],
+      ['retain audit logs for at least 9 months', 'the verb "retain" and the words "audit logs"'],
+      // A holding verb's object of two content words, on a bound that is not a time: the second
+      // may be the state the object is held in, and the bound when it holds.
+      ['keep the pump stopped above 5 meters', 'the verb "keep" and the words "pump stopped"'],
+      ['keep the tank level below 3 meters', 'the verb "keep" and the words "tank level"'],
+      ["keep the tank's level below 3 meters", 'the verb "keep" and the words "tank\'s level"'],
+      // A verb with a second sense in which the bound picks out the object.
+      ['hold the order above 1000 dollars', 'the verb "hold"'],
+      ['hold zone 1 temperature above 20 degrees celsius', 'the verb "hold"'],
+      ['limit the latency to at most 200 milliseconds', 'the verb "limit"'],
+      // The verb alone on a bound that is not a time: a condition on an unnamed quantity.
+      ['sound above 90 degrees celsius', 'the verb "sound" alone, on a bound that is not a time'],
+      ['open above 5 bar', 'the verb "open" alone, on a bound that is not a time'],
     ] as const) {
       expect(read(text), text).toEqual([[text, clause]])
     }
-    // The shapes that are proved: the verb alone; a state verb on a quantity named by content
-    // words; a time bound its own role word introduces. None splits the bound off.
+    // The shapes that are proved: the verb alone on a time, or after `be`; a holding verb on one
+    // noun, or on content words and a time; a time bound its own role word introduces after one
+    // noun. None splits the bound off.
     for (const text of [
       'respond within 200 milliseconds',
       'respond in at least 500 milliseconds',
       'be below 5 meters',
       'keep the response time below 200 milliseconds',
       'maintain the latency at most 200 milliseconds',
-      'hold zone 1 temperature above 20 degrees celsius',
+      'keep the level below 3 meters',
       'have the level below 3 meters',
-      'limit the latency to at most 200 milliseconds',
       'keep the door unlocked for at least 30 seconds',
-      "keep the tank's level below 3 meters",
+      'keep the door unlocked above 30 seconds',
       'keep the ISIS latency below 200 milliseconds',
       'run the pump for at least 10 minutes',
       'sound the siren within 2 seconds',
       'retain the logs for at least 90 days',
-      'retain audit logs for at least 9 months',
-      'expire the idle session after at most 30 minutes',
-      'flush the write cache within 2 seconds',
+      'expire the session after at most 30 minutes',
+      'hold the lock until at most 5 seconds',
       'poll the sensor at least once every 5 seconds',
     ]) {
       expect(read(text), text).toEqual([[undefined, undefined]])
@@ -425,9 +452,9 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
     // The two exact rules: a time preposition that is the bound's own word, and a connective
     // inside a hyphenated compound, which is part of a word.
     for (const text of [
-      'expire the idle session after at most 30 minutes',
+      'expire the session after at most 30 minutes',
       'hold the lock until at most 5 seconds',
-      'keep the once-daily dose below 5 milligrams',
+      'keep the once-daily pump running for at most 5 minutes',
     ]) {
       expect(qualifier(text), text).toEqual([undefined])
     }

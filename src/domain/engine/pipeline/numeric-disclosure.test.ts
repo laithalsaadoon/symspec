@@ -511,10 +511,13 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
           .filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
           .map((f) => f.requirementIds)
 
-      it('PROVES time prohibitions against an obligation bounded in percent', async () => {
-        // `keep the pump running at least 80%` runs the pump, so `not above 30 minutes` and `not below 40
-        // minutes` cannot both hold. Only a bare obligation forced the action across unit
-        // classes, and 669c0e9's error on this document was gone.
+      it('DISCLOSES time prohibitions against an obligation whose percent bound may be a condition', async () => {
+        // `keep the pump running at least 80%` may run the pump always, or only at 80% load or
+        // more: a holding verb's object of two content words may be a state, and its bound when
+        // the state holds (spec 007 C2, `numeric.ts` `unheldBy`). 669c0e9 proved `not above 30
+        // minutes` and `not below 40 minutes` against it; that the pump runs is a reading, so
+        // the set is disclosed, never proved and never silent (C3). The bare performer below
+        // (`keep the pump running`, no bound) is the proved control.
         const doc = manyDoc(
           pump('keep the pump running above 30 minutes', undefined, true),
           pump('keep the pump running below 40 minutes', undefined, true),
@@ -522,12 +525,26 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
           pump('log the level', 'the tank is low'),
         )
         const report = await runCheck(doc as never, {})
-        expect(contradictions(report)).toEqual([[idAt(0), idAt(1), idAt(2)]])
-        const [finding] = report.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
-        expect(finding?.message).toContain(
-          `Requirement ${idAt(2)} does "keep the pump running at least 80%"`,
+        expect(contradictions(report)).toEqual([])
+        expect(report.counts.error).toBe(0)
+        expect(
+          report.findings
+            .filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
+            .map((f) => f.requirementIds),
+        ).toContainEqual([idAt(0), idAt(1), idAt(2)])
+        expect(report.coverage.demotions.map((d) => d.reason)).toContain(
+          'numeric-bounds-uncompared',
         )
         expect(report.verified).toBe(false)
+        const bare = await runCheck(
+          manyDoc(
+            pump('keep the pump running above 30 minutes', undefined, true),
+            pump('keep the pump running below 40 minutes', undefined, true),
+            pump('keep the pump running', 'the tank is low'),
+          ) as never,
+          {},
+        )
+        expect(contradictions(bare)).toEqual([[idAt(0), idAt(1), idAt(2)]])
       })
 
       it('names a performer only when it has no bound in the proof’s own unit', async () => {

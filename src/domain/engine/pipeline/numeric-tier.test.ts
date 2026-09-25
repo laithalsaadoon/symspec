@@ -122,14 +122,14 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     // `>= 90` and `<= 1` are UNSAT.
     expect(
       await numericFindings(
-        archive('retain audit logs for at least 90 days'),
-        archive('retain audit logs for at most 1 year'),
+        archive('retain the logs for at least 90 days'),
+        archive('retain the logs for at most 1 year'),
       ),
     ).toEqual([])
     expect(
       await errorCodes(
-        archive('retain audit logs for at least 90 days'),
-        archive('retain audit logs for at most 1 year'),
+        archive('retain the logs for at least 90 days'),
+        archive('retain the logs for at most 1 year'),
       ),
     ).toEqual([])
   })
@@ -137,8 +137,8 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
   it('still proves a conflict between two bounds in the SAME unrecognized unit', async () => {
     // The control: raw-text keying partitions, it does not switch the tier off.
     const found = await numericFindings(
-      archive('retain audit logs for at least 9 months'),
-      archive('retain audit logs for at most 3 months'),
+      archive('retain the logs for at least 9 months'),
+      archive('retain the logs for at most 3 months'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -207,8 +207,8 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     // unitless variable, `>= 50 ∧ <= 0.9` was an error on a consistent document.
     const valve = (systemResponse: string): ReqSpec => ({ systemName: 'pump', systemResponse })
     const pair = [
-      valve('keep the valve opening at least 50%'),
-      valve('keep the valve opening at most 0.9'),
+      valve('keep the opening at least 50%'),
+      valve('keep the opening at most 0.9'),
     ] as const
     expect(await errorCodes(...pair)).toEqual([])
     const report = await runCheck(pairDoc(...pair) as never, {})
@@ -217,8 +217,8 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     // The control: `%` and `percent` are one dimension, so 50% above a 40 percent ceiling is
     // proved.
     const found = await numericFindings(
-      valve('keep the valve opening at least 50%'),
-      valve('keep the valve opening at most 40 percent'),
+      valve('keep the opening at least 50%'),
+      valve('keep the opening at most 40 percent'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -258,14 +258,14 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
   it('reads 2 km and 500 meters as one distance dimension, and they do not conflict', async () => {
     expect(
       await numericFindings(
-        drone('keep the flight radius at most 2 km'),
-        drone('keep the flight radius at least 500 meters'),
+        drone('keep the radius at most 2 km'),
+        drone('keep the radius at least 500 meters'),
       ),
     ).toEqual([])
     // The control, converted across the two spellings: 2 km < 2500 m.
     const found = await numericFindings(
-      drone('keep the flight radius at most 2 km'),
-      drone('keep the flight radius at least 2500 meters'),
+      drone('keep the radius at most 2 km'),
+      drone('keep the radius at least 2500 meters'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -275,13 +275,13 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     // 600000 ms and conflicted with `at most 30 seconds`.
     expect(
       await numericFindings(
-        drone('keep the flight altitude at least 10 m'),
-        drone('keep the flight altitude at most 30 seconds'),
+        drone('keep the altitude at least 10 m'),
+        drone('keep the altitude at most 30 seconds'),
       ),
     ).toEqual([])
     const found = await numericFindings(
-      drone('keep the flight altitude at least 10 m'),
-      drone('keep the flight altitude at most 900 cm'),
+      drone('keep the altitude at least 10 m'),
+      drone('keep the altitude at most 900 cm'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -318,20 +318,20 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     const pump = (systemResponse: string): ReqSpec => ({ systemName: 'pump', systemResponse })
     expect(
       await numericFindings(
-        pump('keep the pressure ratio equal to 2 ± 0.5'),
-        pump('keep the pressure ratio at least 2.2'),
+        pump('keep the ratio equal to 2 ± 0.5'),
+        pump('keep the ratio at least 2.2'),
       ),
     ).toEqual([])
     expect(
       await numericFindings(
-        pump('keep the outlet temperature equal to 200 °C ± 5 °C'),
-        pump('keep the outlet temperature at least 203 °C'),
+        pump('keep the temperature equal to 200 °C ± 5 °C'),
+        pump('keep the temperature at least 203 °C'),
       ),
     ).toEqual([])
     // The control: an untoleranced point is still a point.
     const found = await numericFindings(
-      pump('keep the pressure ratio equal to 2'),
-      pump('keep the pressure ratio at least 2.2'),
+      pump('keep the ratio equal to 2'),
+      pump('keep the ratio at least 2.2'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -341,8 +341,8 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     // what `95 / 9` prints as a JavaScript number. Only the exact value sees the conflict.
     const oven = (systemResponse: string): ReqSpec => ({ systemName: 'oven', systemResponse })
     const found = await numericFindings(
-      oven('hold the cavity temperature at least 51 degrees fahrenheit'),
-      oven('hold the cavity temperature at most 10.555555555555555 degrees celsius'),
+      oven('keep the temperature at least 51 degrees fahrenheit'),
+      oven('keep the temperature at most 10.555555555555555 degrees celsius'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -354,13 +354,13 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     // recognized by no dimension, so it keys on its own raw text and meets only `Mb`.
     expect(
       await numericFindings(
-        boot('keep the firmware image at most 16 MB'),
-        boot('keep the firmware image at least 64 Mb'),
+        boot('keep the image at most 16 MB'),
+        boot('keep the image at least 64 Mb'),
       ),
     ).toEqual([])
     const found = await numericFindings(
-      boot('keep the firmware image at most 16 MB'),
-      boot('keep the firmware image at least 20 MB'),
+      boot('keep the image at most 16 MB'),
+      boot('keep the image at least 20 MB'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -372,13 +372,13 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     })
     expect(
       await numericFindings(
-        uplink('keep the link throughput at most 2 Gbps'),
-        uplink('keep the link throughput at least 100 Mbps'),
+        uplink('keep the throughput at most 2 Gbps'),
+        uplink('keep the throughput at least 100 Mbps'),
       ),
     ).toEqual([])
     const found = await numericFindings(
-      uplink('keep the link throughput at most 2 Gbps'),
-      uplink('keep the link throughput at least 2500 Mbps'),
+      uplink('keep the throughput at most 2 Gbps'),
+      uplink('keep the throughput at least 2500 Mbps'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -390,14 +390,14 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     })
     expect(
       await numericFindings(
-        climate('hold the cabin temperature at least 50 degrees fahrenheit'),
-        climate('hold the cabin temperature at most 25 degrees celsius'),
+        climate('keep the temperature at least 50 degrees fahrenheit'),
+        climate('keep the temperature at most 25 degrees celsius'),
       ),
     ).toEqual([])
     // The control: 80 °F is 26.6 °C, above the ceiling.
     const found = await numericFindings(
-      climate('hold the cabin temperature at least 80 degrees fahrenheit'),
-      climate('hold the cabin temperature at most 25 degrees celsius'),
+      climate('keep the temperature at least 80 degrees fahrenheit'),
+      climate('keep the temperature at most 25 degrees celsius'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -413,17 +413,11 @@ describe('AC-2-5: a temperature on an offset scale is read as an absolute AND as
     // which, so neither reading may be asserted alone.
     const pairs: Array<[string, string]> = [
       [
-        'hold the supply return temperature differential at most 36 degrees fahrenheit',
-        'hold the supply return temperature differential at least 15 degrees celsius',
+        'keep the differential at most 36 degrees fahrenheit',
+        'keep the differential at least 15 degrees celsius',
       ],
-      [
-        'limit the temperature rise to at most 40 degF',
-        'limit the temperature rise to at least 10 degC',
-      ],
-      [
-        'limit the temperature overshoot to at most 5 kelvin',
-        'limit the temperature overshoot to at least 2 degrees celsius',
-      ],
+      ['keep the rise at most 40 degF', 'keep the rise at least 10 degC'],
+      ['keep the overshoot at most 5 kelvin', 'keep the overshoot at least 2 degrees celsius'],
     ]
     for (const [a, b] of pairs) {
       expect(await numericFindings(chiller(a), chiller(b)), `${a} / ${b}`).toEqual([])
@@ -437,8 +431,8 @@ describe('AC-2-5: a temperature on an offset scale is read as an absolute AND as
     const doc = manyDoc(
       ...twoTriggers(
         { systemName: 'chiller' },
-        'hold the supply return temperature differential at most 36 degrees fahrenheit',
-        'hold the supply return temperature differential at least 15 degrees celsius',
+        'keep the differential at most 36 degrees fahrenheit',
+        'keep the differential at least 15 degrees celsius',
         'the compressor starts',
         'the compressor restarts',
       ),
@@ -452,8 +446,8 @@ describe('AC-2-5: a temperature on an offset scale is read as an absolute AND as
 
   it('still proves a conflict both readings agree on: 80 °F is above 25 °C either way', async () => {
     const found = await numericFindings(
-      chiller('hold the supply temperature at least 80 degrees fahrenheit'),
-      chiller('hold the supply temperature at most 25 degrees celsius'),
+      chiller('keep the temperature at least 80 degrees fahrenheit'),
+      chiller('keep the temperature at most 25 degrees celsius'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -660,13 +654,13 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
   })
 
   it('reads `within 5 mm` as a tolerance on a distance, not a deadline', async () => {
-    // A deadline is a TIME role. `keep the positioning error within 5 mm` bounds the error
+    // A deadline is a TIME role. `keep the error within 5 mm` bounds the error
     // itself, so it meets `at least 10 mm` on one variable and the conflict is proved.
     const doc = manyDoc(
       ...twoTriggers(
         { systemName: 'positioner' },
-        'keep the positioning error within 5 mm',
-        'keep the positioning error at least 10 mm',
+        'keep the error within 5 mm',
+        'keep the error at least 10 mm',
         'the arm is homed',
         'the arm is parked',
       ),
@@ -677,11 +671,11 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
       [idAt(0), idAt(1)],
       [idAt(2), idAt(3)],
     ])
-    // Nor is `for` a duration on a distance: `travel for at least 10 mm` and `travel within
-    // 5 mm` are two magnitudes of one travel, and they conflict.
+    // Nor is `for` a duration on a distance: `keep the travel for at least 10 mm` and `keep the
+    // travel within 5 mm` are two magnitudes of one travel, and they conflict.
     const travel = await numericFindings(
-      { systemName: 'positioner', systemResponse: 'travel within 5 mm' },
-      { systemName: 'positioner', systemResponse: 'travel for at least 10 mm' },
+      { systemName: 'positioner', systemResponse: 'keep the travel within 5 mm' },
+      { systemName: 'positioner', systemResponse: 'keep the travel for at least 10 mm' },
     )
     expect(travel.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -797,8 +791,8 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
     const doc = manyDoc(
       ...twoTriggers(
         { systemName: 'archive service' },
-        'retain audit logs for at least 400 days',
-        'retain audit logs for at most 1 year',
+        'retain the logs for at least 400 days',
+        'retain the logs for at most 1 year',
         'a log is written',
         'a log is rotated',
       ),
@@ -809,17 +803,17 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
     expect(report.verified).toBe(false)
   })
 
-  it('keeps digits in the quantity subject: zone 1 and zone 2 are two temperatures', async () => {
+  it('keeps digits in the quantity subject: sensor1 and sensor2 are two quantities', async () => {
     expect(
       await numericFindings(
-        fridge('hold zone 1 temperature above 20 degrees celsius'),
-        fridge('hold zone 2 temperature below 5 degrees celsius'),
+        fridge('keep sensor1 above 20 degrees celsius'),
+        fridge('keep sensor2 below 5 degrees celsius'),
       ),
     ).toEqual([])
     // The control: the same zone, the same bounds.
     const found = await numericFindings(
-      fridge('hold zone 1 temperature above 20 degrees celsius'),
-      fridge('hold zone 1 temperature below 5 degrees celsius'),
+      fridge('keep sensor1 above 20 degrees celsius'),
+      fridge('keep sensor1 below 5 degrees celsius'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -831,13 +825,13 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
     })
     expect(
       await numericFindings(
-        hvac('keep the 温度 reading below 30 percent'),
-        hvac('keep the 湿度 reading above 60 percent'),
+        hvac('keep the 温度 below 30 percent'),
+        hvac('keep the 湿度 above 60 percent'),
       ),
     ).toEqual([])
     const found = await numericFindings(
-      hvac('keep the 温度 reading below 30 percent'),
-      hvac('keep the 温度 reading above 60 percent'),
+      hvac('keep the 温度 below 30 percent'),
+      hvac('keep the 温度 above 60 percent'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })

@@ -214,11 +214,11 @@ const contraryOps = (r2Response: string): readonly DocumentOp[] => [
 const numericOps = (r2Bound: string): readonly DocumentOp[] => [
   add('NUM-R1', {
     systemName: 'session service',
-    systemResponse: 'expire the idle session after at most 30 minutes',
+    systemResponse: 'expire the session after at most 30 minutes',
   }),
   add('NUM-R2', {
     systemName: 'session service',
-    systemResponse: `expire the idle session after at least ${r2Bound} minutes`,
+    systemResponse: `expire the session after at least ${r2Bound} minutes`,
   }),
 ]
 
@@ -348,8 +348,7 @@ export const FIXTURES: readonly Fixture[] = [
   },
   {
     id: 'numeric-conflict',
-    seeded:
-      'R1 expires an idle session within 30 minutes; R2 not before 45. No duration satisfies both.',
+    seeded: 'R1 expires a session within 30 minutes; R2 not before 45. No duration satisfies both.',
     ops: numericOps('45'),
     culprits: ['NUM-R1', 'NUM-R2'],
     signal: { code: 'FND_NUMERIC_CONTRADICTION', names: ['NUM-R1', 'NUM-R2'] },

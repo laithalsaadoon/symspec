@@ -143,7 +143,11 @@ describe('AC-2-6: the text after a bound is part of what it bounds', () => {
     // The controls: one referent, one mode, one anchor, and the conflict is real.
     for (const [system, a, b] of [
       ['recorder', 'store at least 30 days of logs', 'store at most 2 hours of logs'],
-      ['pump', 'run at least 50 percent of the time', 'run at most 40% of the time'],
+      [
+        'pump',
+        'keep the load at least 50 percent of the time',
+        'keep the load at most 40% of the time',
+      ],
       [
         'heater',
         'keep the temperature above 30 degrees celsius in case of frost',
@@ -288,14 +292,14 @@ describe('AC-2-6: every rule that splits a bound off is tested against a pair th
   // Every other exemption the tier held was a grammar guess in the proving direction, and is gone.
 
   it('PROVES two time bounds a time preposition introduces, and discloses a clause it opens', async () => {
-    // `expire the idle session after at most 30 minutes`: `after` governs the bound itself, a
-    // delay, and opens no clause. The condition-word rule split the gaming harness's own
-    // numeric baseline, and every preposition below, off into two qualifiers.
+    // `expire the session after at most 30 minutes`: `after` governs the bound itself, a delay,
+    // and opens no clause. The condition-word rule split the gaming harness's own numeric
+    // baseline, and every preposition below, off into two qualifiers.
     for (const word of ['after', 'before', 'until', 'upon', 'following', 'since', 'during']) {
       const out = await verdict(
         'session service',
-        `expire the idle session ${word} at most 30 minutes`,
-        `expire the idle session ${word} at least 45 minutes`,
+        `expire the session ${word} at most 30 minutes`,
+        `expire the session ${word} at least 45 minutes`,
       )
       expect(out.errors, word).toEqual(['FND_NUMERIC_CONTRADICTION'])
     }
@@ -321,8 +325,8 @@ describe('AC-2-6: every rule that splits a bound off is tested against a pair th
   it('PROVES two bounds whose subject holds a condition word inside a hyphenated compound', async () => {
     const out = await verdict(
       'dispenser',
-      'keep the once-daily dose below 5 milligrams',
-      'keep the once-daily dose above 8 milligrams',
+      'keep the once-daily pump running for at most 5 minutes',
+      'keep the once-daily pump running for at least 8 minutes',
     )
     expect(out.errors).toEqual(['FND_NUMERIC_CONTRADICTION'])
   })
