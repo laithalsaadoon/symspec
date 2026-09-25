@@ -128,7 +128,8 @@ export interface NumericPredicate {
    * the mode is heating` against `... below 20 °C when the mode is cooling` was a conflict
    * everywhere; `run the pump at most 2 minutes after the tank fills` is a delay from an
    * event, not a bound on how long the pump runs; `30 days of logs` and `2 hours of video`
-   * bound two things.
+   * bound two things. A bound that is itself inside such a clause, or after another bound in
+   * the slot, carries the whole clause, itself included ({@link qualifierAt}).
    */
   readonly qualifier?: string
   /** The original slot substring the predicate came from (evidence). */
@@ -570,6 +571,46 @@ function qualifierOf(after: string): string | undefined {
     .replace(/^[\s.,;:!?(]+|[\s.,;:!?)]+$/gu, '')
     .trim()
   return clause === '' ? undefined : clause
+}
+
+/**
+ * A condition word in the text BEFORE a bound (`open the valve when the pressure is above 5
+ * bar`): the bound is inside the response's condition, not the obligation it imposes.
+ *
+ * A list, unlike {@link qualifierOf}, because the text before a bound is its subject, and no
+ * rule reads a condition out of a subject without one. The list only ever SPLITS: a bound it
+ * matches carries its whole clause as {@link NumericPredicate.qualifier}, and a phrasing it
+ * misses keeps the reading every bound had before it.
+ */
+const CONDITION_WORD =
+  /(?:^|[\s,;(])(?:when|whenever|while|whilst|if|unless|until|after|before|once|during|upon|provided|following|since)(?![\p{L}\p{N}])/iu
+
+/**
+ * The {@link NumericPredicate.qualifier} of a bound at `[start, end)` in `text`, where
+ * `firstEnd` is the end of the slot's first claimed bound, if it is another one.
+ *
+ *   - After another bound, the qualifier is the whole text after THAT bound, this one
+ *     included. `run for at least 10 seconds when the level is above 5 meters` holds `above 5
+ *     meters` inside the first bound's clause, and read on its own it was an obligation on
+ *     `run for at least 10 seconds when the level`: two requirements with one obligation under
+ *     two level conditions were `> 5 ∧ < 3`, an error. Whatever joins the two bounds, the tier
+ *     cannot tell a condition from a second conjunct (`and keep the level below 3 meters`), so
+ *     it neither asserts the later bound unconditionally nor drops it: two such bounds meet
+ *     only under identical clauses, and a pair whose clauses differ is disclosed.
+ *   - After a {@link CONDITION_WORD} in its subject, it is that clause from the word on, this
+ *     bound included, for the same reason.
+ *   - Otherwise, the text after the bound's unit ({@link qualifierOf}).
+ */
+function qualifierAt(
+  text: string,
+  start: number,
+  end: number,
+  firstEnd: number | undefined,
+): string | undefined {
+  if (firstEnd !== undefined && firstEnd <= start) return qualifierOf(text.slice(firstEnd))
+  const condition = CONDITION_WORD.exec(text.slice(0, start))
+  if (condition !== null) return qualifierOf(text.slice(condition.index))
+  return qualifierOf(text.slice(end))
 }
 
 /** A tolerance after the number (`200 ± 5`): the bound is a range, not the point. */
@@ -1024,7 +1065,9 @@ export function extractNumericPredicates(
   if (negated && slot !== 'resp') {
     throw new RangeError('numeric: only a response is negated by its modal')
   }
-  const out: NumericPredicate[] = []
+  // Each bound with the span it was read from, so its qualifier can be settled once every
+  // bound in the slot is claimed (`qualifierAt`).
+  const out: Array<{ pred: Omit<NumericPredicate, 'qualifier'>; start: number; end: number }> = []
   const lower = text.toLowerCase()
   // Comparator phrases that introduced a bound this function then declined to read.
   // A negated response is read only when it carries exactly one bound and nothing
@@ -1113,27 +1156,40 @@ export function extractNumericPredicates(
       }
 
       const { exact, difference, days, dimension, baseUnit } = bound
-      const qualifier = qualifierOf(rest.slice(unit.length))
 
       out.push({
-        quantity: quantityKey(systemName, label, quantityAliases),
-        label,
-        comparator: cmpr,
-        value: toDisplayNumber(exact),
-        exact,
-        ...(difference !== undefined ? { difference } : {}),
-        ...(days !== undefined ? { days } : {}),
-        dimension,
-        baseUnit,
-        role: reading.role,
-        slot,
-        ...(qualifier !== undefined ? { qualifier } : {}),
-        sourceText: text.slice(labelEnd, end).trim(),
+        pred: {
+          quantity: quantityKey(systemName, label, quantityAliases),
+          label,
+          comparator: cmpr,
+          value: toDisplayNumber(exact),
+          exact,
+          ...(difference !== undefined ? { difference } : {}),
+          ...(days !== undefined ? { days } : {}),
+          dimension,
+          baseUnit,
+          role: reading.role,
+          slot,
+          sourceText: text.slice(labelEnd, end).trim(),
+        },
+        start: idx,
+        end,
       })
     }
   }
 
-  const preds = dedupe(out)
+  // The first bound the slot claimed, declined ones included: a bound after a toleranced
+  // `30 ± 5 ms` is in that bound's clause as much as one after a read bound is.
+  const first = claimed.reduce<readonly [number, number] | undefined>(
+    (min, span) => (min === undefined || span[0] < min[0] ? span : min),
+    undefined,
+  )
+  const preds = dedupe(
+    out.map(({ pred, start, end }) => {
+      const qualifier = qualifierAt(text, start, end, first?.[0] === start ? undefined : first?.[1])
+      return qualifier === undefined ? pred : { ...pred, qualifier }
+    }),
+  )
   if (!negated) return preds
   return negateResponse(text, preds, declined, claimed)
 }

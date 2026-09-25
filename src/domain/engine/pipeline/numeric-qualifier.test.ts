@@ -143,3 +143,57 @@ describe('AC-2-6: the text after a bound is part of what it bounds', () => {
     }
   })
 })
+
+describe('AC-2-6: a bound inside a condition is not an obligation', () => {
+  it('never asserts a number in a trailing condition as an unconditional bound', async () => {
+    // `when the level is above 5 meters` keyed a second bound on `run for at least 10 seconds
+    // when the level`, an obligation with no qualifier, so two requirements with one
+    // obligation under two level conditions were `level > 5 ∧ level < 3`, an error.
+    for (const [system, a, b] of [
+      [
+        'pump',
+        'run for at least 10 seconds when the level is above 5 meters',
+        'run for at least 10 seconds when the level is below 3 meters',
+      ],
+      [
+        'heater',
+        'keep the temperature above 30 degrees celsius when the level is above 5 meters',
+        'keep the temperature above 30 degrees celsius when the level is below 3 meters',
+      ],
+      // The response's only bound, inside its condition.
+      [
+        'drain controller',
+        'open the drain when the level is above 5 meters',
+        'open the drain when the level is below 3 meters',
+      ],
+    ] as const) {
+      const out = await verdict(system, a, b)
+      expect(out.errors, a).toEqual([])
+      // The two conditions are disclosed, not dropped: the tier cannot tell a condition from a
+      // second obligation it did not read.
+      expect(out.uncompared, a).toEqual([[ID_A, ID_B]])
+    }
+  })
+
+  it('discloses, and never certifies, a second obligation behind a first bound', async () => {
+    // Whatever joins them, a later bound in the slot lies in the text after the first, and
+    // the tier does not know whether it is a condition or a conjunct. `and keep the level
+    // below 3 meters` is a conjunct, and against `above 5 meters` a real conflict.
+    const out = await verdict(
+      'pump',
+      'run for at least 10 seconds and keep the level below 3 meters',
+      'run for at least 10 seconds and keep the level above 5 meters',
+    )
+    expect(out.errors).toEqual([])
+    expect(out.uncompared).toEqual([[ID_A, ID_B]])
+  })
+
+  it('still proves the first bound under one shared condition', async () => {
+    const out = await verdict(
+      'pump',
+      'run for at least 10 seconds when the level is above 5 meters',
+      'run for at most 5 seconds when the level is above 5 meters',
+    )
+    expect(out.errors).toEqual(['FND_NUMERIC_CONTRADICTION'])
+  })
+})

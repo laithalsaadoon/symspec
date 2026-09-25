@@ -235,6 +235,24 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
     expect(qualifier('respond within 30 ms.')).toEqual([['respond', undefined]])
   })
 
+  it('reads a bound inside a condition with the whole clause as its qualifier', () => {
+    const qualifier = (text: string) =>
+      extractNumericPredicates(text, 'svc', 'resp').map((p) => [p.label, p.qualifier])
+    // After another bound: the clause after THAT bound, this one included.
+    expect(qualifier('run for at least 10 seconds when the level is above 5 meters')).toEqual([
+      ['run', 'when the level is above 5 meters'],
+      ['run for at least 10 seconds when the level', 'when the level is above 5 meters'],
+    ])
+    // After a toleranced bound the tier declined, too.
+    expect(qualifier('respond within 30 ± 5 ms and keep the load below 80 percent')).toEqual([
+      ['respond within 30 5 ms and keep the load', '± 5 ms and keep the load below 80 percent'],
+    ])
+    // The only bound, inside the response's condition.
+    expect(qualifier('open the drain when the level is above 5 meters')).toEqual([
+      ['open the drain when the level', 'when the level is above 5 meters'],
+    ])
+  })
+
   it('does not read a comparator inside a longer word', () => {
     expect(read('complete the handover 5 seconds after the alarm')).toEqual([])
   })
