@@ -118,7 +118,12 @@ export interface Knobs {
  * `explicit-state.test.ts` had on this box under a full `pnpm check`. A larger budget can only
  * let a query finish, and a finished query is the armed answer the snapshot pins.
  */
-const ARMED: Knobs = { temporalBound: 10, semantic: true, solverBudgetMs: 0, timeoutMs: 20_000 }
+export const ARMED: Knobs = {
+  temporalBound: 10,
+  semantic: true,
+  solverBudgetMs: 0,
+  timeoutMs: 20_000,
+}
 
 /** Which embedder a run gets: the orthogonal table, or the env-selected service (the stub). */
 type EmbedderChoice = 'orthogonal' | 'stub-env'
@@ -1440,7 +1445,7 @@ export interface GamingWiring {
  * Every distinct phrase on its own axis. Fresh per run, so a vector depends only on the order
  * phrases are first seen inside ONE run — deterministic for a fixed document.
  */
-const orthogonalEmbedder = (): Embedder => {
+export const orthogonalEmbedder = (): Embedder => {
   const axes = new Map<string, number>()
   const DIM = 512
   return async (texts) =>

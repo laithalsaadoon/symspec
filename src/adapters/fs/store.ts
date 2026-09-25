@@ -64,7 +64,9 @@
 
 import { Effect, FileSystem, Layer, Path, type Schema } from 'effect'
 import {
+  ACCEPTED_DOC_VERSIONS,
   DOC_VERSION,
+  type DocVersion,
   decodeDocument,
   type LoadedDocument,
   type RequirementsDocument,
@@ -153,7 +155,7 @@ export const parseDocumentText = (
       decodeDocument(raw),
       (cause) =>
         new ErrDocParse({
-          error: `${path} does not satisfy the v${DOC_VERSION} document schema: ${formatSchemaError(cause)}`,
+          error: `${path} does not satisfy the v${declaredVersion(raw)} document schema: ${formatSchemaError(cause)}`,
           suggestions: [
             'Fix the offending JSON path named in the message above.',
             'Run `symspec manifest` to see the exact field shapes, including which fields are optional.',
@@ -173,6 +175,26 @@ export const parseDocumentText = (
 const formatSchemaError = (error: Schema.SchemaError): string =>
   String(error).replace(/\s*\n\s*/g, ' ')
 
+/** Whether a raw value is one of the {@link ACCEPTED_DOC_VERSIONS}. */
+const isAcceptedVersion = (value: unknown): value is DocVersion =>
+  (ACCEPTED_DOC_VERSIONS as readonly unknown[]).includes(value)
+
+/** The readable versions, for a message: `3 or 4`. */
+const ACCEPTED = ACCEPTED_DOC_VERSIONS.join(' or ')
+
+/**
+ * The version a raw value declares, for the schema-failure message: its `docVersion` when
+ * that is readable, and {@link DOC_VERSION} when it is absent (the decoder then reports the
+ * missing key).
+ */
+const declaredVersion = (raw: unknown): DocVersion => {
+  const declared =
+    typeof raw === 'object' && raw !== null
+      ? (raw as Record<string, unknown>).docVersion
+      : undefined
+  return isAcceptedVersion(declared) ? declared : DOC_VERSION
+}
+
 /**
  * Check a raw parsed value's `docVersion` BEFORE schema decoding.
  *
@@ -180,7 +202,7 @@ const formatSchemaError = (error: Schema.SchemaError): string =>
  * its whole job is to produce a better error than the decoder would. Three cases,
  * each with a different remedy, so each gets its own message:
  *
- * - `docVersion` equals {@link DOC_VERSION} → proceed.
+ * - `docVersion` is one of the {@link ACCEPTED_DOC_VERSIONS} → proceed.
  * - a v2 `schemaVersion` is present instead → `ERR_SCHEMA_VERSION` naming the
  *   v4-CLI migration pipeline, which is the ONE command pair that fixes it.
  * - any other value → `ERR_SCHEMA_VERSION` stating both numbers.
@@ -193,7 +215,7 @@ const checkDocVersion = (raw: unknown, path: string): Effect.Effect<void, ErrSch
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return Effect.void
   const record = raw as Record<string, unknown>
   const declared = record.docVersion
-  if (declared === DOC_VERSION) return Effect.void
+  if (isAcceptedVersion(declared)) return Effect.void
 
   const legacy = record.schemaVersion
   // NEITHER key present ⇒ not a version mismatch at all. Fall through to the
@@ -218,10 +240,10 @@ const checkDocVersion = (raw: unknown, path: string): Effect.Effect<void, ErrSch
 
   return Effect.fail(
     new ErrSchemaVersion({
-      error: `${path} declares docVersion ${JSON.stringify(declared)}; symspec expects ${DOC_VERSION}.`,
+      error: `${path} declares docVersion ${JSON.stringify(declared)}; symspec reads ${ACCEPTED}.`,
       suggestions: [
-        `Only document format v${DOC_VERSION} is readable by this build.`,
-        `If this document is NEWER than v${DOC_VERSION}, upgrade symspec rather than editing the file — a downgrade would have to guess at fields it does not know.`,
+        `Only document formats ${ACCEPTED_DOC_VERSIONS.map((v) => `v${v}`).join(' and ')} are readable by this build.`,
+        `If this document is NEWER than v${ACCEPTED_DOC_VERSIONS[ACCEPTED_DOC_VERSIONS.length - 1]}, upgrade symspec rather than editing the file — a downgrade would have to guess at fields it does not know.`,
         `If it is older, migrate it: \`symspec init <new.json>\` then \`symspec import\` the op stream that rebuilds it.`,
       ],
     }),
