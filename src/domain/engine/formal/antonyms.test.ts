@@ -27,15 +27,18 @@ import {
   buildAntonymIndexWithDoc,
   SEED_ANTONYM_PAIRS,
 } from './antonyms.ts'
-import { atomize } from './atomize.ts'
+import { atomize, contraryPairs } from './atomize.ts'
 
 /** Every verb the seed table mentions, from the table itself rather than a typed list. */
 const SEED_VERBS = [...new Set(SEED_ANTONYM_PAIRS.flat())].sort()
 
-/** One row per member: `<canonical>  <polarity>  <verb>`, sorted, so a diff names the verb. */
+/**
+ * One row per member: `<canonical>  <polarity>  <verb>  <opposes>`, sorted, so a diff names the
+ * verb. The last column is the whole relation the table asserts about `verb` (AC-2-1).
+ */
 const render = (index: ReadonlyMap<string, AntonymEntry>): string => {
   const rows = [...index].map(
-    ([verb, e]) => `${e.canonical}\t${e.negated ? '-' : '+'}\t${e.side}\t${verb}`,
+    ([verb, e]) => `${e.canonical}\t${e.negated ? '-' : '+'}\t${verb}\t${e.opposes.join(',')}`,
   )
   return `${rows.sort().join('\n')}\n`
 }
@@ -74,25 +77,40 @@ describe('the resolved seed index', () => {
     }
   })
 
-  it('resolves a shared member into ONE class rather than an ambiguous pair', () => {
-    // `accept↔reject`, `approve↔reject` and `accept↔decline` all touch the same two verbs. A
-    // flat pair map would make `reject` ambiguous; the signed union-find puts all four in one
-    // class, and each SIDE resolves to its smallest member, so the same-side near-synonyms are
-    // one atom (spec 007 AC-2-1 retires only the cross-side rename).
-    for (const verb of ['accept', 'approve']) {
-      expect(ANTONYM_INDEX.get(verb)).toEqual({
-        canonical: 'accept',
-        negated: false,
-        side: 'accept',
-      })
-    }
-    for (const verb of ['reject', 'decline']) {
-      expect(ANTONYM_INDEX.get(verb)).toEqual({
-        canonical: 'accept',
-        negated: true,
-        side: 'decline',
-      })
-    }
+  it('resolves a shared member into ONE class, and relates only the pairs in it', () => {
+    // `accept↔reject`, `approve↔reject` and `accept↔decline` all touch the same two verbs. The
+    // signed union-find puts all four in one class — the key two contraries share — but the
+    // class asserts nothing by itself (spec 007 AC-2-1): each verb opposes exactly the verbs a
+    // pair names, so `approve` and `decline` are unrelated, and `accept` and `approve` are not
+    // synonyms.
+    expect(ANTONYM_INDEX.get('accept')).toEqual({
+      canonical: 'accept',
+      negated: false,
+      opposes: ['decline', 'reject'],
+    })
+    expect(ANTONYM_INDEX.get('approve')).toEqual({
+      canonical: 'accept',
+      negated: false,
+      opposes: ['reject'],
+    })
+    expect(ANTONYM_INDEX.get('reject')).toEqual({
+      canonical: 'accept',
+      negated: true,
+      opposes: ['accept', 'approve'],
+    })
+    expect(ANTONYM_INDEX.get('decline')).toEqual({
+      canonical: 'accept',
+      negated: true,
+      opposes: ['accept'],
+    })
+  })
+
+  it('opposes exactly the pairs in the table — every edge, both ways, and nothing else', () => {
+    // The whole-table form of the property above: the relation IS the pair list.
+    const edges = new Set(SEED_ANTONYM_PAIRS.flatMap(([a, b]) => [`${a}|${b}`, `${b}|${a}`]))
+    const listed = [...ANTONYM_INDEX].flatMap(([verb, e]) => e.opposes.map((o) => `${verb}|${o}`))
+    expect(new Set(listed)).toEqual(edges)
+    expect(listed).toHaveLength(edges.size)
   })
 })
 
@@ -125,10 +143,18 @@ describe('a document pair that touches a seed class', () => {
     expect(ANTONYM_INDEX.get('commit')).toEqual({
       canonical: 'commit',
       negated: false,
-      side: 'commit',
+      opposes: ['roll_back', 'rollback'],
     })
-    expect(merged.get('commit')).toEqual({ canonical: 'abort', negated: true, side: 'commit' })
-    expect(merged.get('roll_back')).toEqual({ canonical: 'abort', negated: false, side: 'abort' })
+    expect(merged.get('commit')).toEqual({
+      canonical: 'abort',
+      negated: true,
+      opposes: ['abort', 'roll_back', 'rollback'],
+    })
+    expect(merged.get('roll_back')).toEqual({
+      canonical: 'abort',
+      negated: false,
+      opposes: ['commit'],
+    })
   })
 
   it('moves only the opposition KEY — never an atom NAME or a polarity (AC-2-1)', () => {
@@ -164,13 +190,41 @@ describe('a document pair that touches a seed class', () => {
     })
   })
 
-  it('merges a doc member into the seed side it joins — an equality, which only adds findings', () => {
-    // `abort` joins `roll_back`/`rollback` on the side opposite `commit`, and is now that side's
-    // smallest member, so the three are one atom. Merging names is strengthening (spec 007 I-1).
+  it('keeps a doc member that joins a seed side its OWN atom — a class is not a synonym table', () => {
+    // `abort` joins `roll_back`/`rollback` on the side opposite `commit`. The pair says only
+    // `¬(abort ∧ commit)`; it says nothing about `roll back`, so the three stay three atoms, and
+    // `abort` is a contrary of `commit` alone (spec 007 AC-2-1).
     const antonyms = buildAntonymIndexWithDoc([['abort', 'commit']])
-    const name = (text: string) =>
-      atomize({ kind: 'resp', text, systemName: 'ledger', antonyms }).name
-    expect(name('roll back the transaction')).toBe('sys__ledger__resp__abort_the_transaction')
-    expect(name('rollback the transaction')).toBe(name('abort the transaction'))
+    const at = (text: string) => atomize({ kind: 'resp', text, systemName: 'ledger', antonyms })
+    expect(at('roll back the transaction').name).toBe(
+      'sys__ledger__resp__roll_back_the_transaction',
+    )
+    expect(at('abort the transaction').name).toBe('sys__ledger__resp__abort_the_transaction')
+    expect(at('rollback the transaction').name).not.toBe(at('roll back the transaction').name)
+    const lits = ['abort', 'roll back', 'rollback', 'commit'].map((verb) => {
+      const a = at(`${verb} the transaction`)
+      return { atom: a.name, ...(a.opposition !== undefined ? { opposition: a.opposition } : {}) }
+    })
+    expect(contraryPairs(lits)).toEqual([
+      ['sys__ledger__resp__abort_the_transaction', 'sys__ledger__resp__commit_the_transaction'],
+      ['sys__ledger__resp__commit_the_transaction', 'sys__ledger__resp__roll_back_the_transaction'],
+      ['sys__ledger__resp__commit_the_transaction', 'sys__ledger__resp__rollback_the_transaction'],
+    ])
+  })
+
+  it('never chains two committed pairs into a synonymy (hold ≡ quarantine, finish ≡ stop)', () => {
+    // The seed `quarantine↔release` plus a committed `hold↔release` put `hold` and `quarantine`
+    // on one side; the seed `start↔stop` plus `start↔finish` put `finish` and `stop` on one.
+    // Neither is a statement that the two are one action.
+    const name = (text: string, pairs: ReadonlyArray<readonly [string, string]>) =>
+      atomize({ kind: 'resp', text, systemName: 'shop', antonyms: buildAntonymIndexWithDoc(pairs) })
+        .name
+    expect(name('hold the order', [['hold', 'release']])).toBe('sys__shop__resp__hold_the_order')
+    expect(name('quarantine the order', [['hold', 'release']])).toBe(
+      'sys__shop__resp__quarantine_the_order',
+    )
+    expect(name('finish the job', [['start', 'finish']])).not.toBe(
+      name('stop the job', [['start', 'finish']]),
+    )
   })
 })

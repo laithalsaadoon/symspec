@@ -17,8 +17,8 @@ eval-rounds/eval-issue2-ring-odd-cycle	trig	sys__controller__guard__ring_bus_ini
 eval-rounds/eval-r2-reactor-keeps-online	pre	sys__controller__guard__coolant_pump_engaged	<- the coolant pump is engaged
 eval-rounds/eval-r2-reactor-keeps-online	pre	sys__controller__guard__reactor_online	<- the reactor is online
 eval-rounds/eval-r2-reactor-keeps-online	pre	sys__controller__guard__reactor_overheating	<- the reactor is overheating
-eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__allow_power_the_distribution_grid	<- grant power to the distribution grid
 eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__deny_power_the_distribution_grid	<- deny power to the distribution grid
+eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__grant_power_the_distribution_grid	<- grant power to the distribution grid
 eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__keep_the_reactor_online	<- keeps the reactor online
 eval-rounds/eval-r2-reactor-keeps-online	resp	sys__controller__resp__mark_the_coolant_pump_engaged	<- mark the coolant pump engaged
 eval-rounds/eval-r3-commit-rollback	pre	sys__engine__guard__transaction_reconciled	<- the transaction is reconciled
@@ -33,10 +33,10 @@ eval-rounds/eval-r3-privchain	pre	sys__controller__guard__session_authenticated	
 eval-rounds/eval-r3-privchain	pre	sys__controller__guard__session_privileged	<- the session is privileged
 eval-rounds/eval-r3-privchain	pre	sys__controller__guard__session_trusted	<- the session is trusted
 eval-rounds/eval-r3-privchain	pre	sys__controller__guard__session_verified	<- the session is verified
-eval-rounds/eval-r3-privchain	resp	sys__controller__resp__allow_access_the_vault	<- grant access to the vault
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__audit_the_vault_access	<- audit the vault access
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__clear_the_session	<- clear the session
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__deny_access_the_vault	<- deny access to the vault
+eval-rounds/eval-r3-privchain	resp	sys__controller__resp__grant_access_the_vault	<- grant access to the vault
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__mark_the_session_authenticated	<- mark the session authenticated
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__mark_the_session_privileged	<- mark the session privileged
 eval-rounds/eval-r3-privchain	resp	sys__controller__resp__mark_the_session_trusted	<- mark the session trusted
@@ -48,10 +48,10 @@ eval-rounds/eval-r3-privchain	trig	sys__controller__guard__user_signs_out	<- a u
 eval-rounds/eval-r3-publish-retract	pre	sys__controller__guard__article_approved	<- the article is approved
 eval-rounds/eval-r3-publish-retract	pre	sys__controller__guard__article_escalated	<- the article is escalated
 eval-rounds/eval-r3-publish-retract	pre	sys__controller__guard__article_flagged	<- the article is flagged
-eval-rounds/eval-r3-publish-retract	resp	sys__controller__resp__extend_the_article	<- publish the article
 eval-rounds/eval-r3-publish-retract	resp	sys__controller__resp__mark_the_article_approved	<- mark the article approved
 eval-rounds/eval-r3-publish-retract	resp	sys__controller__resp__mark_the_article_escalated	<- mark the article escalated
 eval-rounds/eval-r3-publish-retract	resp	sys__controller__resp__mark_the_article_flagged	<- mark the article flagged
+eval-rounds/eval-r3-publish-retract	resp	sys__controller__resp__publish_the_article	<- publish the article
 eval-rounds/eval-r3-publish-retract	resp	sys__controller__resp__retract_the_article	<- retract the article
 eval-rounds/eval-r3-publish-retract	trig	sys__controller__guard__audit_request_received	<- an audit request is received
 eval-rounds/eval-r3-quarantine-release	pre	sys__gateway__guard__artifact_scanned	<- the artifact is scanned
@@ -62,9 +62,9 @@ eval-rounds/eval-r3-quarantine-release	resp	sys__gateway__resp__release_the_arti
 eval-rounds/eval-r3-quarantine-release	trig	sys__gateway__guard__artifact_uploaded	<- an artifact is uploaded
 eval-rounds/eval-r3-seal-expose	pre	sys__vault__guard__document_restricted	<- the document is restricted
 eval-rounds/eval-r3-seal-expose	resp	sys__vault__resp__classify_the_document_as_restricted	<- classify the document as restricted
-eval-rounds/eval-r3-seal-expose	resp	sys__vault__resp__conceal_the_record	<- seal the record
 eval-rounds/eval-r3-seal-expose	resp	sys__vault__resp__encrypt_the_payload	<- encrypt the payload
 eval-rounds/eval-r3-seal-expose	resp	sys__vault__resp__expose_the_record	<- exposes the record
+eval-rounds/eval-r3-seal-expose	resp	sys__vault__resp__seal_the_record	<- seal the record
 eval-rounds/eval-r3-seal-expose	trig	sys__vault__guard__document_submitted	<- a document is submitted
 eval-rounds/eval-r3-suspend-resume	pre	sys__gateway__guard__gateway_safe_mode_engaged	<- the gateway safe mode is engaged
 eval-rounds/eval-r3-suspend-resume	resp	sys__gateway__resp__mark_the_gateway_safe_mode_engaged	<- mark the gateway safe mode engaged
@@ -101,8 +101,8 @@ fabrication/distinct-agents-same-report	trig	sys__alarm_service__guard__operator
 fabrication/distinct-agents-same-report	trig	sys__alarm_service__guard__sensor_reports_a_fault	<- the sensor reports a fault
 fabrication/distinct-shard-quantities	resp	sys__database__resp__keep_the_analytics_shard_replication_lag_at_least_500_ms	<- keep the analytics shard replication lag at least 500 ms
 fabrication/distinct-shard-quantities	resp	sys__database__resp__keep_the_primary_shard_replication_lag_at_most_10_ms	<- keep the primary shard replication lag at most 10 ms
-fabrication/mutually-exclusive-guards-opposed-response	resp	sys__vault_service__resp__conceal_the_vault	<- seal the vault
-fabrication/mutually-exclusive-guards-opposed-response	resp	sys__vault_service__resp__conceal_the_vault [NEG]	<- seal the vault
+fabrication/mutually-exclusive-guards-opposed-response	resp	sys__vault_service__resp__seal_the_vault	<- seal the vault
+fabrication/mutually-exclusive-guards-opposed-response	resp	sys__vault_service__resp__seal_the_vault [NEG]	<- seal the vault
 fabrication/mutually-exclusive-guards-opposed-response	trig	sys__vault_service__guard__shift_begins	<- the shift begins
 fabrication/mutually-exclusive-guards-opposed-response	trig	sys__vault_service__guard__shift_ends	<- the shift ends
 fabrication/negating-prefix-different-objects	resp	sys__index_service__resp__de_duplicate_the_ledger	<- de-duplicate the ledger
@@ -118,8 +118,8 @@ fabrication/symbolic-threshold-split	pre	sys__gateway__guard__request_latency_at
 fabrication/symbolic-threshold-split	pre	sys__gateway__guard__request_latency_less_than_30_ms	<- the request latency is < 30 ms
 fabrication/symbolic-threshold-split	resp	sys__gateway__resp__disable_the_response_cache	<- disable the response cache
 fabrication/symbolic-threshold-split	resp	sys__gateway__resp__enable_the_response_cache	<- enable the response cache
-generated-t1/contradiction-t1-0	resp	sys__auth_service__resp__allow_access	<- grant access
-generated-t1/contradiction-t1-0	resp	sys__auth_service__resp__deny_access	<- revoke access
+generated-t1/contradiction-t1-0	resp	sys__auth_service__resp__grant_access	<- grant access
+generated-t1/contradiction-t1-0	resp	sys__auth_service__resp__revoke_access	<- revoke access
 generated-t1/contradiction-t1-0	trig	sys__auth_service__guard__user_submits_valid_credentials	<- the user submits valid credentials
 generated-t1/missing-link-t1-4	resp	sys__auth_service__resp__issue_a_session_token_after_authentication	<- issue a session token after authentication
 generated-t1/missing-link-t1-4	resp	sys__auth_service__resp__issue_a_session_token_on_login	<- issue a session token on login

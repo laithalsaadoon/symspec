@@ -1273,9 +1273,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         }
       }
       // Spec 007 AC-2-1: a contrary axiom compares two atoms exactly as the old rename's one shared
-      // atom did, so each side's atom counts the other side's owners as partners. Same-side
-      // members need no credit: they are already one atom. Read from a snapshot so the credit is
-      // one hop.
+      // atom did, so each side's atom counts the other side's owners as partners. Two members of
+      // one side get no credit: nothing relates them, so nothing compared them. Read from a
+      // snapshot so the credit is one hop.
       const contraryOwners = contraryPairs(encoded.flatMap((e) => e.atoms)).map(
         ([a, b]) => [a, b, [...(atomOwners.get(a) ?? [])], [...(atomOwners.get(b) ?? [])]] as const,
       )

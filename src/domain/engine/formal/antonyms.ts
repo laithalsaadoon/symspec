@@ -22,29 +22,29 @@
  *     pairs cover only 13 of the 32 pairs this table needs, contain odd
  *     polarity cycles that break the signed union-find, and merge classes this
  *     table deliberately keeps apart — curation IS the architecture here.
- *   - A contrary requires the (de-inflected) leading verbs to sit on opposite
- *     sides of one class AND the object remainder to be identical after
+ *   - A contrary requires the (de-inflected) leading verbs to be one seeded or
+ *     committed pair AND the object remainder to be identical after
  *     normalization + the antonym-hit preposition drop (see atomize.ts): "grant
  *     access" is a contrary of "revoke access" but not of "revoke permission".
  *
- * Shared-member semantics (why a signed union-find, not a flat pair map):
+ * Shared-member semantics (why a signed union-find, and why it is not a synonym table):
  *   Some seed pairs share a member — `accept↔reject`, `approve↔reject`, and
  *   `accept↔decline` all touch `accept`/`reject`. We treat each pair as an
- *   edge between opposite polarity SIDES and compute signed classes: `accept`,
- *   `approve` (positive) and `reject`, `decline` (negative) form one class named
- *   after its lexicographically smallest member (`accept`). Every positive-side
- *   atom is a contrary of every negative-side atom over the same remainder, so
- *   the deliberate class merges below keep working.
+ *   edge between opposite polarity SIDES and 2-colour the connected components:
+ *   `accept`, `approve` (positive) and `reject`, `decline` (negative) form one
+ *   class named after its lexicographically smallest member (`accept`). The class
+ *   is BOOKKEEPING — it names the opposition key two contraries share, and its
+ *   2-colouring is the write-time consistency check — never a relation by itself.
  *
- * Same-side members are ONE atom: every member on one polarity side of a class
- * resolves to that side's lexicographically smallest member (`approve` → `accept`,
- * `rollback` → `roll_back`, `grant` → `allow`). That is the table's deliberate
- * merge, not a side effect: the authorization verbs are interchangeable in the
- * EARS response idiom, and `roll back`/`rollback` are one verb spelled two ways.
- * An equality is a strengthening move (spec 007 I-1), so the merge can only add
- * findings; AC-2-1 retires only the cross-side rename `A ≡ ¬B`. Split, "shall
- * grant X" plus "shall not allow X" was two unrelated atoms and a clean
- * `verified: true` over a real conflict, with no finding pointing at it.
+ * Only a seeded or committed PAIR relates two verbs (spec 007 AC-2-1). Two contrary
+ * axioms `¬(A ∧ C)` and `¬(B ∧ C)` do not entail `A ≡ B`, so members on one side of a
+ * class stay DISTINCT atoms (`publish` and `extend` are two actions that each retract
+ * opposes), and two members on opposite sides are contraries only when a pair joins them
+ * directly ({@link AntonymEntry.opposes}): `approve` and `decline` meet only through
+ * `accept`/`reject`, so nothing relates them. Reading synonymy off the table was a
+ * fabrication that grew with every committed pair — committing `hold↔release` beside
+ * the seed `quarantine↔release` made "hold the order" and "shall not quarantine the
+ * order" an error-severity FND_CONTRADICTION.
  */
 
 /**
@@ -60,18 +60,17 @@
  * class → canonical map is snapshot-tested so any edit that silently merges or
  * re-canonicalizes classes fails loudly.
  *
- * Deliberate class merges (adversarial-eval driven, each a judgment call):
- *   - grant/allow/permit/authorize share ONE positive authorization side
- *     against revoke/deny/forbid (via grant↔deny, permit↔deny, authorize↔deny):
- *     in the EARS response idiom these are interchangeable authorization verbs
- *     over an identical object remainder, so each positive verb is a contrary of
- *     each negative one, and the remainder-must-match rule bounds the risk. The
- *     eval's grant-vs-deny blind spot (grant/revoke and allow/deny were disjoint
- *     classes) is closed by exactly this merge.
- *   - publish/extend share a class via retract (publish↔retract,
- *     extend↔retract): both are on the positive side, so they are never related
- *     to EACH OTHER — only each to `retract`. Kept because both pairs are
- *     eval-confirmed real-world conflicts.
+ * Shared classes (adversarial-eval driven, each a judgment call). A class relates
+ * exactly its listed pairs, so each cross-side contrary the table means is a row here:
+ *   - grant/allow/permit/authorize against revoke/deny/forbid: the eval's grant-vs-deny
+ *     blind spot (grant/revoke and allow/deny were disjoint classes) is closed by the
+ *     grant↔deny, permit↔deny and authorize↔deny rows. The four positive verbs are NOT
+ *     synonyms to the table — "shall grant X" plus "shall not allow X" is two atoms, and
+ *     the opposition-candidate tier demotes `verified` on it until the author commits the
+ *     glossary merge (or an antonym, or a waiver).
+ *   - publish/extend share a class via retract (publish↔retract, extend↔retract): both
+ *     are on the positive side, so they are never related to EACH OTHER — only each to
+ *     `retract`. Kept because both pairs are eval-confirmed real-world conflicts.
  *   - The accept/approve/reject/decline class is deliberately NOT merged into
  *     the authorization class (proposal-acceptance ≠ access-authorization).
  */
@@ -121,11 +120,11 @@ export interface AntonymEntry {
   /** True when this verb sits on the OPPOSITE polarity side of `canonical`. */
   negated: boolean
   /**
-   * The lexicographically-smallest member on THIS verb's polarity side — the head of the atom it
-   * resolves to, so every same-side member of a class is one atom (`approve` → `accept`). Equal to
-   * `canonical` on the positive side.
+   * The verbs a seeded or committed pair opposes to this one DIRECTLY, sorted and deduplicated.
+   * The only relation the table asserts: an atom led by this verb is a contrary of an atom led
+   * by one of these over the same key, and of nothing else in the class (spec 007 AC-2-1).
    */
-  side: string
+  opposes: readonly string[]
 }
 
 /**
@@ -134,6 +133,8 @@ export interface AntonymEntry {
  * Pure and deterministic. Treats the pairs as an undirected graph whose edges
  * flip polarity, 2-colours each connected component by BFS, then re-bases each
  * component so its lexicographically-smallest member is the positive canonical.
+ * Each entry keeps its own edges ({@link AntonymEntry.opposes}): the component names
+ * the key, and only an edge relates two verbs.
  *
  * Throws if the pairs contain an odd (inconsistent) polarity cycle — impossible
  * for the fixed seeds, but a guard against a future edit that would make
@@ -189,8 +190,8 @@ export function buildAntonymIndex(
     const canonical = [...members].sort()[0] as string
     // Re-base sign relative to the canonical (which we pin to positive).
     const negated = (sign.get(verb) as boolean) !== (sign.get(canonical) as boolean)
-    const side = members.filter((m) => sign.get(m) === sign.get(verb)).sort()[0] as string
-    index.set(verb, { canonical, negated, side })
+    const opposes = [...new Set(adj.get(verb) ?? [])].sort()
+    index.set(verb, { canonical, negated, opposes })
   }
   return index
 }

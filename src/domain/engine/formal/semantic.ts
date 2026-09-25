@@ -668,13 +668,17 @@ export async function findOppositionCandidates(
       if (restA === '' || restA !== restB) continue
       if (headA === headB) continue
 
-      // Skip pairs the antonym tables ALREADY relate — those unify (handled
-      // above) or are a real conflict, not a candidate to propose.
+      // Skip pairs the antonym tables ALREADY relate — a seeded or committed pair is a
+      // contrary axiom the solver decides, not a candidate to propose. ONLY a pair: two verbs
+      // that merely share a class (`grant`/`allow` on one side, `conceal`/`unseal` two pairs
+      // apart) are two unrelated atoms to the solver (AC-2-1), so the table's own evidence
+      // that they are related — synonyms or opposites — is proposed like a negating prefix,
+      // regardless of cosine, and demotes until the author commits one or waives it.
       const entryA = antonyms.get(headA)
       const entryB = antonyms.get(headB)
-      if (entryA !== undefined && entryB !== undefined && entryA.canonical === entryB.canonical) {
-        continue
-      }
+      if (entryA?.opposes.includes(headB) === true) continue
+      const sameClass =
+        entryA !== undefined && entryB !== undefined && entryA.canonical === entryB.canonical
 
       const key = pairKey(a.id, b.id)
       if (seen.has(key)) continue
@@ -688,7 +692,7 @@ export async function findOppositionCandidates(
       const score = va !== undefined && vb !== undefined ? cosine(va, vb) : 0
       // Cosine is a topical-relatedness FLOOR only (antonyms embed close), not
       // the opposition signal — the shared-object/different-verb structure is.
-      if (!prefixPair && score < floor) continue
+      if (!prefixPair && !sameClass && score < floor) continue
 
       seen.add(key)
       const [lo, hi] = a.id < b.id ? [a.id, b.id] : [b.id, a.id]

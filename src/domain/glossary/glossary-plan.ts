@@ -622,12 +622,11 @@ interface Node {
   /**
    * `normalize(phrase)` — the AUTHOR'S wording, and the key `glossaryIndex` looks up.
    *
-   * Deliberately NOT the atom name's body. The atom body is post-canonicalization: an
-   * antonym class is re-based on its lexicographically smallest member, so "seal the
-   * vault" atomizes through the seed class `seal—unseal—expose—conceal` and arrives as
-   * `conceal_the_vault`. Reading the head off the atom would tell an author to run
-   * `symspec antonym close conceal` — naming a verb that appears nowhere in their
-   * document. `findOppositionCandidates` reads the raw response for the same reason.
+   * Deliberately NOT the atom name's body. The atom body is post-canonicalization — the
+   * glossary, terms, head de-inflection and the antonym-remainder preposition drop have all
+   * run — so reading a head off the atom could name a verb or phrase that appears nowhere in
+   * the author's document. `findOppositionCandidates` reads the raw response for the same
+   * reason.
    */
   readonly body: string
   /**

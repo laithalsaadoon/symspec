@@ -134,67 +134,124 @@ describe('AC-2-1 — "shall A" plus "shall B" is still a contradiction', () => {
   })
 })
 
-describe('AC-2-1 — members on ONE side of a class stay one atom', () => {
-  // The contrary replaced the rename `A ≡ ¬B` ACROSS a class. It must not also split the
-  // members on one side of it: the table merges grant/allow/permit/authorize on purpose, and
-  // `roll back`/`rollback` are one verb spelled two ways. Split, each pair below was two
-  // unrelated atoms with no axiom between them — verified: true over a real conflict, with no
-  // finding at all (the lexical tier only sees near-duplicate-sentence candidates, and a pair
-  // sharing a trigger is a different rule's candidate).
+describe('AC-2-1 — the table relates PAIRS, never the members of one side', () => {
+  // Two contrary axioms `¬(A ∧ C)` and `¬(B ∧ C)` do not entail `A ≡ B`. The table used to name
+  // every member of one side of a class after the side's smallest member, which is exactly that
+  // rename: each consistent document below was an error-severity FND_CONTRADICTION, and the
+  // committed-pair ones grew out of a table edit no requirement mentioned.
   const AUDIT = 'When the audit completes, the auth service shall'
-  const cases: ReadonlyArray<readonly [string, string, string]> = [
+  const INVOICE = 'When an invoice arrives, the payables service shall'
+  const FAIL = 'When a payment fails, the order service shall'
+  const cases: ReadonlyArray<
+    readonly [string, string, string, ReadonlyArray<{ a: string; b: string }>]
+  > = [
     [
-      'grant / not allow',
-      `${AUDIT} grant access to the vault.`,
-      `${AUDIT} not allow access to the vault.`,
+      'publish / not extend',
+      `${AUDIT} publish the article.`,
+      `${AUDIT} not extend the article.`,
+      [],
     ],
     [
-      'permit / not authorize',
-      `${AUDIT} permit access to the vault.`,
-      `${AUDIT} not authorize access to the vault.`,
+      'accept / not approve',
+      `${INVOICE} accept the invoice.`,
+      `${INVOICE} not approve the invoice.`,
+      [],
     ],
-    ['revoke / not deny', `${AUDIT} revoke access.`, `${AUDIT} not deny access.`],
-    ['accept / not approve', `${PO} accept the order.`, `${PO} not approve the order.`],
+    ['seal / not conceal', `${AUDIT} seal the box.`, `${AUDIT} not conceal the box.`, []],
+    ['revoke / not deny', `${AUDIT} revoke the session.`, `${AUDIT} not deny the session.`, []],
     [
-      'roll back / not rollback',
-      `${CONVEYOR} roll back the deployment.`,
-      `${CONVEYOR} not rollback the deployment.`,
+      'hold / not quarantine, after hold↔release is committed',
+      `${FAIL} hold the order.`,
+      `${FAIL} not quarantine the order.`,
+      [{ a: 'hold', b: 'release' }],
     ],
     [
-      'rollback / not roll back',
-      `${CONVEYOR} rollback the deployment.`,
-      `${CONVEYOR} not roll back the deployment.`,
+      'finish / not stop, after start↔finish is committed',
+      `${AUDIT} finish the job.`,
+      `${AUDIT} not stop the job.`,
+      [{ a: 'start', b: 'finish' }],
     ],
   ]
-  for (const [name, a, b] of cases) {
-    it(`${name} under one context is FND_CONTRADICTION naming both`, async () => {
-      const report = await runCheck(await docOf([a, b]))
-      const found = report.findings.filter((f) => f.code === 'FND_CONTRADICTION')
-      expect(found.map((f) => f.requirementIds)).toEqual([[idOf(1), idOf(2)]])
+  for (const [name, a, b, antonyms] of cases) {
+    it(`${name} is no error: two atoms, and no axiom between them`, async () => {
+      const doc = (await docOf([a, b])) as unknown as { antonyms: unknown[] }
+      doc.antonyms = [...antonyms]
+      const report = await runCheck(doc as never)
+      expect(report.findings.filter((f) => f.severity === 'error').map((f) => f.code)).toEqual([])
     })
   }
 
-  it('a doc-committed pair joins a seed side: close / not shut is FND_CONTRADICTION', async () => {
-    const doc = (await docOf([
-      `${CONVEYOR} close the valve.`,
-      `${CONVEYOR} not shut the valve.`,
-    ])) as unknown as {
-      antonyms: unknown[]
+  it('an opposite-side pair two edges apart is unrelated too: conceal / unseal', async () => {
+    // seal↔unseal, seal↔expose, expose↔conceal: `conceal` and `unseal` sit on opposite sides of
+    // one class and no pair joins them, so both asserted is no contradiction.
+    const report = await runCheck(
+      await docOf([`${AUDIT} conceal the box.`, `${AUDIT} unseal the box.`]),
+    )
+    expect(report.findings.filter((f) => f.severity === 'error').map((f) => f.code)).toEqual([])
+  })
+
+  it('every pair that IS in the table still proves its contradiction', async () => {
+    for (const [x, y] of [
+      ['publish', 'retract'],
+      ['extend', 'retract'],
+      ['approve', 'reject'],
+      ['seal', 'expose'],
+      ['conceal', 'expose'],
+      ['revoke', 'grant'],
+    ] as const) {
+      const report = await runCheck(
+        await docOf([`${AUDIT} ${x} the box.`, `${AUDIT} ${y} the box.`]),
+      )
+      const found = report.findings.filter((f) => f.code === 'FND_CONTRADICTION')
+      expect(
+        found.map((f) => f.requirementIds),
+        `${x} / ${y}`,
+      ).toEqual([[idOf(1), idOf(2)]])
     }
+  })
+
+  it('a doc-committed pair relates its own two verbs, and not a seed verb beside one', async () => {
+    const doc = (await docOf([
+      `${CONVEYOR} open the valve.`,
+      `${CONVEYOR} shut the valve.`,
+      `${CONVEYOR} close the hatch.`,
+      `${CONVEYOR} not shut the hatch.`,
+    ])) as unknown as { antonyms: unknown[] }
     doc.antonyms = [{ a: 'open', b: 'shut' }]
     const report = await runCheck(doc as never)
     const found = report.findings.filter((f) => f.code === 'FND_CONTRADICTION')
+    // open/shut the valve clash; `close` and `shut` are two actions `open` opposes, not one.
     expect(found.map((f) => f.requirementIds)).toEqual([[idOf(1), idOf(2)]])
   })
 
-  it('names each side after its smallest member, and the two sides stay distinct', () => {
+  it("names every atom after the author's own verb", () => {
     const name = (text: string) => atomize({ kind: 'resp', text, systemName: 'vault' }).name
-    expect(name('grant access')).toBe(name('allow access'))
-    expect(name('authorize access')).toBe(name('permit access'))
-    expect(name('grant access')).toBe('sys__vault__resp__allow_access')
-    expect(name('revoke access')).toBe('sys__vault__resp__deny_access')
-    expect(name('rolls back the batch')).toBe(name('rollback the batch'))
-    expect(name('grant access')).not.toBe(name('deny access'))
+    expect(name('grant access')).toBe('sys__vault__resp__grant_access')
+    expect(name('allow access')).toBe('sys__vault__resp__allow_access')
+    expect(name('publish the article')).toBe('sys__vault__resp__publish_the_article')
+    expect(name('rolls back the batch')).toBe('sys__vault__resp__roll_back_the_batch')
+    expect(name('rollback the batch')).toBe('sys__vault__resp__rollback_the_batch')
+  })
+
+  it('a same-class pair the table cannot decide DEMOTES instead: grant / not allow', async () => {
+    // Split, "shall grant X" plus "shall not allow X" is two unrelated atoms, and the table's
+    // own class membership is the evidence that the two verbs are related. The opposition-
+    // candidate tier proposes it regardless of cosine, so it cannot certify silently.
+    const parallel: Embedder = async (texts) => texts.map(() => Float32Array.from([1, 0]))
+    const orthogonal: Embedder = async (texts) =>
+      texts.map((_, i) => Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1]))
+    for (const embedder of [parallel, orthogonal]) {
+      const report = await runCheck(
+        await docOf([
+          `${AUDIT} grant access to the vault.`,
+          `${AUDIT} not allow access to the vault.`,
+        ]),
+        { semantic: { embedder } },
+      )
+      expect(report.findings.filter((f) => f.severity === 'error')).toEqual([])
+      expect(report.findings.map((f) => f.code)).toContain('FND_OPPOSITION_CANDIDATE')
+      expect(report.verified).toBe(false)
+    }
   })
 })
 
@@ -280,11 +337,6 @@ describe('AC-2-1 — the propose tiers never offer two contraries as synonyms', 
 
   it('FND_SIMILAR_UNUNIFIED skips a seed-antonym pair', () => {
     expect(findSimilarUnunified(reqs as never, { similarityThreshold: 0.5 })).toEqual([])
-  })
-
-  it('FND_SIMILAR_UNUNIFIED has nothing to propose for a same-side pair: it is already one atom', () => {
-    const sameSide = [reqOf('a', 'accept the ledger entry'), reqOf('b', 'approve the ledger entry')]
-    expect(findSimilarUnunified(sameSide as never, { similarityThreshold: 0.5 })).toEqual([])
   })
 
   it('FND_SIMILAR_SEMANTIC skips a seed-antonym pair even at cosine 1', async () => {
