@@ -526,19 +526,47 @@ function resolveUnit(unit: string): { dimension: string; base: string; scale: Un
 
 /**
  * Comparator lexicon. Each phrasing maps to the comparator it asserts on the
- * quantity. "within/under/at most/no more than/below" are upper bounds; "at
- * least/over/above/no less than" are lower bounds; "exactly" is equality.
- * Longer phrases are matched first (see COMPARATOR_PATTERNS ordering).
+ * quantity. "within/under/at most/no more than/below/a maximum of" are upper
+ * bounds; "at least/over/above/more than/no less than/a minimum of" are lower bounds;
+ * "exactly" is equality. "up to" is deliberately NOT an entry: it is a particle as often as a
+ * bound (`up to date`, `back up to`), and an entry claimed the number of a later `within`, so its
+ * quantity is left to {@link unreadQuantities}, which discloses it instead.
+ *
+ * The order is the MATCH order: {@link readBounds} claims each phrase's span in this
+ * order, and a later phrase never matches inside a claimed one. So a phrase precedes
+ * every phrase it contains (`no more than` before `more than`, `no greater than` and
+ * `greater than or equal to` before `greater than`); otherwise the shorter phrase claims
+ * the number and reads the opposite bound.
+ *
+ * A `not` before a phrase is not an entry: {@link readBounds} negates the one comparison
+ * it governs ({@link NEGATE}), so `not more than` is `<=` through `more than` and `not
+ * less than` is `>=` through `less than`. Listing either would read the phrase twice.
+ *
+ * A phrase missing here costs `verified`, never correctness: a number in a recognized
+ * unit that no entry introduces is disclosed ({@link unreadQuantities}) rather than
+ * certified unread. `numeric.test.ts` pins every entry, alone, to its comparator.
  */
-const COMPARATOR_LEXICON: ReadonlyArray<{ phrase: string; comparator: NumericComparator }> = [
+export const COMPARATOR_LEXICON: ReadonlyArray<{
+  readonly phrase: string
+  readonly comparator: NumericComparator
+}> = [
   { phrase: 'no more than', comparator: '<=' },
   { phrase: 'no less than', comparator: '>=' },
+  { phrase: 'no fewer than', comparator: '>=' },
+  { phrase: 'no greater than', comparator: '<=' },
+  { phrase: 'no lower than', comparator: '>=' },
   { phrase: 'at most', comparator: '<=' },
   { phrase: 'at least', comparator: '>=' },
+  { phrase: 'a maximum of', comparator: '<=' },
+  { phrase: 'a minimum of', comparator: '>=' },
   { phrase: 'less than or equal to', comparator: '<=' },
   { phrase: 'greater than or equal to', comparator: '>=' },
+  { phrase: 'more than or equal to', comparator: '>=' },
+  { phrase: 'fewer than or equal to', comparator: '<=' },
   { phrase: 'less than', comparator: '<' },
+  { phrase: 'fewer than', comparator: '<' },
   { phrase: 'greater than', comparator: '>' },
+  { phrase: 'more than', comparator: '>' },
   { phrase: 'not exceeding', comparator: '<=' },
   { phrase: 'not exceed', comparator: '<=' },
   { phrase: 'exceeding', comparator: '>' },
@@ -1938,4 +1966,64 @@ export function requirementBounds(
       ? readBounds(r.preCondition, r.systemName, 'pre', quantityAliases, false)
       : []),
   ]
+}
+
+/**
+ * A number in a unit {@link DIMENSIONS} converts, written in a response that reads no bound on
+ * it (`5 seconds` in `poll the sensor every 5 seconds`). `span` is `[start, end)` in the stored
+ * `systemResponse`, number through unit; `text` is that slice.
+ */
+export interface UnreadQuantity {
+  readonly text: string
+  readonly span: readonly [number, number]
+}
+
+/**
+ * A digit run as it is WRITTEN, whatever this tier's {@link NUMBER} token makes of it: digits
+ * with the separators and exponent a number can carry inside it (`1,500`, `2_000_000`, `2 000`,
+ * `1.5e3`, `1,5`). It never starts inside a word (`v2`) and never ends on a separator, so a
+ * sentence's own comma or period is not part of it. {@link NUMBER} declines several of these
+ * spellings, and a declined one must still be seen whole here, never as its trailing group.
+ */
+const NUMERAL_RUN =
+  /(?<![\p{L}\p{N}_.,'’])(?:\.(?=\d))?\d(?:\d|[.,_'’](?=\d)|[eE][+-]?\d|\s(?=\d{3}(?!\d)))*/gu
+
+/**
+ * Every quantity the response of `r` states in a unit {@link DIMENSIONS} converts that no bound
+ * {@link requirementBounds} reads covers: `5 seconds` in `poll the sensor every 5 seconds`,
+ * `500 ms` in a response whose comparator phrase is not in {@link COMPARATOR_LEXICON}, the
+ * numbers of a negated response read as nothing ({@link negateResponse}), a toleranced or
+ * declined spelling.
+ *
+ * This is the structural guard behind the lexicon. Under the demote-not-prove contract a phrase
+ * the lexicon does not know must cost `verified`, never correctness: a requirement whose number
+ * the tier did not read is one it never compared, and certifying it is certifying a comparison
+ * that did not happen. The unit is the evidence a quantity is there: a bare number or one in a
+ * unit no dimension converts (`3 months`) is R6's and the partition's business, not this
+ * reader's. Only the response is read, because a guard's bound decides where a requirement is
+ * live, not what it obliges.
+ *
+ * Covered means inside the {@link SubjectBound.numberSpan} of a response bound
+ * {@link requirementBounds} returns: the one reader `check` hands the decide tier its
+ * predicates from, so a number is disclosed exactly when the decide tier was not handed it. A
+ * negated response read as nothing returns no bound, so its numbers are all unread.
+ *
+ * Offsets are into the STORED `r.systemResponse`, as {@link requirementBounds} reports them.
+ */
+export function unreadQuantities(r: ReqView): UnreadQuantity[] {
+  const read = requirementBounds(r)
+    .filter((b) => b.predicate.slot === 'resp')
+    .map((b) => b.numberSpan)
+  const text = r.systemResponse
+  const out: UnreadQuantity[] = []
+  for (const m of text.matchAll(NUMERAL_RUN)) {
+    const start = m.index
+    const end = start + m[0].length
+    const unit = readUnit(text.slice(end))
+    if (unit.raw === '' || resolveUnit(unit.raw) === null) continue
+    if (read.some(([s, e]) => s < end && start < e)) continue
+    const span = [start, end + unit.length] as const
+    out.push({ text: text.slice(span[0], span[1]), span })
+  }
+  return out
 }

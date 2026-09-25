@@ -135,11 +135,13 @@ import type { Z3Bool } from './encode.ts'
 import type { Evidence } from './finding.ts'
 import {
   type BoundRole,
+  COMPARATOR_LEXICON,
   HOLDING_VERBS,
   mayPerform,
   type NumericPredicate,
   opposedComparators,
   RAW_UNIT_DIMENSION,
+  type UnreadQuantity,
   unitClassOf,
 } from './numeric.ts'
 
@@ -158,12 +160,56 @@ export interface NumericContradictionFinding {
  * A pair of co-live bounds this tier did not compare, or compared under only some of
  * its readings (Appendix B `FND_NUMERIC_UNCOMPARED`, info). Never a verdict; it DEMOTES
  * `verified`, because a conflict it could not decide is not a conflict it ruled out.
+ *
+ * One requirement alone is named when its response states a quantity the tier read no bound
+ * on ({@link disclosureOfUnreadQuantities}): there is no partner, because the unread quantity
+ * was compared with nothing.
  */
 export interface NumericUncomparedFinding {
   readonly code: 'FND_NUMERIC_UNCOMPARED'
   readonly severity: 'info'
   readonly requirementIds: string[]
   readonly message: string
+}
+
+/**
+ * `FND_NUMERIC_UNCOMPARED` for each requirement whose response states a quantity in a unit the
+ * tier converts that no bound it read covers (`numeric.ts` {@link UnreadQuantity}), naming the
+ * requirement and the unread text. The lexicon's structural guard: `respond in more than 500
+ * ms` against `respond within 200 ms`, read before `more than` was an entry, was two
+ * requirements with one bound between them, and it certified clean. A phrase the lexicon does
+ * not know costs `verified`, never correctness. In id order, so the output bytes are a function
+ * of the requirement set.
+ */
+export function disclosureOfUnreadQuantities(
+  reqs: ReadonlyArray<{
+    readonly id: string
+    readonly response: string
+    readonly unread: readonly UnreadQuantity[]
+  }>,
+): NumericUncomparedFinding[] {
+  const phrases = COMPARATOR_LEXICON.map((e) => `"${e.phrase}"`).join(', ')
+  return reqs
+    .filter((r) => r.unread.length > 0)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((r) => {
+      const one = r.unread.length === 1
+      const quantities = r.unread.map((q) => `"${q.text}"`).join(', ')
+      return {
+        code: 'FND_NUMERIC_UNCOMPARED',
+        severity: 'info',
+        requirementIds: [r.id],
+        message:
+          `Requirement ${r.id} states ${quantities} in its response ("${r.response.trim()}"), in ` +
+          `${one ? 'a unit' : 'units'} the numeric tier converts, but the tier read no bound on ` +
+          `${one ? 'it' : 'them'}, so ${one ? 'it was' : 'they were'} never compared with any ` +
+          "other requirement's bound. If it is a bound, restate it after one of the comparator " +
+          `phrases the tier reads (${phrases}; a period as "at least once every <n> <unit>"), ` +
+          'so any conflict is proved. Otherwise, once you have checked that no other ' +
+          'requirement bounds the same quantity against it, waive this finding for this ' +
+          'requirement. This is a disclosure, not a verdict.',
+      }
+    })
 }
 
 /** One requirement's numeric predicates, tagged with the owning requirement id. */

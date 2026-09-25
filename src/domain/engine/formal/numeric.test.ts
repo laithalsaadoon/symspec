@@ -8,11 +8,14 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import type { NumericComparator } from './encode.ts'
 import {
+  COMPARATOR_LEXICON,
   extractNumericPredicates,
   mayPerform,
   type PredicateSlot,
   RAW_UNIT_DIMENSION,
+  unreadQuantities,
 } from './numeric.ts'
 
 describe('a numeric predicate is stamped with the slot it was read out of', () => {
@@ -604,5 +607,147 @@ describe('a response that holds an action behind other words may perform it (spe
     expect(may('log the entry')).toBe(false)
     expect(may('unlocked the door keep')).toBe(false)
     expect(may('immediately keep the door unlocked', 'gate controller')).toBe(false)
+  })
+})
+
+describe('every comparator phrase, alone, yields exactly its comparator', () => {
+  // One row per COMPARATOR_LEXICON entry, plus the phrases the `not` path reads through an
+  // entry (`not more than` through `more than`), which are deliberately NOT entries. A lexicon
+  // entry with no row is a red test below, so no entry ships without its own fixture
+  // (`.erpaval/solutions/conventions/lexicon-entries-need-per-entry-reachability-tests.md`).
+  const EXPECTED: ReadonlyArray<readonly [string, NumericComparator]> = [
+    ['no more than', '<='],
+    ['no less than', '>='],
+    ['no fewer than', '>='],
+    ['no greater than', '<='],
+    ['no lower than', '>='],
+    ['at most', '<='],
+    ['at least', '>='],
+    ['a maximum of', '<='],
+    ['a minimum of', '>='],
+    ['less than or equal to', '<='],
+    ['greater than or equal to', '>='],
+    ['more than or equal to', '>='],
+    ['fewer than or equal to', '<='],
+    ['less than', '<'],
+    ['fewer than', '<'],
+    ['greater than', '>'],
+    ['more than', '>'],
+    ['not exceeding', '<='],
+    ['not exceed', '<='],
+    ['exceeding', '>'],
+    ['exceed', '>'],
+    ['within', '<='],
+    ['under', '<'],
+    ['below', '<'],
+    ['over', '>'],
+    ['above', '>'],
+    ['exactly', '='],
+    ['equal to', '='],
+    // Through the negation of the one comparison a `not` governs.
+    ['not more than', '<='],
+    ['not less than', '>='],
+  ]
+
+  it.each(EXPECTED)('"%s" reads as %s', (phrase, comparator) => {
+    const preds = extractNumericPredicates(`keep the latency ${phrase} 200 ms`, 'svc', 'resp')
+    expect(preds.map((p) => [p.label, p.comparator, p.value])).toEqual([
+      ['keep the latency', comparator, 200],
+    ])
+  })
+
+  it('has a row for every lexicon entry, and no `not` phrase is an entry', () => {
+    const phrases = COMPARATOR_LEXICON.map((e) => e.phrase)
+    const rows = new Set(EXPECTED.map(([phrase]) => phrase))
+    expect(phrases.filter((p) => !rows.has(p))).toEqual([])
+    expect(phrases.filter((p) => p.startsWith('not ') && !p.startsWith('not exceed'))).toEqual([])
+  })
+
+  it('lists every phrase before any phrase it contains', () => {
+    const phrases = COMPARATOR_LEXICON.map((e) => e.phrase)
+    for (const [i, shorter] of phrases.entries()) {
+      for (const longer of phrases.slice(i + 1)) {
+        const contained = new RegExp(`(?:^| )${shorter}(?: |$)`).test(longer)
+        expect(contained, `"${longer}" is listed after "${shorter}"`).toBe(false)
+      }
+    }
+  })
+})
+
+describe('a quantity in a converted unit that no bound reads is reported unread', () => {
+  const view = (systemResponse: string, extra: { negated?: boolean; trigger?: string } = {}) => ({
+    id: 'r',
+    patternType: extra.trigger === undefined ? ('ubiquitous' as const) : ('event-driven' as const),
+    systemName: 'gateway',
+    systemResponse,
+    sentence: '',
+    priority: 'medium' as const,
+    status: 'draft' as const,
+    negated: extra.negated ?? false,
+    ...(extra.trigger !== undefined ? { trigger: extra.trigger } : {}),
+  })
+  const unread = (text: string, extra?: { negated?: boolean; trigger?: string }) =>
+    unreadQuantities(view(text, extra)).map((q) => q.text)
+
+  it('reads nothing unread in a response whose every quantity is a bound', () => {
+    expect(unread('respond within 200 ms')).toEqual([])
+    expect(unread('respond in more than 500 ms')).toEqual([])
+    expect(unread('respond within 1,500 ms')).toEqual([])
+    expect(unread('respond in at most 1e3 ms')).toEqual([])
+    expect(unread('poll the sensor at least once every 5 seconds')).toEqual([])
+  })
+
+  it('names a quantity no comparator phrase introduces', () => {
+    expect(unread('poll the sensor every 5 seconds')).toEqual(['5 seconds'])
+    // A leading-decimal spelling is a quantity too; NUMBER declines it, so the guard must see it.
+    expect(unread('respond in at least .5 s')).toEqual(['.5 s'])
+    // `up to` is not a comparator (`up to date`, `back up to`), so its quantity is unread.
+    expect(unread('store up to 5 MB')).toEqual(['5 MB'])
+    expect(unread('lock the account after 5 minutes')).toEqual(['5 minutes'])
+    expect(unread('respond within 200 ms and retry after 3 s')).toEqual(['3 s'])
+    expect(unread('heat the tank to 60 degrees celsius')).toEqual(['60 degrees celsius'])
+    expect(unread('cut the load by 20%')).toEqual(['20%'])
+  })
+
+  it('names a spelling the number token declines whole, never its trailing group', () => {
+    expect(unread('respond within 2_000_000 ms')).toEqual(['2_000_000 ms'])
+    expect(unread('respond within 2 000 ms')).toEqual(['2 000 ms'])
+    expect(unread('respond within 1,5 seconds')).toEqual(['1,5 seconds'])
+  })
+
+  it('names the numbers of a negated response it reads as nothing', () => {
+    expect(
+      unread('keep the door unlocked above 30 seconds and below 60 seconds', { negated: true }),
+    ).toEqual(['30 seconds', '60 seconds'])
+    expect(unread('keep the door unlocked above 30 seconds', { negated: true })).toEqual([])
+  })
+
+  it('reports offsets into the stored response, a leading negator included', () => {
+    const [q] = unreadQuantities(view('not poll the sensor every 5 seconds'))
+    expect(q?.span).toEqual([26, 35])
+    expect(q?.text).toBe('5 seconds')
+  })
+
+  it('leaves a bare number, an unconverted unit, and the guard slots to the other rules', () => {
+    expect(unread('keep at most 3 retries')).toEqual([])
+    expect(unread('retain the logs for 3 months')).toEqual([])
+    expect(unread('respond with 5 entries')).toEqual([])
+    expect(unread('respond within 200 ms', { trigger: 'the queue is idle for 5 minutes' })).toEqual(
+      [],
+    )
+  })
+})
+
+describe('`up to` is not a comparator: it is a particle as often as a bound', () => {
+  it('never reads `up to` as a bound, so `up to date … within 5 minutes` keeps its deadline', () => {
+    const preds = extractNumericPredicates(
+      'keep the cache up to date within 5 minutes',
+      'API gateway',
+      'resp',
+    )
+    expect(preds).toHaveLength(1)
+    expect(preds[0]?.comparator).toBe('<=')
+    expect(preds[0]?.quantity).not.toMatch(/__keep_the_cache$/)
+    expect(extractNumericPredicates('store up to 5 MB', 'API gateway', 'resp')).toEqual([])
   })
 })

@@ -128,8 +128,16 @@ import {
   SolverBudgetExceededError,
 } from '../formal/needs-review.ts'
 import { findNumberSpellingCandidates } from '../formal/number-spelling.ts'
-import { actionOccurrences, type NumericPredicate, requirementBounds } from '../formal/numeric.ts'
-import { analyzeNumericBounds } from '../formal/numeric-contradiction.ts'
+import {
+  actionOccurrences,
+  type NumericPredicate,
+  requirementBounds,
+  unreadQuantities,
+} from '../formal/numeric.ts'
+import {
+  analyzeNumericBounds,
+  disclosureOfUnreadQuantities,
+} from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
 import { findRelationalUnchecked } from '../formal/relational.ts'
 import {
@@ -1552,6 +1560,13 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // and a pair the readings split is disclosed rather than dropped.
       const { contradictions: numericContradictions, uncompared: numericUncompared } =
         await analyzeNumericBounds(ctx, numericReqPreds, bounds)
+      // What it never read: a quantity in a converted unit that no bound it extracted covers
+      // (`poll every 5 seconds`, a comparator phrase the lexicon does not know). Over the same
+      // population as the bounds, so a requirement is disclosed exactly where its numbers were
+      // not handed to the decide half. Demotion-only, through `numeric-bounds-uncompared`.
+      const numericUnread = disclosureOfUnreadQuantities(
+        reqs.map((r) => ({ id: r.id, response: r.systemResponse, unread: unreadQuantities(r) })),
+      )
 
       // Issue #2 (reproducer a): the numeric tier keys a quantity off the phrase
       // before the comparator, so ONE physical quantity described with two
@@ -1770,6 +1785,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         ...quantityAliasCandidates,
         ...numberSpellingCandidates,
         ...numericUncompared,
+        ...numericUnread,
       ]) {
         formal.push({
           code: f.code,
@@ -2147,15 +2163,23 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
     }
     // Numeric bounds the tier neither proved nor dismissed: a verdict that turns on a
     // reading the sentences do not fix is not a comparison that happened.
+    // A finding naming one requirement is a quantity the tier never read a bound on
+    // (`disclosureOfUnreadQuantities`), so it has no partner to be consistent with.
     for (const f of numericUncomparedFindings) {
       demotions.push({
         reason: 'numeric-bounds-uncompared',
         requirementIds: [...f.requirementIds],
         action:
-          `The numeric bounds of ${f.requirementIds.join(', ')} were neither proved nor dismissed ` +
-          "(the finding's message says which reading splits them). Restate them in one sense and " +
-          'one recognized unit so the numeric tier can decide them, or waive this finding once you ' +
-          'have checked they are consistent. Then re-run `symspec check`.',
+          f.requirementIds.length === 1
+            ? `${f.requirementIds[0]} states a quantity the numeric tier read no bound on, so it ` +
+              "was compared with nothing (the finding's message names it). Restate it after a " +
+              'comparator phrase the tier reads so the numeric tier can decide it, or waive this ' +
+              'finding once you have checked no other requirement bounds it. Then re-run ' +
+              '`symspec check`.'
+            : `The numeric bounds of ${f.requirementIds.join(', ')} were neither proved nor dismissed ` +
+              "(the finding's message says which reading splits them). Restate them in one sense and " +
+              'one recognized unit so the numeric tier can decide them, or waive this finding once you ' +
+              'have checked they are consistent. Then re-run `symspec check`.',
       })
     }
     // AC-2-4: a number spelled with two digit separators. Off the KEPT set, so the reviewed
