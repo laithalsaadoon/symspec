@@ -661,12 +661,58 @@ const COVERAGE_GAP_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
  * the scoped requirements.
  */
 function isWaived(f: CheckFinding, w: Waiver): boolean {
+  if (PAIR_BOUND_CODES.has(f.code) && (w.requirementIds === undefined || w.textBound !== true)) {
+    return false
+  }
+  return reachesFinding(f, w)
+}
+
+/** The scope test alone: the code matches and every scope the waiver carries holds. */
+function reachesFinding(f: CheckFinding, w: Waiver): boolean {
   if (f.code !== w.code) return false
   if (w.requirementIds !== undefined && !namesExactly(f.requirementIds, w.requirementIds)) {
     return false
   }
   if (w.requirementId === undefined) return true
   return f.requirementIds.includes(w.requirementId)
+}
+
+/**
+ * Codes a waiver discharges only over EXACTLY the finding's requirement set and only while it is
+ * bound to their current text (`textBound`, set at the boundary from a matching content hash).
+ *
+ * An opposition candidate is often a pair a base build PROVED (spec 007, demote-not-prove C3): the
+ * preposition-variant rule demotes what base proved by dropping a preposition. A waiver by code, or
+ * by one requirement, reaches every candidate that names it — including ones created after the
+ * triage, over pairs nobody read — and would turn that base proof into `verified: true`. Such a
+ * waiver (a legacy one, or one hand-written) is kept in the document but not applied, and the
+ * candidate's demotion says so.
+ */
+const PAIR_BOUND_CODES: ReadonlySet<string> = new Set<FndCode>(['FND_OPPOSITION_CANDIDATE'])
+
+/** Waivers that reach `f` by scope but are not applied to it, because its code is pair-bound. */
+function unappliedWaivers(f: CheckFinding, waivers: readonly Waiver[]): Waiver[] {
+  if (!PAIR_BOUND_CODES.has(f.code)) return []
+  return waivers.filter((w) => reachesFinding(f, w) && !isWaived(f, w))
+}
+
+/** The demotion-action sentence naming the waivers {@link unappliedWaivers} found, if any. */
+function unappliedNote(unapplied: readonly Waiver[]): string {
+  if (unapplied.length === 0) return ''
+  const scopes = unapplied.map((w) =>
+    w.requirementIds !== undefined
+      ? `the one over ${w.requirementIds.join(' and ')}, whose content hash is missing or no longer matches`
+      : w.requirementId !== undefined
+        ? `the one scoped to ${w.requirementId} alone`
+        : 'the document-wide one',
+  )
+  const one = unapplied.length === 1
+  return (
+    ` ${one ? 'A waiver' : `${unapplied.length} waivers`} of ${unapplied[0]!.code} ` +
+    `${one ? 'reaches' : 'reach'} this pair but ${one ? 'was' : 'were'} not applied (${scopes.join('; ')}): ` +
+    'a candidate is discharged only by a waiver over exactly its requirements, bound to their ' +
+    'current text, so a waiver by code or by one requirement never certifies a pair nobody read.'
+  )
 }
 
 const SEVERITY_RANK: Record<CheckSeverity, number> = { error: 0, warn: 1, info: 2 }
@@ -2159,7 +2205,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           "provable with the edit the finding's message names (the rewrite, `symspec antonym add` " +
           'if the verbs are opposites, or `symspec glossary add` if synonyms), or, if the two do ' +
           "not conflict, apply this demotion's repair waiver, which is scoped to exactly these " +
-          'requirements as currently written. Then re-run `symspec check`.',
+          'requirements as currently written. Then re-run `symspec check`.' +
+          unappliedNote(unappliedWaivers(f, waivers)),
       })
     }
     if (inconclusive) {

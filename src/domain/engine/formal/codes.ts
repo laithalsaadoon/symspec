@@ -274,7 +274,7 @@ export const FndCodeMeta = {
   FND_OPPOSITION_CANDIDATE: {
     code: 'FND_OPPOSITION_CANDIDATE',
     description:
-      'info — two same-system responses share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified. Propose-only: if the verbs are truly opposite, run `symspec antonym add <verbA> <verbB>` so the formal tier treats them as contraries (two atoms that cannot both hold) and can prove any conflict. Never a verdict.',
+      'info — two same-system responses that may conflict but share no exact key: they share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified; or they are one verb at opposite polarity, or two contraries, whose objects differ only in their prepositions (e.g. "stop the pump on Monday" vs "shall not stop the pump Monday"). Propose-only, and DEMOTES `verified`: make the pair provable with the edit the message names (`symspec antonym add <verbA> <verbB>`, the rewording, or a glossary entry), or apply the demotion\'s repair waiver. Only that waiver, over exactly the pair and bound to its current text, discharges it; a waiver by code or by one requirement is not applied. Never a verdict.',
   },
   FND_EXCLUDED_FROM_FORMAL: {
     code: 'FND_EXCLUDED_FROM_FORMAL',

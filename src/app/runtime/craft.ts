@@ -241,9 +241,10 @@ mutually exclusive remedies: \`antonym add\` if the verbs are opposites,
 contradiction, and embeddings cannot tell which is right because antonyms embed close
 together. Read the pair and decide; the always-safe third option is the reviewed waiver
 in the demotion's \`repair.ops\`, which records "I triaged this pair, as written, and it is
-not a conflict". It names exactly the two requirements and their text; a \`symspec waive\`
-by code or by one \`--ref\` also discharges every other candidate it reaches, none of
-which anyone triaged.`,
+not a conflict". It names exactly the two requirements and their text, and it is the
+only waiver that discharges an opposition candidate: one by code or by one \`--ref\`
+would reach candidates nobody triaged, so \`check\` keeps it but does not apply it, and
+the demotion's action says so.`,
 }
 
 // ---------------------------------------------------------------------------

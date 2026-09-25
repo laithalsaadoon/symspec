@@ -279,16 +279,26 @@ describe('compat — every projected field the tier reads', () => {
       ],
     })
     const hash = requirementsContentHash(doc, [A, B])
+    // `textBound` tells the tier the hash matched: the one binding an opposition candidate's
+    // waiver needs before it discharges anything (check.ts `PAIR_BOUND_CODES`).
     expect(toEngineDoc(bound(doc, hash)).waivers).toEqual([
-      { code: 'FND_NUMERIC_UNCOMPARED', requirementIds: [A, B], reason: 'reviewed' },
+      {
+        code: 'FND_NUMERIC_UNCOMPARED',
+        requirementIds: [A, B],
+        reason: 'reviewed',
+        textBound: true,
+      },
     ])
 
     const edited = docOf(req({ id: A }), req({ id: B, systemResponse: 'extend the session token' }))
     expect(toEngineDoc(bound(edited, hash)).waivers).toEqual([])
     const deleted = docOf(req({ id: A }))
     expect(toEngineDoc(bound(deleted, hash)).waivers).toEqual([])
-    // An exact-set waiver a hand-written document carries WITHOUT a hash is still id-scoped.
-    expect(toEngineDoc(bound(edited, undefined)).waivers).toHaveLength(1)
+    // An exact-set waiver a hand-written document carries WITHOUT a hash is still id-scoped, and
+    // bound to no text.
+    expect(toEngineDoc(bound(edited, undefined)).waivers).toEqual([
+      { code: 'FND_NUMERIC_UNCOMPARED', requirementIds: [A, B], reason: 'reviewed' },
+    ])
   })
 
   it('preserves edge arrays by VALUE, and does not share them with the v3 document', () => {

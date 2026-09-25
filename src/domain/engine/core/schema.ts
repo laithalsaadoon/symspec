@@ -176,6 +176,12 @@ export type Waiver = {
   code: string
   requirementId?: string | undefined
   requirementIds?: readonly string[] | undefined
+  /**
+   * True when the waiver was bound to the reviewed text by a content hash that still matches it.
+   * Set only at the boundary (the tier cannot hash). An opposition candidate is discharged only by
+   * an exact-set waiver carrying this binding: see `PAIR_BOUND_CODES` in `pipeline/check.ts`.
+   */
+  textBound?: boolean | undefined
   reason: string
 }
 

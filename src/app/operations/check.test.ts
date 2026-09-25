@@ -2034,6 +2034,61 @@ describe('the opposition-candidate repair waiver is bound to its pair and its te
     expect(payload.verified).toBe(false)
   })
 
+  /**
+   * A waiver the base tool suggested, or one written by hand, never discharges a candidate: the
+   * base build PROVED these pairs, and its own repair for an opposition candidate was a one-id
+   * `ref` waiver (and its action an unscoped `symspec waive`). So a document triaged by following
+   * that advice carries one, and a candidate a later requirement forms with the waived one came
+   * back `verified: true` over a pair nobody read (verifier U-ref, U-docwide).
+   */
+  const stop = (id: string, response: string, negated: boolean) =>
+    req({
+      id,
+      patternType: 'event-driven',
+      trigger: TRIGGER,
+      systemName: 'controller',
+      systemResponse: response,
+      negated,
+      sentence: `When ${TRIGGER}, the controller shall${negated ? ' not' : ''} ${response}.`,
+    })
+  const LEGACY = [
+    ['a one-id ref waiver (the base repair op)', { requirementId: A }],
+    ['a document-wide waiver (the base action)', {}],
+    ['an exact-set waiver with no content hash', { requirementIds: [A, B] }],
+  ] as const
+  it.each(LEGACY)('%s leaves the candidate demoting, and the action says so', async (_, scope) => {
+    const doc = {
+      ...docOf(stop(A, 'stop the pump on Monday', false), stop(B, 'stop the pump Monday', true)),
+      waivers: [
+        { code: 'FND_OPPOSITION_CANDIDATE', reason: 'triaged under the base tool', ...scope },
+      ],
+    }
+    const payload = await check(doc)
+    expect(pairsOf(payload)).toEqual([key(A, B)])
+    expect(payload.verified).toBe(false)
+    expect(payload.waived).toBe(0)
+    const action = payload.coverage.demotions.find(
+      (d) => d.reason === 'open-opposition-candidate',
+    )?.action
+    expect(action).toMatch(/was not applied/)
+  })
+
+  it('U-ref: a ref waiver for one triaged candidate does not reach a pair added after it', async () => {
+    // The base tool's own repair for the A/H candidate was `waive ref A`; B then joins A in a
+    // pair base proved (stop on Monday / NOT stop Monday).
+    const doc = {
+      ...docOf(
+        stop(A, 'stop the pump on Monday', false),
+        stop(C, 'halt the pump on Monday', false),
+        stop(B, 'stop the pump Monday', true),
+      ),
+      waivers: [{ code: 'FND_OPPOSITION_CANDIDATE', reason: 'A/H triaged', requirementId: A }],
+    }
+    const payload = await check(doc)
+    expect(pairsOf(payload)).toContain(key(A, B))
+    expect(payload.verified).toBe(false)
+  })
+
   it('(4) does not discharge the pair once one side is edited', async () => {
     const waived = await triage(docOf(grant(A, 'on', false), grant(B, 'to', true)), A, B)
     const edited = fold(waived, [
