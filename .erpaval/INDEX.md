@@ -42,6 +42,7 @@ lessons before starting work.
 - [DEMOTION-ONLY grants permission, not an obligation — a wording risk must not demote or it becomes a gate only a waiver clears](solutions/architecture/a-propose-only-finding-that-must-not-demote-either.md)
 - [A finer partition key is not uniformly safer — the safe direction is OPPOSITE for a prover and a discloser](solutions/architecture/a-finer-key-is-not-uniformly-safer.md)
 - [An "I don't know" is not a comparison — enumerate a code set by what the code MEANS, not by which tier emits it](solutions/architecture/an-i-dont-know-is-not-a-comparison.md)
+- [Fix a decide-path text heuristic as an OUTCOME post-condition against base, under a corpus snapshot taken first](solutions/architecture/fix-a-text-heuristic-as-an-outcome-postcondition-against-base.md)
 
 - [Abandoning a z3 query WEDGES the module (Asyncify one-slot) — Z3_interrupt + await; V14/V21 revised](solutions/conventions/z3-asyncify-interrupt-not-abandon.md)
 - [Effect 4.0.0-beta.102 CLI/Layer API reality — 8 verified deltas incl. two silent manifest/help failures](solutions/conventions/effect-v4-beta102-cli-api-reality.md)
