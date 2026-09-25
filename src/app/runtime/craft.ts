@@ -491,7 +491,7 @@ field rather than assuming a code's severity from its name.`,
  *
  * The example is deliberately the SILENCE trap rather than a lint fix, because that is
  * what an author actually gets wrong. Step 1 produces a document that looks perfect —
- * `verified: true`, zero findings, exit 0 — and contains a flat contradiction. The only
+ * `verified: true`, no error or warning, exit 0 — and contains a flat contradiction. The only
  * visible tell is `progress.atomsUncompared: 2`.
  */
 const WORKED_EXAMPLE: CraftSection = {
@@ -518,9 +518,12 @@ symspec check
 Result:
 
 \`\`\`
-verified: true    findings: 0    counts.error: 0    exit 0
+verified: true    counts.error: 0    counts.warn: 0    exit 0
 pairsChecked: 1   progress.atomsUncompared: 2
 \`\`\`
+
+(The one info finding is \`FND_REACHABILITY_NOT_CHECKED\`: no state model is committed, so the
+reachability tier did not run. It says nothing about these two sentences.)
 
 The document says the scheduler shall both start and halt the same run on the same
 trigger, and \`check\` is **clean**. Nothing is broken — this is the soundness boundary
@@ -538,7 +541,7 @@ symspec check
 Result:
 
 \`\`\`
-verified: true    findings: 1    counts.error: 1    exit 1
+verified: true    counts.error: 1    exit 1
 FND_CONTRADICTION (error) — names BOTH requirement ids, with the unsat core as evidence
 progress.atomsUncompared: 0    progress.openFindings: 1
 \`\`\`

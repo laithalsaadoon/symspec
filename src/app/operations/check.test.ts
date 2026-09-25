@@ -742,7 +742,7 @@ describe('check — the solver Layer', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The reachability tier (G4) — wired in, and a PURE ADDITION
+// The reachability tier (G4) — wired in, and opt-in
 // ---------------------------------------------------------------------------
 
 /**
@@ -752,10 +752,10 @@ describe('check — the solver Layer', () => {
  *
  * 1. When a state model IS committed, the tier runs and its verdicts reach `findings[]`,
  *    `coverage.demotions[]`, `counts`, `verified`, and the exit code.
- * 2. When one is NOT committed, NOTHING changes — no key, no finding, no demotion. That
- *    is what makes the tier a pure addition, and it is asserted DIRECTLY rather than left
- *    implicit in the other fixtures: those could all grow a state model one day without
- *    anyone noticing this property had been the reason they were safe.
+ * 2. When one is NOT committed, the tier's absence is DISCLOSED and nothing else changes —
+ *    no key, no demotion, one info `FND_REACHABILITY_NOT_CHECKED`, which is what the
+ *    published scope promises. Asserted DIRECTLY rather than left implicit in the other
+ *    fixtures: those could all grow a state model one day without anyone noticing.
  */
 describe('the reachability tier runs ONLY when a state model is committed (G4)', () => {
   /** A UUID-shaped id, so the document schema accepts it. */
@@ -827,17 +827,49 @@ describe('the reachability tier runs ONLY when a state model is committed (G4)',
   // The tier is OFF without a state model
   // -------------------------------------------------------------------------
 
-  it('emits NO `reachability` key and NO reachability finding without a state model', async () => {
+  it('without a state model: no `reachability` key, one NOT_CHECKED disclosure, no demotion', async () => {
+    // Two requirements co-live under one trigger, so the rest of the run certifies and the
+    // assertion below can see that the disclosure does not demote.
     const payload = await expectOk(
-      docOf(req({ id: rid(1), sentence: 'The system shall operate.' })),
+      docOf(
+        req({
+          id: rid(1),
+          patternType: 'event-driven',
+          trigger: 'the operator presses start',
+          systemResponse: 'start the pump',
+          sentence: 'When the operator presses start, the system shall start the pump.',
+        }),
+        req({
+          id: rid(2),
+          patternType: 'event-driven',
+          trigger: 'the operator presses start',
+          systemResponse: 'sound the chime',
+          sentence: 'When the operator presses start, the system shall sound the chime.',
+        }),
+      ),
     )
-    // ABSENT, not empty — the key must not exist at all, which is what leaves the payload
-    // byte-identical to a run from before this tier existed.
+    // ABSENT, not empty — the tier did not run, so it has no numbers to report.
     expect('reachability' in payload).toBe(false)
-    expect(payload.findings.some((f) => f.code.startsWith('FND_REACHABILITY'))).toBe(false)
+    // The published scope promises the tier's absence is DISCLOSED, not silent.
+    const reach = payload.findings.filter((f) => f.code.startsWith('FND_REACHABILITY'))
+    expect(reach.map((f) => [f.code, f.severity])).toEqual([
+      ['FND_REACHABILITY_NOT_CHECKED', 'info'],
+    ])
+    expect(reach[0]?.message).toMatch(/no state model is committed/)
+    expect(payload.counts.info).toBeGreaterThanOrEqual(1)
+    // The tier is opt-in, like the temporal tier: its absence is disclosed but does not demote.
     expect(
       payload.coverage.demotions.some((d) => String(d.reason).startsWith('reachability')),
     ).toBe(false)
+    expect(payload.verified).toBe(true)
+  })
+
+  it('the no-state-model disclosure honours --min-severity like every other info finding', async () => {
+    const payload = await expectOk(
+      docOf(req({ id: rid(1), sentence: 'The system shall operate.' })),
+      { minSeverity: 'warn' },
+    )
+    expect(payload.findings.some((f) => f.code === 'FND_REACHABILITY_NOT_CHECKED')).toBe(false)
   })
 
   it('is off for an EMPTY state model too, not merely for a missing one', async () => {
