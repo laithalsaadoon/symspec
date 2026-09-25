@@ -178,6 +178,25 @@ export interface RequirementPredicates {
    */
   readonly contextAtoms: readonly string[]
   readonly predicates: readonly NumericPredicate[]
+  /**
+   * The actions the requirement's response performs with NO bound (`keep the door
+   * unlocked`), each keyed as a bound's quantity is (`numeric.ts` `occurrenceQuantity`), with
+   * the response text as evidence. Such a response asserts the quantity's occurrence literal
+   * and nothing else, and that is what makes two prohibitions on the action conflict: `shall
+   * not keep the door unlocked above 30 seconds` and `... below 40 seconds` are met together
+   * only by never keeping the door unlocked (see {@link boundFormula}). Absent means none.
+   */
+  readonly occurrences?: ReadonlyArray<{ readonly quantity: string; readonly sourceText: string }>
+}
+
+/**
+ * A requirement that performs the action on `quantity` with no bound: asserted in a solve as
+ * `id → quantity#occurs`, the occurrence literal every bound obligation also asserts.
+ */
+interface Occurrence {
+  readonly id: string
+  readonly quantity: string
+  readonly sourceText: string
 }
 
 /**
@@ -256,7 +275,9 @@ function markedRoles(entries: readonly Entry[]): BoundRole[] {
  * under the quantity's occurrence literal, and every other bound asserts that literal: `shall
  * not keep the door unlocked above 30 s` is `A → d <= 30 s`, so it meets `keep the door
  * unlocked for at least 40 s` (which does `A`) and not a second prohibition, which never
- * doing `A` satisfies with it.
+ * doing `A` satisfies with it. A response that does `A` with no bound (`keep the door
+ * unlocked`) asserts the literal alone ({@link RequirementPredicates.occurrences}), and with
+ * it two opposed prohibitions conflict.
  *
  * With fewer than two marked roles in the cell there is one variable, named by the
  * bare quantity key. With two or more, each marked role has its own variable and an
@@ -337,6 +358,7 @@ async function solveUnder(
   reading: Reading,
   marked: readonly BoundRole[],
   bounds: SolverBounds,
+  occurring: readonly Occurrence[] = [],
 ): Promise<{ unsat: boolean; core: string[] }> {
   const live = new Set(ids)
   const solver = new ctx.Solver()
@@ -348,6 +370,11 @@ async function solveUnder(
     for (const { id, pred } of entries) {
       if (!live.has(id)) continue
       solver.add(ctx.Implies(ctx.Bool.const(id), boundFormula(ctx, pred, reading, marked)))
+    }
+    // A bare obligation does the action, under its own guard literal, so it can be blamed.
+    for (const { id, quantity } of occurring) {
+      if (!live.has(id)) continue
+      solver.add(ctx.Implies(ctx.Bool.const(id), ctx.Bool.const(`${quantity}#occurs`)))
     }
     const guards = [...live].sort().map((id) => ctx.Bool.const(id))
     if ((await solver.check(...guards)) !== 'unsat') return { unsat: false, core: [] }
@@ -375,10 +402,11 @@ async function unsatUnderAll(
   readings: readonly Reading[],
   marked: readonly BoundRole[],
   bounds: SolverBounds,
+  occurring: readonly Occurrence[] = [],
 ): Promise<{ unsat: boolean; core: string[] }> {
   const core = new Set<string>()
   for (const reading of readings) {
-    const out = await solveUnder(ctx, entries, ids, reading, marked, bounds)
+    const out = await solveUnder(ctx, entries, ids, reading, marked, bounds, occurring)
     if (!out.unsat) return { unsat: false, core: [] }
     for (const id of out.core) core.add(id)
   }
@@ -395,8 +423,15 @@ export interface ComparisonCell {
   readonly label: string
   /** The live requirements' predicates, in document order (the evidence order). */
   readonly entries: ReadonlyArray<{ id: string; pred: NumericPredicate }>
-  /** The distinct requirement ids contributing to the cell — always ≥2. */
+  /** The distinct requirement ids contributing a BOUND to the cell — always ≥2. */
   readonly distinctIds: ReadonlySet<string>
+  /**
+   * The live requirements that perform the cell's action with no bound
+   * ({@link RequirementPredicates.occurrences}), when the cell holds a prohibition: the only
+   * bound a bare obligation can change the verdict of. Never counted toward the two
+   * contributors a cell needs, because a bare obligation conflicts with no one bound.
+   */
+  readonly occurrences: readonly Occurrence[]
 }
 
 /**
@@ -473,6 +508,15 @@ export function planComparisonCells(reqPreds: readonly RequirementPredicates[]):
     }
     for (const [key, g] of byQuantity) {
       const distinctIds = new Set(g.entries.map((e) => e.id))
+      const occurrences = g.entries.some((e) => e.pred.negated === true)
+        ? reqPreds.flatMap((rp) =>
+            liveIn(group, rp.contextAtoms)
+              ? (rp.occurrences ?? [])
+                  .filter((o) => o.quantity === g.quantity)
+                  .map((o) => ({ id: rp.id, quantity: o.quantity, sourceText: o.sourceText }))
+              : [],
+          )
+        : []
       // A cell needs two contributors to be worth a solver call, and the reason is
       // narrower than it looks. One requirement CAN carry two opposed bounds on one
       // key — two guard slots do it: `While the temperature is above 5 degrees
@@ -500,10 +544,21 @@ export function planComparisonCells(reqPreds: readonly RequirementPredicates[]):
       // suppress the `FND_NO_PAIRS_CHECKED` disclaimer, through this code's
       // membership in `CROSS_REQUIREMENT_FND_CODES` rather than through the id count.
       if (distinctIds.size < 2) continue
-      const cellKey = JSON.stringify([key, [...distinctIds].sort()])
+      const cellKey = JSON.stringify([
+        key,
+        [...distinctIds].sort(),
+        occurrences.map((o) => o.id).sort(),
+      ])
       if (seen.has(cellKey)) continue
       seen.add(cellKey)
-      cells.push({ key, quantity: g.quantity, label: g.label, entries: g.entries, distinctIds })
+      cells.push({
+        key,
+        quantity: g.quantity,
+        label: g.label,
+        entries: g.entries,
+        distinctIds,
+        occurrences,
+      })
     }
   }
   return cells
@@ -587,7 +642,7 @@ export async function analyzeNumericBounds(
   const uncompared = new Map<string, NumericUncomparedFinding>()
 
   let checkedCells = 0
-  for (const { key, quantity, label, entries, distinctIds } of cells) {
+  for (const { key, quantity, label, entries, distinctIds, occurrences } of cells) {
     // AC-1-7 check-before-work: consult the whole-run deadline before starting a
     // cell, never mid-cell, so a cell is either fully decided or not started.
     // A truncated sweep is a strict prefix, so it can only MISS a numeric
@@ -608,13 +663,21 @@ export async function analyzeNumericBounds(
     // is named. `entries` itself stays in document order, because the evidence
     // block below should list predicates the way the document does.
     const solverEntries = [...entries].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    const ids = [...distinctIds].sort()
+    const ids = [...new Set([...distinctIds, ...occurrences.map((o) => o.id)])].sort()
     const marked = markedRoles(entries)
     const hasDifference = entries.some((e) => e.pred.difference !== undefined)
     const hasCalendar = entries.some((e) => e.pred.days !== undefined)
     const proofReadings = hasDifference ? [SPLIT_ABSOLUTE, SPLIT_DIFFERENCE] : [SPLIT_ABSOLUTE]
 
-    const proof = await unsatUnderAll(ctx, solverEntries, ids, proofReadings, marked, bounds)
+    const proof = await unsatUnderAll(
+      ctx,
+      solverEntries,
+      ids,
+      proofReadings,
+      marked,
+      bounds,
+      occurrences,
+    )
     if (!proof.unsat) {
       // Not proved. Is there a reading under which it IS a conflict? Only a cell with
       // two marked roles, an offset-scale bound, or a day bound has one.
@@ -626,16 +689,23 @@ export async function analyzeNumericBounds(
         ...(marked.length >= 2 && hasCalendar ? [MERGED_NOMINAL] : []),
       ]
       for (const reading of readings) {
-        const out = await solveUnder(ctx, solverEntries, ids, reading, marked, bounds)
+        const out = await solveUnder(ctx, solverEntries, ids, reading, marked, bounds, occurrences)
         if (!out.unsat) continue
-        const minimal = await minimizeNumericCore(ctx, solverEntries, out.core, bounds, [reading])
+        const minimal = await minimizeNumericCore(
+          ctx,
+          solverEntries,
+          out.core,
+          bounds,
+          [reading],
+          occurrences,
+        )
         const blamed = [...(minimal.length > 0 ? minimal : ids)].sort()
         const findingKey = JSON.stringify([key, blamed])
         if (!uncompared.has(findingKey)) {
-          const sources = entries
-            .filter((e) => blamed.includes(e.id))
-            .map((e) => e.pred.sourceText)
-            .join(' vs ')
+          const sources = [
+            ...entries.filter((e) => blamed.includes(e.id)).map((e) => e.pred.sourceText),
+            ...occurrences.filter((o) => blamed.includes(o.id)).map((o) => o.sourceText),
+          ].join(' vs ')
           uncompared.set(findingKey, {
             code: 'FND_NUMERIC_UNCOMPARED',
             severity: 'info',
@@ -656,21 +726,36 @@ export async function analyzeNumericBounds(
 
     // Minimize by deletion so an innocent requirement sharing the quantity cannot ride
     // along; the minimal core must stay unsatisfiable under every proof reading.
-    const minimal = await minimizeNumericCore(ctx, solverEntries, proof.core, bounds, proofReadings)
-    const culprits = minimal.length > 0 ? minimal : [...distinctIds]
+    const minimal = await minimizeNumericCore(
+      ctx,
+      solverEntries,
+      proof.core,
+      bounds,
+      proofReadings,
+      occurrences,
+    )
+    const culprits = minimal.length > 0 ? minimal : ids
 
     const blamed = [...culprits].sort()
     const findingKey = JSON.stringify([key, blamed])
     if (findings.has(findingKey)) continue
 
     const contributing = entries.filter((e) => culprits.includes(e.id))
+    // A culprit with no bound performs the action the others' prohibitions bound, and the
+    // evidence's predicate list, which holds bounds, cannot show it: the message does.
+    const performers = occurrences.filter((o) => culprits.includes(o.id))
+    const performs =
+      performers.length === 0
+        ? ''
+        : ` ${performers.map((o) => `Requirement ${o.id} does "${o.sourceText}"`).join(', ')}, ` +
+          'with no bound, so the action happens and every prohibition on it applies.'
     findings.set(findingKey, {
       code: 'FND_NUMERIC_CONTRADICTION',
       severity: 'error',
       requirementIds: blamed,
       message:
         `Requirements ${blamed.join(', ')} place jointly unsatisfiable numeric ` +
-        `constraints on "${label}".`,
+        `constraints on "${label}".${performs}`,
       evidence: {
         atomTable: [],
         numeric: {
@@ -849,9 +934,12 @@ async function uncomparedPairs(
  *
  * So the candidates are exactly those two shapes: two prohibitions and an obligation; a
  * `!=` prohibition and two other bounds, one an obligation; and a `!=` prohibition, two other
- * prohibitions, and an obligation. With intervals and `!=` on one variable, and the
- * obligation that forces the action, a minimal conflict needs no more members than that, so
- * no larger set is searched. A set whose members one cell asserted together (one qualifier,
+ * prohibitions, and an obligation. The obligation that only forces the action may be a bare
+ * one, a response that does the action with no bound (`keep the door unlocked`,
+ * {@link RequirementPredicates.occurrences}); two prohibitions against one were certified,
+ * since no bound of its own put it in any class. With intervals and `!=` on one variable, and
+ * the obligation that forces the action, a minimal conflict needs no more members than that,
+ * so no larger set is searched. A set whose members one cell asserted together (one qualifier,
  * one context group that makes them all live) was decided there, and is skipped.
  *
  * Each solver call is checked against the whole-run budget before it starts, like a cell.
@@ -874,15 +962,32 @@ async function uncomparedProhibitionSets(
       byClass.set(key, list)
     }
   }
+  // A bare obligation has no unit, so it forces the action on its quantity in every class.
+  const performersOf = (quantity: string): Occurrence[] =>
+    reqPreds.flatMap((rp) =>
+      (rp.occurrences ?? [])
+        .filter((o) => o.quantity === quantity)
+        .map((o) => ({ id: rp.id, quantity, sourceText: o.sourceText })),
+    )
 
-  const sets: Entry[][] = []
+  // A member that forces the action: a bound obligation, or a bare one.
+  type Forcer = { readonly entry: Entry } | { readonly occurrence: Occurrence }
+  type Candidate = { readonly entries: readonly Entry[]; readonly occurring: readonly Occurrence[] }
+  const withForcer = (entries: readonly Entry[], f: Forcer): Candidate =>
+    'entry' in f
+      ? { entries: [...entries, f.entry], occurring: [] }
+      : { entries, occurring: [f.occurrence] }
+  const sets: Candidate[] = []
   for (const entries of byClass.values()) {
     const prohibitions = entries.filter((e) => e.pred.negated === true)
-    const obligations = entries.filter((e) => e.pred.negated !== true)
-    if (prohibitions.length === 0 || obligations.length === 0) continue
+    const forcers: Forcer[] = [
+      ...entries.filter((e) => e.pred.negated !== true).map((entry) => ({ entry })),
+      ...performersOf(entries[0]!.pred.quantity).map((occurrence) => ({ occurrence })),
+    ]
+    if (prohibitions.length === 0 || forcers.length === 0) continue
     for (let i = 0; i < prohibitions.length; i += 1) {
       for (let j = i + 1; j < prohibitions.length; j += 1) {
-        for (const o of obligations) sets.push([prohibitions[i]!, prohibitions[j]!, o])
+        for (const f of forcers) sets.push(withForcer([prohibitions[i]!, prohibitions[j]!], f))
       }
     }
     for (const point of prohibitions.filter((e) => e.pred.comparator === '!=')) {
@@ -892,10 +997,10 @@ async function uncomparedProhibitionSets(
           const x = others[i]!
           const y = others[j]!
           if (x.pred.negated !== true || y.pred.negated !== true) {
-            sets.push([x, y, point])
+            sets.push({ entries: [x, y, point], occurring: [] })
             continue
           }
-          for (const o of obligations) sets.push([x, y, point, o])
+          for (const f of forcers) sets.push(withForcer([x, y, point], f))
         }
       }
     }
@@ -903,13 +1008,15 @@ async function uncomparedProhibitionSets(
 
   const out = new Map<string, NumericUncomparedFinding>()
   for (let index = 0; index < sets.length; index += 1) {
-    const set = sets[index]!
-    const ids = [...new Set(set.map((e) => e.id))].sort()
+    const { entries: set, occurring } = sets[index]!
+    const members = [...set, ...occurring]
+    const ids = [...new Set(members.map((e) => e.id))].sort()
     // Two bounds of one requirement and one of another is a pair of requirements, and a
     // single requirement conflicting with itself is not this tier's disclosure.
     if (ids.length < 2) continue
     const key = JSON.stringify([set[0]!.pred.quantity, ids])
     if (out.has(key)) continue
+    // A bare obligation has no qualifier of its own: a cell with the prohibitions' asserts it.
     const qualifier = set[0]!.pred.qualifier ?? ''
     const oneCell =
       set.every((e) => (e.pred.qualifier ?? '') === qualifier) &&
@@ -919,19 +1026,23 @@ async function uncomparedProhibitionSets(
       bounds.budget.truncate('numeric-contradiction', sets.length - index)
       break
     }
-    if (!(await conflictTogether(ctx, set, bounds))) continue
+    if (!(await conflictTogether(ctx, set, bounds, occurring))) continue
     // Minimal: a smaller subset that already conflicts is a pair's or a cell's to report.
     let smaller = false
-    for (const drop of set) {
+    for (const drop of members) {
       const rest = set.filter((e) => e !== drop)
-      if (new Set(rest.map((e) => e.id)).size < 2) continue
-      if (await conflictTogether(ctx, rest, bounds)) {
+      const restOccurring = occurring.filter((o) => o !== drop)
+      if (new Set([...rest, ...restOccurring].map((e) => e.id)).size < 2) continue
+      if (await conflictTogether(ctx, rest, bounds, restOccurring)) {
         smaller = true
         break
       }
     }
     if (smaller) continue
-    const sources = set.map((e) => e.pred.sourceText).join(' vs ')
+    const sources = [
+      ...set.map((e) => e.pred.sourceText),
+      ...occurring.map((o) => o.sourceText),
+    ].join(' vs ')
     out.set(key, {
       code: 'FND_NUMERIC_UNCOMPARED',
       severity: 'info',
@@ -959,8 +1070,9 @@ async function conflictTogether(
   ctx: Z3Context,
   entries: readonly Entry[],
   bounds: SolverBounds,
+  occurring: readonly Occurrence[] = [],
 ): Promise<boolean> {
-  const ids = [...new Set(entries.map((e) => e.id))].sort()
+  const ids = [...new Set([...entries, ...occurring].map((e) => e.id))].sort()
   const marked = markedRoles(entries)
   const hasDifference = entries.some((e) => e.pred.difference !== undefined)
   const hasCalendar = entries.some((e) => e.pred.days !== undefined)
@@ -973,7 +1085,7 @@ async function conflictTogether(
     ...(marked.length >= 2 && hasCalendar ? [MERGED_NOMINAL] : []),
   ]
   for (const reading of readings) {
-    if ((await solveUnder(ctx, entries, ids, reading, marked, bounds)).unsat) return true
+    if ((await solveUnder(ctx, entries, ids, reading, marked, bounds, occurring)).unsat) return true
   }
   return false
 }
@@ -1020,13 +1132,16 @@ export async function minimizeNumericCore(
   core: readonly string[],
   bounds: SolverBounds = {},
   readings: readonly Reading[] = [SPLIT_ABSOLUTE],
+  occurring: readonly Occurrence[] = [],
 ): Promise<string[]> {
   const marked = markedRoles(entries)
   let current = [...new Set(core)].sort()
   for (const candidate of [...current]) {
     const trial = current.filter((id) => id !== candidate)
     if (trial.length < 2) continue
-    if ((await unsatUnderAll(ctx, entries, trial, readings, marked, bounds)).unsat) current = trial
+    if ((await unsatUnderAll(ctx, entries, trial, readings, marked, bounds, occurring)).unsat) {
+      current = trial
+    }
   }
   return current
 }

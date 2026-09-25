@@ -120,7 +120,7 @@ import {
   type GroupChecker,
   SolverBudgetExceededError,
 } from '../formal/needs-review.ts'
-import { extractNumericPredicates } from '../formal/numeric.ts'
+import { extractNumericPredicates, occurrenceQuantity } from '../formal/numeric.ts'
 import { analyzeNumericBounds } from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
 import { findRelationalUnchecked } from '../formal/relational.ts'
@@ -1415,19 +1415,33 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           negated,
         )
       }
-      const numericReqPreds = reqs.map((r) => ({
-        id: r.id,
-        contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
-        predicates: [
-          ...responseBounds(r),
-          ...(r.trigger !== undefined
-            ? extractNumericPredicates(r.trigger, r.systemName, 'trig', quantityAliases)
-            : []),
-          ...(r.preCondition !== undefined
-            ? extractNumericPredicates(r.preCondition, r.systemName, 'pre', quantityAliases)
-            : []),
-        ],
-      }))
+      // A response that does an action with no bound (`keep the door unlocked`) asserts its
+      // occurrence, which is what two opposed prohibitions on it (`shall not keep the door
+      // unlocked above 30 seconds`, `... below 40 seconds`) cannot both survive. Never a
+      // prohibition's: `shall not keep the door unlocked` does not do the action.
+      const occurrencesOf = (r: (typeof reqs)[number], bound: boolean) => {
+        const view = toEncodable(r)
+        if (bound || view.negated === true) return []
+        const quantity = occurrenceQuantity(view.systemResponse, r.systemName, quantityAliases)
+        return quantity === null ? [] : [{ quantity, sourceText: view.systemResponse.trim() }]
+      }
+      const numericReqPreds = reqs.map((r) => {
+        const response = responseBounds(r)
+        return {
+          id: r.id,
+          contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
+          occurrences: occurrencesOf(r, response.length > 0),
+          predicates: [
+            ...response,
+            ...(r.trigger !== undefined
+              ? extractNumericPredicates(r.trigger, r.systemName, 'trig', quantityAliases)
+              : []),
+            ...(r.preCondition !== undefined
+              ? extractNumericPredicates(r.preCondition, r.systemName, 'pre', quantityAliases)
+              : []),
+          ],
+        }
+      })
       // The decide half (`contradictions`) and what it declined to decide (`uncompared`,
       // demotion-only): a proof must hold under every reading of a role or a temperature,
       // and a pair the readings split is disclosed rather than dropped.

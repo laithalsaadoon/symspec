@@ -264,5 +264,87 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
       )
       expect(uncompared(await runCheck(pair as never, {}))).toEqual([[idAt(0), idAt(4)]])
     })
+
+    describe('an obligation with no bound does the action too', () => {
+      const contradictions = (report: Awaited<ReturnType<typeof runCheck>>) =>
+        report.findings
+          .filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+          .map((f) => f.requirementIds)
+
+      it('PROVES two opposed prohibitions against `keep the door unlocked` under one trigger', async () => {
+        // `keep the door unlocked` does the action; then it lasts some `d`, and `d <= 30 s`
+        // and `d >= 40 s` cannot both hold. Only an obligation WITH a bound asserted the
+        // action, so this certified once a relational waiver cleared the other demotion.
+        const doc = manyDoc(
+          door('the badge is accepted', 'keep the door unlocked'),
+          door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+          door('the badge is accepted', 'keep the door unlocked below 40 seconds', true),
+        )
+        const report = await runCheck(doc as never, {})
+        expect(contradictions(report)).toEqual([[idAt(0), idAt(1), idAt(2)]])
+        // The evidence lists bounds, and the performer has none, so the message names it.
+        const [finding] = report.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+        expect(finding?.message).toContain(`Requirement ${idAt(0)} does "keep the door unlocked"`)
+      })
+
+      it('PROVES ubiquitous prohibitions against a triggered bare obligation', async () => {
+        const doc = manyDoc(
+          {
+            systemName: 'door controller',
+            systemResponse: 'keep the door unlocked above 30 seconds',
+            negated: true,
+          },
+          door('the door is forced', 'keep the door unlocked above 30 seconds', true),
+          {
+            systemName: 'door controller',
+            systemResponse: 'keep the door unlocked below 40 seconds',
+            negated: true,
+          },
+          door('the badge is accepted', 'keep the door unlocked below 40 seconds', true),
+          door('the fire alarm sounds', 'keep the door unlocked'),
+          log('the fire alarm sounds'),
+        )
+        const report = await runCheck(doc as never, {})
+        expect(contradictions(report)).toContainEqual([idAt(0), idAt(2), idAt(4)])
+        expect(report.verified).toBe(false)
+      })
+
+      it('DISCLOSES them under three triggers no context group makes all live', async () => {
+        const doc = manyDoc(
+          door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+          log('the badge is accepted'),
+          door('the door is forced', 'keep the door unlocked below 40 seconds', true),
+          log('the door is forced'),
+          door('the fire alarm sounds', 'keep the door unlocked'),
+          log('the fire alarm sounds'),
+        )
+        const report = await runCheck(doc as never, {})
+        expect(report.counts.error).toBe(0)
+        expect(uncompared(report)).toEqual([[idAt(0), idAt(2), idAt(4)]])
+        expect(report.coverage.demotions.map((d) => d.reason)).toContain(
+          'numeric-bounds-uncompared',
+        )
+        expect(report.verified).toBe(false)
+      })
+
+      it('does not read another action, a room to meet, or a prohibition as doing it', async () => {
+        // The controls: `keep the door locked` is another action; `<= 30 s` and `>= 10 s`
+        // leave room; and `shall not keep the door unlocked` does not do the action at all.
+        for (const [response, negated, low] of [
+          ['keep the door locked', false, '40'],
+          ['keep the door unlocked', false, '10'],
+          ['keep the door unlocked', true, '40'],
+        ] as const) {
+          const doc = manyDoc(
+            door('the badge is accepted', response, negated),
+            door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+            door('the badge is accepted', `keep the door unlocked below ${low} seconds`, true),
+          )
+          const report = await runCheck(doc as never, {})
+          expect(contradictions(report), response).toEqual([])
+          expect(uncompared(report), response).toEqual([])
+        }
+      })
+    })
   })
 })

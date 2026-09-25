@@ -1211,6 +1211,27 @@ export function extractNumericPredicates(
 }
 
 /**
+ * The quantity key of the action a response with NO bound performs, keyed exactly as a
+ * bound's label is ({@link labelBefore} over the whole text, then {@link quantityKey}), or
+ * `null` when the text names nothing.
+ *
+ * `keep the door unlocked` does the action `shall not keep the door unlocked above 30
+ * seconds` bounds only IF it happens ({@link NumericPredicate.negated}), so it asserts that
+ * quantity's occurrence as a bound obligation does. The key matches only a label spelled
+ * the same way, or unified by a committed glossary alias: any other wording is another key,
+ * and asserts nothing about this one. The caller passes only a response it read no bound
+ * out of, and never a prohibition's, which does not do its action.
+ */
+export function occurrenceQuantity(
+  text: string,
+  systemName: string,
+  quantityAliases?: ReadonlyMap<string, string>,
+): string | null {
+  const label = labelBefore(text, text.length)
+  return label === null ? null : quantityKey(systemName, label, quantityAliases)
+}
+
+/**
  * Drop exact-duplicate predicates.
  *
  * The key names every field of the record that carries a claim — slot, quantity,
