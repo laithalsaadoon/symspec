@@ -213,6 +213,53 @@ describe('AC-1-2 — an effect that writes outside its target`s declared range i
   })
 })
 
+describe('AC-1-2 — an out-of-range value PERSISTS through a step that does not write it', () => {
+  /**
+   * `x` and `y` are both 0..2 and start at 2. A writes `x := 3`, D writes `y := 3`, and C
+   * says they are never both 3. The unpinned (`none`) run used to REDRAW an unwritten
+   * variable inside its declared range, so after `init -> A` the 3 in `x` could not survive
+   * D's step: C came back PROVED "with nothing assumed beyond what the document states"
+   * beside the tool's own two FND_RANGE_VIOLATION errors reaching x = 3 and y = 3.
+   *
+   * By hand: init (2, 2) -> A (3, 2) -> D (3, 3), and D writes only y, so x stays 3 under
+   * every frame. The only correct verdict is VIOLATED, two steps deep, in either order.
+   */
+  const OVERFLOWS = (frame: StateVariable['frame']): RequirementsDocument =>
+    docOf(
+      [
+        { name: 'x', type: 'int', frame, domain: { min: 0, max: 2 }, initial: 'x = 2' },
+        { name: 'y', type: 'int', frame, domain: { min: 0, max: 2 }, initial: 'y = 2' },
+      ],
+      [
+        effect(1, 'A', 'when x = 2: x := x + 1'),
+        effect(2, 'D', 'when y = 2: y := y + 1'),
+        constraint(3, 'C', 'not (x = 3 and y = 3)'),
+      ],
+    )
+
+  for (const frame of ['stable', 'volatile'] as const) {
+    it(`${frame}: C is VIOLATED two steps deep, ending at x = 3, y = 3`, async () => {
+      const report = await run(OVERFLOWS(frame))
+      const result = resultFor(report, 'C')
+      expect(result.verdict).toBe('VIOLATED')
+      expect([
+        ['init', 'A', 'D', 'C'],
+        ['init', 'D', 'A', 'C'],
+      ]).toContainEqual(traceOf(report, 'C'))
+      expect(result.trace?.states.at(-1)).toEqual({ x: '3', y: '3' })
+    })
+
+    it(`${frame}: no proof is reported beside the range violations that reach it`, async () => {
+      const projection = projectReachability(await run(OVERFLOWS(frame)), 'doc.json')
+      const codes = projection.findings.map((f) => f.code)
+      expect(codes).not.toContain('FND_REACHABILITY_PROVED')
+      expect(codes).not.toContain('FND_REACHABILITY_UNDER_HYPOTHESES')
+      expect(codes).toContain('FND_REACHABILITY_VIOLATED')
+      expect(codes.filter((c) => c === 'FND_RANGE_VIOLATION')).toHaveLength(2)
+    })
+  }
+})
+
 // ---------------------------------------------------------------------------
 // AC-1-3 — a trace is read off the solver's STATE sequence, and names real steps
 // ---------------------------------------------------------------------------

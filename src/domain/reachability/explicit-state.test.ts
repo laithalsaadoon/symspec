@@ -162,6 +162,32 @@ describe('explicitCheck decides small models on its own', () => {
     expect(verdict.status === 'violated' && verdict.trace).toEqual(['BUMP'])
   })
 
+  it('a free variable outside its range may KEEP its value, so no frame loses a pinned state', () => {
+    // x = 3 is reached by A; D writes only y. Under `full` x stays 3; a free x must be able
+    // to stay 3 too, or the `none` relation is not a superset of the `full` one and a proof
+    // under `none` says nothing about the document.
+    const document = docOf(
+      [
+        { name: 'x', type: 'int', frame: 'volatile', domain: { min: 0, max: 2 }, initial: 'x = 2' },
+        { name: 'y', type: 'int', frame: 'volatile', domain: { min: 0, max: 2 }, initial: 'y = 2' },
+      ],
+      [
+        effect(1, 'A', 'when x = 2: x := x + 1'),
+        effect(2, 'D', 'when y = 2: y := y + 1'),
+        constraint(3, 'C', 'not (x = 3 and y = 3)'),
+      ],
+    )
+    const predicate = predicateOf(document, 'not (x = 3 and y = 3)')
+    for (const frame of ['none', 'declared', 'full'] as const) {
+      const verdict = explicitCheck(prepareModel(document), predicate, frame)
+      expect(verdict.status, frame).toBe('violated')
+      expect(verdict.status === 'violated' && verdict.path.at(-1), frame).toEqual({
+        x: '3',
+        y: '3',
+      })
+    }
+  })
+
   it('declines, with the reason, when a free variable is an unbounded int', () => {
     const document = docOf(
       [
@@ -1033,9 +1059,15 @@ const rng = (seed: number) => {
  * One random model: two or three variables drawn from bool / bounded int / enum, where
  * the enums deliberately SHARE member names (the AC-1-1 shape), one to three guarded
  * effects, and two constraints. Rendered as text so it goes through the real validator.
+ *
+ * Each variable's `frame` is drawn from a SEPARATE stream, so adding it left every other
+ * draw of every seed as it was. A bounded int's `+ 1` / `- 1` writes leave its 0..2 range,
+ * which is the shape where a free variable's semantics decide whether the frames nest.
  */
 const randomModel = (seed: number): RequirementsDocument => {
   const r = rng(seed)
+  const frames = rng(seed ^ 0x5eed)
+  const frame = (): StateVariable['frame'] => (frames() < 0.5 ? 'stable' : 'volatile')
   const pick = <T>(xs: readonly T[]): T => xs[Math.floor(r() * xs.length)] as T
   const members = ['on', 'off', 'idle', 'busy']
   const variables: StateVariable[] = []
@@ -1049,14 +1081,14 @@ const randomModel = (seed: number): RequirementsDocument => {
       variables.push({
         name,
         type: 'bool',
-        frame: 'volatile',
+        frame: frame(),
         initial: `${name} = ${pick(['true', 'false'])}`,
       })
     } else if (kind === 'int') {
       variables.push({
         name,
         type: 'int',
-        frame: 'volatile',
+        frame: frame(),
         domain: { min: 0, max: 2 },
         initial: `${name} = ${pick(['0', '1', '2'])}`,
       })
@@ -1067,7 +1099,7 @@ const randomModel = (seed: number): RequirementsDocument => {
       variables.push({
         name,
         type: 'enum',
-        frame: 'volatile',
+        frame: frame(),
         domain: safe,
         initial: `${name} = ${pick(safe)}`,
       })
@@ -1103,30 +1135,131 @@ const randomModel = (seed: number): RequirementsDocument => {
   return docOf(variables, requirements)
 }
 
-describe('DIFFERENTIAL — the Horn tier and the explicit search never disagree', () => {
-  const SEEDS = Array.from({ length: 16 }, (_, i) => 7001 + i)
+/**
+ * One random OVERFLOW model: two or three ints declared 0..2 with random frames. Each may
+ * count up inside its range, overflow (`when n = 2: n := n + 1`), or underflow
+ * (`when n = 0: n := n - 1`), and a write may be guarded on another variable's value.
+ * Every write is guarded at a bound, so every value stays in -1..3 and the reachable set is a few dozen states. `C0`
+ * forbids two out-of-range values at once; `C1` mixes in-range and out-of-range tests.
+ *
+ * The shape where a FREE variable's reading decides whether the frames nest: with nothing
+ * pinned every in-range value is already reachable, so a proof can be wrong only over values
+ * that ONLY writes produce — two out-of-range values at once, or one beside a pinned write.
+ * {@link randomModel} draws at most one int and never builds it.
+ */
+const overflowModel = (seed: number): RequirementsDocument => {
+  const r = rng(seed)
+  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(r() * xs.length)] as T
+  const count = 2 + Math.floor(r() * 2)
+  const names = Array.from({ length: count }, (_, i) => `n${i}`)
+  const variables: StateVariable[] = names.map((name) => ({
+    name,
+    type: 'int',
+    frame: pick(['stable', 'volatile'] as const),
+    domain: { min: 0, max: 2 },
+    initial: `${name} = ${pick(['0', '1', '2'])}`,
+  }))
+  const at = (name: string): string =>
+    pick([`${name} >= 3`, `${name} < 0`, `${name} = 2`, `${name} = 0`])
+  const requirements: Requirement[] = []
+  const add = (stateEffect: string) =>
+    requirements.push(effect(requirements.length + 1, `E${requirements.length}`, stateEffect))
+  const beyond = (name: string): string => pick([`${name} >= 3`, `${name} < 0`])
+  for (const name of names) {
+    if (r() < 0.6) add(`when ${name} < 2: ${name} := ${name} + 1`)
+    if (r() < 0.8) add(`when ${name} = 2: ${name} := ${name} + 1`)
+    if (r() < 0.4) add(`when ${name} = 0: ${name} := ${name} - 1`)
+    if (r() < 0.4) add(`when ${at(pick(names))}: ${name} := ${pick(['0', '2'])}`)
+  }
+  if (requirements.length === 0) add(`when n0 = 2: n0 := n0 + 1`)
+  const two = (): readonly [string, string] => {
+    const first = pick(names)
+    return [first, pick(names.filter((n) => n !== first))]
+  }
+  const [a, b] = two()
+  const [c, d] = two()
+  requirements.push(constraint(20, 'C0', `not (${beyond(a)} and ${beyond(b)})`))
+  requirements.push(constraint(21, 'C1', `${at(c)} or ${at(d)}`))
+  return docOf(variables, requirements)
+}
 
-  it(`agrees on ${SEEDS.length} seeded random models, and confirms every VIOLATED`, async () => {
-    const disagreements: string[] = []
-    for (const seed of SEEDS) {
-      const document = randomModel(seed)
-      const report = await run(document)
-      const prepared = prepareModel(document)
-      for (const result of report.results) {
-        if (result.crossCheck?.status === 'disagrees') {
-          disagreements.push(`seed ${seed} ${result.label}: the Horn tier's proof was refuted`)
-        }
-        if (result.verdict === 'VIOLATED') {
-          const predicate = prepared.constraints.find((c) => c.label === result.label)?.predicate
-          if (predicate === undefined) continue
-          const confirm = explicitCheck(prepared, predicate, 'full')
-          if (confirm.status === 'holds') {
-            disagreements.push(
-              `seed ${seed} ${result.label}: VIOLATED but the search says it holds`,
-            )
-          }
+/**
+ * Every way the Horn tier and the explicit search can be caught disagreeing on one model.
+ *
+ * - A proof the tier's own cross-check refuted.
+ * - A VIOLATED the `full` search, where every step is requirement-sanctioned, cannot reach.
+ * - THE FRAMES NEST: a proof under a weaker frame must hold under every stronger one. The
+ *   `full` search leaves nothing free, so it is the one oracle here that does not share the
+ *   two checkers' reading of a free variable. A search that re-decides a proof under its
+ *   OWN frame agrees with an encoding both got wrong the same way, and that is how a
+ *   `none` run that redrew an out-of-range value inside its range reported PROVED over a
+ *   violation reachable under every frame.
+ */
+const disagreementsIn = async (
+  seed: number,
+  document: RequirementsDocument,
+): Promise<readonly string[]> => {
+  const found: string[] = []
+  const report = await run(document)
+  const prepared = prepareModel(document)
+  for (const result of report.results) {
+    if (result.crossCheck?.status === 'disagrees') {
+      found.push(`seed ${seed} ${result.label}: the Horn tier's proof was refuted`)
+    }
+    const predicate = prepared.constraints.find((c) => c.label === result.label)?.predicate
+    if (predicate === undefined) continue
+    if (result.verdict === 'VIOLATED') {
+      if (explicitCheck(prepared, predicate, 'full').status === 'holds') {
+        found.push(`seed ${seed} ${result.label}: VIOLATED but the search says it holds`)
+      }
+    }
+    const stronger: readonly ('declared' | 'full')[] =
+      result.verdict === 'PROVED'
+        ? ['declared', 'full']
+        : result.verdict === 'PROVED_UNDER_HYPOTHESES'
+          ? ['full']
+          : []
+    for (const frame of stronger) {
+      const confirm = explicitCheck(prepared, predicate, frame)
+      if (confirm.status === 'violated') {
+        found.push(
+          `seed ${seed} ${result.label}: ${result.verdict} but the ${frame} search reaches a violation via ${confirm.trace.join(' -> ')}`,
+        )
+      }
+    }
+    // The search's OWN frames nest too: a violation it reaches under a stronger frame it
+    // reaches under every weaker one. Without this, a search that drops states under a weak
+    // frame only ever AGREES with a correct proof, and nothing above can see it.
+    const weakestFirst = ['none', 'declared', 'full'] as const
+    const bySearch = weakestFirst.map((frame) => explicitCheck(prepared, predicate, frame).status)
+    for (let weak = 0; weak < weakestFirst.length; weak += 1) {
+      for (let strong = weak + 1; strong < weakestFirst.length; strong += 1) {
+        if (bySearch[strong] === 'violated' && bySearch[weak] === 'holds') {
+          found.push(
+            `seed ${seed} ${result.label}: the search reaches a violation under ${weakestFirst[strong]} but not under ${weakestFirst[weak]}`,
+          )
         }
       }
+    }
+  }
+  return found
+}
+
+describe('DIFFERENTIAL — the Horn tier and the explicit search never disagree', () => {
+  const SEEDS = Array.from({ length: 16 }, (_, i) => 7001 + i)
+  const OVERFLOW_SEEDS = Array.from({ length: 24 }, (_, i) => 9001 + i)
+
+  it(`agrees on ${SEEDS.length} seeded random models, confirms every VIOLATED, and every proof under every stronger frame`, async () => {
+    const disagreements: string[] = []
+    for (const seed of SEEDS)
+      disagreements.push(...(await disagreementsIn(seed, randomModel(seed))))
+    expect(disagreements).toEqual([])
+  }, 120_000)
+
+  it(`agrees on ${OVERFLOW_SEEDS.length} seeded overflow models, where a free variable's reading decides whether the frames nest`, async () => {
+    const disagreements: string[] = []
+    for (const seed of OVERFLOW_SEEDS) {
+      disagreements.push(...(await disagreementsIn(seed, overflowModel(seed))))
     }
     expect(disagreements).toEqual([])
   }, 120_000)
