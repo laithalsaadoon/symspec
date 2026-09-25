@@ -496,7 +496,7 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
       expect(report.verified, `${x} / ${y}`).toBe(false)
       // The pair is already in the table, so the message must not tell the author to commit it.
       const message = report.findings.find((f) => f.code === 'FND_OPPOSITION_CANDIDATE')?.message
-      expect(message).toContain('differ only by a preposition')
+      expect(message).toContain('differ only by prepositions')
       expect(message).not.toContain('symspec antonym add')
     }
   })

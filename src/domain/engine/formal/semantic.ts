@@ -224,10 +224,10 @@ const keyBody = (atom: ResponseAtom): string | undefined => atom.opposition?.bod
 /**
  * Whether ANY two key bodies of the atoms — every reading of an opposition ({@link keyBody} is the
  * first), else the atom body, else the raw response — satisfy `test`. An atom in a governed class
- * reads the literal remainder and the one with its own governed preposition marked out (and,
- * before a bare noun, the one with that locative left out), and a pair can meet on any: "include the file in the box" and "exclude the file in the
- * boxes" meet only on the literal one, "include the tile in the view" and "exclude the tiles from
- * the view" only on the governed one.
+ * reads the literal remainder and the one with its own governed preposition marked out, and a
+ * pair can meet on either: "include the file in the box" and "exclude the file in the boxes" meet
+ * only on the literal one, "include the tile in the view" and "exclude the tiles from the view"
+ * only on the governed one.
  */
 function someKeyPair(
   a: ResponseAtom,
@@ -678,50 +678,75 @@ function isNegatingPrefixPair(a: string, b: string): boolean {
 }
 
 /**
- * The prepositions the antonym-remainder rule used to drop after ANY antonym head. A propose
- * signal only (see {@link onePrepositionApart}): the decide key now marks a preposition only
- * where the head verb itself governs it (`GOVERNED_PREPOSITIONS` in antonyms.ts).
+ * Every preposition a remainder may name a place with: the ones the antonym-remainder rule used to
+ * drop after ANY antonym head (669c0e9), and `with`, which the governed-preposition table also
+ * reads as a place (`connect`/`engage`). A PROPOSE signal only ({@link prepositionFree}): the
+ * decide key marks a preposition only where the head verb's own row governs it
+ * (`GOVERNED_PREPOSITIONS` in antonyms.ts), and otherwise keeps every one.
  */
 const PREPOSITIONS: ReadonlySet<string> = new Set([
-  'in',
-  'into',
-  'from',
-  'within',
-  'inside',
-  'to',
-  'onto',
   'at',
+  'from',
+  'in',
+  'inside',
+  'into',
   'on',
+  'onto',
+  'to',
+  'with',
+  'within',
 ])
 
 /**
- * True when two object remainders are one preposition apart: one token apart with both of those
- * tokens prepositions ("access to the user" / "access from the user"), or one remainder the other
- * with one preposition added ("the pump Monday" / "the pump on Monday"). That is the shape the old
- * antonym-remainder rule read as one object. The decide key reads it only where the head governs
- * the preposition, because it may carry direction, so a same-class pair of this shape is PROPOSED
- * instead — lenient on purpose, since it only ever selects a pair to demote on and names no atom.
+ * An object remainder with EVERY preposition token removed, at any position and however many:
+ * "access to only admins" and "access only from admins" are both `access_only_admins`, "the pump
+ * on Monday" and "the pump Monday" both `the_pump_monday`. Base 669c0e9 dropped the first
+ * preposition after the remainder's first token wherever it sat, so any two remainders it read as
+ * one object are equal here too; this is strictly coarser, which is the safe direction for a rule
+ * that only ever demotes.
  */
-function onePrepositionApart(x: string, y: string): boolean {
-  const tx = x.split('_')
-  const ty = y.split('_')
-  if (tx.length !== ty.length) {
-    const [long, short] = tx.length > ty.length ? [tx, ty] : [ty, tx]
-    if (long.length !== short.length + 1) return false
-    const i = long.findIndex((t, at) => t !== short[at])
-    const at = i === -1 ? long.length - 1 : i
-    return (
-      PREPOSITIONS.has(long[at] as string) &&
-      long.slice(at + 1).every((t, k) => t === short[at + k])
-    )
-  }
-  let apart = 0
-  for (let i = 0; i < tx.length; i++) {
-    if (tx[i] === ty[i]) continue
-    if (!PREPOSITIONS.has(tx[i] as string) || !PREPOSITIONS.has(ty[i] as string)) return false
-    apart += 1
-  }
-  return apart === 1
+const prepositionFree = (rest: string): string =>
+  rest
+    .split('_')
+    .filter((t) => !PREPOSITIONS.has(t))
+    .join('_')
+
+/**
+ * THE preposition-variant rule, the one propose-tier rule for two responses the decide tier keeps
+ * apart only by their prepositions (spec 007, demote-not-prove C2). It holds when two responses'
+ * remainders DIFFER but are equal once every preposition is removed ({@link prepositionFree}),
+ * and the heads could conflict were the two remainders one object:
+ *
+ *   - `same-verb`: one antonym-table verb at OPPOSITE polarity ("stop the pump on Monday" / "shall
+ *     not stop the pump Monday"), which would be one atom, `X ∧ ¬X`;
+ *   - `contrary`: two verbs an explicit seeded or committed row relates, BOTH asserted ("grant
+ *     access to only admins" / "revoke access only from admins"), which would be one key on
+ *     opposite sides, `¬(A ∧ B)` violated. With either side negated no reading conflicts —
+ *     "do neither" and "do one, not the other" are consistent — so there is no edit that could make
+ *     the pair provable, and nothing to propose;
+ *   - `class`: two other verbs of one antonym class (one side, `grant`/`allow`, or two rows apart,
+ *     `conceal`/`unseal`), which the table relates by no row, at any polarity: the author decides
+ *     what they are.
+ *
+ * It never proves. The decide key cannot tell "on Monday" from "Monday", or `to` from `from`,
+ * without a grammar guess, and a guess may not create a proof (C1); so the pair is proposed and
+ * demotes `verified` until the author aligns the preposition or commits a glossary entry, either of
+ * which puts the two on one exact key the solver decides, or waives it. Undefined when the rule
+ * does not hold.
+ */
+function prepositionVariant(
+  a: { readonly head: string; readonly rest: string; readonly negated: boolean },
+  b: { readonly head: string; readonly rest: string; readonly negated: boolean },
+  antonyms: ReadonlyMap<string, AntonymEntry>,
+): 'same-verb' | 'contrary' | 'class' | undefined {
+  if (a.rest === b.rest || prepositionFree(a.rest) !== prepositionFree(b.rest)) return undefined
+  const entryA = antonyms.get(a.head)
+  const entryB = antonyms.get(b.head)
+  if (entryA === undefined || entryB === undefined) return undefined
+  if (a.head === b.head) return a.negated !== b.negated ? 'same-verb' : undefined
+  if (entryA.canonical !== entryB.canonical) return undefined
+  if (!entryA.opposes.includes(b.head)) return 'class'
+  return !a.negated && !b.negated ? 'contrary' : undefined
 }
 
 /** The structural opposition shape of one response pair ({@link oppositionShapesOf}). */
@@ -730,21 +755,25 @@ interface OppositionShape {
   readonly restA: string
   readonly headB: string
   readonly restB: string
-  /** Both heads sit in one antonym class (either side). */
+  /** Both heads sit in one antonym class (either side), or are one antonym-table verb. */
   readonly sameClass: boolean
+  /** Both heads sit on one polarity side of their class (never true across a row). */
+  readonly sameSide: boolean
+  /** Which {@link prepositionVariant} the pair is, when its remainders differ. */
+  readonly variant: 'same-verb' | 'contrary' | 'class' | undefined
   /** The shape was read off the committed-vocabulary bodies, not the raw wording. */
   readonly committed: boolean
 }
 
 /**
- * The readings of a response pair that have the opposition shape — a shared object remainder
- * (or, for two heads of one antonym class, remainders one preposition apart) under two different
- * heads: the RAW normalized wording first, then the atom bodies after the committed glossary and
- * terms. Empty when neither reading has it.
+ * The readings of a response pair that have the opposition shape — a shared object remainder under
+ * two different heads, or a {@link prepositionVariant} — the RAW normalized wording first, then
+ * the atom bodies after the committed glossary and terms. Empty when neither reading has it.
  */
 function oppositionShapesOf(
   raw: readonly [string, string],
   committed: readonly [string, string] | undefined,
+  negated: readonly [boolean, boolean],
   antonyms: ReadonlyMap<string, AntonymEntry>,
 ): OppositionShape[] {
   const readings: Array<readonly [string, string, boolean]> = [[raw[0], raw[1], false]]
@@ -753,13 +782,28 @@ function oppositionShapesOf(
   for (const [x, y, fromCommitted] of readings) {
     const [headA, restA] = headOf(x, antonyms)
     const [headB, restB] = headOf(y, antonyms)
-    if (restA === '' || headA === headB) continue
+    if (restA === '') continue
+    const variant = prepositionVariant(
+      { head: headA, rest: restA, negated: negated[0] },
+      { head: headB, rest: restB, negated: negated[1] },
+      antonyms,
+    )
+    if (variant === undefined && (restA !== restB || headA === headB)) continue
     const entryA = antonyms.get(headA)
     const entryB = antonyms.get(headB)
     const sameClass =
       entryA !== undefined && entryB !== undefined && entryA.canonical === entryB.canonical
-    if (restA !== restB && !(sameClass && onePrepositionApart(restA, restB))) continue
-    shapes.push({ headA, restA, headB, restB, sameClass, committed: fromCommitted })
+    const sameSide = sameClass && entryA.negated === entryB.negated
+    shapes.push({
+      headA,
+      restA,
+      headB,
+      restB,
+      sameClass,
+      sameSide,
+      variant,
+      committed: fromCommitted,
+    })
   }
   return shapes
 }
@@ -836,6 +880,7 @@ export async function findOppositionCandidates(
       const shapes = oppositionShapesOf(
         [normalize(a.systemResponse), normalize(b.systemResponse)],
         atomA.body !== undefined && atomB.body !== undefined ? [atomA.body, atomB.body] : undefined,
+        [atomA.negated, atomB.negated],
         antonyms,
       )
       if (shapes.length === 0) continue
@@ -872,20 +917,76 @@ export async function findOppositionCandidates(
         verbs: [headA, headB],
         cosine: round3(score),
         message:
-          restA !== restB
-            ? `${lo} and ${hi} respond under the same system with verbs one antonym class ` +
-              `relates ("${headA}" vs "${headB}") over objects that differ only by a preposition ` +
-              `("${phraseOf(restA)}" vs "${phraseOf(restB)}"). The formal tier does not read ` +
-              'those as one object, because a preposition such as to/from can carry direction, ' +
-              'so it compared nothing between them. If they ARE one object, rewrite one ' +
-              "requirement in the other's words and re-check; if they are different objects, " +
-              `waive this finding.${through} This is a suggestion, not a verdict.`
+          shape.variant !== undefined
+            ? variantMessage(lo, hi, shape, a, b, through)
             : oppositionMessage(lo, hi, headA, headB, a, b, through),
       })
     }
   }
 
   return findings
+}
+
+/**
+ * The message for a {@link prepositionVariant} candidate, naming the exact edit that makes the pair
+ * provable: the second requirement ({@link b}) rewritten with the first one's object — for one verb
+ * the first response verbatim, so the two are one atom at opposite polarity; for a contrary row
+ * the second verb over the first object, so the two are one key on opposite sides — or the
+ * glossary entry that says the same. A `class` pair is two verbs no row relates, so aligning the
+ * object alone decides nothing, and the message says which table entry would.
+ */
+function variantMessage(
+  lo: string,
+  hi: string,
+  shape: OppositionShape,
+  a: SemanticRequirement,
+  b: SemanticRequirement,
+  through: string,
+): string {
+  const { headA, restA, headB, restB, variant } = shape
+  const objects = `("${phraseOf(restA)}" vs "${phraseOf(restB)}")`
+  const why =
+    'The formal tier does not read those as one object, because a preposition can name a ' +
+    'different place or carry direction (to/from), so it compared nothing between them.'
+  const tail = ` If they are different objects, waive this finding.${through} This is a suggestion, not a verdict.`
+  if (variant === 'same-verb') {
+    return (
+      `${lo} and ${hi} respond under the same system with the same verb ("${headA}"), one of them ` +
+      `under "shall not", over objects that differ only by prepositions ${objects}. ${why} If they ` +
+      'name ONE object, make the pair provable: align the preposition with ' +
+      `\`symspec update --ref ${b.id} systemResponse "${a.systemResponse}"\`, or commit the two ` +
+      `phrasings as one action with \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\`; ` +
+      'either puts both on one atom at opposite polarity, and the solver decides the conflict.' +
+      tail
+    )
+  }
+  if (variant === 'contrary') {
+    const aligned = phraseOf(`${headB}_${restA}`)
+    return (
+      `${lo} and ${hi} respond under the same system with verbs an antonym row relates ` +
+      `("${headA}" vs "${headB}") over objects that differ only by prepositions ${objects}. ${why} ` +
+      'If they name ONE object, make the pair provable: align the preposition with ' +
+      `\`symspec update --ref ${b.id} systemResponse "${aligned}"\`, or commit the rewording as ` +
+      `one action with \`symspec glossary add "${aligned}" "${b.systemResponse}"\`; either puts ` +
+      'both on one key on opposite sides of the row, and the solver decides the conflict.' +
+      tail
+    )
+  }
+  // Two verbs no row relates: one side of a class ("grant" / "allow") may be one action, which a
+  // rewrite in the other's words makes one atom; two sides may be opposites, which a row makes
+  // contraries once the objects are aligned.
+  const repair = shape.sameSide
+    ? `If they ARE one action on one object, rewrite one requirement in the other's words ` +
+      `(\`symspec update --ref ${b.id} systemResponse "${a.systemResponse}"\`), so the two share ` +
+      'one atom and the solver decides the conflict.'
+    : 'If they are opposites acting on one object, align the preposition ' +
+      `(\`symspec update --ref ${b.id} systemResponse "${phraseOf(`${headB}_${restA}`)}"\`) and ` +
+      `commit the pair (\`symspec antonym add ${headA} ${headB}\`), so the solver decides the conflict.`
+  return (
+    `${lo} and ${hi} respond under the same system with verbs one antonym class holds but no row ` +
+    `relates ("${headA}" vs "${headB}"), over objects that differ only by prepositions ${objects}. ` +
+    `${why} ${repair}${tail}`
+  )
 }
 
 /** The message for a same-object, different-verb opposition candidate. */
