@@ -182,6 +182,25 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     expect(report.coverage.demotions.map((d) => d.reason)).toContain('numeric-bounds-uncompared')
   })
 
+  it('reads a day as up to 25 hours: proves past it, and DISCLOSES short of it', async () => {
+    // The mirror of the 23-hour case: `at most 1 day` against `at least 1470 minutes` (24.5
+    // hours) conflicts for a 24-hour day and not for the 25-hour day of a fall-back change.
+    const pair = [
+      archive('retain logs for at most 1 day'),
+      archive('retain logs for at least 1470 minutes'),
+    ] as const
+    expect(await errorCodes(...pair)).toEqual([])
+    const report = await runCheck(pairDoc(...pair) as never, {})
+    const disclosed = report.findings.filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
+    expect(disclosed.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+    // The control: a minute past 25 hours is longer than any civil day, so it is proved.
+    const found = await numericFindings(
+      archive('retain logs for at most 1 day'),
+      archive('retain logs for at least 1501 minutes'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
   it('never compares a percent with a bare ratio, and DISCLOSES the pair instead', async () => {
     // 50% is 0.5, inside a 0.9 ceiling, but no rule in the sentence says the bare number is a
     // ratio: the two are on different scales unless the author restates one. Read as one
