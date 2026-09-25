@@ -73,6 +73,12 @@ describe('AC-2-3: a negation the stored response still carries does not set `neg
     ["The gateway won't forward requests.", "n't forward requests"],
     // wink's scope stops at the comma, so the flag was unset here; the modal is still negated.
     ["The gateway shan't, under load, drop requests.", "n't, under load, drop requests"],
+    // The same contraction with its apostrophe dropped: wink still splits off the modal and a
+    // `nt` token right after it, and that token is the modal's own negation.
+    ['The press wont start.', 'nt start'],
+    ['The press shant start.', 'nt start'],
+    ['The press mustnt start.', 'nt start'],
+    ['When the door opens, the press wont start.', 'nt start'],
   ])('a contracted modal negation sets it — %s', async (line, response) => {
     const r = await ok(line)
     expect(r.negated).toBe(true)

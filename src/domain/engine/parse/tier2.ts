@@ -345,8 +345,14 @@ const LEADING_DETERMINER_POS: ReadonlySet<string> = new Set(['DET', 'PRON'])
 const isModal = (t: WinkToken): boolean =>
   MODAL_LEMMAS.has(t.value.toLowerCase()) || MODAL_LEMMAS.has(t.lemma.toLowerCase())
 
-/** The `n't` wink splits off a contracted modal (`shan't` → `sha` + `n't`, `won't` → `wo` + `n't`). */
-const isContractedNegator = (t: WinkToken | undefined): boolean => t?.value.toLowerCase() === "n't"
+/**
+ * The negation wink splits off a contracted modal: `n't` (`shan't` → `sha` + `n't`, `won't` →
+ * `wo` + `n't`), or `nt` for the same contraction written without its apostrophe (`shant`,
+ * `wont`, `mustnt`), which wink tokenizes the same way.
+ */
+const CONTRACTED_NEGATORS: ReadonlySet<string> = new Set(["n't", 'nt'])
+const isContractedNegator = (t: WinkToken | undefined): boolean =>
+  t !== undefined && CONTRACTED_NEGATORS.has(t.value.toLowerCase())
 
 /**
  * The negators wink's flags in the response were keyed on, as token indices: for each run of
@@ -387,8 +393,9 @@ function occursVerbatim(text: string, word: string): boolean {
  * token present verbatim in the stored `systemResponse`. Otherwise it is kept exactly: a negator
  * left of the modal ("No request", "Requests from none of the hosts", "Users who are not
  * admins") is in no slot, and clearing the flag would store the positive obligation it denies.
- * A contracted modal (`shan't`, `mustn't`, `won't`) negates the modal itself, so it always sets
- * the flag, including where a comma after it stops wink's scope.
+ * A contracted modal (`shan't`, `mustn't`, `won't`, or `shant`, `mustnt`, `wont`) negates the
+ * modal itself, so it always sets the flag, including where a comma after it stops wink's scope
+ * — even though its `n't`/`nt` stays in the stored response text.
  */
 function governingNegation(
   tokens: readonly WinkToken[],
