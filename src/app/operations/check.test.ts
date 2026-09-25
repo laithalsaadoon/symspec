@@ -1909,3 +1909,138 @@ describe('the numeric/relational repair waiver is bound to its finding and its t
     expect(result.results[0]?.error).toMatch(/changed since the finding was raised/)
   })
 })
+
+/**
+ * The opposition-candidate repair waiver binds EXACTLY its pair and that pair's text (spec 007,
+ * demote-not-prove C3). The pairs below were error-severity FND_CONTRADICTION at 669c0e9, which no
+ * candidate waiver can touch; they are now only candidates, so a waiver that reaches further than
+ * the triaged pair turns a base proof into `verified: true` over a pair nobody reviewed. A
+ * one-requirement `ref` does exactly that: `check` suppresses it on every candidate naming the ref.
+ */
+describe('the opposition-candidate repair waiver is bound to its pair and its text', () => {
+  const idOf = (n: number) => `0e0e0e0e-0000-4000-8000-${String(n).padStart(12, '0')}`
+  const [A, B, C, D] = [1, 2, 3, 4].map(idOf) as [string, string, string, string]
+  const TRIGGER = 'the operator presses the button'
+  const grant = (id: string, place: string, negated: boolean) =>
+    req({
+      id,
+      patternType: 'event-driven',
+      trigger: TRIGGER,
+      systemName: 'controller',
+      systemResponse: `grant access ${place} the server`,
+      negated,
+      sentence: `When ${TRIGGER}, the controller shall${negated ? ' not' : ''} grant access ${place} the server.`,
+    })
+  /** Every text lands on one vector: the rule under test is the deterministic shape, not a cosine. */
+  const parallel: Embedder = async (texts) => texts.map(() => Float32Array.from([1, 0]))
+  const REASON = 'triaged: <why this candidate is not a conflict>'
+  const fold = (document: RequirementsDocument, ops: readonly DocumentOp[]) => {
+    const result = foldOps(document, ops, TS)
+    if (result.abortedAt !== undefined) {
+      throw new Error(`fold aborted: ${JSON.stringify(result.results)}`)
+    }
+    return result.document
+  }
+  const check = (document: RequirementsDocument) => expectOk(document, {}, parallel)
+  const pairsOf = (payload: CheckPayload) =>
+    payload.coverage.demotions
+      .filter((d) => d.reason === 'open-opposition-candidate')
+      .map((d) => [...d.requirementIds].sort().join('|'))
+      .sort()
+  const key = (...ids: string[]) => [...ids].sort().join('|')
+  /** Apply the repair op of the demotion over exactly `ids`, as an agent would. */
+  const triage = async (document: RequirementsDocument, ...ids: string[]) => {
+    const payload = await check(document)
+    const demotion = payload.coverage.demotions.find(
+      (d) => d.reason === 'open-opposition-candidate' && key(...d.requirementIds) === key(...ids),
+    )
+    expect(demotion, `no candidate demotion over ${key(...ids)}`).toBeDefined()
+    const waives = ((demotion!.repair?.ops ?? []) as readonly DocumentOp[]).filter(
+      (op) => op.op === 'waive',
+    )
+    expect(waives).toHaveLength(1)
+    return fold(document, waives)
+  }
+
+  it('offers the exact pair plus its content hash, never a one-id ref', async () => {
+    const payload = await check(docOf(grant(A, 'on', false), grant(B, 'to', true)))
+    const demotion = payload.coverage.demotions.find(
+      (d) => d.reason === 'open-opposition-candidate',
+    )
+    expect(demotion?.repair?.ops).toEqual([
+      {
+        op: 'waive',
+        code: 'FND_OPPOSITION_CANDIDATE',
+        reason: REASON,
+        refs: [A, B],
+        contentHash: expect.stringMatching(/^sha256:/),
+      },
+    ])
+  })
+
+  it('the demotion action never instructs a document-wide or one-id waiver', async () => {
+    const payload = await check(docOf(grant(A, 'on', false), grant(B, 'to', true)))
+    const action = payload.coverage.demotions.find(
+      (d) => d.reason === 'open-opposition-candidate',
+    )?.action
+    expect(action).toBeDefined()
+    expect(action).not.toMatch(/symspec waive/)
+    expect(action).toContain(A)
+    expect(action).toContain(B)
+  })
+
+  it('discharges the triaged pair', async () => {
+    const doc = docOf(grant(A, 'on', false), grant(B, 'to', true))
+    expect(pairsOf(await check(doc))).toEqual([key(A, B)])
+    const payload = await check(await triage(doc, A, B))
+    expect(pairsOf(payload)).toEqual([])
+    expect(payload.waived).toBeGreaterThanOrEqual(1)
+  })
+
+  it.each([
+    ['the negated side', 'at', false, B],
+    ['the asserted side', 'at', true, A],
+  ] as const)('(1) does not discharge a pair a third requirement forms with %s', async (_, place, negated, partner) => {
+    const waived = await triage(docOf(grant(A, 'on', false), grant(B, 'to', true)), A, B)
+    const grown = fold(waived, [
+      {
+        op: 'add',
+        id: C,
+        patternType: 'event-driven',
+        trigger: TRIGGER,
+        systemName: 'controller',
+        systemResponse: `grant access ${place} the server`,
+        negated,
+      },
+    ])
+    const payload = await check(grown)
+    expect(pairsOf(payload)).toEqual([key(partner, C)])
+    expect(payload.verified).toBe(false)
+  })
+
+  it('(2) triaging three pairs of a four-cycle leaves the fourth demoting', async () => {
+    let doc = docOf(
+      grant(A, 'on', false),
+      grant(B, 'to', true),
+      grant(C, 'at', false),
+      grant(D, 'in', true),
+    )
+    expect(pairsOf(await check(doc))).toEqual([key(A, B), key(A, D), key(C, B), key(C, D)].sort())
+    doc = await triage(doc, A, B)
+    doc = await triage(doc, C, B)
+    doc = await triage(doc, C, D)
+    const payload = await check(doc)
+    expect(pairsOf(payload)).toEqual([key(A, D)])
+    expect(payload.verified).toBe(false)
+  })
+
+  it('(4) does not discharge the pair once one side is edited', async () => {
+    const waived = await triage(docOf(grant(A, 'on', false), grant(B, 'to', true)), A, B)
+    const edited = fold(waived, [
+      { op: 'update', ref: B, attr: 'systemResponse', value: 'grant access at the server' },
+    ])
+    const payload = await check(edited)
+    expect(pairsOf(payload)).toEqual([key(A, B)])
+    expect(payload.verified).toBe(false)
+  })
+})

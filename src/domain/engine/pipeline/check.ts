@@ -2045,7 +2045,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         action:
           'Two co-active opposed numeric bounds landed on different quantity keys. If they ' +
           'constrain one physical quantity, commit the `symspec glossary add` alias from the ' +
-          "finding's message so the numeric tier compares them; otherwise waive it. Then re-run `symspec check`.",
+          "finding's message so the numeric tier compares them; otherwise apply this demotion's " +
+          'repair waiver, which is scoped to exactly this pair as currently written. Then re-run ' +
+          '`symspec check`.',
       })
     }
     // Relational/aggregate blind spot: the pairwise same-quantity numeric tier
@@ -2100,7 +2102,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
             : "If they are the same, rewrite one to use the other's words: no glossary merge is " +
               'offered, because every merge of these phrasings aliases a phrase to its own ' +
               'opposite or splits an atom the document already shares. ') +
-          'If they are genuinely distinct, waive FND_SIMILAR_SEMANTIC for the pair. Then re-run ' +
+          "If they are genuinely distinct, apply this demotion's repair waiver, which is scoped " +
+          'to exactly this pair as currently written. Then re-run ' +
           '`symspec check`.',
       })
     }
@@ -2148,10 +2151,15 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       demotions.push({
         reason: 'open-opposition-candidate',
         requirementIds: [...f.requirementIds],
+        // The waiver named here is the exact-pair one the repair carries: a candidate is often
+        // a pair a base build PROVED, so a document-wide or one-requirement waiver would
+        // certify every other candidate it reaches, none of which anyone triaged.
         action:
-          'Triage this opposition candidate: commit `symspec antonym add <a> <b>` if the verbs are ' +
-          'opposites, `symspec glossary add "<a>" "<b>"` if synonyms, or waive it ' +
-          `(\`symspec waive add FND_OPPOSITION_CANDIDATE --reason "…"\`) if neither. See the finding's message for the exact verbs.`,
+          `Triage the opposition candidate over ${f.requirementIds.join(' and ')}: make the pair ` +
+          "provable with the edit the finding's message names (the rewrite, `symspec antonym add` " +
+          'if the verbs are opposites, or `symspec glossary add` if synonyms), or, if the two do ' +
+          "not conflict, apply this demotion's repair waiver, which is scoped to exactly these " +
+          'requirements as currently written. Then re-run `symspec check`.',
       })
     }
     if (inconclusive) {

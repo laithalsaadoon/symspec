@@ -398,24 +398,6 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
 }
 
 /**
- * The requirement a waiver of `finding` should be scoped to.
- *
- * Waiver scope is per requirement, so a pair finding cannot be waived for exactly its pair:
- * the ref suppresses every same-code finding that names it. The pick keeps that blast
- * radius to this pair where the ids allow — the HIGHER id first (the one each pair
- * finding's own message recommends as `--ref`), then the lower, taking the first that no
- * other same-code finding names. When both are shared, the higher id is still the
- * narrowest scope a waiver can express.
- */
-const scopeFor = (finding: CheckFinding, sameCode: readonly CheckFinding[]): string | undefined => {
-  const candidates = [...finding.requirementIds].reverse()
-  const others = sameCode.filter((f) => f !== finding)
-  return (
-    candidates.find((id) => !others.some((f) => f.requirementIds.includes(id))) ?? candidates[0]
-  )
-}
-
-/**
  * Build the repair for a PROPOSE-ONLY candidate, from the finding that raised it.
  *
  * The semantic/quantity-alias findings BUILD their suggested invocation into their
@@ -508,21 +490,25 @@ const fromFindingMessage = (
   const finding = raisingFinding(demotion, sameCode)
   if (finding === undefined) return NO_REPAIR
 
-  // The always-safe discharge, as a real op, scoped to one requirement the finding names —
-  // never document-wide. `check` suppresses a finding under a scoped waiver when the finding
-  // names the ref, so an unscoped waiver would discharge EVERY candidate of this code,
-  // including pairs nobody triaged, and certify the document.
-  const ref = scopeFor(finding, sameCode)
-  const waive: DocumentOp = {
-    op: 'waive',
+  // The always-safe discharge, as a real op, scoped to EXACTLY this finding's pair and its
+  // current text ({@link scopedWaive}). A candidate is often a pair a base build PROVED, so a
+  // waiver reaching one pair further certifies a conflict nobody triaged: an unscoped one
+  // discharges every candidate of the code, and a one-requirement `ref` every candidate naming
+  // that requirement — the pair a third requirement forms with it, or the pair after an edit.
+  const waive = scopedWaive(
+    demotion,
+    context,
     code,
-    reason: 'triaged: <why this candidate is not a conflict>',
-    ...(ref !== undefined ? { ref } : {}),
-  }
+    'triaged: <why this candidate is not a conflict>',
+  )
 
-  const advice = extractSymspecCommands(finding.message)
+  // A `symspec waive` the message spells can scope to one requirement at most, which is the
+  // wider waiver the op above rules out; the op is the waiver, so the commands carry none.
+  const advice = extractSymspecCommands(finding.message).filter(
+    (command) => !command.startsWith('symspec waive'),
+  )
   return {
-    ops: [waive],
+    ops: waive,
     commands: [
       // The finding's own two alternatives FIRST, because deciding the vocabulary is
       // the better outcome — a committed glossary or antonym link lets the solver

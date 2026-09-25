@@ -239,8 +239,11 @@ when NOTHING was cross-compared at all.
 mutually exclusive remedies: \`antonym add\` if the verbs are opposites,
 \`glossary add\` if they are synonyms. Committing the wrong one MANUFACTURES a false
 contradiction, and embeddings cannot tell which is right because antonyms embed close
-together. Read the pair and decide; the always-safe third option is a reviewed waiver
-that records "I triaged this and it is not a conflict".`,
+together. Read the pair and decide; the always-safe third option is the reviewed waiver
+in the demotion's \`repair.ops\`, which records "I triaged this pair, as written, and it is
+not a conflict". It names exactly the two requirements and their text; a \`symspec waive\`
+by code or by one \`--ref\` also discharges every other candidate it reaches, none of
+which anyone triaged.`,
 }
 
 // ---------------------------------------------------------------------------

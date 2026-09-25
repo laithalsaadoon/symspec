@@ -532,7 +532,10 @@ export async function findSimilarSemantic(
       // (key `close_the_door` against `close_the_doors`), so a raw-text test would never match
       // that pair. Raw text is the fallback only for an atomizer that reports no canonical body.
       // (Computed above, before the antonym hint it suppresses.)
-      const waiver = `\`symspec waive add FND_SIMILAR_SEMANTIC --ref ${hi} --reason "…"\``
+      // The pair's own waiver is the demotion's repair op, scoped to exactly these two
+      // requirements as written; a `symspec waive` can scope to one requirement at most, and
+      // that discharges every near-duplicate naming it, triaged or not.
+      const waiver = "the demotion's repair waiver, which is scoped to exactly this pair"
       // The merge is chosen in the same canonical space as the test above, never aliases a
       // phrase to its own opposite, and never breaks a unification the document already has;
       // when no candidate survives, the message withholds it.
