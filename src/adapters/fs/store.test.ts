@@ -49,7 +49,7 @@ import {
   DocStore,
   makeDocPath,
 } from '../../ports/doc-store.ts'
-import { docStoreLayer, parseDocumentText, serializeDocument } from './store.ts'
+import { docStoreLayer, isNotARepository, parseDocumentText, serializeDocument } from './store.ts'
 
 // ---------------------------------------------------------------------------
 // Harness
@@ -664,6 +664,49 @@ describe('loadBundle', () => {
   })
 })
 
+describe('isNotARepository accepts git discovery`s own message, whole, and nothing quoting it', () => {
+  it('accepts both discovery failures git prints', () => {
+    // Captured verbatim from git 2.50.1 under LC_ALL=C: discovery reached `/`, or stopped at a
+    // filesystem boundary (a tmpfs /tmp gives this one).
+    expect(
+      isNotARepository('fatal: not a git repository (or any of the parent directories): .git'),
+    ).toBe(true)
+    expect(
+      isNotARepository(
+        'fatal: not a git repository (or any parent up to mount point /tmp)\nStopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).',
+      ),
+    ).toBe(true)
+  })
+
+  it('refuses a refusal whose quoted path spells the phrase', () => {
+    for (const path of [
+      '/c/NOT A GIT REPOSITORY',
+      '/c/n/not a git repository/fake',
+      '/c/fatal: not a git repository (or any of the parent directories): .git',
+    ]) {
+      expect(
+        isNotARepository(
+          `fatal: cannot use bare repository '${path}' (safe.bareRepository is 'explicit')`,
+        ),
+        path,
+      ).toBe(false)
+    }
+    expect(
+      isNotARepository(
+        "fatal: detected dubious ownership in repository at '/c/not a git repository'",
+      ),
+    ).toBe(false)
+    // A `.git` file naming no repository is a broken repository, not an absent one.
+    expect(isNotARepository('fatal: not a git repository: /c/.git/worktrees/x')).toBe(false)
+    // A warning before the message means git said something else too: fail closed.
+    expect(
+      isNotARepository(
+        'warning: x\nfatal: not a git repository (or any of the parent directories): .git',
+      ),
+    ).toBe(false)
+  })
+})
+
 describe('configPath is the toplevel git prints for the real document directory', () => {
   /** Run git in `cwd`, with no inherited GIT_* variable: a hook's GIT_DIR would redirect it. */
   const git = (cwd: string, ...args: string[]): string =>
@@ -730,11 +773,17 @@ describe('configPath is the toplevel git prints for the real document directory'
     if (r._tag === 'Failure') expect(r.failure.error).toContain('git rev-parse --show-toplevel')
   })
 
-  it('refuses a directory git would discover only as a bare repository, even one naming a work tree', async () => {
+  // Git's refusal quotes the bare directory's path, so a committed name that spells git's
+  // "not a git repository" must not read as no repository (and fall back to the directory).
+  it.each([
+    ['fake'],
+    ['NOT A GIT REPOSITORY'],
+    [join('n', 'not a git repository (or any of the parent directories)', 'fake')],
+  ])('refuses a directory git would discover only as a bare repository, even one naming a work tree (%s)', async (name) => {
     const root = realpathSync(tempDir())
     git(root, 'init', '-q')
     // Every file here is committable: nothing is named `.git`.
-    const fake = join(root, 'fake')
+    const fake = join(root, name)
     for (const sub of ['objects', 'refs', 'wt']) mkdirSync(join(fake, sub), { recursive: true })
     writeFileSync(join(fake, 'HEAD'), 'ref: refs/heads/main\n')
     writeFileSync(join(fake, 'config'), '[core]\n\trepositoryformatversion = 0\n\tworktree = wt\n')

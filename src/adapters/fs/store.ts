@@ -309,8 +309,19 @@ const gitEnvironment = (): Record<string, string> => ({
 /** The toplevel probe's arguments; see `revParseToplevel` for why bare discovery is refused. */
 const GIT_TOPLEVEL_ARGS = ['-c', 'safe.bareRepository=explicit', 'rev-parse', '--show-toplevel']
 
-/** Git's answer outside any repository, the one failure that means "no toplevel". */
-const NOT_A_REPOSITORY = /not a git repository/i
+/**
+ * Git's answer outside any repository, the one failure that means "no toplevel": the WHOLE of
+ * stderr is one of discovery's two messages (it stopped at the root, or at a filesystem
+ * boundary). Matched whole and case-sensitively, never as a substring, because other refusals
+ * quote a path, and a path is committable: "cannot use bare repository '<clone>/not a git
+ * repository'" is a refusal, and reading it as "no repository" would fall back to the config
+ * beside the document.
+ */
+const NOT_A_REPOSITORY =
+  /^fatal: not a git repository \((?:or any of the parent directories\): \.git|or any parent up to mount point [^\n]*\)\nStopping at filesystem boundary \(GIT_DISCOVERY_ACROSS_FILESYSTEM not set\)\.)$/
+
+/** Whether `git rev-parse` stderr (trimmed) says only that no repository encloses the directory. */
+export const isNotARepository = (stderr: string): boolean => NOT_A_REPOSITORY.test(stderr)
 
 /**
  * The production {@link DocStore}, over the platform `FileSystem` and `Path`.
@@ -445,7 +456,7 @@ export const docStoreLayer = Layer.effect(DocStore)(
         if (result._tag === 'Failure') return undefined
         const { code, stdout, stderr } = result.success
         if (code === 0 && stdout.length > 0) return yield* realOf(stdout)
-        if (NOT_A_REPOSITORY.test(stderr)) return undefined
+        if (isNotARepository(stderr)) return undefined
         return yield* Effect.fail(
           new ErrConfigInvalid({
             error: `\`git rev-parse --show-toplevel\` failed in ${dir} (exit ${code}): ${stderr || 'no output'}. The pinned config is read at the repository toplevel, so its location cannot be known.`,

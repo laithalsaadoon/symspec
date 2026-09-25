@@ -55,7 +55,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -1665,11 +1665,18 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
     expect(data.run.belowPinned).toEqual(['temporalBound'])
   })
 
-  it('on a fresh clone, a committed directory laid out as a bare repository is refused, not a toplevel (F11)', () => {
+  // Git's refusal quotes the bare directory's path. A committed name spelling git's own
+  // "not a git repository" must not pass for no repository, which would fall back to the
+  // weaker config beside the document and drop the pins.
+  it.each([
+    ['fake'],
+    ['NOT A GIT REPOSITORY'],
+    [join('n', 'not a git repository', 'fake')],
+  ])('on a fresh clone, a committed directory laid out as a bare repository is refused, not a toplevel (F11, %s)', (name) => {
     const { root, docs } = committedRepo()
     // Git discovers any directory holding HEAD, objects/ and refs/ as a bare repository and
     // honors a core.worktree its committed config names, so this directory is committable.
-    const fake = join(root, 'fake')
+    const fake = join(root, name)
     for (const sub of ['objects', 'refs', 'wt']) mkdirSync(join(fake, sub), { recursive: true })
     writeFileSync(join(fake, 'HEAD'), 'ref: refs/heads/main\n')
     writeFileSync(join(fake, 'objects', '.keep'), '')
@@ -1680,7 +1687,10 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
     )
     writeFileSync(join(fake, 'wt', CONFIG), json({ configVersion: 1, gate: {} }))
     git(root, 'mv', join(docs, 'requirements.json'), join(fake, 'wt', 'requirements.json'))
-    symlinkSync(join('..', 'fake', 'wt', 'requirements.json'), join(docs, 'requirements.json'))
+    symlinkSync(
+      relative(docs, join(fake, 'wt', 'requirements.json')),
+      join(docs, 'requirements.json'),
+    )
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'attack')
     const clone = join(realpathSync(workDir()), 'clone')

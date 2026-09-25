@@ -39,6 +39,13 @@ rule: |
   its committed `config` may name a `core.worktree`. So committed content can hold a repository
   layout after all, and the probe must refuse it: `git -c safe.bareRepository=explicit rev-parse
   --show-toplevel`. That is a git setting, not git-internals parsing.
+
+  A refusal is only as good as the classifier reading it. When one failure means "fall back"
+  and every other means "fail closed", match the fallback message WHOLE (anchored, exact case),
+  never as a substring: git's refusals quote paths, and a path is committable. A directory named
+  `NOT A GIT REPOSITORY` made "cannot use bare repository '<clone>/NOT A GIT REPOSITORY'" match
+  `/not a git repository/i`, so the refusal read as "no repository" and the run fell back to the
+  weaker config beside the document.
 evidence: |
   `git update-index --add --cacheinfo 100644,<blob>,docs/.git` fails with "Invalid path": a
   nested `.git` cannot be committed. The CLI test "on a fresh clone, committed content cannot
@@ -47,3 +54,7 @@ evidence: |
   not a toplevel" commits `fake/{HEAD,objects,refs,config(core.worktree=wt)}` with the document
   symlinked into `fake/wt`; without `safe.bareRepository=explicit` a fresh clone read
   `fake/wt/symspec.config.json`, labelled `source: toplevel`, and reported `verified: true`.
+  `isNotARepository` in `src/adapters/fs/store.ts` accepts only git's two whole discovery
+  messages. The same bare-layout tests, parametrized over `NOT A GIT REPOSITORY` and
+  `n/not a git repository/fake`, went red (exit 0, `verified: true`, `source: directory`)
+  against the substring regex.
