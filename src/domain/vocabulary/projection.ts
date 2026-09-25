@@ -2,8 +2,8 @@
  * THE PROJECTION (plan 4.2) — what the engine is handed for a document with a vocabulary.
  *
  * The one trusted component: the only place a committed alias changes what the engine reads.
- * Slice S8 threads it through `compat.toEngineDoc`; this module computes it and has no caller
- * yet.
+ * Slice S8 threads {@link projectedDocument} through `compat.toEngineDoc`; the validator
+ * (`invariants.ts`) measures exactly that document, so what it admits is what the engine reads.
  *
  * - **Classes** are the union-find over the admitted merges. A class's representative is its
  *   minimum id, so neither the direction a merge was written in nor which symbol's canonical an
@@ -14,39 +14,68 @@
  *   normalization than the atom key (relational groups on `normalize`) still sees the words it
  *   groups on. A spelling that shares its canonical's key is left verbatim, which is what makes
  *   the implicit vocabulary project to the identity. A stored leading negator is kept.
- * - **Quantity aliases** become synthesized glossary rows: the class canonical, and each phrase of
- *   the class whose label key differs from it, the document's bound labels included. The engine
- *   looks a row up on `normalize` of each label, not on its quantity key, so a label that resolves
- *   into the class by key (`keep the level%` beside `keep the level`) is re-keyed only by a row
- *   of its own; without one, the class would be split. The validator measures this same row
- *   (`quantityRowOf`) against every other label and every action occurrence it could re-key.
+ * - **Quantity aliases** become synthesized glossary rows: the class canonical, and every label
+ *   of the class whose quantity key differs from the canonical's. "Every label" is every label the
+ *   numeric tier reads a bound on, in the document AS PROJECTED as well as as written (a rewritten
+ *   response hands the tier its canonical's label), and in every declared phrase, plus the
+ *   declared quantity phrases. The engine looks a row up on `normalize` of a label, not on its
+ *   quantity key, so a label left out of the row stays where it was and splits the class; the
+ *   validator refuses any row that still does, or that captures another class's label.
+ * - **Probes.** Each declared guard, feature and action phrase is also set in a synthetic
+ *   requirement and projected like a document slot, and each declared quantity phrase is read as a
+ *   label. They are what the validator measures a vocabulary on beyond the document's own slots,
+ *   so a declared alias is judged by what it would do to every phrase it names, not only to the
+ *   ones the requirements happen to use today. The engine is never handed a probe.
  * - **A requirement with an unresolved slot** is rewritten not at all and reported, so a caller
  *   can exclude it rather than check half-projected text.
- * - **A legacy document** (no declared symbol) has no projection: `undefined`.
  */
 
-import type { RequirementsDocument, SymbolId } from '../requirements/document.ts'
-import { vocabularyOf } from '../requirements/document.ts'
+import { requirementBounds } from '../engine/formal/numeric.ts'
+import type {
+  Requirement,
+  RequirementsDocument,
+  SymbolId,
+  SymbolKind,
+} from '../requirements/document.ts'
 import type { VocabularyViolation } from './invariants.ts'
 import {
   type CollisionDomain,
+  DOMAIN_OF_KIND,
   phraseKey,
-  type QuantityAliasRow,
-  quantityRowOf,
   responseOf,
   slotUses,
+  viewOf,
 } from './keys.ts'
+import type { LabelUnit, ProbeSlot } from './outcome.ts'
 import {
-  buildVocabularyIndex,
+  type RequirementBinding,
   resolvePhrase,
   resolveRequirement,
   type UnresolvedSlot,
+  type VocabularyIndex,
 } from './resolve.ts'
 
 /** The slots a projection may rewrite, with their new text. Absent means verbatim. */
 export type SlotRewrite = Partial<
   Record<'systemName' | 'trigger' | 'preCondition' | 'systemResponse', string>
 >
+
+/** One synthesized quantity-alias row: the class canonical, and every label keyed apart from it. */
+export interface QuantityAliasRow {
+  readonly canonical: string
+  readonly aliases: readonly string[]
+}
+
+/** A declared phrase set in a synthetic requirement, as written and as projected. */
+export interface Probe {
+  readonly id: string
+  readonly symbol: SymbolId
+  /** The symbol the phrase resolves to in its slot: the one it is declared under, when admitted. */
+  readonly owner?: SymbolId
+  readonly slot: ProbeSlot
+  readonly requirement: Requirement
+  readonly projected: Requirement
+}
 
 /** The projection of one document. */
 export interface Projection {
@@ -60,12 +89,65 @@ export interface Projection {
   /** Per requirement id, the slots that did not resolve. */
   readonly unresolved: ReadonlyMap<string, readonly UnresolvedSlot[]>
   readonly quantityAliases: readonly QuantityAliasRow[]
+  /** Every declared guard, feature and action phrase, set in a synthetic requirement. */
+  readonly probes: readonly Probe[]
+  /** Every declared quantity phrase, as the label a bound on it would be read on. */
+  readonly labelProbes: readonly (LabelUnit & { readonly symbol: SymbolId })[]
 }
 
-/** The projection of a document with a declared vocabulary; `undefined` for a legacy document. */
-export const buildProjection = (doc: RequirementsDocument): Projection | undefined => {
-  if (vocabularyOf(doc).symbols.length === 0) return undefined
-  const { index, invalid } = buildVocabularyIndex(doc)
+/** The system every probe is set under. Its atoms and quantity keys are its own. */
+export const PROBE_SYSTEM = 'vocabulary probe'
+
+/** The response a guard probe carries; only the probe's own slot is ever read. */
+const PROBE_RESPONSE = 'hold'
+
+/** The slot a declared phrase of each kind is set in, and the pattern that slot needs. */
+const PROBE_SHAPE: Readonly<
+  Record<Exclude<SymbolKind, 'system' | 'quantity'>, { slot: ProbeSlot; pattern: string }>
+> = {
+  action: { slot: 'resp', pattern: 'ubiquitous' },
+  event: { slot: 'trig', pattern: 'event-driven' },
+  state: { slot: 'pre', pattern: 'state-driven' },
+  feature: { slot: 'pre', pattern: 'optional-feature' },
+}
+
+const probeRequirement = (
+  id: string,
+  kind: keyof typeof PROBE_SHAPE,
+  phrase: string,
+): Requirement => {
+  const { slot, pattern } = PROBE_SHAPE[kind]
+  const systemResponse = slot === 'resp' ? phrase : PROBE_RESPONSE
+  return {
+    id,
+    patternType: pattern as Requirement['patternType'],
+    systemName: PROBE_SYSTEM,
+    systemResponse,
+    negated: false,
+    sentence: '',
+    priority: 'medium',
+    status: 'draft',
+    derives: [],
+    satisfies: [],
+    verifies: [],
+    refines: [],
+    createdAt: '',
+    updatedAt: '',
+    ...(slot === 'trig' ? { trigger: phrase } : {}),
+    ...(slot === 'pre' ? { preCondition: phrase } : {}),
+  }
+}
+
+/**
+ * The projection of a document under an index (validated or not). `buildProjection` in
+ * `build.ts` is the entry point every caller uses; the validator calls this on each candidate it
+ * measures.
+ */
+export const projectVocabulary = (
+  doc: RequirementsDocument,
+  index: VocabularyIndex,
+  invalid: readonly VocabularyViolation[] = [],
+): Projection => {
   const { representative, byId, tables } = index
   const canonicalOf = (id: SymbolId): string =>
     byId.get(representative.get(id) ?? id)?.canonical ?? ''
@@ -76,16 +158,12 @@ export const buildProjection = (doc: RequirementsDocument): Projection | undefin
       ? undefined
       : canonical
   }
-
-  const rewrites = new Map<string, SlotRewrite>()
-  const unresolved = new Map<string, readonly UnresolvedSlot[]>()
-  for (const r of Object.values(doc.requirements)) {
-    const res = resolveRequirement(index, r)
-    if ('unresolved' in res) {
-      unresolved.set(r.id, res.unresolved)
-      continue
-    }
-    const b = res.binding
+  const rewriteOf = (
+    r: Requirement,
+    b: Partial<
+      Pick<RequirementBinding, 'system' | 'trigger' | 'preCondition' | 'feature' | 'response'>
+    >,
+  ): SlotRewrite => {
     const rewrite: SlotRewrite = {}
     const system = rewritten('system', r.systemName, b.system)
     if (system !== undefined) rewrite.systemName = system
@@ -103,29 +181,125 @@ export const buildProjection = (doc: RequirementsDocument): Projection | undefin
     const response = responseOf(r)
     const action = rewritten('action', response.text, b.response)
     if (action !== undefined) rewrite.systemResponse = `${response.prefix}${action}`
+    return rewrite
+  }
+
+  const rewrites = new Map<string, SlotRewrite>()
+  const unresolved = new Map<string, readonly UnresolvedSlot[]>()
+  for (const r of Object.values(doc.requirements)) {
+    const res = resolveRequirement(index, r)
+    if ('unresolved' in res) {
+      unresolved.set(r.id, res.unresolved)
+      continue
+    }
+    const rewrite = rewriteOf(r, res.binding)
     if (Object.keys(rewrite).length > 0) rewrites.set(r.id, rewrite)
   }
 
-  // Every spelling of each quantity class: its declared phrases, then every bound label of any
-  // requirement (resolved or not, as the validator reads them) that resolves into it.
-  const classes = new Map<SymbolId, string[]>()
-  const spell = (id: SymbolId, texts: readonly string[]) => {
-    const root = representative.get(id) ?? id
-    classes.set(root, [...(classes.get(root) ?? []), ...texts])
-  }
-  for (const s of index.symbols) if (s.kind === 'quantity') spell(s.id, [s.canonical, ...s.aliases])
-  for (const r of Object.values(doc.requirements)) {
-    for (const use of slotUses(r, tables)) {
-      if (use.domain !== 'quantity') continue
-      const res = resolvePhrase(index, use.kinds, use.text)
-      if (!('unresolved' in res)) spell(res.id, [use.text])
+  // Probes: each declared phrase in its own slot, bound to the symbol it resolves to there.
+  const probes: Probe[] = []
+  const labelProbes: (LabelUnit & { symbol: SymbolId })[] = []
+  for (const s of index.symbols) {
+    for (const [i, phrase] of [s.canonical, ...s.aliases].entries()) {
+      const id = `probe:${s.id}:${i}`
+      if (s.kind === 'quantity') {
+        labelProbes.push({ id, symbol: s.id, system: PROBE_SYSTEM, label: phrase })
+        continue
+      }
+      if (s.kind === 'system') continue
+      const requirement = probeRequirement(id, s.kind, phrase)
+      const slot = PROBE_SHAPE[s.kind].slot
+      const use = slotUses(requirement, tables).find(
+        (u) => u.domain === DOMAIN_OF_KIND[s.kind] && u.slot !== 'systemName',
+      )
+      const res = use === undefined ? undefined : resolvePhrase(index, [s.kind], use.text)
+      const owner = res === undefined || 'unresolved' in res ? undefined : res.id
+      const binding =
+        owner === undefined
+          ? {}
+          : slot === 'resp'
+            ? { response: owner }
+            : slot === 'trig'
+              ? { trigger: owner }
+              : s.kind === 'feature'
+                ? { feature: owner }
+                : { preCondition: owner }
+      probes.push({
+        id,
+        symbol: s.id,
+        ...(owner !== undefined ? { owner } : {}),
+        slot,
+        requirement,
+        projected: { ...requirement, ...rewriteOf(requirement, binding) },
+      })
     }
   }
+
+  // Every label of each quantity class, as written and as projected, then its row.
+  const classes = new Map<SymbolId, string[]>()
+  const spell = (label: string) => {
+    if (label.trim() === '') return
+    const res = resolvePhrase(index, ['quantity'], label)
+    if ('unresolved' in res) return
+    const root = representative.get(res.id) ?? res.id
+    classes.set(root, [...(classes.get(root) ?? []), label])
+  }
+  const read = (r: Requirement) => {
+    for (const { predicate } of requirementBounds(viewOf(r), tables.glossary))
+      spell(predicate.label)
+  }
+  for (const r of Object.values(doc.requirements)) {
+    read(r)
+    read({ ...r, ...(rewrites.get(r.id) ?? {}) })
+  }
+  for (const p of probes) {
+    read(p.requirement)
+    read(p.projected)
+  }
+  for (const l of labelProbes) spell(l.label)
   const quantityAliases: QuantityAliasRow[] = []
   for (const root of [...classes.keys()].sort()) {
-    const row = quantityRowOf(canonicalOf(root), classes.get(root) ?? [], tables)
-    if (row !== undefined) quantityAliases.push(row)
+    const canonical = canonicalOf(root)
+    const key = phraseKey('quantity', canonical, tables)
+    const aliases = [...new Set(classes.get(root) ?? [])]
+      .filter((label) => phraseKey('quantity', label, tables) !== key)
+      .sort()
+    if (aliases.length > 0) quantityAliases.push({ canonical, aliases })
   }
 
-  return { invalid, representative, canonicalOf, rewrites, unresolved, quantityAliases }
+  return {
+    invalid,
+    representative,
+    canonicalOf,
+    rewrites,
+    unresolved,
+    quantityAliases,
+    probes,
+    labelProbes,
+  }
 }
+
+/**
+ * The document the engine is handed: each rewritten slot replaced, and each quantity-alias row
+ * appended to the glossary, the channel the numeric tier reads its aliases from. The sentence,
+ * and every other field, is passed verbatim.
+ */
+export const projectedDocument = (
+  doc: RequirementsDocument,
+  projection: Projection,
+): RequirementsDocument => ({
+  ...doc,
+  glossary: [
+    ...doc.glossary,
+    ...projection.quantityAliases.map((row) => ({
+      canonical: row.canonical,
+      aliases: [...row.aliases],
+    })),
+  ],
+  requirements: Object.fromEntries(
+    Object.values(doc.requirements).map((r) => [
+      r.id,
+      { ...r, ...(projection.rewrites.get(r.id) ?? {}) },
+    ]),
+  ),
+})

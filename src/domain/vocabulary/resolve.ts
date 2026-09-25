@@ -10,8 +10,8 @@
  * ## Two modes, one resolver
  *
  * A document that declares symbols is resolved against them, after the validator has dropped
- * every entry that breaks an invariant (`invariants.ts`); what it dropped comes back in
- * `invalid`, so `check` can disclose and demote instead of throwing. A document that declares
+ * every entry that breaks an invariant (`invariants.ts`, through `build.ts`); what it dropped
+ * comes back in `invalid`, so `check` can disclose and demote instead of throwing. A document that declares
  * none is resolved against its IMPLICIT vocabulary (`implicit.ts`), which is valid by
  * construction and resolves every phrase it uses. Both modes bind through the same functions, so
  * a legacy baseline and its bootstrapped successor bind every requirement to the same ids.
@@ -27,15 +27,11 @@
 import type {
   EarsPattern,
   Requirement,
-  RequirementsDocument,
   SymbolId,
   SymbolKind,
   VocabSymbol,
   Vocabulary,
 } from '../requirements/document.ts'
-import { vocabularyOf } from '../requirements/document.ts'
-import { implicitVocabulary } from './implicit.ts'
-import { type VocabularyViolation, validateVocabulary } from './invariants.ts'
 import {
   type BoundReading,
   type CollisionDomain,
@@ -45,7 +41,6 @@ import {
   phraseKey,
   type SlotName,
   slotUses,
-  tablesOf,
 } from './keys.ts'
 
 /** How a phrase reached its symbol. `implicit` is every resolution in a document with no vocabulary. */
@@ -155,23 +150,16 @@ const representativesOf = (
 }
 
 /**
- * Build the index a document resolves against, and the violations its vocabulary carries.
- *
- * A document with declared symbols is validated (`invariants.ts`), and every invalid entry is
- * dropped and reported in `invalid`. A document with none gets its implicit vocabulary.
- * Throw-free, so the check path can disclose rather than fail.
+ * Index a vocabulary for lookup, AS GIVEN: nothing is validated here. `build.ts`'s
+ * `buildVocabularyIndex` is the entry point every caller uses, and it indexes only what the
+ * validator admitted; the validator itself indexes each candidate it measures through this.
  */
-export const buildVocabularyIndex = (
-  doc: RequirementsDocument,
-): { readonly index: VocabularyIndex; readonly invalid: readonly VocabularyViolation[] } => {
-  const tables = tablesOf(doc)
-  const declared = vocabularyOf(doc)
-  const mode = declared.symbols.length > 0 ? 'explicit' : 'implicit'
-  const { admitted, violations } =
-    mode === 'explicit'
-      ? validateVocabulary(doc, declared, 'explicit', tables)
-      : validateVocabulary(doc, implicitVocabulary(doc, tables), 'implicit', tables)
-  const symbols = [...admitted.symbols].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+export const indexVocabulary = (
+  vocabulary: Pick<Vocabulary, 'symbols' | 'merges' | 'distinct'>,
+  tables: PhraseTables,
+  mode: 'explicit' | 'implicit',
+): VocabularyIndex => {
+  const symbols = [...vocabulary.symbols].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   const owners = new Map<string, Owner>()
   for (const s of symbols) {
     const domain = DOMAIN_OF_KIND[s.kind]
@@ -188,17 +176,14 @@ export const buildVocabularyIndex = (
     }
   }
   return {
-    index: {
-      mode,
-      tables,
-      symbols,
-      byId: new Map(symbols.map((s) => [s.id, s])),
-      merges: admitted.merges,
-      distinct: admitted.distinct,
-      representative: representativesOf(symbols, admitted.merges),
-      owners,
-    },
-    invalid: violations,
+    mode,
+    tables,
+    symbols,
+    byId: new Map(symbols.map((s) => [s.id, s])),
+    merges: vocabulary.merges,
+    distinct: vocabulary.distinct,
+    representative: representativesOf(symbols, vocabulary.merges),
+    owners,
   }
 }
 

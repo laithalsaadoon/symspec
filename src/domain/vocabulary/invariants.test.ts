@@ -22,9 +22,10 @@ import {
   type VocabSymbol,
   type Vocabulary,
 } from '../requirements/document.ts'
+import { buildVocabularyIndex } from './build.ts'
 import { frozenTablesDigest, type VocabularyViolation, validateVocabulary } from './invariants.ts'
-import { actionAtom, tablesOf } from './keys.ts'
-import { buildVocabularyIndex, type VocabularyIndex } from './resolve.ts'
+import { tablesOf } from './keys.ts'
+import type { VocabularyIndex } from './resolve.ts'
 
 const docWith = (
   vocabulary: Partial<Vocabulary>,
@@ -59,12 +60,16 @@ const brief = (vs: readonly VocabularyViolation[]) =>
  * the two class canonicals are contraries too; and no class holds two contraries. Returns the
  * phrase pairs that break it.
  */
-const contraryLosses = (doc: RequirementsDocument, index: VocabularyIndex): string[] => {
+const atomOf = (doc: RequirementsDocument) => {
   const tables = tablesOf(doc)
-  const atom = (text: string) => {
+  return (text: string) => {
     const a = tables.atomize('resp', text, 'x', false)
     return { name: a.atom, ...(a.opposition !== undefined ? { opposition: a.opposition } : {}) }
   }
+}
+
+const contraryLosses = (doc: RequirementsDocument, index: VocabularyIndex): string[] => {
+  const atom = atomOf(doc)
   const phrases: { text: string; rep: string }[] = []
   for (const s of index.symbols) {
     if (s.kind !== 'action') continue
@@ -93,10 +98,8 @@ describe('property (4) over the corpus', () => {
     for (const { label, doc } of reportSources(MUTATE_OPTIONS)) {
       const { index } = buildVocabularyIndex(doc)
       expect(contraryLosses(doc, index), label).toEqual([])
-      const tables = tablesOf(doc)
-      const actions = index.symbols
-        .filter((s) => s.kind === 'action')
-        .map((s) => actionAtom(s.canonical, tables))
+      const atom = atomOf(doc)
+      const actions = index.symbols.filter((s) => s.kind === 'action').map((s) => atom(s.canonical))
       for (const a of actions) for (const b of actions) if (areContrary(a, b)) pairs += 1
     }
     // A corpus with no contrary pair would make the assertion above vacuous.
@@ -219,7 +222,10 @@ describe('V1 — one owner per phrase key per collision domain', () => {
     expect(validateVocabulary(docWith({ symbols: symbols.slice(0, 1) })).violations).toEqual([])
   })
 
-  it('refuses a quantity alias the kind-blind glossary would apply to an action', () => {
+  it('refuses a quantity alias the kind-blind glossary would apply to an action beside another', () => {
+    // The row `dwell time` <- `keep the door unlocked` is looked up on every slot, so it re-keys
+    // the ACTION `keep the door unlocked` onto `dwell time`, the atom `act_dwell` holds: two
+    // actions nobody merged would become one.
     const symbols: VocabSymbol[] = [
       {
         id: 'qty_dwell',
@@ -231,10 +237,14 @@ describe('V1 — one owner per phrase key per collision domain', () => {
         numberType: 'int',
       },
       act('act_keep', 'keep the door unlocked'),
+      act('act_dwell', 'dwell time'),
     ]
     expect(brief(validateVocabulary(docWith({ symbols })).violations)).toEqual([
       ['V1', 'alias', 'keep the door unlocked'],
     ])
+    // Control: re-keying the one action alone renames its atom and merges nothing, and the
+    // quantity its occurrence performs moves with it, so no reading changes.
+    expect(validateVocabulary(docWith({ symbols: symbols.slice(0, 2) })).violations).toEqual([])
     expect(validateVocabulary(docWith({ symbols: symbols.slice(0, 1) })).violations).toEqual([])
   })
 })
@@ -273,14 +283,14 @@ describe('V-OPP — every phrase of a class opposes what its canonical opposes',
     ])
   })
 
-  it('refuses the alias even when no opposing phrase is declared (the canonical`s class differs)', () => {
+  it('admits the alias while no phrase is its contrary: a refusal is for what the rewrite does', () => {
+    // `shut` has open's class and `seal` none, but with no `open` phrase declared or used, the
+    // rewrite loses no contrary pair. The fixture above is the same alias beside `open the valve`.
     const doc = docWith(
       { symbols: [act('act_seal', 'seal the valve', ['shut the valve'])] },
       { antonyms: [{ a: 'open', b: 'shut' }] },
     )
-    expect(brief(validateVocabulary(doc).violations)).toEqual([
-      ['V-OPP', 'alias', 'shut the valve'],
-    ])
+    expect(validateVocabulary(doc).violations).toEqual([])
   })
 
   it('drops an alias whose own contrary the canonical does not share (close/shut/unbar)', () => {
@@ -369,7 +379,7 @@ describe('V-NUM — every phrase of a class carries its canonical`s numeric pred
     ]
     const refused = validateVocabulary(docWith({ symbols, merges: [{ a: 'act_a', b: 'act_b' }] }))
     expect(brief(refused.violations)).toEqual([['V-NUM', 'merge', 'act_a+act_b']])
-    // Same comparator and value, different label: the label is part of the signature, because
+    // Same comparator and value, different label: the label is part of what is compared, because
     // the rewrite moves the bound onto the canonical's quantity.
     const relabel = validateVocabulary(docWith({ symbols, merges: [{ a: 'act_a', b: 'act_c' }] }))
     expect(brief(relabel.violations)).toEqual([['V-NUM', 'merge', 'act_a+act_c']])
@@ -379,7 +389,7 @@ describe('V-NUM — every phrase of a class carries its canonical`s numeric pred
     expect(control.admitted.merges).toEqual([{ a: 'act_a', b: 'act_d' }])
   })
 
-  it('reads the qualifier into the signature: `… 20 C now` is not `… 20 C`', () => {
+  it('compares the qualifier: `… 20 C now` is not `… 20 C`', () => {
     const { violations } = validateVocabulary(
       docWith({
         symbols: [
