@@ -336,9 +336,10 @@ machine. It is absent on an unbounded run and on a run with comfortable headroom
 is the all-clear.
 
 `symspec explain --code FND_CONTRADICTION` answers for a single code without fetching the
-manifest. It returns the family, severity, tier, meaning, remedy, the runnable discharge command,
-and a worked example where the catalog carries one. Every code an envelope can contain is stable
-and safe to branch on.
+manifest. It always returns the family, severity, tier, description and meaning, and adds
+`suggestions`, runnable `commands` and a worked `example` only where the catalog carries them, so
+an empty list means the code has no mechanical discharge. Every code an envelope can contain is
+stable and safe to branch on.
 
 Two flags reduce token usage. `--dense` minifies the output and elides the heavy `evidence`
 payload, which `--evidence` keeps. `--field data.verified,data.counts.error` projects the
