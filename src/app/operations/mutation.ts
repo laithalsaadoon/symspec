@@ -34,15 +34,6 @@
  */
 
 import { Effect, Schema } from 'effect'
-import { ANTONYM_INDEX, buildAntonymIndexWithDoc } from '../../domain/engine/formal/antonyms.ts'
-import {
-  glossaryContraries,
-  glossaryIndex,
-  normalize,
-  termIndex,
-} from '../../domain/engine/formal/atomize.ts'
-import { ESTABLISH_VERBS } from '../../domain/engine/formal/guard-implication.ts'
-import { deInflectHead } from '../../domain/engine/formal/lemma.ts'
 // STATIC. A dynamic import here bought nothing: `operations/parse.ts` imports
 // `engine/parse/batch.ts` statically and that imports `result.ts` statically, so the parse
 // ladder is in the main chunk on every run regardless. The lazy form only added an await
@@ -59,7 +50,7 @@ import {
   UPDATABLE_ATTRS,
   VERIFICATION_METHODS,
 } from '../../domain/requirements/document.ts'
-import { type FoldResult, foldOps, type MutateOptions } from '../../domain/requirements/mutate.ts'
+import { type FoldResult, foldOps } from '../../domain/requirements/mutate.ts'
 import { type DocumentOp, decodeOp, RELATION_EDGE_OP } from '../../domain/requirements/ops.ts'
 import { DOC_PATH_CONVENTION, DocPath, DocStore } from '../../ports/doc-store.ts'
 import {
@@ -74,6 +65,7 @@ import { StreamSource } from '../../ports/stream.ts'
 import { catalogCounts } from '../runtime/catalog.ts'
 import { ok } from '../runtime/envelope.ts'
 import { defineOperation } from '../runtime/operation.ts'
+import { MUTATE_OPTIONS } from './mutate-options.ts'
 
 const lines = (...xs: readonly string[]): string => xs.join('\n')
 
@@ -154,114 +146,6 @@ export interface MutationPayload extends Omit<FoldResult, 'document'> {
   readonly written: boolean
   /** Requirement count after the fold, so an agent sees the effect without a re-read. */
   readonly requirements: number
-}
-
-/**
- * The mutation-fold options the operation layer supplies.
- *
- * `core/mutate.ts` cannot import the transplanted formal tier — the dependency runs
- * the other way, and a cycle would put the atomizer in the load graph of every
- * document read. So the two functions that need it are injected HERE, which is the
- * lowest layer that legitimately knows about both.
- */
-const MUTATE_OPTIONS: MutateOptions = {
-  // The atomizer's own normalizer, so a committed antonym head is EXACTLY the key the
-  // atomizer looks up. Storing "Open" where the atomizer looks up "open" would make
-  // the committed pair silently inert — a decision recorded and not applied.
-  normalizeHead: normalize,
-  /**
-   * The false-contradiction guard, and the reason it belongs at WRITE time.
-   *
-   * An antonym is the one committed record whose wrong value MANUFACTURES a conflict
-   * rather than merely masking one. `buildAntonymIndexWithDoc` THROWS on an odd
-   * polarity cycle (asserting a↔b when a and b already resolve to the same polarity
-   * through the seed classes), and catching it here turns that into a clean
-   * `ERR_USAGE` — which is what keeps the CHECK path throw-free. A hand-edited bad
-   * document falls back to seed-only rather than crashing a verdict.
-   */
-  validateAntonyms: (pairs) => {
-    try {
-      buildAntonymIndexWithDoc(pairs.map((p) => [normalize(p.a), normalize(p.b)] as const))
-      return undefined
-    } catch (cause) {
-      return cause instanceof Error ? cause.message : String(cause)
-    }
-  },
-  /**
-   * The OTHER false-contradiction guard: terms are for nouns, enforced rather than documented.
-   *
-   * A term is substituted inside every slot body, so one containing a verb reaches the response
-   * head — and that desyncs two pipelines which must agree. `guard-implication` decides whether
-   * a response ESTABLISHES a state by parsing the raw text against `ESTABLISH_VERBS`; the
-   * bridge's polarity comes from the full `atomize`, which sees the substitution. Rewrite a head
-   * into an antonym class and the bridge is still recognised while its polarity flips, so it
-   * asserts the negation of what the document says. The inert-drop downstream compares atom
-   * NAMES, not polarity, so it does not catch it: the inverted implication joins the whole-spec
-   * conjunction and can make a group UNSAT that the document never entailed. Error severity,
-   * and the tool's own doing.
-   *
-   * Both lexicons are consulted per TOKEN, because the substitution is per token — a term
-   * `close the vault` would reach the head just as `close` does. Refusing at write time is what
-   * keeps the check path free of "this table was incoherent" branches, exactly as above.
-   */
-  validateTerms: (canonical, alias) => {
-    // De-inflected, because `atomize` de-inflects the head before probing: a raw-token check
-    // accepts `revokes` while the atomizer reads `revoke`, and that gap was a verified
-    // fabrication. Defense in depth only — the SOUNDNESS guarantee is the check-time drop in
-    // `guard-implication.ts`, because no write-time fence can see a doc antonym committed
-    // afterwards, nor a two-token head formed by joining a canonical to the tokens beside it.
-    const offending = [...canonical.split(/[\s_]+/), ...alias.split(/[\s_]+/)]
-      .filter((token) => token.length > 0)
-      .find((token) => {
-        const head = deInflectHead(token)
-        return (
-          ANTONYM_INDEX.has(token) ||
-          ANTONYM_INDEX.has(head) ||
-          ESTABLISH_VERBS.has(token) ||
-          ESTABLISH_VERBS.has(head)
-        )
-      })
-    if (offending === undefined) return undefined
-    return (
-      `"${offending}" is a verb the formal tier reads — the antonym table or the ` +
-      'state-bridge lexicon — and substituting one inside a body moves the polarity the solver ' +
-      'computes without moving the parse that recognises the bridge'
-    )
-  },
-  /**
-   * The glossary twin of the two guards above: an entry must not name two contraries.
-   *
-   * "close the door" as an alias of "open the door" says the two are one action while the seed
-   * pair open/close says they cannot both happen, and committed it turned FND_CONTRADICTION into
-   * `verified: true`. The propose tier already withholds that merge (AC-3-6); this refuses the
-   * committed op. Read through the document's OWN antonyms and terms, the tables the atomizer
-   * uses. Defense in depth only — an antonym or term committed afterwards forms the same entry
-   * with no glossary write to refuse, so the soundness guarantee is `atomize` keeping each
-   * contrary on its own atom linked to the entry's action, and `check` demoting
-   * (`contrary-glossary-alias`) over what that leaves undecided.
-   */
-  validateGlossary: (document, canonical, alias) => {
-    let antonyms: ReturnType<typeof buildAntonymIndexWithDoc> = ANTONYM_INDEX
-    try {
-      antonyms = buildAntonymIndexWithDoc(
-        document.antonyms.map((p) => [normalize(p.a), normalize(p.b)] as const),
-      )
-    } catch {
-      // An inconsistent committed table is refused at ITS write; check falls back to the seeds.
-    }
-    const entry = glossaryContraries(
-      glossaryIndex(document.glossary),
-      antonyms,
-      termIndex(document.terms ?? []),
-    ).find((e) => e.canonical === canonical)
-    const pair = entry?.contraries.find(([p, q]) => p === alias || q === alias)
-    if (pair === undefined) return undefined
-    const other = (pair[0] === alias ? pair[1] : pair[0]).replace(/_/g, ' ')
-    return (
-      `it is a contrary of "${other}" under the antonym table, so one entry naming both would ` +
-      'say neither action ever happens'
-    )
-  },
 }
 
 /**
@@ -1049,6 +933,9 @@ export const termOp = defineOperation({
         'reads is REFUSED, because substituting one moves the polarity the solver computes for a',
         'state-establishing response without moving the parse that recognises it — which would prove',
         'a conflict the document does not contain. Use `symspec glossary` for a phrasing with a verb.',
+        'An alias that overlaps another phrase of the table (inside it, equal to it, around it, or',
+        'straddling one of its edges) is REFUSED too: the substitution is one longest-first pass, so',
+        'it would rewrite some of that phrase`s occurrences and not others.',
         'Example: "login credential"',
       ),
     ),

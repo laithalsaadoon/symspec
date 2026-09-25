@@ -9,6 +9,19 @@ one-trigger-contradiction	alias-contraries-glossary@forward	inapplicable
 one-trigger-contradiction	alias-contraries-glossary@reverse	inapplicable
 one-trigger-contradiction	alias-contraries-term@forward	inapplicable
 one-trigger-contradiction	alias-contraries-term@reverse	inapplicable
+one-trigger-contradiction	term-over-phrase@inside-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@equal-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@around-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@straddle-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@straddle-alias	inapplicable
+one-trigger-contradiction	glossary-over-term@equal/term-then-glossary	inapplicable
+one-trigger-contradiction	glossary-over-term@equal/glossary-then-term	inapplicable
+one-trigger-contradiction	glossary-over-term@containing/term-then-glossary	inapplicable
+one-trigger-contradiction	glossary-over-term@containing/glossary-then-term	inapplicable
+one-trigger-contradiction	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+one-trigger-contradiction	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+one-trigger-contradiction	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+one-trigger-contradiction	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 one-trigger-contradiction	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -37,10 +50,23 @@ one-trigger-contradiction	temporal-off	exit 1 verified=true signal=fires errors=
 contrary-pair	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
 contrary-pair	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
 contrary-pair	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
-contrary-pair	alias-contraries-glossary@forward	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[contrary-glossary-alias]
-contrary-pair	alias-contraries-glossary@reverse	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[contrary-glossary-alias]
-contrary-pair	alias-contraries-term@forward	CLEAN verified=true signal=gone errors=[] demotions=[]
-contrary-pair	alias-contraries-term@reverse	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	alias-contraries-glossary@forward	refused glossary:ERR_USAGE
+contrary-pair	alias-contraries-glossary@reverse	refused glossary:ERR_USAGE
+contrary-pair	alias-contraries-term@forward	refused term:ERR_USAGE
+contrary-pair	alias-contraries-term@reverse	refused term:ERR_USAGE
+contrary-pair	term-over-phrase@inside-canonical	inapplicable
+contrary-pair	term-over-phrase@equal-canonical	inapplicable
+contrary-pair	term-over-phrase@around-canonical	inapplicable
+contrary-pair	term-over-phrase@straddle-canonical	inapplicable
+contrary-pair	term-over-phrase@straddle-alias	inapplicable
+contrary-pair	glossary-over-term@equal/term-then-glossary	inapplicable
+contrary-pair	glossary-over-term@equal/glossary-then-term	inapplicable
+contrary-pair	glossary-over-term@containing/term-then-glossary	inapplicable
+contrary-pair	glossary-over-term@containing/glossary-then-term	inapplicable
+contrary-pair	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+contrary-pair	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+contrary-pair	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+contrary-pair	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 contrary-pair	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]

@@ -80,7 +80,7 @@ import {
   type Requirement,
   type RequirementsDocument,
 } from '../domain/requirements/document.ts'
-import { foldOps } from '../domain/requirements/mutate.ts'
+import { foldOps, type MutateOptions } from '../domain/requirements/mutate.ts'
 import type { AddOp, DocumentOp, OpVerb } from '../domain/requirements/ops.ts'
 import { resolveRef } from '../domain/requirements/resolve.ts'
 import { DocPath, DocStore, makeDocPath } from '../ports/doc-store.ts'
@@ -214,6 +214,27 @@ const contraryOps = (r2Response: string): readonly DocumentOp[] => [
     systemResponse: r2Response,
   }),
   { op: 'antonym', a: 'accept', b: 'reject' },
+]
+
+/**
+ * The contrary exists ONLY as a document antonym: ratify/veto is no seed pair, and neither head
+ * is in the seed antonym table or the state-bridge lexicon. So every write-time fence that reads
+ * the seeds per token (`validateTerms`) is blind to it, and only a fence that reads the
+ * document's own antonyms sees it. `contrary-pair` cannot measure that difference, because
+ * accept/reject are seed heads and its committed antonym only restates a seed pair.
+ */
+const registeredContraryOps = (r2Response: string): readonly DocumentOp[] => [
+  add('REG-R1', {
+    trigger: 'the clerk reviews the claim',
+    systemName: 'claims service',
+    systemResponse: 'ratify the claim',
+  }),
+  add('REG-R2', {
+    trigger: 'the clerk reviews the claim',
+    systemName: 'claims service',
+    systemResponse: r2Response,
+  }),
+  { op: 'antonym', a: 'ratify', b: 'veto' },
 ]
 
 const numericOps = (r2Bound: string): readonly DocumentOp[] => [
@@ -350,6 +371,15 @@ export const FIXTURES: readonly Fixture[] = [
     culprits: ['CTR-R1', 'CTR-R2'],
     signal: { code: 'FND_CONTRADICTION', names: ['CTR-R1', 'CTR-R2'] },
     control: { ops: contraryOps('file the claim') },
+  },
+  {
+    id: 'registered-contrary',
+    seeded:
+      'Under one trigger, R1 ratifies the claim and R2 vetoes it; ratify/veto are contraries only through the committed antonym.',
+    ops: registeredContraryOps('veto the claim'),
+    culprits: ['REG-R1', 'REG-R2'],
+    signal: { code: 'FND_CONTRADICTION', names: ['REG-R1', 'REG-R2'] },
+    control: { ops: registeredContraryOps('file the claim') },
   },
   {
     id: 'numeric-conflict',
@@ -565,6 +595,160 @@ const aliasBothWays = (
     },
   }))
 
+/**
+ * Where a new term alias sits against a phrase the table already reads, as it appears in the
+ * move id `term-over-phrase@<shape>`. `pre` is every word before that phrase in the culprit
+ * response that says it, so each shape is a phrase that really occurs in the document. The
+ * whole prefix rather than one word, because `normalize` strips a LEADING article: an alias
+ * `the customer` is keyed `customer`, which sits inside the committed alias instead of
+ * straddling it.
+ */
+const TERM_OVERLAPS = [
+  ['inside-canonical', 'canonical', (phrase: readonly string[]) => phrase.slice(0, 1)],
+  ['equal-canonical', 'canonical', (phrase: readonly string[]) => phrase],
+  [
+    'around-canonical',
+    'canonical',
+    (phrase: readonly string[], pre: readonly string[]) => [...pre, ...phrase],
+  ],
+  [
+    'straddle-canonical',
+    'canonical',
+    (phrase: readonly string[], pre: readonly string[]) => [...pre, ...phrase.slice(0, 1)],
+  ],
+  [
+    'straddle-alias',
+    'alias',
+    (phrase: readonly string[], pre: readonly string[]) => [...pre, ...phrase.slice(0, 1)],
+  ],
+] as const
+
+/** The fresh canonical every `term-over-phrase` move points at: a noun no fixture uses. */
+const FRESH_TERM = 'ledger entry'
+
+/**
+ * A NEW term entry whose alias overlaps a phrase of the culprits' committed term, one move per
+ * {@link TERM_OVERLAPS} shape. An alias only identifies phrases, so under I-1 it cannot remove a
+ * finding. But the table is a one-pass, longest-first substitution over whole tokens: an alias
+ * that overlaps a committed phrase rewrites that phrase's occurrences while the committed
+ * phrase's own aliases still rewrite to it, so two phrases the table says are one noun come
+ * out different, and a conflict that rests on them is lost. `alias-contraries-term@reverse`
+ * reaches the same split from the canonical's side, which is the half `apply` refused first.
+ */
+const termOverPhrase = (): readonly Move[] =>
+  TERM_OVERLAPS.map(([shape, side, aliasOf]) => ({
+    id: `term-over-phrase@${shape}`,
+    clause: 'alias a phrase that overlaps a committed term (term table)',
+    direction: 'strengthening' as const,
+    edit: ({ fixture, doc }: MoveContext): Edit => {
+      const entry = doc.terms[0]
+      const committed = side === 'canonical' ? entry?.canonical : entry?.aliases[0]
+      if (committed === undefined)
+        return { kind: 'inapplicable', reason: 'the fixture commits no term' }
+      const words = (s: string) =>
+        s
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((w) => w.length > 0)
+      const phrase = words(committed)
+      // The words before the committed phrase in the culprit response that says it.
+      const pre = fixture.culprits
+        .map((k) => words(req(doc, k).systemResponse))
+        .map((ws) => ws.slice(0, Math.max(0, ws.indexOf(phrase[0] ?? ''))))
+        .find((ws) => ws.length > 0)
+      if (pre === undefined)
+        return { kind: 'inapplicable', reason: `no culprit response says the committed ${side}` }
+      return {
+        kind: 'ops',
+        ops: [{ op: 'term', canonical: FRESH_TERM, alias: aliasOf(phrase, pre).join(' ') }],
+      }
+    },
+  }))
+
+/**
+ * What the glossary alias of a `glossary-over-term` move is, against the committed term alias
+ * it covers: the alias itself (`equal`), or the culprit response that says it (`containing`).
+ * The glossary is a whole-body lookup, so the response is the widest phrase that really occurs.
+ */
+const GLOSSARY_OVER_TERM_SHAPES = [
+  ['equal', (alias: string, _response: string) => alias],
+  ['containing', (_alias: string, response: string) => response],
+] as const
+
+/**
+ * The order the two tables are written in, as it appears in the move id. `term-then-glossary`
+ * adds the glossary entry to the fixture's committed term; `glossary-then-term` drops that term,
+ * writes the glossary entry, and commits the term again, so a fence on EITHER op is measured.
+ */
+const GLOSSARY_OVER_TERM_ORDERS = ['term-then-glossary', 'glossary-then-term'] as const
+
+/**
+ * A glossary alias equal to, or containing, a phrase the committed term rewrites, pointed at a
+ * fresh canonical — one move per {@link GLOSSARY_OVER_TERM_SHAPES} shape and
+ * {@link GLOSSARY_OVER_TERM_ORDERS} order. The glossary lookup runs BEFORE term substitution, so
+ * the response that says the term alias is rewritten to the fresh canonical and never reaches
+ * the term table: the two phrases the term calls one noun come out as two atoms. The term
+ * table's own overlap fence ({@link termOverPhrase}) cannot see it, because the overlapping
+ * phrase lives in the other table.
+ */
+/**
+ * Which phrase of the committed term the glossary alias is written over: its ALIAS (`customer
+ * order`) or its CANONICAL (`purchase order`). Both are phrases the term rewrites onto one noun,
+ * so a cross-table fence that compared a glossary alias against term aliases alone would close
+ * the alias cells and leave the canonical side escaping unmeasured. The alias side keeps the
+ * original move ids; the canonical side is suffixed `-canonical`.
+ */
+const GLOSSARY_OVER_TERM_SIDES = [
+  [
+    'alias',
+    (entry: { readonly canonical: string; readonly aliases: readonly string[] }) =>
+      entry.aliases[0],
+  ],
+  [
+    'canonical',
+    (entry: { readonly canonical: string; readonly aliases: readonly string[] }) => entry.canonical,
+  ],
+] as const
+
+const glossaryOverTerm = (): readonly Move[] =>
+  GLOSSARY_OVER_TERM_SIDES.flatMap(([side, phraseOf]) =>
+    GLOSSARY_OVER_TERM_SHAPES.flatMap(([shape, aliasOf]) =>
+      GLOSSARY_OVER_TERM_ORDERS.map((order) => ({
+        id: `glossary-over-term@${shape}${side === 'canonical' ? '-canonical' : ''}/${order}`,
+        clause: 'alias a phrase a committed term rewrites (glossary over term table)',
+        direction: 'strengthening' as const,
+        edit: ({ fixture, doc }: MoveContext): Edit => {
+          const entry = doc.terms[0]
+          const termAlias = entry?.aliases[0]
+          const phrase = entry === undefined ? undefined : phraseOf(entry)
+          if (entry === undefined || termAlias === undefined || phrase === undefined)
+            return { kind: 'inapplicable', reason: 'the fixture commits no term' }
+          const response = fixture.culprits
+            .map((k) => req(doc, k).systemResponse)
+            .find((s) => s.toLowerCase().split(/\s+/).join(' ').includes(phrase.toLowerCase()))
+          if (response === undefined)
+            return {
+              kind: 'inapplicable',
+              reason: `no culprit response says the committed ${side}`,
+            }
+          const glossary: DocumentOp = {
+            op: 'glossary',
+            canonical: FRESH_TERM,
+            alias: aliasOf(phrase, response),
+          }
+          const term = { canonical: entry.canonical, alias: termAlias }
+          return {
+            kind: 'ops',
+            ops:
+              order === 'term-then-glossary'
+                ? [glossary]
+                : [{ op: 'unterm', ...term }, glossary, { op: 'term', ...term }],
+          }
+        },
+      })),
+    ),
+  )
+
 export const MOVES: readonly Move[] = [
   ...oneSided('rename-system', 'rename a system', 'weakening', (r, key) => ({
     kind: 'ops',
@@ -591,6 +775,8 @@ export const MOVES: readonly Move[] = [
   ...aliasBothWays('term', 'alias two contraries (term table)', (doc, a, b) =>
     doc.terms.some((t) => t.canonical === a && t.aliases.includes(b)),
   ),
+  ...termOverPhrase(),
+  ...glossaryOverTerm(),
   {
     id: 'waive-by-code',
     clause: 'waive by code',
@@ -985,7 +1171,11 @@ const escapes = (
 export interface KnownEscape {
   readonly fixture: string
   readonly move: string
-  /** The AC whose landing turns this row red — at which point the row is deleted. */
+  /**
+   * The AC whose landing turns this row red — at which point the row is deleted. Either the bare
+   * id (`AC-5-2`) or led by the plan slice that lands it and followed by what closes it
+   * (`S4 / AC-4-2 (cross-table fence + check twin)`).
+   */
   readonly closedBy: string
   readonly why: string
 }
@@ -1002,6 +1192,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'feature-interaction',
       'one-trigger-contradiction',
       'contrary-pair',
+      'registered-contrary',
       'numeric-conflict',
       'temporal-conflict',
       'glossary-bridged',
@@ -1016,6 +1207,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'feature-interaction',
       'one-trigger-contradiction',
       'contrary-pair',
+      'registered-contrary',
       'numeric-conflict',
       'glossary-bridged',
       'term-bridged',
@@ -1028,6 +1220,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     [
       'one-trigger-contradiction',
       'contrary-pair',
+      'registered-contrary',
       'numeric-conflict',
       'temporal-conflict',
       'glossary-bridged',
@@ -1039,7 +1232,13 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     escapes(
       move,
       'AC-5-9',
-      ['contrary-pair', 'temporal-conflict', 'glossary-bridged', 'term-bridged'],
+      [
+        'contrary-pair',
+        'registered-contrary',
+        'temporal-conflict',
+        'glossary-bridged',
+        'term-bridged',
+      ],
       "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `narrow` certificate.",
     ),
   ),
@@ -1047,15 +1246,24 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     escapes(
       move,
       'AC-4-6',
-      ['contrary-pair'],
-      'The term table accepts the same contrary merge the glossary does, through the noun-phrase path, in either direction, with the same effect.',
+      ['registered-contrary'],
+      "The term table merges two phrases that are contraries only through the document's own antonym table, in either direction, and the contradiction disappears. `validateTerms` reads the SEED antonym heads and the state-bridge lexicon per token and never the document's committed antonyms, so ratify/veto pass it; on `contrary-pair` the same move is refused only because accept/reject are seed heads. The glossary twin is refused here, because `validateGlossary` reads the committed antonyms. AC-4-6 refuses a merge of registered contraries, directly or transitively, whichever table it is written to.",
     ),
   ),
-  ...escapes(
-    'alias-contraries-term@reverse',
-    'AC-4-2',
-    ['term-bridged'],
-    'Making `charge the customer order` canonical for `charge the purchase order` SWAPS the two responses rather than merging them. Term substitution is one longest-match pass: TRM-R1 now rewrites to `charge the customer order`, while TRM-R2 still rewrites through the committed `customer order` -> `purchase order` term to `charge the purchase order`. The two atoms stay distinct and the conflict the fixture seeds disappears. An alias only identifies phrases, so this is a STRENGTHENING move that escapes (I-1). The forward direction is caught because it rewrites TRM-R2 onto TRM-R1. The op path in `apply` refuses this op at write time: the canonical contains a committed term alias. That fence is defence in depth: `check` accepts the same table from a stored document, and the contradiction disappears there too. AC-4-6 does not close this row, because the two phrases are not contraries. AC-4-2 does: once atoms are scoped by vocabulary id, an alias is a merge of two ids and cannot depend on which phrase is canonical.',
+  ...(
+    [
+      'glossary-over-term@containing/term-then-glossary',
+      'glossary-over-term@containing/glossary-then-term',
+      'glossary-over-term@containing-canonical/term-then-glossary',
+      'glossary-over-term@containing-canonical/glossary-then-term',
+    ] as const
+  ).flatMap((move) =>
+    escapes(
+      move,
+      'S4 / AC-4-2 (cross-table fence + check twin)',
+      ['term-bridged'],
+      'A glossary alias that contains a phrase the committed term rewrites — its alias (`charge the customer order`) or its canonical (`charge the purchase order`) — onto a fresh canonical, takes that response out of the term table: the glossary is a whole-body lookup that runs BEFORE term substitution, so R2 reaches the solver as the fresh canonical while R1 still reads `charge purchase order`, and the conflict the term carries disappears. Either write order escapes, because neither fence reads the other table: the term overlap fence checks only terms, and the glossary fence only glossary entries and antonyms. The `equal` twin (the bare term alias as a glossary alias) is caught on this fixture only because no slot body is exactly `customer order`. S4 closes it with a cross-table fence on both ops and a check-time twin for a hand-edited table.',
+    ),
   ),
   ...escapes(
     'unglossary',
@@ -1068,6 +1276,12 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     'AC-5-7',
     ['term-bridged'],
     'The term-table twin of `unglossary`: splitting the noun phrase removes the finding it carried.',
+  ),
+  ...escapes(
+    'unantonym',
+    'AC-5-9',
+    ['registered-contrary'],
+    'Dropping the committed antonym the conflict rests on removes the finding while both sentences still say ratify and veto. Nothing compares the vocabulary to a baseline, so the change is invisible; `unantonym` is a weakening vocabulary change unit, and `FND_SEMANTIC_DRIFT` reports one that removed a finding. On `contrary-pair` the same drop is caught, because accept/reject stay contraries through the seeds.',
   ),
   ...escapes(
     'rebind-effect',
@@ -1130,7 +1344,13 @@ export const OP_COVERAGE: Readonly<
   unstate: { moves: ['unstate'] },
   'state-initial': { moves: ['vacuous-initial'] },
   classify: { moves: ['declassify-constraint', 'flip-negated@second'] },
-  term: { moves: ['alias-contraries-term@forward', 'alias-contraries-term@reverse'] },
+  term: {
+    moves: [
+      'alias-contraries-term@forward',
+      'alias-contraries-term@reverse',
+      'term-over-phrase@inside-canonical',
+    ],
+  },
   unterm: { moves: ['unterm'] },
 }
 
@@ -1157,20 +1377,36 @@ export const editVerbs = (edit: Edit, ctx: MoveContext): readonly OpVerb[] => {
 // Applying a move — pure, apart from the parse
 // ---------------------------------------------------------------------------
 
-/** Fold `ops` atomically; a refusal names the op and the fold's code. */
+/**
+ * Fold `ops` atomically; a refusal names the op and the fold's code.
+ *
+ * Under `apply`'s OWN options, handed in through {@link GamingWiring.mutateOptions}. A bare
+ * `foldOps` runs no write-time fence at all (the normalizer is a trim and no validator is
+ * wired), so a harness folding that way reports escapes through ops `apply` refuses — moves no
+ * agent can make — and cannot see a fence a later story adds. The options are REQUIRED here, so
+ * there is no default for a caller to fall into.
+ *
+ * A move refused here is caught at WRITE time only. The same table written into the stored
+ * document by hand never meets the fold, so whether `check` catches it too is a separate
+ * question, and one a registry of op moves cannot ask.
+ */
 const fold = (
   doc: RequirementsDocument,
   ops: readonly DocumentOp[],
+  options: MutateOptions,
 ): { readonly doc: RequirementsDocument } | Refused => {
-  const folded = foldOps(doc, ops, TS)
+  const folded = foldOps(doc, ops, TS, options)
   if (folded.abortedAt === undefined) return { doc: folded.document }
   const failure = folded.results.find((r) => !r.ok)
   return { kind: 'refused', by: `${failure?.op ?? '?'}:${failure?.code ?? '?'}` }
 }
 
 /** Build a fixture document from its ops. A fixture the fold refuses is a harness bug. */
-export const buildDoc = (ops: readonly DocumentOp[]): RequirementsDocument => {
-  const built = fold(emptyDocument(), ops)
+export const buildDoc = (
+  ops: readonly DocumentOp[],
+  options: MutateOptions,
+): RequirementsDocument => {
+  const built = fold(emptyDocument(), ops, options)
   if ('kind' in built) throw new Error(`gaming fixture ops refused: ${built.by}`)
   return built.doc
 }
@@ -1206,7 +1442,11 @@ type Applied =
 const sameDoc = (a: RequirementsDocument, b: RequirementsDocument): boolean =>
   JSON.stringify(a) === JSON.stringify(b)
 
-const applyEdit = async (edit: Edit, doc: RequirementsDocument): Promise<Applied> => {
+const applyEdit = async (
+  edit: Edit,
+  doc: RequirementsDocument,
+  options: MutateOptions,
+): Promise<Applied> => {
   switch (edit.kind) {
     case 'inapplicable':
       return edit
@@ -1223,11 +1463,15 @@ const applyEdit = async (edit: Edit, doc: RequirementsDocument): Promise<Applied
       if (parsed.outcome !== 'ok') {
         return { kind: 'refused', by: parsed.outcome === 'error' ? parsed.code : 'parse:skipped' }
       }
-      const moved = fold(doc, [
-        { op: 'delete', ref: edit.ref },
-        { ...parsed.proposedOp, key: edit.ref },
-        ...reparseTail(req(doc, edit.ref)),
-      ])
+      const moved = fold(
+        doc,
+        [
+          { op: 'delete', ref: edit.ref },
+          { ...parsed.proposedOp, key: edit.ref },
+          ...reparseTail(req(doc, edit.ref)),
+        ],
+        options,
+      )
       // The parse normalizes the modal, so the re-added requirement may be identical in every
       // slot — which is the property under test: whether the tool reads the edited sentence as
       // the same obligation. So the moved DOCUMENT cannot show the move happened, and `changed`
@@ -1243,7 +1487,7 @@ const applyEdit = async (edit: Edit, doc: RequirementsDocument): Promise<Applied
           }
     }
     case 'ops': {
-      const moved = fold(doc, edit.ops)
+      const moved = fold(doc, edit.ops, options)
       return 'kind' in moved
         ? moved
         : {
@@ -1294,6 +1538,11 @@ export interface GamingWiring {
   readonly solver: Layer.Layer<SolverService>
   /** The env-selected embedder service — the stub under `SYMSPEC_EMBED_STUB=1`. */
   readonly envEmbedder: Layer.Layer<EmbedderService>
+  /**
+   * `apply`'s mutate options (`app/operations/mutate-options.ts`), so every fixture and every
+   * move is folded behind exactly the write-time fences an agent's `apply` meets.
+   */
+  readonly mutateOptions: MutateOptions
 }
 
 /**
@@ -1449,15 +1698,22 @@ export const runMatrix = async (
     try {
       const run = (doc: RequirementsDocument, knobs: Knobs, embedder: EmbedderChoice) =>
         runCheck(wiring, runtime, doc, knobs, embedder, fixture.signal)
-      const doc = buildDoc(fixture.ops)
+      const doc = buildDoc(fixture.ops, wiring.mutateOptions)
       const baseline = await run(doc, ARMED, 'orthogonal')
       baselines.set(fixture.id, baseline)
       if ('ops' in fixture.control) {
-        controls.set(fixture.id, await run(buildDoc(fixture.control.ops), ARMED, 'orthogonal'))
+        controls.set(
+          fixture.id,
+          await run(buildDoc(fixture.control.ops, wiring.mutateOptions), ARMED, 'orthogonal'),
+        )
       }
       const baselineCodes = baseline.kind === 'ran' ? baseline.codes : []
       for (const move of moves) {
-        const applied = await applyEdit(move.edit({ fixture, doc, baselineCodes }), doc)
+        const applied = await applyEdit(
+          move.edit({ fixture, doc, baselineCodes }),
+          doc,
+          wiring.mutateOptions,
+        )
         const outcome: Outcome =
           applied.kind === 'check'
             ? await run(applied.doc, applied.knobs, applied.embedder)
@@ -1584,6 +1840,7 @@ export const SHARDS: Readonly<Record<string, readonly string[]>> = {
   b: ['one-trigger-contradiction', 'contrary-pair'],
   c: ['numeric-conflict', 'temporal-conflict'],
   d: ['glossary-bridged', 'term-bridged'],
+  e: ['registered-contrary'],
 }
 
 /**

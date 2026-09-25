@@ -33,6 +33,7 @@
 
 import { Effect, Layer, ManagedRuntime } from 'effect'
 import type { RequirementsDocument } from '../domain/requirements/document.ts'
+import type { MutateOptions } from '../domain/requirements/mutate.ts'
 import { DocPath, DocStore, makeDocPath } from '../ports/doc-store.ts'
 import { embedderLayerOf } from '../ports/embedder.ts'
 import { ErrDocNotFound } from '../ports/errors.ts'
@@ -59,25 +60,26 @@ export const REPORT_CORPORA = ['eval-rounds', 'fabrication', 'gaming', 'gaming-c
  *   documents that reach a clean verdict under the armed run and a lost `verified` shows up.
  *
  * Built fresh on every call: the gaming documents carry fresh UUIDs, so nothing here may depend
- * on an id surviving between two calls.
+ * on an id surviving between two calls. The gaming documents fold under `apply`'s own options,
+ * handed in as the harness hands them in, so a corpus document is one `apply` could write.
  */
-export const reportSources = (): readonly ReportSource[] => {
+export const reportSources = (options: MutateOptions): readonly ReportSource[] => {
   const out: ReportSource[] = []
   for (const c of evalRoundCases()) {
     out.push({ label: `eval-rounds/${c.id}`, doc: asRequirementsDocument(c.doc) })
   }
   for (const c of fabricationCases()) out.push({ label: `fabrication/${c.id}`, doc: c.doc })
   for (const f of FIXTURES) {
-    out.push({ label: `gaming/${f.id}`, doc: buildDoc(f.ops) })
+    out.push({ label: `gaming/${f.id}`, doc: buildDoc(f.ops, options) })
     if ('ops' in f.control) {
-      out.push({ label: `gaming-control/${f.id}`, doc: buildDoc(f.control.ops) })
+      out.push({ label: `gaming-control/${f.id}`, doc: buildDoc(f.control.ops, options) })
     }
   }
   return out
 }
 
-/** The composition the test supplies: the real `check` operation and the real solver layer. */
-export type ReportCorpusWiring = Pick<GamingWiring, 'check' | 'solver'>
+/** The composition the test supplies: the real `check` operation, solver layer and mutate options. */
+export type ReportCorpusWiring = Pick<GamingWiring, 'check' | 'solver' | 'mutateOptions'>
 
 const list = (items: readonly string[]): string => (items.length === 0 ? '-' : items.join(' '))
 
@@ -149,7 +151,7 @@ const reportRow = async (
 /** Every row, sorted by label, newline-terminated — the committed snapshot's exact text. */
 export const renderReportCorpus = async (
   wiring: ReportCorpusWiring,
-  sources: readonly ReportSource[] = reportSources(),
+  sources: readonly ReportSource[] = reportSources(wiring.mutateOptions),
 ): Promise<string> => {
   const rows: string[] = []
   // SERIAL: the z3 module is process-global (`primeZ3`/`resetZ3`), so two runs in flight in one

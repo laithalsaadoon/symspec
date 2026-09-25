@@ -73,7 +73,7 @@ Failure:
 | Operation | What it does |
 |---|---|
 | `symspec init` | Create an empty requirements document at the resolved path |
-| `symspec import` | Import a reproduce-op stream (JSONL on stdin or --file) into a new v3 document |
+| `symspec import` | Import a reproduce-op stream (JSONL on stdin or --file) into a new v3 document; exits 1 when a write fence refuses a record, still writing the rest |
 | `symspec parse` | Parse prose into structured EARS requirements and emit the ready-to-apply add ops |
 | `symspec add` | Add one requirement from EARS slots, or from a parsed line of prose |
 | `symspec update` | Set or clear one attribute on one requirement, or on every requirement matching a filter |

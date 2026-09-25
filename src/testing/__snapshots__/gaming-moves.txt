@@ -4,7 +4,20 @@ registered-caught	weakening	split-system
 registered-caught	strengthening	alias-contraries-glossary@forward	
 registered-caught	strengthening	alias-contraries-glossary@reverse	
 registered-escapes-known-gap	strengthening	alias-contraries-term@forward	AC-4-6
-registered-escapes-known-gap	strengthening	alias-contraries-term@reverse	AC-4-6,AC-4-2
+registered-escapes-known-gap	strengthening	alias-contraries-term@reverse	AC-4-6
+registered-caught	strengthening	term-over-phrase@inside-canonical	
+registered-caught	strengthening	term-over-phrase@equal-canonical	
+registered-caught	strengthening	term-over-phrase@around-canonical	
+registered-caught	strengthening	term-over-phrase@straddle-canonical	
+registered-caught	strengthening	term-over-phrase@straddle-alias	
+registered-caught	strengthening	glossary-over-term@equal/term-then-glossary	
+registered-caught	strengthening	glossary-over-term@equal/glossary-then-term	
+registered-escapes-known-gap	strengthening	glossary-over-term@containing/term-then-glossary	S4 / AC-4-2 (cross-table fence + check twin)
+registered-escapes-known-gap	strengthening	glossary-over-term@containing/glossary-then-term	S4 / AC-4-2 (cross-table fence + check twin)
+registered-caught	strengthening	glossary-over-term@equal-canonical/term-then-glossary	
+registered-caught	strengthening	glossary-over-term@equal-canonical/glossary-then-term	
+registered-escapes-known-gap	strengthening	glossary-over-term@containing-canonical/term-then-glossary	S4 / AC-4-2 (cross-table fence + check twin)
+registered-escapes-known-gap	strengthening	glossary-over-term@containing-canonical/glossary-then-term	S4 / AC-4-2 (cross-table fence + check twin)
 registered-escapes-known-gap	weakening	waive-by-code	AC-5-6
 registered-escapes-known-gap	weakening	delete-requirement@first	AC-5-2
 registered-escapes-known-gap	weakening	delete-requirement@second	AC-5-2
@@ -17,7 +30,7 @@ registered-caught	weakening	shall-to-should@first
 registered-caught	weakening	shall-to-should@second	
 registered-caught	strengthening	link-culprits	
 registered-escapes-known-gap	weakening	unglossary	AC-5-7
-registered-caught	weakening	unantonym	
+registered-escapes-known-gap	weakening	unantonym	AC-5-9
 registered-escapes-known-gap	weakening	unterm	AC-5-7
 registered-caught	weakening	declassify-constraint	
 registered-escapes-known-gap	weakening	rebind-effect	AC-5-9

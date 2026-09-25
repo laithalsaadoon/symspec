@@ -529,6 +529,77 @@ describe('the side tables', () => {
     })
 
     /**
+     * The same rule from the ALIAS's side. Substitution is longest-first and one pass, so it is
+     * a congruence exactly when no alias overlaps another phrase of the table. An alias inside,
+     * equal to, around, or straddling a committed phrase rewrites some of that phrase's
+     * occurrences and not others: with `purchase order ← customer order` committed,
+     * `invoice ← purchase` turns "charge the purchase order" into "charge the invoice order"
+     * while "charge the customer order" still becomes "charge the purchase order". Measured on
+     * the built CLI before this fence: the contradiction between the two was gone, verified true.
+     * Run under both key spaces, because the needle split is where the canonical-side check was
+     * once inert.
+     */
+    describe.each([
+      ['the trim default', {}],
+      ['the production normalizer', { normalizeHead: normalize }],
+    ] as const)('REFUSES an alias that overlaps a committed phrase, under %s', (_, options) => {
+      const base = ok(emptyDocument(), {
+        op: 'term',
+        canonical: 'purchase order',
+        alias: 'customer order',
+      }).document
+      it.each([
+        ['inside a canonical', 'invoice', 'purchase', 'sits inside the committed term canonical'],
+        [
+          'equal to a canonical',
+          'ledger order',
+          'purchase order',
+          'is the committed term canonical',
+        ],
+        ['around a canonical', 'ledger entry', 'charge the purchase order', 'contains'],
+        ['straddling a canonical', 'ledger entry', 'charge the purchase', 'overlaps an edge of'],
+        ['straddling an alias', 'ledger entry', 'charge the customer', 'overlaps an edge of'],
+        [
+          'around an alias',
+          'ledger entry',
+          'big customer order',
+          'contains the committed term alias',
+        ],
+        [
+          'inside its own canonical',
+          'purchase order',
+          'order',
+          'contains the committed term alias',
+        ],
+      ])('%s', (_shape, canonical, alias, wording) => {
+        const result = applyOp(base, term(canonical, alias), TS, options)
+        expect(isOpFailure(result)).toBe(true)
+        if (!isOpFailure(result)) return
+        expect(result.code).toBe('ERR_USAGE')
+        expect(result.error).toContain(wording)
+        expect(result.error).toContain('ambiguous')
+      })
+
+      it('REFUSES a canonical that straddles a committed alias, the canonical-side twin', () => {
+        const result = applyOp(base, term('priority customer', 'vip'), TS, options)
+        expect(isOpFailure(result)).toBe(true)
+        if (!isOpFailure(result)) return
+        expect(result.error).toContain('overlaps an edge of the committed term alias')
+      })
+
+      it('ACCEPTS overlapping canonicals and a disjoint alias: a canonical is never matched', () => {
+        // Inside, and around, the committed canonical: "procurement order" rewrites to the
+        // committed canonical's own text, so the two classes still agree.
+        const inside = applyOp(base, term('purchase', 'procurement'), TS, options)
+        expect(isOpFailure(inside)).toBe(false)
+        const around = applyOp(base, term('purchase order system', 'billing platform'), TS, options)
+        expect(isOpFailure(around)).toBe(false)
+        const sibling = applyOp(base, term('purchase order', 'client order'), TS, options)
+        expect(isOpFailure(sibling)).toBe(false)
+      })
+    })
+
+    /**
      * NEW, and the one that keeps the feature SOUND. Delegated to the injected validator,
      * because `domain/requirements` must not import the engine — so the refusal is only
      * reachable when a validator is supplied, exactly as `validateAntonyms` is.

@@ -11,6 +11,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { MUTATE_OPTIONS } from '../app/operations/mutate-options.ts'
 import { OP_VERBS, type OpVerb } from '../domain/requirements/ops.ts'
 import {
   AC_8_2,
@@ -42,6 +43,9 @@ const specClauses = (): readonly string[] => {
   const last = clauses.pop() ?? ''
   return [...clauses, ...last.split(/, (?:and )?/)]
 }
+
+/** `closedBy`: an AC id, optionally led by its plan slice and followed by what closes it. */
+const CLOSED_BY = /^(?:S\d+ \/ )?(AC-\d+-\d+)(?: \([^()]+\))?$/
 
 const REGISTERED = new Set(MOVES.map((m) => m.id))
 const PENDING = new Set(NOT_APPLICABLE_YET.map((p) => p.id))
@@ -85,7 +89,11 @@ describe('the gaming registry', () => {
     // codes, so it gets a placeholder: which codes it waives does not change which verb it uses.
     const emitted = new Map<string, Set<OpVerb>>()
     for (const fixture of FIXTURES) {
-      const ctx = { fixture, doc: buildDoc(fixture.ops), baselineCodes: ['FND_PLACEHOLDER'] }
+      const ctx = {
+        fixture,
+        doc: buildDoc(fixture.ops, MUTATE_OPTIONS),
+        baselineCodes: ['FND_PLACEHOLDER'],
+      }
       for (const move of MOVES) {
         const verbs = emitted.get(move.id) ?? new Set<OpVerb>()
         for (const verb of editVerbs(move.edit(ctx), ctx)) verbs.add(verb)
@@ -118,7 +126,7 @@ describe('the gaming registry', () => {
     const moves = MOVES.filter((m) => m.id.startsWith('shall-to-should@'))
     expect(moves.map((m) => m.id)).toEqual(['shall-to-should@first', 'shall-to-should@second'])
     for (const fixture of FIXTURES) {
-      const doc = buildDoc(fixture.ops)
+      const doc = buildDoc(fixture.ops, MUTATE_OPTIONS)
       const ctx = { fixture, doc, baselineCodes: [] }
       for (const move of moves) {
         const edit = move.edit(ctx)
@@ -135,6 +143,31 @@ describe('the gaming registry', () => {
     }
   })
 
+  it('glossary-over-term writes the phrase its side names: the alias side the alias, the canonical side the canonical', () => {
+    // Both sides escape on term-bridged, so the matrix alone cannot tell a canonical cell that
+    // really writes the canonical from one that quietly writes the alias again. What the move
+    // types is the difference a cross-table fence has to close on BOTH sides.
+    const fixture = FIXTURES.find((f) => f.id === 'term-bridged')
+    expect(fixture).toBeDefined()
+    if (fixture === undefined) return
+    const doc = buildDoc(fixture.ops, MUTATE_OPTIONS)
+    const entry = doc.terms[0]
+    expect(entry).toBeDefined()
+    if (entry === undefined) return
+    const ctx = { fixture, doc, baselineCodes: [] }
+    for (const move of MOVES.filter((m) => m.id.startsWith('glossary-over-term@'))) {
+      const edit = move.edit(ctx)
+      expect(edit.kind, move.id).toBe('ops')
+      if (edit.kind !== 'ops') continue
+      const glossary = edit.ops.find((o) => o.op === 'glossary')
+      const alias = glossary !== undefined && 'alias' in glossary ? String(glossary.alias) : ''
+      const side = move.id.includes('-canonical') ? entry.canonical : (entry.aliases[0] ?? '')
+      const other = move.id.includes('-canonical') ? (entry.aliases[0] ?? '') : entry.canonical
+      expect(alias.toLowerCase(), move.id).toContain(side.toLowerCase())
+      expect(alias.toLowerCase(), move.id).not.toContain(other.toLowerCase())
+    }
+  })
+
   it('every KNOWN_ESCAPES row names a real pair, once, closed by a Story 4–7 AC the spec defines', () => {
     const fixtures = new Set(FIXTURES.map((f) => f.id))
     const pairs = KNOWN_ESCAPES.map((k) => `${k.fixture} × ${k.move}`)
@@ -145,9 +178,12 @@ describe('the gaming registry', () => {
       expect(REGISTERED.has(k.move), label).toBe(true)
       // Stories 4–7 are the ones that close gaming moves; Story 8 is this gate, and Stories 1–3
       // are already merged, so a row naming either is mis-attributed.
-      expect(k.closedBy, label).toMatch(/^AC-[4-7]-\d+$/)
+      // A row may name the plan slice that lands the AC and what the slice does, as
+      // `S4 / AC-4-2 (cross-table fence + check twin)`; the AC itself is still what is guarded.
+      const cited = CLOSED_BY.exec(k.closedBy)?.[1]
+      expect(cited, `${label}: closedBy ${k.closedBy}`).toMatch(/^AC-[4-7]-\d+$/)
       expect(SPEC, `${label} cites ${k.closedBy}, which the spec does not define`).toMatch(
-        new RegExp(`^${k.closedBy}\\b`, 'm'),
+        new RegExp(`^${cited}\\b`, 'm'),
       )
       expect(k.why.length, label).toBeGreaterThan(40)
     }

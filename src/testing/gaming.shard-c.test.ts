@@ -10,6 +10,7 @@ import { Effect } from 'effect'
 import { embedderServiceLayer } from '../adapters/embedding/embedder.ts'
 import { solverServiceLayer } from '../adapters/z3/solver-service.ts'
 import { checkOp } from '../app/operations/check.ts'
+import { MUTATE_OPTIONS } from '../app/operations/mutate-options.ts'
 import { exitCodeForEnvelope } from '../app/runtime/exit.ts'
 import { runOperation } from '../app/runtime/operation.ts'
 import { describeGamingShard } from './gaming.ts'
@@ -21,4 +22,5 @@ describeGamingShard('c', {
     ),
   solver: solverServiceLayer,
   envEmbedder: embedderServiceLayer,
+  mutateOptions: MUTATE_OPTIONS,
 })
