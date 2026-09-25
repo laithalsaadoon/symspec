@@ -189,24 +189,29 @@ const OPPOSITION_MESSAGE =
   '`symspec glossary add "start the pump" "halt the pump"` instead. Committing the wrong ' +
   'one MANUFACTURES a false contradiction.'
 
-/** Every reason in v4 union, so a new one cannot slip past this sweep. */
-const EVERY_REASON: readonly CoverageDemotion['reason'][] = [
-  'uncovered-requirement',
-  'open-opposition-candidate',
-  'no-decide-tier-comparison',
-  'semantic-tier-skipped',
-  'excluded-from-formal',
-  'quantity-alias-candidate',
-  'relational-reasoning-not-attempted',
-  'numeric-bounds-uncompared',
-  'solver-budget-exhausted',
-  'inconclusive-group',
-  'solver-unknown',
-  'conditional-conflict-unchecked',
-  'run-weakened',
-  'opposite-polarity-near-duplicate',
-  'number-spelling-candidate',
-]
+/**
+ * Every reason in the union, as a `Record` keyed on it, so `tsc` refuses a reason the sweep
+ * does not list: a hand-maintained array is how `contrary-glossary-alias` slipped past it.
+ */
+const REASONS: Record<CoverageDemotion['reason'], true> = {
+  'uncovered-requirement': true,
+  'open-opposition-candidate': true,
+  'no-decide-tier-comparison': true,
+  'semantic-tier-skipped': true,
+  'excluded-from-formal': true,
+  'quantity-alias-candidate': true,
+  'relational-reasoning-not-attempted': true,
+  'numeric-bounds-uncompared': true,
+  'solver-budget-exhausted': true,
+  'inconclusive-group': true,
+  'solver-unknown': true,
+  'conditional-conflict-unchecked': true,
+  'run-weakened': true,
+  'opposite-polarity-near-duplicate': true,
+  'number-spelling-candidate': true,
+  'contrary-glossary-alias': true,
+}
+const EVERY_REASON = Object.keys(REASONS) as readonly CoverageDemotion['reason'][]
 
 const CONTEXT: RepairContext = {
   exclusionsById: new Map([
