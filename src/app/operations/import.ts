@@ -43,6 +43,16 @@
  * not a shell. It recognizes exactly what v4 emits and reports anything
  * else as unrecognized rather than attempting it.
  *
+ * ## Side-table records pass the fences `apply` runs
+ *
+ * Every glossary, antonym, and waiver record is folded through the same `applyOp` as `apply`,
+ * under the same `MUTATE_OPTIONS` (`./mutate-options.ts`). So a record `apply` would refuse —
+ * an antonym pair closing an odd polarity cycle, a glossary alias that is a contrary of its
+ * canonical — is refused here too, reported in `problems[]` with its line, and the rest of the
+ * stream still imports. The tables land exactly as `apply` would store them, normalization
+ * included. A private fold would be a second write path with fewer fences, and a document it
+ * produced would carry records no op could have committed.
+ *
  * ## Forward references by key, and why order still does not matter
  *
  * v4 emits edge ops AFTER every `add`, so a naive in-order fold works. But
@@ -85,6 +95,8 @@ import {
   VERIFICATION_METHODS,
   type Waiver,
 } from '../../domain/requirements/document.ts'
+import { applyOp, isOpFailure } from '../../domain/requirements/mutate.ts'
+import type { DocumentOp } from '../../domain/requirements/ops.ts'
 import { renderSentence } from '../../domain/requirements/render.ts'
 import { resolveId } from '../../domain/requirements/resolve.ts'
 import { DOC_PATH_CONVENTION, DocPath, DocStore } from '../../ports/doc-store.ts'
@@ -92,6 +104,7 @@ import { ErrDocExists, ErrUsage } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
 import { ok } from '../runtime/envelope.ts'
 import { defineOperation } from '../runtime/operation.ts'
+import { MUTATE_OPTIONS } from './mutate-options.ts'
 
 // ---------------------------------------------------------------------------
 // The op-record schema
@@ -398,11 +411,12 @@ const derivedId = (op: AddOpRecord): string => {
 interface FoldState {
   readonly document: RequirementsDocument
   readonly requirements: Record<string, Requirement>
-  readonly glossary: GlossaryEntry[]
-  readonly antonyms: AntonymPair[]
-  readonly waivers: Waiver[]
+  glossary: readonly GlossaryEntry[]
+  antonyms: readonly AntonymPair[]
+  waivers: readonly Waiver[]
   readonly unresolved: { readonly op: string; readonly ref: string; readonly detail: string }[]
   readonly duplicates: string[]
+  readonly problems: StreamProblem[]
 }
 
 /** Add one requirement, or report a duplicate id/key rather than overwriting. */
@@ -495,58 +509,75 @@ const applyEdge = (state: FoldState, op: typeof EdgeOp.Type): void => {
   state.requirements[fromId] = { ...source, [relation]: [...source[relation], toId] }
 }
 
-/** Apply a glossary record, merging aliases into an existing canonical entry
- * rather than creating a second entry for the same phrase — v4 emits one
- * command PER ALIAS, so a naive append would produce N single-alias entries where
- * the source document had one N-alias entry. */
-const applyGlossary = (state: FoldState, op: typeof GlossaryOp.Type): void => {
-  const existing = state.glossary.find((e) => e.canonical === op.canonical)
-  if (existing === undefined) {
-    state.glossary.push({ canonical: op.canonical, aliases: [op.alias] })
+/** The document the fold has built so far — what a side-table record is applied against. */
+const snapshotOf = (state: FoldState): RequirementsDocument => ({
+  ...state.document,
+  requirements: state.requirements,
+  glossary: [...state.glossary],
+  antonyms: [...state.antonyms],
+  waivers: [...state.waivers],
+})
+
+/**
+ * Apply one side-table record through `apply`'s own `applyOp`, under `apply`'s own fences.
+ *
+ * That one call is what makes the tables land as `apply` stores them: aliases merge under an
+ * existing canonical in normalized space (v4 emits one command PER ALIAS, and N appends would
+ * give N single-alias entries), an antonym pair is unordered and stored normalized, and a
+ * repeated waiver is idempotent with the first reason kept. A refusal is a PROBLEM on the
+ * record's line rather than an aborted import, matching how an unreadable record is reported.
+ */
+const applySideTable = (
+  state: FoldState,
+  op: Extract<DocumentOp, { op: 'glossary' | 'antonym' | 'waive' }>,
+  line: number,
+  timestamp: string,
+): void => {
+  const result = applyOp(snapshotOf(state), op, timestamp, MUTATE_OPTIONS)
+  if (isOpFailure(result)) {
+    state.problems.push({
+      line,
+      detail: `The \`${op.op}\` record was refused by the write-time check \`apply\` runs (${result.code}), so it was NOT imported: ${result.error}`,
+    })
     return
   }
-  if (existing.aliases.includes(op.alias)) return
-  state.glossary[state.glossary.indexOf(existing)] = {
-    canonical: existing.canonical,
-    aliases: [...existing.aliases, op.alias],
-  }
-}
-
-/** Apply an antonym record. The pair is UNORDERED, so (a,b) and (b,a) are the same
- * entry and the second is a no-op. */
-const applyAntonym = (state: FoldState, op: typeof AntonymOp.Type): void => {
-  const present = state.antonyms.some(
-    (p) => (p.a === op.a && p.b === op.b) || (p.a === op.b && p.b === op.a),
-  )
-  if (!present) state.antonyms.push({ a: op.a, b: op.b })
+  state.glossary = result.document.glossary
+  state.antonyms = result.document.antonyms
+  state.waivers = result.document.waivers
 }
 
 /**
- * Apply a waiver record, resolving an optional requirement scope through the same
- * chokepoint so a scope written as a key lands as the UUID the schema requires.
+ * Apply a waiver record, resolving an optional requirement scope FIRST so an unresolvable one
+ * widens rather than refuses.
  *
  * A scope that does not resolve drops the SCOPE, not the waiver: an unscoped
  * waiver is broader than intended but still suppresses the finding the author
  * decided to accept, whereas dropping the waiver would resurrect a
- * knowingly-accepted finding. The widening is disclosed in `unresolved[]`.
+ * knowingly-accepted finding. The widening is disclosed in `unresolved[]`. A scope that does
+ * resolve is handed on as the UUID, and the record then passes the same fold as any other.
  */
-const applyWaive = (state: FoldState, op: typeof WaiveOp.Type): void => {
-  if (op.ref === undefined) {
-    state.waivers.push({ code: op.code, reason: op.reason })
+const applyWaive = (
+  state: FoldState,
+  op: typeof WaiveOp.Type,
+  line: number,
+  timestamp: string,
+): void => {
+  const { ref, ...unscoped } = op
+  if (ref === undefined) {
+    applySideTable(state, unscoped, line, timestamp)
     return
   }
-  const snapshot: RequirementsDocument = { ...state.document, requirements: state.requirements }
-  const scoped = resolveId(snapshot, op.ref)
+  const scoped = resolveId(snapshotOf(state), ref)
   if (scoped === undefined) {
     state.unresolved.push({
       op: 'waive',
-      ref: op.ref,
-      detail: `The waiver scope "${op.ref}" matches no imported requirement, so the waiver for ${op.code} was imported UNSCOPED (document-wide) rather than dropped — dropping it would resurrect a finding someone reviewed and accepted.`,
+      ref,
+      detail: `The waiver scope "${ref}" matches no imported requirement, so the waiver for ${op.code} was imported UNSCOPED (document-wide) rather than dropped — dropping it would resurrect a finding someone reviewed and accepted.`,
     })
-    state.waivers.push({ code: op.code, reason: op.reason })
+    applySideTable(state, unscoped, line, timestamp)
     return
   }
-  state.waivers.push({ code: op.code, requirementId: scoped, reason: op.reason })
+  applySideTable(state, { ...unscoped, ref: scoped }, line, timestamp)
 }
 
 /** What the fold produced. */
@@ -626,6 +657,11 @@ export const foldImportStream = (
       }
       ops.push({ line: entry.line, op: parsed })
     }
+    // STREAM order. The two spellings were collected separately, and folding every record
+    // before every command would let a glossary record meet the fences before the antonym
+    // command written above it — committing a contrary alias `apply` over the same lines
+    // refuses. Problems are reported in the same order, so they read top to bottom.
+    ops.sort((x, y) => x.line - y.line)
 
     const state: FoldState = {
       document: emptyDocument(),
@@ -635,13 +671,14 @@ export const foldImportStream = (
       waivers: [],
       unresolved: [],
       duplicates: [],
+      problems,
     }
 
     // PASS 1 — every requirement, so pass 2 resolves against the complete set.
     for (const { op } of ops) if (op.op === 'add') applyAdd(state, op, timestamp)
 
     // PASS 2 — edges and side tables.
-    for (const { op } of ops) {
+    for (const { line, op } of ops) {
       switch (op.op) {
         case 'add':
           break
@@ -652,13 +689,11 @@ export const foldImportStream = (
           applyEdge(state, op)
           break
         case 'glossary':
-          applyGlossary(state, op)
-          break
         case 'antonym':
-          applyAntonym(state, op)
+          applySideTable(state, op, line, timestamp)
           break
         case 'waive':
-          applyWaive(state, op)
+          applyWaive(state, op, line, timestamp)
           break
       }
     }
@@ -666,9 +701,9 @@ export const foldImportStream = (
     const document: RequirementsDocument = {
       ...state.document,
       requirements: state.requirements,
-      glossary: state.glossary,
-      antonyms: state.antonyms,
-      waivers: state.waivers,
+      glossary: [...state.glossary],
+      antonyms: [...state.antonyms],
+      waivers: [...state.waivers],
     }
 
     let edges = 0
@@ -691,7 +726,7 @@ export const foldImportStream = (
       gaps,
       unresolved: state.unresolved,
       duplicates: state.duplicates,
-      problems,
+      problems: [...problems].sort((x, y) => x.line - y.line),
     }
   })
 
@@ -713,7 +748,8 @@ export const foldImportStream = (
  * The payload carries what was imported AND everything that was not: `gaps[]`
  * passed through from v4 verbatim, `unresolved[]` for edges dropped and
  * waiver scopes widened, `duplicates[]` for records that would have overwritten,
- * and `problems[]` for lines it could not read. Every one of those is a fact the
+ * and `problems[]` for lines it could not read or records `apply`'s write-time checks
+ * refused. Every one of those is a fact the
  * caller needs and none of them is a failure — an import that got 82 of 82
  * requirements and disclosed one un-reproducible timestamp gap SUCCEEDED, and
  * saying otherwise would train an agent to ignore the exit code.

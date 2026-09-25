@@ -33,6 +33,8 @@ import { fileURLToPath } from 'node:url'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { RELATIONS, type Relation, type Requirement } from '../../domain/requirements/document.ts'
+import { foldOps } from '../../domain/requirements/mutate.ts'
+import type { DocumentOp } from '../../domain/requirements/ops.ts'
 import { renderSentence } from '../../domain/requirements/render.ts'
 import { resolveRef } from '../../domain/requirements/resolve.ts'
 import {
@@ -42,6 +44,7 @@ import {
   parseSideTableCommand,
   tokenizeCommand,
 } from './import.ts'
+import { MUTATE_OPTIONS } from './mutate-options.ts'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -537,5 +540,86 @@ describe('fold semantics', () => {
     const result = fold('')
     expect(result.counts.requirements).toBe(0)
     expect(result.document.docVersion).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The write-time fences — the SAME ones `apply` runs
+// ---------------------------------------------------------------------------
+
+describe('side-table records pass the fences `apply` runs', () => {
+  it('REFUSES the antonym record that closes an odd polarity cycle, and keeps the rest', () => {
+    // A triangle of invented verbs is odd whatever the seed table holds: the third pair demands
+    // zork ≡ ¬frob while the first two already make zork ≡ frob. An antonym is the one record
+    // whose wrong value MANUFACTURES a contradiction, so an import that committed it would write
+    // a document `apply` could never have produced.
+    const result = fold(
+      [
+        'symspec antonym add zork blip',
+        'symspec antonym add blip frob',
+        'symspec antonym add frob zork',
+      ].join('\n'),
+    )
+    expect(result.document.antonyms).toEqual([
+      { a: 'zork', b: 'blip' },
+      { a: 'blip', b: 'frob' },
+    ])
+    expect(result.problems).toHaveLength(1)
+    expect(result.problems[0]?.line).toBe(3)
+    expect(result.problems[0]?.detail).toContain('inconsistent')
+  })
+
+  it('REFUSES a glossary alias that is a contrary of its canonical', () => {
+    // The seed pair open/close says the two cannot both happen; an entry naming both says they
+    // are one action. `apply` refuses it (validateGlossary), so `import` must too.
+    const result = fold('{"op":"glossary","canonical":"open the door","alias":"close the door"}\n')
+    expect(result.document.glossary).toEqual([])
+    expect(result.problems).toHaveLength(1)
+    expect(result.problems[0]?.line).toBe(1)
+    expect(result.problems[0]?.detail).toContain('contrary')
+  })
+
+  it('folds records in STREAM order, whichever spelling each line uses', () => {
+    // Command lines and JSON records are two spellings of one stream. Folding every record
+    // before every command would apply this glossary alias before the antonym that makes it a
+    // contrary, so `apply` over the same lines refuses what `import` would commit.
+    const result = fold(
+      [
+        'symspec antonym add heat cool',
+        '{"op":"glossary","canonical":"heat the cabin","alias":"cool the cabin"}',
+      ].join('\n'),
+    )
+    expect(result.document.antonyms).toEqual([{ a: 'heat', b: 'cool' }])
+    expect(result.document.glossary).toEqual([])
+    expect(result.problems.map((p) => p.line)).toEqual([2])
+  })
+
+  it('writes the side tables EXACTLY as `apply` folds the same records', () => {
+    // Parity, not a list of refusals: any fence `apply` gains, and any normalization it
+    // applies, reaches `import` because both fold through one `applyOp` under one options set.
+    const records: readonly DocumentOp[] = [
+      { op: 'glossary', canonical: 'Issue a Token', alias: 'grant a token' },
+      { op: 'glossary', canonical: 'issue a token', alias: 'mint a token' },
+      { op: 'antonym', a: 'Lock', b: 'Unlatch' },
+      { op: 'antonym', a: 'unlatch', b: 'lock' },
+      { op: 'waive', code: 'GTWR_R6', reason: 'reviewed', ref: 'G1' },
+      { op: 'waive', code: 'GTWR_R6', reason: 'reviewed again', ref: 'G1' },
+    ]
+    const imported = fold(
+      [addLine({ id: ID_A, key: 'G1' }), ...records.map((r) => JSON.stringify(r))].join('\n'),
+    )
+    const base = fold(addLine({ id: ID_A, key: 'G1' })).document
+    const applied = foldOps(base, records, TIMESTAMP, MUTATE_OPTIONS)
+    expect(applied.abortedAt).toBeUndefined()
+    expect(imported.problems).toEqual([])
+    expect({
+      glossary: imported.document.glossary,
+      antonyms: imported.document.antonyms,
+      waivers: imported.document.waivers,
+    }).toEqual({
+      glossary: applied.document.glossary,
+      antonyms: applied.document.antonyms,
+      waivers: applied.document.waivers,
+    })
   })
 })
