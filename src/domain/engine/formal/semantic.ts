@@ -515,8 +515,8 @@ export async function findSimilarSemantic(
         someKeyPair(atomA, atomB, [a.systemResponse, b.systemResponse], differsOnlyByInflection)
       let antonymHint = ''
       if (sameTrigger && !oppositePolarityVariant) {
-        const [headA] = fuseNegatingPrefix(normalize(a.systemResponse))
-        const [headB] = fuseNegatingPrefix(normalize(b.systemResponse))
+        const [headA] = headOf(normalize(a.systemResponse), ANTONYM_INDEX)
+        const [headB] = headOf(normalize(b.systemResponse), ANTONYM_INDEX)
         antonymHint =
           headA !== '' && headB !== '' && headA !== headB
             ? ` These fire under the SAME trigger, so if they are polar OPPOSITES rather than ` +
@@ -641,6 +641,23 @@ function fuseNegatingPrefix(body: string): [string, string] {
 }
 
 /**
+ * Split a normalized response body into its de-inflected HEAD and rest the way the atomizer does
+ * (atomize.ts `antonymReading`): a two-token head the antonym table lists ("roll back", "rolls
+ * back") is read whole before the one-token one, and otherwise {@link fuseNegatingPrefix} applies.
+ * Reading only the first token made "roll back the batch from the ledger" the head `roll` with rest
+ * `back_the_batch_…`, which met no class and lined up with nothing, so a pair the table relates
+ * escaped the candidate tier and `verified` came back true over it.
+ */
+function headOf(body: string, antonyms: ReadonlyMap<string, AntonymEntry>): [string, string] {
+  const tokens = body.split('_')
+  if (tokens.length >= 2) {
+    const two = `${deInflectHead(tokens[0] as string)}_${tokens[1] as string}`
+    if (antonyms.has(two)) return [two, tokens.slice(2).join('_')]
+  }
+  return fuseNegatingPrefix(body)
+}
+
+/**
  * True when two de-inflected verb heads relate by a negating prefix —
  * `de-`/`un-`/`dis-` — i.e. one is exactly the other with the prefix attached
  * (energize/de_energize → deenergize after normalize drops the hyphen? No:
@@ -724,8 +741,8 @@ function oppositionShapesOf(
   if (committed !== undefined) readings.push([committed[0], committed[1], true])
   const shapes: OppositionShape[] = []
   for (const [x, y, fromCommitted] of readings) {
-    const [headA, restA] = fuseNegatingPrefix(x)
-    const [headB, restB] = fuseNegatingPrefix(y)
+    const [headA, restA] = headOf(x, antonyms)
+    const [headB, restB] = headOf(y, antonyms)
     if (restA === '' || headA === headB) continue
     const entryA = antonyms.get(headA)
     const entryB = antonyms.get(headB)

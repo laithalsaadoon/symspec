@@ -501,6 +501,31 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
     }
   })
 
+  it('a two-token head the table lists is read whole, so its pair demotes too: roll back', async () => {
+    // The atomizer probes "roll back" before "roll" (antonymReading); the candidate tier read only
+    // the first token, so `roll` met no class, the rests ("back the batch on …" / "the batch at
+    // …") never lined up, and nothing demoted: `verified: true` over a pair the table relates.
+    // The one-token spelling "rollback" was caught all along; only the two-token path missed.
+    const orthogonal: Embedder = async (texts) =>
+      texts.map((_, i) => Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1]))
+    for (const [x, y] of [
+      ['commit the batch at the ledger', 'roll back the batch on the ledger'],
+      ['commits the batch at the ledger', 'rolls back the batch on the ledger'],
+      ['roll back the batch on the ledger', 'commit the batch at the ledger'],
+    ] as const) {
+      const report = await runCheck(await docOf([`${BLOCK} ${x}.`, `${BLOCK} ${y}.`]), {
+        semantic: { embedder: orthogonal },
+      })
+      expect(
+        report.findings.filter((f) => f.severity === 'error'),
+        `${x} / ${y}`,
+      ).toEqual([])
+      const candidate = report.findings.find((f) => f.code === 'FND_OPPOSITION_CANDIDATE')
+      expect(candidate?.message, `${x} / ${y}`).toContain('"roll_back"')
+      expect(report.verified, `${x} / ${y}`).toBe(false)
+    }
+  })
+
   it('a pair the solver DOES relate is not proposed: include IN / exclude FROM', async () => {
     const orthogonal: Embedder = async (texts) =>
       texts.map((_, i) => Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1]))
