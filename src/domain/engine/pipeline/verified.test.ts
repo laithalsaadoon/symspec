@@ -710,22 +710,31 @@ describe('AC-3-6: the proposed merge never aliases a phrase to its own opposite'
     expect(similar(report)[0]).toContain('`symspec glossary add "open the door" "open the doors"`')
   })
 
-  it('withholds the merge, and says why, when every candidate is a contrary pair', async () => {
-    // The antonym rest rule drops ONE preposition, so a canonical body with a second one does
-    // not re-atomize onto itself, and the raw pair is include/exclude: nothing survives.
+  it('meets on the LITERAL key when only one side governs its preposition', async () => {
+    // `include` governs `in` and `exclude` does not, so "include ... in the box in the archive"
+    // reads two keys (its literal remainder, and one with that `in` marked out) while "exclude
+    // ... in the box in the archives" reads only its literal one. They meet there up to number,
+    // so this is an AC-3-6 variant, and the merge aligns the number on that key — never the raw
+    // include/exclude pair, which would alias a phrase to its own opposite.
     const first = 'include the file in the box in the archive'
     const second = 'exclude the file in the box in the archives'
     const report = await runCheck(pair(first, second), {
       semantic: { embedder: tableEmbedder([[first, second]]) },
     })
     const [message] = similar(report)
-    expect(message).not.toContain('symspec glossary')
-    expect(message).toContain('No glossary merge is proposed')
-    const [demotion] = nearDuplicate(report)
-    expect(demotion?.requirementIds).toEqual([P1, P2])
-    expect(demotion?.action).toContain('no glossary merge is offered')
-    expect(demotion?.action).not.toContain('`symspec glossary add` merge')
+    expect(message).toContain(`\`symspec glossary add "${first}s" "${first}"\``)
+    expect(message).not.toContain(`"${first}" "${second}"`)
+    expect(message).not.toContain(`"${second}" "${first}"`)
+    expect(nearDuplicate(report).map((d) => d.requirementIds)).toEqual([[P1, P2]])
     expect(report.verified).toBe(false)
+    // The proposed merge does what it says: the pair becomes contraries over one key.
+    const merged = await runCheck({
+      ...(pair(first, second) as object),
+      glossary: [{ canonical: `${first}s`, aliases: [first] }],
+    } as never)
+    expect(
+      merged.findings.filter((f) => f.code === 'FND_CONTRADICTION').map((f) => f.requirementIds),
+    ).toEqual([[P1, P2]])
   })
 })
 

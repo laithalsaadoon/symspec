@@ -4,8 +4,8 @@ accept	-	decline	accept
 accept	-	reject	accept,approve	
 activate	+	activate	deactivate	
 activate	-	deactivate	activate	
-add	+	add	remove	from,into,to
-add	-	remove	add	from,into,to
+add	+	add	remove	into,to
+add	-	remove	add	from
 allow	+	allow	deny	
 allow	+	authorize	deny	
 allow	+	grant	deny,revoke	
@@ -22,8 +22,8 @@ conceal	+	conceal	expose
 conceal	+	seal	expose,unseal	
 conceal	-	expose	conceal,seal	
 conceal	-	unseal	seal	
-connect	+	connect	disconnect	from,to
-connect	-	disconnect	connect	from,to
+connect	+	connect	disconnect	to
+connect	-	disconnect	connect	from
 de_energize	+	de_energize	energize	
 de_energize	-	energize	de_energize	
 disable	+	disable	enable	
@@ -32,15 +32,15 @@ disengage	+	disengage	engage
 disengage	-	engage	disengage	
 drain	+	drain	flood	
 drain	-	flood	drain	
-exclude	+	exclude	include	from,in,into,within
-exclude	-	include	exclude	from,in,into,within
+exclude	+	exclude	include	from
+exclude	-	include	exclude	in,into,within
 extend	+	extend	retract	
 extend	+	publish	retract	
 extend	-	retract	extend,publish	
 hide	+	hide	show	
 hide	-	show	hide	
-insert	+	insert	withdraw	from,in,into
-insert	-	withdraw	insert	from,in,into
+insert	+	insert	withdraw	in,into
+insert	-	withdraw	insert	from
 lock	+	lock	unlock	
 lock	-	unlock	lock	
 lower	+	lower	raise	

@@ -220,6 +220,31 @@ const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|$
 const keyBody = (atom: ResponseAtom): string | undefined => atom.opposition?.body ?? atom.body
 
 /**
+ * Whether ANY two key bodies of the atoms — every reading of an opposition ({@link keyBody} is the
+ * first), else the atom body, else the raw response — satisfy `test`. An atom in a governed class
+ * reads two keys, the literal remainder and the one with its own governed preposition marked
+ * out, and a pair can meet on either: "include the file in the box" and "exclude the file in the
+ * boxes" meet only on the literal one, "include the tile in the view" and "exclude the tiles from
+ * the view" only on the governed one.
+ */
+function someKeyPair(
+  a: ResponseAtom,
+  b: ResponseAtom,
+  raw: readonly [string, string],
+  test: (x: string, y: string) => boolean,
+): boolean {
+  const bodies = (atom: ResponseAtom): readonly string[] =>
+    atom.opposition !== undefined
+      ? [atom.opposition.body, ...(atom.opposition.via ?? []).map((r) => r.body)]
+      : atom.body !== undefined
+        ? [atom.body]
+        : []
+  const [xs, ys] = [bodies(a), bodies(b)]
+  if (xs.length === 0 || ys.length === 0) return test(raw[0], raw[1])
+  return xs.some((x) => ys.some((y) => test(x, y)))
+}
+
+/**
  * True when two response atoms would CONFLICT if their words named one thing (spec 007 AC-2-1
  * semantics). On one side of a class, or outside any class, an atom is only its own opposite, so
  * the pair conflicts exactly when the polarities differ (`X` against `¬X`). On OPPOSITE sides of
@@ -285,9 +310,12 @@ function areContraryPhrases(
   const ax = responseAtom({ id: '', systemName, systemResponse: x }, options)
   const ay = responseAtom({ id: '', systemName, systemResponse: y }, options)
   if (!wouldConflict(ax, ay)) return false
-  const [bx, by] = [keyBody(ax), keyBody(ay)]
-  const [wx, wy] = bx !== undefined && by !== undefined ? [bx, by] : [x, y]
-  return normalize(wx) === normalize(wy) || differsOnlyByInflection(wx, wy)
+  return someKeyPair(
+    ax,
+    ay,
+    [x, y],
+    (wx, wy) => normalize(wx) === normalize(wy) || differsOnlyByInflection(wx, wy),
+  )
 }
 
 /**
@@ -457,14 +485,9 @@ export async function findSimilarSemantic(
       // set of key words, by polarity or by the table, so an antonym link has nothing to add.
       // Offering one hands an agent a command that commits a pair the table already holds, or
       // none at all.
-      const keyA = keyBody(atomA)
-      const keyB = keyBody(atomB)
-      const [wordsA, wordsB] =
-        keyA !== undefined && keyB !== undefined
-          ? [keyA, keyB]
-          : [a.systemResponse, b.systemResponse]
       const oppositePolarityVariant =
-        wouldConflict(atomA, atomB) && differsOnlyByInflection(wordsA, wordsB)
+        wouldConflict(atomA, atomB) &&
+        someKeyPair(atomA, atomB, [a.systemResponse, b.systemResponse], differsOnlyByInflection)
       let antonymHint = ''
       if (sameTrigger && !oppositePolarityVariant) {
         const [headA] = fuseNegatingPrefix(normalize(a.systemResponse))
@@ -615,7 +638,7 @@ function isNegatingPrefixPair(a: string, b: string): boolean {
 /**
  * The prepositions the antonym-remainder rule used to drop after ANY antonym head. A propose
  * signal only (see {@link onePrepositionApart}): the decide key now drops a preposition only
- * where the head's class governs it (`GOVERNED_PREPOSITIONS` in antonyms.ts).
+ * where the head verb itself governs it (`GOVERNED_PREPOSITIONS` in antonyms.ts).
  */
 const PREPOSITIONS: ReadonlySet<string> = new Set([
   'in',

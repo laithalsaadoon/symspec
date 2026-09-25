@@ -38,8 +38,8 @@
  *          "the session authenticated" name one guard state;
  *        - when (and only when) the head is in an ANTONYM class, the atom gains an
  *          {@link Opposition} naming the class and the verbs a pair opposes to it,
- *          and a preposition the head's class governs is dropped from that KEY
- *          ({@link canonicalizeAntonymRest}), so "include X in the view" /
+ *          and a preposition the head verb governs is marked out of a second KEY
+ *          ({@link governedKeyRest}), so "include X in the view" /
  *          "exclude X from the view" share one opposition key and are contraries.
  *          The body is never touched: `approve` and `accept` are two atoms, and so
  *          are "allow calls to X" and "allow calls from X".
@@ -268,8 +268,9 @@ export interface Opposition {
    */
   readonly opposes: readonly string[]
   /**
-   * The same atom's OTHER readings: the opposition of every committed glossary phrase that names
-   * it (spec 007 I-1), when that differs from the reading above. Present only under a glossary.
+   * The same atom's OTHER readings, when they differ from the reading above: its LITERAL
+   * remainder when the fields above read the governed one (see `governedKeyRest`), and the
+   * opposition of every committed glossary phrase that names it (spec 007 I-1).
    *
    * A glossary entry says two phrases are one action, so a contrary of either is a contrary of
    * the atom. The fields above read the CANONICAL phrase, which is what the propose tiers compare
@@ -284,7 +285,7 @@ export interface Opposition {
 /** One reading of an atom in an antonym class: {@link Opposition} without its other readings. */
 export type OppositionReading = Omit<Opposition, 'via'>
 
-/** Every reading of an opposition: its own, then each glossary phrase's ({@link Opposition.via}). */
+/** Every reading of an opposition: its first, then the others ({@link Opposition.via}). */
 const readingsOf = (o: Opposition): readonly OppositionReading[] =>
   o.via === undefined ? [o] : [o, ...o.via]
 
@@ -848,31 +849,38 @@ function stripCopula(body: string): string {
 }
 
 /**
- * The opposition-KEY remainder of an antonym-class response (A4): `rest` with the first
- * preposition the head's CLASS governs ({@link AntonymEntry.governs}) dropped, when one appears
- * after at least one other token. So "exclude that tile from the default gallery view" and
- * "include that tile in the default gallery view" share one key and are contraries: for those
- * verbs the HEAD carries the direction (include vs exclude) and the preposition only introduces
- * the place. The set is the class's, not the verb's, so an identical remainder is one key.
+ * The GOVERNED opposition-key remainder of an antonym-class response (A4): `rest` with the first
+ * preposition the head verb ITSELF governs ({@link AntonymEntry.governs}) replaced by an empty
+ * token, when one appears after at least one other token; undefined when there is none. So
+ * "exclude that tile from the default gallery view" and "include that tile in the default gallery
+ * view" both read `that_tile__the_default_gallery_view` and are contraries: for those verbs the
+ * HEAD carries the direction (include vs exclude) and the preposition only introduces the place.
  *
- * Only a governed preposition, and only in the key. "allow calls to the number" and "allow calls
- * from the number" are different acts, and the rule that dropped the first of
- * `in into from within inside to onto at on` for every antonym head — from the atom BODY as well
- * — made them one atom, so the pair was an error-severity FND_CONTRADICTION. Differing landing
- * sites ("…gallery A" vs "…gallery B") still produce distinct keys, because only the preposition
- * is dropped, never the noun phrase; and the atom body keeps every token, so no two remainders
- * that differ in a word share an atom.
+ * Marked, not dropped, and per verb. The empty token keeps the position, and `normalize` never
+ * emits an empty token, so a governed key can meet only another governed key with the mark in the
+ * same place — never a literal remainder that happens to lack the word. Per verb, because a
+ * preposition only the CONTRARY governs carries direction after this verb: "connect calls FROM
+ * the number" and "disconnect calls TO the number" are consistent, and a class-wide set made them
+ * one key. Every response also keeps its LITERAL remainder as a key ({@link antonymReading}), so
+ * identical remainders are contraries whatever their prepositions.
+ *
+ * Only in the key. "allow calls to the number" and "allow calls from the number" are different
+ * acts, and the rule that dropped the first of `in into from within inside to onto at on` for
+ * every antonym head — from the atom BODY as well — made them one atom, so the pair was an
+ * error-severity FND_CONTRADICTION. Differing landing sites ("…gallery A" vs "…gallery B") still
+ * produce distinct keys, because only the preposition is marked, never the noun phrase; and the
+ * atom body keeps every token, so no two remainders that differ in a word share an atom.
  */
-function canonicalizeAntonymRest(rest: string, governs: readonly string[]): string {
-  if (rest === '' || governs.length === 0) return rest
+function governedKeyRest(rest: string, governs: readonly string[]): string | undefined {
+  if (rest === '' || governs.length === 0) return undefined
   const tokens = rest.split('_')
   for (let i = 1; i < tokens.length; i++) {
     if (governs.includes(tokens[i] as string)) {
-      tokens.splice(i, 1)
+      tokens[i] = ''
       return tokens.join('_')
     }
   }
-  return rest
+  return undefined
 }
 
 /**
@@ -901,9 +909,9 @@ function spelling(
  * The response-head reading of a normalized body: the leading verb de-inflected (closed 3sg
  * rule) and looked up longest-prefix-first — two tokens ("roll_back") before one ("roll") — so
  * multiword opposites like commit/roll-back resolve. On a hit the result carries its
- * class-and-remainder {@link Opposition}, with a preposition the head's class governs dropped
- * from the KEY only (see canonicalizeAntonymRest); the rest of the remainder must still be
- * byte-identical, so "grant access"/"revoke access" are contraries but "grant access"/"revoke
+ * class-and-remainder readings: the GOVERNED one first when the head governs a preposition in the
+ * remainder (see {@link governedKeyRest}), then the LITERAL one. Each must match another reading
+ * byte for byte, so "grant access"/"revoke access" are contraries but "grant access"/"revoke
  * permission" are unrelated. Either way the de-inflected head replaces the surface head, so
  * "opens the valve" and "open the valve" collide.
  */
@@ -911,36 +919,39 @@ function antonymReading(
   body: string,
   scope: string,
   index: ReadonlyMap<string, AntonymEntry>,
-): { body: string; opposition?: OppositionReading } {
-  if (body.length === 0) return { body }
+): { body: string; readings: readonly OppositionReading[] } {
+  if (body.length === 0) return { body, readings: [] }
   const tokens = body.split('_')
   const tok1 = deInflectHead(tokens[0] as string)
   const twoTok = tokens.length >= 2 ? `${tok1}_${tokens[1] as string}` : undefined
   const twoEntry = twoTok !== undefined ? index.get(twoTok) : undefined
   const entry = twoEntry ?? index.get(tok1)
   if (entry === undefined) {
-    if (tok1 === tokens[0]) return { body }
+    if (tok1 === tokens[0]) return { body, readings: [] }
     tokens[0] = tok1
-    return { body: tokens.join('_') }
+    return { body: tokens.join('_'), readings: [] }
   }
   const [head, opposes] = spelling(twoEntry !== undefined ? (twoTok as string) : tok1, entry, index)
   const rest = tokens.slice(twoEntry !== undefined ? 2 : 1).join('_')
-  const keyRest = canonicalizeAntonymRest(rest, entry.governs)
   // The atom's head is the author's own verb, so `reject the order` is its own atom rather
   // than `accept the order` at flipped polarity, and `approve the order` is its own atom
   // rather than `accept the order` (AC-2-1: the table relates pairs by a contrary axiom and
-  // asserts no synonymy). The class canonical and the governed-preposition drop go into the
+  // asserts no synonymy). The class canonical and the governed-preposition mark go into the
   // opposition KEY only, and polarity is the parse's `negated` and nothing else.
-  const classBody = keyRest === '' ? entry.canonical : `${entry.canonical}_${keyRest}`
-  return {
-    body: rest === '' ? head : `${head}_${rest}`,
-    opposition: {
+  const reading = (keyRest: string): OppositionReading => {
+    const classBody = keyRest === '' ? entry.canonical : `${entry.canonical}_${keyRest}`
+    return {
       key: renderAtom({ scope, kind: 'resp', body: classBody }),
       body: classBody,
       negative: entry.negated,
       head,
       opposes,
-    },
+    }
+  }
+  const governed = governedKeyRest(rest, entry.governs)
+  return {
+    body: rest === '' ? head : `${head}_${rest}`,
+    readings: governed === undefined ? [reading(rest)] : [reading(governed), reading(rest)],
   }
 }
 
@@ -1011,25 +1022,27 @@ export function atomize(args: AtomizeArgs): Atom {
     // Every OTHER committed phrase that names this atom — each alias whose canonical is this
     // body — is the same action, so its contraries are this atom's too (spec 007 I-1).
     const via: OppositionReading[] = []
+    const same = (a: OppositionReading, b: OppositionReading) =>
+      a.key === b.key && a.head === b.head && a.negative === b.negative
     if (args.glossary !== undefined) {
       for (const [alias, canonical] of args.glossary) {
         if (canonical !== named || alias === named) continue
-        // The alias's own reading, through the same terms step its canonical went through.
+        // The alias's own readings, through the same terms step its canonical went through.
         const aliasBody = args.terms !== undefined ? substituteTerms(alias, args.terms) : alias
-        const reading = antonymReading(aliasBody, scope, index).opposition
-        if (reading === undefined) continue
-        const same = (r: OppositionReading) =>
-          r.key === reading.key && r.head === reading.head && r.negative === reading.negative
-        if ((own.opposition !== undefined && same(own.opposition)) || via.some(same)) continue
-        via.push(reading)
+        for (const reading of antonymReading(aliasBody, scope, index).readings) {
+          if (own.readings.some((r) => same(r, reading)) || via.some((r) => same(r, reading))) {
+            continue
+          }
+          via.push(reading)
+        }
       }
       via.sort((x, y) =>
         x.key < y.key ? -1 : x.key > y.key ? 1 : x.head < y.head ? -1 : x.head > y.head ? 1 : 0,
       )
     }
-    // The canonical's own reading leads, so the propose tiers keep comparing on it; when the
-    // canonical is outside every class, the first alias reading stands in.
-    const [first, ...others] = own.opposition !== undefined ? [own.opposition, ...via] : via
+    // The canonical's own readings lead — its first one is what the propose tiers compare on;
+    // when the canonical is outside every class, the first alias reading stands in.
+    const [first, ...others] = [...own.readings, ...via]
     if (first !== undefined) opposition = others.length > 0 ? { ...first, via: others } : first
   }
 

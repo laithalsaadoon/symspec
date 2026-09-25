@@ -25,6 +25,7 @@ import {
   type AntonymEntry,
   buildAntonymIndex,
   buildAntonymIndexWithDoc,
+  GOVERNED_PREPOSITIONS,
   SEED_ANTONYM_PAIRS,
 } from './antonyms.ts'
 import { atomize, contraryPairs } from './atomize.ts'
@@ -35,7 +36,7 @@ const SEED_VERBS = [...new Set(SEED_ANTONYM_PAIRS.flat())].sort()
 /**
  * One row per member: `<canonical>  <polarity>  <verb>  <opposes>  <governs>`, sorted, so a diff
  * names the verb. `opposes` is the whole relation the table asserts about `verb` (AC-2-1), and
- * `governs` the prepositions its class's opposition key drops.
+ * `governs` the prepositions that verb's governed opposition key marks out.
  */
 const render = (index: ReadonlyMap<string, AntonymEntry>): string => {
   const rows = [...index].map(
@@ -111,17 +112,18 @@ describe('the resolved seed index', () => {
     })
   })
 
-  it('gives every member of a class ONE governed-preposition set', () => {
-    // Per class, not per verb: "include the file in the box" and "exclude the file in the box"
-    // must compute one key, and a per-verb drop removed `in` from the include key alone.
-    expect(ANTONYM_INDEX.get('include')?.governs).toEqual(['from', 'in', 'into', 'within'])
-    expect(ANTONYM_INDEX.get('exclude')?.governs).toEqual(['from', 'in', 'into', 'within'])
+  it('gives each verb its OWN governed prepositions, never the class union', () => {
+    // Per verb: `connect` governs `to` and `disconnect` governs `from`. The class union let
+    // `connect` drop `from` too, so "connect calls FROM the number" and "disconnect calls TO the
+    // number" shared a key. Identical remainders ("include/exclude the file in the box") stay one
+    // key through the LITERAL reading every response keeps, so no drop has to be shared.
+    expect(ANTONYM_INDEX.get('include')?.governs).toEqual(['in', 'into', 'within'])
+    expect(ANTONYM_INDEX.get('exclude')?.governs).toEqual(['from'])
+    expect(ANTONYM_INDEX.get('connect')?.governs).toEqual(['to'])
+    expect(ANTONYM_INDEX.get('disconnect')?.governs).toEqual(['from'])
     expect(ANTONYM_INDEX.get('allow')?.governs).toEqual([])
-    const byClass = new Map<string, string>()
-    for (const e of ANTONYM_INDEX.values()) {
-      const seen = byClass.get(e.canonical)
-      if (seen === undefined) byClass.set(e.canonical, e.governs.join(','))
-      else expect(e.governs.join(','), e.canonical).toBe(seen)
+    for (const [verb, entry] of ANTONYM_INDEX) {
+      expect(entry.governs, verb).toEqual([...(GOVERNED_PREPOSITIONS.get(verb) ?? [])].sort())
     }
   })
 

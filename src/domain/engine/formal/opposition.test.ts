@@ -21,7 +21,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseLine } from '../parse/result.ts'
 import { runCheck } from '../pipeline/check.ts'
-import { atomize, makeAtomize } from './atomize.ts'
+import { areContrary, atomize, makeAtomize } from './atomize.ts'
 import type { Embedder } from './embed.ts'
 import type { EncodableRequirement } from './encode.ts'
 import { findNeedsReview } from './needs-review.ts'
@@ -451,6 +451,22 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
     }
   })
 
+  it('a preposition the verb does not govern keeps its direction inside a governed class', async () => {
+    // The drop is per VERB: `connect` governs `to` and `disconnect` governs `from`, so each drops
+    // only the preposition that introduces its OWN complement. A class-wide union dropped `from`
+    // after `connect` and `to` after `disconnect`, so "connect calls FROM the number" (incoming
+    // calls allowed) and "disconnect calls TO the number" (outgoing calls cut) shared the key
+    // `calls_the_number` and were an error-severity FND_CONTRADICTION on a consistent document.
+    for (const [x, y] of [
+      ['connect calls from the number', 'disconnect calls to the number'],
+      ['add traffic from the subnet', 'remove traffic to the subnet'],
+      ['include messages from the admin', 'exclude messages to the admin'],
+      ['insert the card from the tray', 'withdraw the card into the tray'],
+    ] as const) {
+      expect(await errorsOf([`${BLOCK} ${x}.`, `${BLOCK} ${y}.`]), `${x} / ${y}`).toEqual([])
+    }
+  })
+
   it('a pair the old drop related and the solver no longer does DEMOTES instead', async () => {
     // "grant access to the user" / "revoke access from the user" are two keys now, because
     // `to`/`from` may carry direction for the authorization class. They may still be one
@@ -462,6 +478,8 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
     for (const [x, y] of [
       ['grant access to the user', 'revoke access from the user'],
       ['grant access to the user', 'not allow access from the user'],
+      ['connect calls from the number', 'disconnect calls to the number'],
+      ['add traffic from the subnet', 'remove traffic to the subnet'],
     ] as const) {
       const report = await runCheck(await docOf([`${BLOCK} ${x}.`, `${BLOCK} ${y}.`]), {
         semantic: { embedder: orthogonal },
@@ -493,6 +511,19 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
       { semantic: { embedder: orthogonal } },
     )
     expect(report.findings.map((f) => f.code)).not.toContain('FND_OPPOSITION_CANDIDATE')
+  })
+
+  it('marks the governed preposition, so a governed key never meets a literal one', () => {
+    // "include the tile in the view" reads `the_tile__the_view` with the `in` it governs marked
+    // out. Dropping the word instead made that key equal to the LITERAL key of "exclude the tile
+    // the view" — a remainder that never had a preposition there, related by a word it lacks.
+    const resp = (text: string) => atomize({ kind: 'resp', text, systemName: 'viewer' })
+    expect(
+      areContrary(resp('include the tile in the view'), resp('exclude the tile the view')),
+    ).toBe(false)
+    expect(
+      areContrary(resp('include the tile in the view'), resp('exclude the tile from the view')),
+    ).toBe(true)
   })
 
   it('keeps every preposition in the atom body', () => {
