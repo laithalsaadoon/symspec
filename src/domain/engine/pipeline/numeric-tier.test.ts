@@ -419,6 +419,39 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
     ).toEqual([])
   })
 
+  it('proves nothing from two negated bounds: never doing the action satisfies both', async () => {
+    // `shall not keep the door unlocked above 30 s` is NOT (unlocked ∧ d > 30), weaker than
+    // `d <= 30`: it constrains the duration only IF the door is kept unlocked. Read as two
+    // obligations on the magnitude, the pair was `d <= 30 ∧ d >= 40`, an error on a
+    // document a controller that never unlocks satisfies.
+    const neither = [
+      door('keep the door unlocked above 30 seconds', true),
+      door('keep the door unlocked below 40 seconds', true),
+    ] as const
+    expect(await numericFindings(...neither)).toEqual([])
+    expect(await errorCodes(...neither)).toEqual([])
+    // The same shape under a shared trigger.
+    const pump = (systemResponse: string): ReqSpec => ({
+      systemName: 'dosing pump',
+      trigger: 'the patient is a child',
+      systemResponse,
+      negated: true,
+    })
+    expect(
+      await errorCodes(pump('deliver the dose above 3 mL'), pump('deliver the dose below 5 mL')),
+    ).toEqual([])
+  })
+
+  it('still proves a negated bound against a positive one, which asserts the action happens', async () => {
+    // The control: `shall keep the door unlocked for at least 40 s` does the action, so the
+    // prohibition applies to it and `d >= 40 ∧ d <= 30` is a real conflict.
+    const found = await numericFindings(
+      door('keep the door unlocked above 30 seconds', true),
+      door('keep the door unlocked for at least 40 seconds'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
   it('declines a negated response with two bounds, because NOT(A and B) is not NOT A and NOT B', async () => {
     expect(
       await numericFindings(

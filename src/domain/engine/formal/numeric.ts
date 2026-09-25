@@ -100,6 +100,15 @@ export interface NumericPredicate {
   readonly role: BoundRole
   /** Which EARS slot the bound was read out of — guard role vs response role. */
   readonly slot: PredicateSlot
+  /**
+   * Present when the bound is read out of a PROHIBITION (`shall not keep the door unlocked
+   * above 30 seconds`, spec 007 AC-2-6). `comparator` is then the negated comparison, and it
+   * holds only IF the action happens: the requirement is `NOT (A ∧ x > 30 s)`, which is `A →
+   * x <= 30 s`, not `x <= 30 s`. A bound without this flag is an obligation, and its
+   * requirement asserts `A`. `numeric-contradiction.ts` encodes `A` as one occurrence literal
+   * per quantity, so two prohibitions are satisfied together by never doing the action.
+   */
+  readonly negated?: true
   /** The original slot substring the predicate came from (evidence). */
   readonly sourceText: string
 }
@@ -850,6 +859,10 @@ function precedingWord(text: string, end: number): { word: string; start: number
  * Ignoring the flag asserted `> 30 s`, the opposite obligation, and proved it
  * against `below 10 seconds` at error severity.
  *
+ * The negated comparison holds only where the action happens, so the predicate carries
+ * {@link NumericPredicate.negated}: `NOT (A ∧ x > 30 s)` is `A → x <= 30 s`, and two
+ * prohibitions on one action are jointly satisfied by never doing it.
+ *
  * The negation is exact only for ONE atomic comparison. `NOT (A ∧ B)` is `¬A ∨ ¬B`,
  * not `¬A ∧ ¬B`, and a response that says anything besides its bound (a second
  * bound, a declined one, a trailing qualifier) is some `NOT (A ∧ C)` whose `C` this
@@ -873,7 +886,14 @@ function negateResponse(
   // `NOT (x < 30 s ∧ drill)`, and `x >= 30 s` alone forbids what the drill clause
   // permits.
   if (/[\p{L}\p{N}]/u.test(text.slice(claimed[0]![1]))) return []
-  return [{ ...only, comparator: NEGATE[only.comparator], sourceText: `not ${only.sourceText}` }]
+  return [
+    {
+      ...only,
+      comparator: NEGATE[only.comparator],
+      negated: true,
+      sourceText: `not ${only.sourceText}`,
+    },
+  ]
 }
 
 /**
@@ -1021,7 +1041,7 @@ export function extractNumericPredicates(
  * Drop exact-duplicate predicates.
  *
  * The key names every field of the record that carries a claim — slot, quantity,
- * comparator, exact value, difference reading, dimension, base unit, role — so two
+ * comparator, exact value, difference reading, dimension, base unit, role, negation — so two
  * predicates that differ anywhere both survive. `sourceText` is excluded deliberately: it
  * is the audit substring, and two spellings of one bound in one slot are one claim.
  *
@@ -1044,6 +1064,7 @@ function dedupe(preds: NumericPredicate[]): NumericPredicate[] {
       p.dimension,
       p.baseUnit,
       p.role,
+      p.negated === true,
     ])
     if (seen.has(key)) continue
     seen.add(key)

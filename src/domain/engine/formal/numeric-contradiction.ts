@@ -228,6 +228,12 @@ function markedRoles(entries: readonly Entry[]): BoundRole[] {
  * denominator — never the display `number`, whose unit conversion was a float
  * product (see {@link NumericPredicate.exact}).
  *
+ * A bound read out of a prohibition ({@link NumericPredicate.negated}) is asserted only
+ * under the quantity's occurrence literal, and every other bound asserts that literal: `shall
+ * not keep the door unlocked above 30 s` is `A → d <= 30 s`, so it meets `keep the door
+ * unlocked for at least 40 s` (which does `A`) and not a second prohibition, which never
+ * doing `A` satisfies with it.
+ *
  * With fewer than two marked roles in the cell there is one variable, named by the
  * bare quantity key. With two or more, each marked role has its own variable and an
  * unmarked bound constrains every one of them: adding a bound only ever adds
@@ -251,7 +257,12 @@ function boundFormula(
         ? [`${pred.quantity}#${pred.role}`]
         : marked.map((r) => `${pred.quantity}#${r}`)
   const parts = names.map((name) => compareTo(ctx.Real.const(name), pred.comparator, v))
-  return parts.length === 1 ? parts[0]! : ctx.And(...parts)
+  const bound = parts.length === 1 ? parts[0]! : ctx.And(...parts)
+  // An obligation does the action AND bounds it; a prohibition bounds it only if it happens
+  // (`numeric.ts` `NumericPredicate.negated`). One occurrence literal per quantity, never an
+  // assumption, so it can only widen the satisfying set and never enters a core.
+  const occurs = ctx.Bool.const(`${pred.quantity}#occurs`)
+  return pred.negated === true ? ctx.Implies(occurs, bound) : ctx.And(occurs, bound)
 }
 
 /** `q <comparator> v` as a Z3 Bool. */
@@ -661,6 +672,8 @@ function uncomparedUnitPairs(
         }
         if (unitClassOf(a.pred) === unitClassOf(b.pred)) continue
         if (!opposedComparators(a.pred.comparator, b.pred.comparator)) continue
+        // Two prohibitions never conflict: not doing the action satisfies both.
+        if (a.pred.negated === true && b.pred.negated === true) continue
         const ids = [a.id, b.id].sort()
         const key = JSON.stringify([a.pred.quantity, ids])
         if (out.has(key)) continue
