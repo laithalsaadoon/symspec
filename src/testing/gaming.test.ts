@@ -44,6 +44,9 @@ const specClauses = (): readonly string[] => {
   return [...clauses, ...last.split(/, (?:and )?/)]
 }
 
+/** `closedBy`: an AC id, optionally led by its plan slice and followed by what closes it. */
+const CLOSED_BY = /^(?:S\d+ \/ )?(AC-\d+-\d+)(?: \([^()]+\))?$/
+
 const REGISTERED = new Set(MOVES.map((m) => m.id))
 const PENDING = new Set(NOT_APPLICABLE_YET.map((p) => p.id))
 
@@ -150,9 +153,12 @@ describe('the gaming registry', () => {
       expect(REGISTERED.has(k.move), label).toBe(true)
       // Stories 4–7 are the ones that close gaming moves; Story 8 is this gate, and Stories 1–3
       // are already merged, so a row naming either is mis-attributed.
-      expect(k.closedBy, label).toMatch(/^AC-[4-7]-\d+$/)
+      // A row may name the plan slice that lands the AC and what the slice does, as
+      // `S4 / AC-4-2 (cross-table fence + check twin)`; the AC itself is still what is guarded.
+      const cited = CLOSED_BY.exec(k.closedBy)?.[1]
+      expect(cited, `${label}: closedBy ${k.closedBy}`).toMatch(/^AC-[4-7]-\d+$/)
       expect(SPEC, `${label} cites ${k.closedBy}, which the spec does not define`).toMatch(
-        new RegExp(`^${k.closedBy}\\b`, 'm'),
+        new RegExp(`^${cited}\\b`, 'm'),
       )
       expect(k.why.length, label).toBeGreaterThan(40)
     }

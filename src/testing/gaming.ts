@@ -665,6 +665,65 @@ const termOverPhrase = (): readonly Move[] =>
     },
   }))
 
+/**
+ * What the glossary alias of a `glossary-over-term` move is, against the committed term alias
+ * it covers: the alias itself (`equal`), or the culprit response that says it (`containing`).
+ * The glossary is a whole-body lookup, so the response is the widest phrase that really occurs.
+ */
+const GLOSSARY_OVER_TERM_SHAPES = [
+  ['equal', (alias: string, _response: string) => alias],
+  ['containing', (_alias: string, response: string) => response],
+] as const
+
+/**
+ * The order the two tables are written in, as it appears in the move id. `term-then-glossary`
+ * adds the glossary entry to the fixture's committed term; `glossary-then-term` drops that term,
+ * writes the glossary entry, and commits the term again, so a fence on EITHER op is measured.
+ */
+const GLOSSARY_OVER_TERM_ORDERS = ['term-then-glossary', 'glossary-then-term'] as const
+
+/**
+ * A glossary alias equal to, or containing, a phrase the committed term rewrites, pointed at a
+ * fresh canonical — one move per {@link GLOSSARY_OVER_TERM_SHAPES} shape and
+ * {@link GLOSSARY_OVER_TERM_ORDERS} order. The glossary lookup runs BEFORE term substitution, so
+ * the response that says the term alias is rewritten to the fresh canonical and never reaches
+ * the term table: the two phrases the term calls one noun come out as two atoms. The term
+ * table's own overlap fence ({@link termOverPhrase}) cannot see it, because the overlapping
+ * phrase lives in the other table.
+ */
+const glossaryOverTerm = (): readonly Move[] =>
+  GLOSSARY_OVER_TERM_SHAPES.flatMap(([shape, aliasOf]) =>
+    GLOSSARY_OVER_TERM_ORDERS.map((order) => ({
+      id: `glossary-over-term@${shape}/${order}`,
+      clause: 'alias a phrase a committed term rewrites (glossary over term table)',
+      direction: 'strengthening' as const,
+      edit: ({ fixture, doc }: MoveContext): Edit => {
+        const entry = doc.terms[0]
+        const termAlias = entry?.aliases[0]
+        if (entry === undefined || termAlias === undefined)
+          return { kind: 'inapplicable', reason: 'the fixture commits no term' }
+        const response = fixture.culprits
+          .map((k) => req(doc, k).systemResponse)
+          .find((s) => s.toLowerCase().split(/\s+/).join(' ').includes(termAlias.toLowerCase()))
+        if (response === undefined)
+          return { kind: 'inapplicable', reason: 'no culprit response says the committed alias' }
+        const glossary: DocumentOp = {
+          op: 'glossary',
+          canonical: FRESH_TERM,
+          alias: aliasOf(termAlias, response),
+        }
+        const term = { canonical: entry.canonical, alias: termAlias }
+        return {
+          kind: 'ops',
+          ops:
+            order === 'term-then-glossary'
+              ? [glossary]
+              : [{ op: 'unterm', ...term }, glossary, { op: 'term', ...term }],
+        }
+      },
+    })),
+  )
+
 export const MOVES: readonly Move[] = [
   ...oneSided('rename-system', 'rename a system', 'weakening', (r, key) => ({
     kind: 'ops',
@@ -692,6 +751,7 @@ export const MOVES: readonly Move[] = [
     doc.terms.some((t) => t.canonical === a && t.aliases.includes(b)),
   ),
   ...termOverPhrase(),
+  ...glossaryOverTerm(),
   {
     id: 'waive-by-code',
     clause: 'waive by code',
@@ -1086,7 +1146,11 @@ const escapes = (
 export interface KnownEscape {
   readonly fixture: string
   readonly move: string
-  /** The AC whose landing turns this row red — at which point the row is deleted. */
+  /**
+   * The AC whose landing turns this row red — at which point the row is deleted. Either the bare
+   * id (`AC-5-2`) or led by the plan slice that lands it and followed by what closes it
+   * (`S4 / AC-4-2 (cross-table fence + check twin)`).
+   */
   readonly closedBy: string
   readonly why: string
 }
@@ -1159,6 +1223,19 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'AC-4-6',
       ['registered-contrary'],
       "The term table merges two phrases that are contraries only through the document's own antonym table, in either direction, and the contradiction disappears. `validateTerms` reads the SEED antonym heads and the state-bridge lexicon per token and never the document's committed antonyms, so ratify/veto pass it; on `contrary-pair` the same move is refused only because accept/reject are seed heads. The glossary twin is refused here, because `validateGlossary` reads the committed antonyms. AC-4-6 refuses a merge of registered contraries, directly or transitively, whichever table it is written to.",
+    ),
+  ),
+  ...(
+    [
+      'glossary-over-term@containing/term-then-glossary',
+      'glossary-over-term@containing/glossary-then-term',
+    ] as const
+  ).flatMap((move) =>
+    escapes(
+      move,
+      'S4 / AC-4-2 (cross-table fence + check twin)',
+      ['term-bridged'],
+      'A glossary alias that contains a phrase the committed term rewrites (`charge the customer order` onto a fresh canonical) takes that response out of the term table: the glossary is a whole-body lookup that runs BEFORE term substitution, so R2 reaches the solver as the fresh canonical while R1 still reads `charge purchase order`, and the conflict the term carries disappears. Either write order escapes, because neither fence reads the other table: the term overlap fence checks only terms, and the glossary fence only glossary entries and antonyms. The `equal` twin (the bare term alias as a glossary alias) is caught on this fixture only because no slot body is exactly `customer order`. S4 closes it with a cross-table fence on both ops and a check-time twin for a hand-edited table.',
     ),
   ),
   ...escapes(

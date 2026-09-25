@@ -14,6 +14,10 @@ one-trigger-contradiction	term-over-phrase@equal-canonical	inapplicable
 one-trigger-contradiction	term-over-phrase@around-canonical	inapplicable
 one-trigger-contradiction	term-over-phrase@straddle-canonical	inapplicable
 one-trigger-contradiction	term-over-phrase@straddle-alias	inapplicable
+one-trigger-contradiction	glossary-over-term@equal/term-then-glossary	inapplicable
+one-trigger-contradiction	glossary-over-term@equal/glossary-then-term	inapplicable
+one-trigger-contradiction	glossary-over-term@containing/term-then-glossary	inapplicable
+one-trigger-contradiction	glossary-over-term@containing/glossary-then-term	inapplicable
 one-trigger-contradiction	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -51,6 +55,10 @@ contrary-pair	term-over-phrase@equal-canonical	inapplicable
 contrary-pair	term-over-phrase@around-canonical	inapplicable
 contrary-pair	term-over-phrase@straddle-canonical	inapplicable
 contrary-pair	term-over-phrase@straddle-alias	inapplicable
+contrary-pair	glossary-over-term@equal/term-then-glossary	inapplicable
+contrary-pair	glossary-over-term@equal/glossary-then-term	inapplicable
+contrary-pair	glossary-over-term@containing/term-then-glossary	inapplicable
+contrary-pair	glossary-over-term@containing/glossary-then-term	inapplicable
 contrary-pair	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]

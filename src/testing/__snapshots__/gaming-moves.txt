@@ -10,6 +10,10 @@ registered-caught	strengthening	term-over-phrase@equal-canonical
 registered-caught	strengthening	term-over-phrase@around-canonical	
 registered-caught	strengthening	term-over-phrase@straddle-canonical	
 registered-caught	strengthening	term-over-phrase@straddle-alias	
+registered-caught	strengthening	glossary-over-term@equal/term-then-glossary	
+registered-caught	strengthening	glossary-over-term@equal/glossary-then-term	
+registered-escapes-known-gap	strengthening	glossary-over-term@containing/term-then-glossary	S4 / AC-4-2 (cross-table fence + check twin)
+registered-escapes-known-gap	strengthening	glossary-over-term@containing/glossary-then-term	S4 / AC-4-2 (cross-table fence + check twin)
 registered-escapes-known-gap	weakening	waive-by-code	AC-5-6
 registered-escapes-known-gap	weakening	delete-requirement@first	AC-5-2
 registered-escapes-known-gap	weakening	delete-requirement@second	AC-5-2

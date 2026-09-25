@@ -13,6 +13,10 @@ feature-interaction	term-over-phrase@equal-canonical	inapplicable
 feature-interaction	term-over-phrase@around-canonical	inapplicable
 feature-interaction	term-over-phrase@straddle-canonical	inapplicable
 feature-interaction	term-over-phrase@straddle-alias	inapplicable
+feature-interaction	glossary-over-term@equal/term-then-glossary	inapplicable
+feature-interaction	glossary-over-term@equal/glossary-then-term	inapplicable
+feature-interaction	glossary-over-term@containing/term-then-glossary	inapplicable
+feature-interaction	glossary-over-term@containing/glossary-then-term	inapplicable
 feature-interaction	waive-by-code	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
 feature-interaction	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 feature-interaction	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -50,6 +54,10 @@ state-invariant	term-over-phrase@equal-canonical	inapplicable
 state-invariant	term-over-phrase@around-canonical	inapplicable
 state-invariant	term-over-phrase@straddle-canonical	inapplicable
 state-invariant	term-over-phrase@straddle-alias	inapplicable
+state-invariant	glossary-over-term@equal/term-then-glossary	inapplicable
+state-invariant	glossary-over-term@equal/glossary-then-term	inapplicable
+state-invariant	glossary-over-term@containing/term-then-glossary	inapplicable
+state-invariant	glossary-over-term@containing/glossary-then-term	inapplicable
 state-invariant	waive-by-code	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
 state-invariant	delete-requirement@first	exit 3 verified=false signal=gone errors=[] demotions=[reachability-not-checked]
 state-invariant	delete-requirement@second	exit 3 verified=false signal=gone errors=[] demotions=[reachability-not-checked]

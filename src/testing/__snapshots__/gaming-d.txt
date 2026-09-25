@@ -14,6 +14,10 @@ glossary-bridged	term-over-phrase@equal-canonical	inapplicable
 glossary-bridged	term-over-phrase@around-canonical	inapplicable
 glossary-bridged	term-over-phrase@straddle-canonical	inapplicable
 glossary-bridged	term-over-phrase@straddle-alias	inapplicable
+glossary-bridged	glossary-over-term@equal/term-then-glossary	inapplicable
+glossary-bridged	glossary-over-term@equal/glossary-then-term	inapplicable
+glossary-bridged	glossary-over-term@containing/term-then-glossary	inapplicable
+glossary-bridged	glossary-over-term@containing/glossary-then-term	inapplicable
 glossary-bridged	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 glossary-bridged	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 glossary-bridged	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -51,6 +55,10 @@ term-bridged	term-over-phrase@equal-canonical	refused term:ERR_USAGE
 term-bridged	term-over-phrase@around-canonical	refused term:ERR_USAGE
 term-bridged	term-over-phrase@straddle-canonical	refused term:ERR_USAGE
 term-bridged	term-over-phrase@straddle-alias	refused term:ERR_USAGE
+term-bridged	glossary-over-term@equal/term-then-glossary	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	glossary-over-term@equal/glossary-then-term	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	glossary-over-term@containing/term-then-glossary	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	glossary-over-term@containing/glossary-then-term	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
