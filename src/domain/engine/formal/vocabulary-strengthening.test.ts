@@ -83,7 +83,7 @@ describe('I-1 — committed vocabulary never lifts what the raw wording already 
   // class) or the key keeps the objects apart, so the candidate tier must keep `verified` false.
   // Either is at least what the raw wording earns; certifying is what I-1 forbids.
   for (const [x, y, vocabulary, earns] of [
-    ['grant access to the user', 'revoke entry from the user', ACCESS, 'demotes'],
+    ['grant access to the user', 'revoke entry from the user', ACCESS, 'proves'],
     ['grant access to the portal', 'forbid entry to the portal', ACCESS, 'proves'],
     ['grant access', 'not allow entry', ACCESS, 'demotes'],
     ['permit entry to the portal', 'revoke access to the portal', ACCESS, 'proves'],
@@ -91,7 +91,7 @@ describe('I-1 — committed vocabulary never lifts what the raw wording already 
       'show the report to the user',
       'hide the summary from the user',
       { terms: [{ canonical: 'report', aliases: ['summary'] }] },
-      'demotes',
+      'proves',
     ],
     [
       'approve the bill',
@@ -105,7 +105,7 @@ describe('I-1 — committed vocabulary never lifts what the raw wording already 
       {
         glossary: [{ canonical: 'grant access to the user', aliases: ['give access to the user'] }],
       },
-      'demotes',
+      'proves',
     ],
   ] as const) {
     it(`${x} / ${y} through ${JSON.stringify(vocabulary)} still ${earns}`, async () => {

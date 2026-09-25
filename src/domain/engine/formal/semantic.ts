@@ -792,8 +792,8 @@ export async function findOppositionCandidates(
       // pair the antonym tables ALREADY relate ⇒ the solver relates them by a contrary axiom.
       // Neither is a candidate. ONLY those: two verbs that merely share a class (`grant`/`allow`
       // on one side, `conceal`/`unseal` two pairs apart) are two unrelated atoms to the solver
-      // (AC-2-1), and so are two objects a direction-carrying preposition apart ("grant access
-      // to the user" / "revoke access from the user"), which the key keeps. The table's own
+      // (AC-2-1), and so are two objects a direction-carrying preposition apart ("allow calls
+      // to the number" / "deny calls from the number"), which the key keeps. The table's own
       // evidence that such a pair is related is proposed like a negating prefix, regardless of
       // cosine, and demotes until the author commits a glossary entry or an antonym, rewrites
       // one, or waives it.

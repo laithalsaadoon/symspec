@@ -89,19 +89,19 @@ describe('the resolved seed index', () => {
       canonical: 'conceal',
       negated: false,
       opposes: ['expose', 'unseal'],
-      governs: [],
+      governs: ['from'],
     })
     expect(ANTONYM_INDEX.get('conceal')).toEqual({
       canonical: 'conceal',
       negated: false,
       opposes: ['expose'],
-      governs: [],
+      governs: ['from'],
     })
     expect(ANTONYM_INDEX.get('expose')).toEqual({
       canonical: 'conceal',
       negated: true,
       opposes: ['conceal', 'seal'],
-      governs: [],
+      governs: ['to'],
     })
     expect(ANTONYM_INDEX.get('unseal')).toEqual({
       canonical: 'conceal',
@@ -120,7 +120,10 @@ describe('the resolved seed index', () => {
     expect(ANTONYM_INDEX.get('exclude')?.governs).toEqual(['from'])
     expect(ANTONYM_INDEX.get('connect')?.governs).toEqual(['to'])
     expect(ANTONYM_INDEX.get('disconnect')?.governs).toEqual(['from'])
-    expect(ANTONYM_INDEX.get('allow')?.governs).toEqual([])
+    expect(ANTONYM_INDEX.get('grant')?.governs).toEqual(['to'])
+    expect(ANTONYM_INDEX.get('revoke')?.governs).toEqual(['from'])
+    // `deny` takes `to` for the place, as every one of its contraries does: nothing to mark.
+    expect(ANTONYM_INDEX.get('deny')?.governs).toEqual([])
     for (const [verb, entry] of ANTONYM_INDEX) {
       expect(entry.governs, verb).toEqual([...(GOVERNED_PREPOSITIONS.get(verb) ?? [])].sort())
     }

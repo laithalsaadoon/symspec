@@ -135,12 +135,30 @@ export const SEED_ANTONYM_PAIRS: ReadonlyArray<readonly [string, string]> = [
  * one place, so each verb's governed preposition is marked out of a second opposition KEY and the
  * two are contraries (atomize.ts `governedKeyRest`). Nothing is ever dropped from the atom body.
  *
- * A closed, curated table in the same category as the seed pairs. A verb is listed only when its
- * contrary takes a DIFFERENT preposition for the same place — two members that take the same one
- * ("grant power to the grid" / "deny power to the grid") already share a key without any drop.
- * An unlisted verb keeps every preposition in its key: "allow calls to the number" and "deny
- * calls from the number" are two different calls, and a rule that dropped `to` and `from` for
- * every antonym head made them contraries.
+ * A closed, curated table in the same category as the seed pairs. A verb is listed only when a
+ * contrary it has a ROW with takes a DIFFERENT preposition for the same place, and it is listed
+ * with exactly the preposition it takes there. Two members that take the same one ("grant access
+ * to the user" / "deny access to the user") already share a key without any mark, so `deny`,
+ * `forbid`, `lock`, `raise` and the rest are unlisted. Applied row by row:
+ *
+ *   grant, allow, permit, authorize → to   /  revoke → from      ("… access to/from the user")
+ *   show → to                               /  hide → from        ("… the report to/from the user")
+ *   expose → to                             /  conceal, seal → from ("… the port to/from the network")
+ *   publish, extend → to                    /  retract → from     ("… the offer to/from the customer")
+ *   quarantine → in                         /  release → from     ("… the message in/from the queue")
+ *   engage → with                           /  disengage → from   ("… the clutch with/from the gear")
+ *   include → in, into, within              /  exclude → from
+ *   add → to, into                          /  remove → from
+ *   insert → into, in                       /  withdraw → from
+ *   connect → to                            /  disconnect → from
+ *
+ * Deliberately unlisted although the row has two prepositions: `drain X of Y` / `flood X with Y`,
+ * because `of` after a noun is overwhelmingly possessive ("drain the tank of the pump"), and
+ * `commit X to Y` / `roll back X to Y`, whose `to` names two different things (the store written
+ * to, the point restored to). An unlisted preposition keeps its place in every key: "allow calls
+ * to the number" and "deny calls from the number" are two different calls, because `deny` takes
+ * `to` for the place and so governs nothing, and a rule that dropped `to` and `from` for every
+ * antonym head made them contraries.
  *
  * The set is per VERB ({@link AntonymEntry.governs}), never the union over its class. `connect`
  * governs `to` and `disconnect` governs `from`; a class-wide union let `connect` drop `from` as
@@ -161,6 +179,23 @@ export const GOVERNED_PREPOSITIONS: ReadonlyMap<string, ReadonlySet<string>> = n
   ['withdraw', new Set(['from'])],
   ['connect', new Set(['to'])],
   ['disconnect', new Set(['from'])],
+  ['grant', new Set(['to'])],
+  ['allow', new Set(['to'])],
+  ['permit', new Set(['to'])],
+  ['authorize', new Set(['to'])],
+  ['revoke', new Set(['from'])],
+  ['show', new Set(['to'])],
+  ['hide', new Set(['from'])],
+  ['expose', new Set(['to'])],
+  ['conceal', new Set(['from'])],
+  ['seal', new Set(['from'])],
+  ['publish', new Set(['to'])],
+  ['extend', new Set(['to'])],
+  ['retract', new Set(['from'])],
+  ['quarantine', new Set(['in'])],
+  ['release', new Set(['from'])],
+  ['engage', new Set(['with'])],
+  ['disengage', new Set(['from'])],
 ])
 
 /** A resolved antonym-class membership for one verb. */

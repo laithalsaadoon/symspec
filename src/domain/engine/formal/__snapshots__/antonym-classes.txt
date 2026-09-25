@@ -6,21 +6,21 @@ activate	+	activate	deactivate
 activate	-	deactivate	activate	
 add	+	add	remove	into,to
 add	-	remove	add	from
-allow	+	allow	deny,forbid,revoke	
-allow	+	authorize	deny,forbid,revoke	
-allow	+	grant	deny,forbid,revoke	
-allow	+	permit	deny,forbid,revoke	
+allow	+	allow	deny,forbid,revoke	to
+allow	+	authorize	deny,forbid,revoke	to
+allow	+	grant	deny,forbid,revoke	to
+allow	+	permit	deny,forbid,revoke	to
 allow	-	deny	allow,authorize,grant,permit	
 allow	-	forbid	allow,authorize,grant,permit	
-allow	-	revoke	allow,authorize,grant,permit	
+allow	-	revoke	allow,authorize,grant,permit	from
 close	+	close	open	
 close	-	open	close	
 commit	+	commit	roll_back,rollback	
 commit	-	roll_back	commit	
 commit	-	rollback	commit	
-conceal	+	conceal	expose	
-conceal	+	seal	expose,unseal	
-conceal	-	expose	conceal,seal	
+conceal	+	conceal	expose	from
+conceal	+	seal	expose,unseal	from
+conceal	-	expose	conceal,seal	to
 conceal	-	unseal	seal	
 connect	+	connect	disconnect	to
 connect	-	disconnect	connect	from
@@ -28,25 +28,25 @@ de_energize	+	de_energize	energize
 de_energize	-	energize	de_energize	
 disable	+	disable	enable	
 disable	-	enable	disable	
-disengage	+	disengage	engage	
-disengage	-	engage	disengage	
+disengage	+	disengage	engage	from
+disengage	-	engage	disengage	with
 drain	+	drain	flood	
 drain	-	flood	drain	
 exclude	+	exclude	include	from
 exclude	-	include	exclude	in,into,within
-extend	+	extend	retract	
-extend	+	publish	retract	
-extend	-	retract	extend,publish	
-hide	+	hide	show	
-hide	-	show	hide	
+extend	+	extend	retract	to
+extend	+	publish	retract	to
+extend	-	retract	extend,publish	from
+hide	+	hide	show	from
+hide	-	show	hide	to
 insert	+	insert	withdraw	in,into
 insert	-	withdraw	insert	from
 lock	+	lock	unlock	
 lock	-	unlock	lock	
 lower	+	lower	raise	
 lower	-	raise	lower	
-quarantine	+	quarantine	release	
-quarantine	-	release	quarantine	
+quarantine	+	quarantine	release	in
+quarantine	-	release	quarantine	from
 resume	+	resume	suspend	
 resume	-	suspend	resume	
 start	+	start	stop	

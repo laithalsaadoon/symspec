@@ -468,15 +468,16 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
   })
 
   it('a pair the old drop related and the solver no longer does DEMOTES instead', async () => {
-    // "grant access to the user" / "revoke access from the user" are two keys now, because
-    // `to`/`from` may carry direction for the authorization class. They may still be one
-    // object, so the opposition-candidate tier proposes the pair regardless of cosine and
-    // `verified` cannot come back true over it. The same holds for one side of a class a
-    // preposition apart (grant / not allow), which the old side rename made one atom.
+    // "connect calls from the number" / "disconnect calls to the number" are two keys, because
+    // neither verb governs the preposition it is written with, so it carries direction. They
+    // may still be one object, so the opposition-candidate tier proposes the pair regardless of
+    // cosine and `verified` cannot come back true over it. The same holds for one side of a
+    // class a preposition apart (grant / not allow), which the old side rename made one atom.
+    // ("grant access to the user" / "revoke access from the user" is no longer here: each verb
+    // governs its own preposition, so the solver proves it — antonym-rows.test.ts.)
     const orthogonal: Embedder = async (texts) =>
       texts.map((_, i) => Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1]))
     for (const [x, y] of [
-      ['grant access to the user', 'revoke access from the user'],
       ['grant access to the user', 'not allow access from the user'],
       ['connect calls from the number', 'disconnect calls to the number'],
       ['add traffic from the subnet', 'remove traffic to the subnet'],

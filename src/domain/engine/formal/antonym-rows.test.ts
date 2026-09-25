@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseLine } from '../parse/result.ts'
 import { runCheck } from '../pipeline/check.ts'
-import { SEED_ANTONYM_PAIRS } from './antonyms.ts'
+import { GOVERNED_PREPOSITIONS, SEED_ANTONYM_PAIRS } from './antonyms.ts'
 import { areContrary, atomize } from './atomize.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -126,5 +126,89 @@ describe('every cross-side contrary the class chaining meant is a row of its own
     // Unsealing an envelope and keeping it out of sight are compatible; only seal and expose
     // connect the two, and that chain is exactly what the table no longer reads.
     expect(areContrary(resp('conceal the box'), resp('unseal the box'))).toBe(false)
+  })
+})
+
+describe('every governed preposition is reachable: its contrary takes a different one for the same place', () => {
+  // GOVERNED_PREPOSITIONS lists a verb's preposition only when a contrary of that verb takes a
+  // DIFFERENT preposition for the same place ("grant X to Y" / "revoke X from Y"). So every
+  // listed preposition must meet, through some row, a partner's different governed preposition;
+  // one that meets none is dead, and a verb the rule covers that is missing is a proof lost.
+  const pairings = SEED_ANTONYM_PAIRS.flatMap(([a, b]) =>
+    [
+      [a, b],
+      [b, a],
+    ].flatMap(([x, y]) =>
+      [...(GOVERNED_PREPOSITIONS.get(x as string) ?? [])].flatMap((p) =>
+        [...(GOVERNED_PREPOSITIONS.get(y as string) ?? [])]
+          .filter((q) => q !== p)
+          .map((q) => [x as string, p, y as string, q] as const),
+      ),
+    ),
+  )
+
+  it('every listed (verb, preposition) meets a contrary that governs a different one', () => {
+    const reached = new Set(pairings.map(([x, p]) => `${x}|${p}`))
+    for (const [verb, preps] of GOVERNED_PREPOSITIONS) {
+      for (const p of preps) expect(reached.has(`${verb}|${p}`), `${verb} ${p}`).toBe(true)
+    }
+  })
+
+  for (const [x, p, y, q] of pairings) {
+    const [vx, vy] = [x.replace('_', ' '), y.replace('_', ' ')]
+    it(`${vx} the item ${p} the place / ${vy} the item ${q} the place`, () => {
+      expect(
+        areContrary(resp(`${vx} the item ${p} the place`), resp(`${vy} the item ${q} the place`)),
+      ).toBe(true)
+    })
+  }
+
+  it('a preposition neither verb governs keeps its direction: grant FROM / revoke TO', () => {
+    // `grant` governs `to` and `revoke` governs `from`; the reverse is two different places.
+    expect(
+      areContrary(resp('grant calls from the number'), resp('revoke calls to the number')),
+    ).toBe(false)
+    expect(
+      areContrary(resp('show the report from the user'), resp('hide the report to the user')),
+    ).toBe(false)
+  })
+})
+
+describe('the to/from contraries prove end to end (AC-2-1, the governed-preposition rule)', () => {
+  // Each is a real conflict base 669c0e9 proved as FND_CONTRADICTION and the per-verb table lost:
+  // the verb carries the direction, the preposition only introduces the place.
+  const TO_FROM = [
+    ['grant access to the user', 'revoke access from the user'],
+    ['grant the badge to the visitor', 'revoke the badge from the visitor'],
+    ['grant access to all users', 'revoke access from all users'],
+    ['grant read access to the user', 'revoke read access from the user'],
+    ['allow access to the user', 'revoke access from the user'],
+    ['permit access to the user', 'revoke access from the user'],
+    ['authorize access to the user', 'revoke access from the user'],
+    ['show the report to the user', 'hide the report from the user'],
+    ['expose the port to the network', 'conceal the port from the network'],
+    ['seal the sample from the air', 'expose the sample to the air'],
+    ['publish the article to the portal', 'retract the article from the portal'],
+    ['extend the offer to the customer', 'retract the offer from the customer'],
+    ['quarantine the message in the queue', 'release the message from the queue'],
+    ['engage the clutch with the gear', 'disengage the clutch from the gear'],
+  ] as const
+  for (const [x, y] of TO_FROM) {
+    it(`${x} / ${y} is FND_CONTRADICTION`, async () => {
+      expect(await contradictionsOf([`${BUTTON} ${x}.`, `${BUTTON} ${y}.`])).toEqual([
+        [idOf(1), idOf(2)],
+      ])
+    })
+  }
+
+  it('a direction the verb does not carry is no error: allow calls TO / deny calls FROM', async () => {
+    // `deny` takes `to` for the place, as `allow` does, so it governs nothing and its `from`
+    // stays in the key: incoming calls denied, outgoing allowed, is consistent.
+    expect(
+      await errorsOf([
+        `${BUTTON} allow calls to the number.`,
+        `${BUTTON} deny calls from the number.`,
+      ]),
+    ).toEqual([])
   })
 })
