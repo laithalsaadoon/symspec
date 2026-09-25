@@ -735,3 +735,18 @@ are accepted. The five decisions it left open:
 - **D5** CODEOWNERS covers `symspec.config.json` as well as intent and policy (AC-5-13 amended).
 - The Phase 6 certificate op is named `narrow`, because `refine` is an existing edge verb (G1).
 
+
+### Phase 3 decisions, W2 (2026-09-26)
+
+- **D6 (S2)** `antonym` is a `weakening` op: a wrong antonym commit (two synonyms declared
+  contraries) can hide a real conflict, and it discharges an open opposition candidate.
+  Displacement is defined per tier by its reporting granularity — overlapping core for the
+  propositional tier, same cell for the numeric tier, any member for the one-core temporal tier.
+  Enumerating every numeric/temporal core is left to the obligation ledger (AC-7-1).
+- **D7 (S6)** The projection is validated as an outcome: project, then compute atoms and quantity
+  keys with the engine's own key functions, and accept only when both partitions equal the
+  declared ones exactly. No second key function exists.
+- **D8 (S11)** The gate's trust boundary is the CI job on a fresh clone plus CODEOWNERS; local
+  `.git/` edits are out of scope. Config discovery is `--config` / `SYMSPEC_CONFIG`, else
+  `<git toplevel>/symspec.config.json`, else the document's directory, and a run discloses where
+  its config came from in `data.run.config`.
