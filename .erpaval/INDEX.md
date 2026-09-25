@@ -20,6 +20,7 @@ lessons before starting work.
 
 ### architecture
 
+- [A gate names its trust boundary, then discloses outside it — don't parse .git to defend against local edits](solutions/architecture/a-gate-names-its-trust-boundary-then-discloses-outside-it.md)
 - [When an oracle's donor leaves the repo, split the claims — a repointed differential is a tautology that reports green](solutions/architecture/a-transplant-that-outlives-its-oracle.md)
 - [EARS→SMT conflicts need per-context-group reachability; minimize cores before blaming](solutions/architecture/smt-context-group-reachability.md)
 - [Manifest/AGENTS.md/code tables derive from Zod .describe() + enums; drift is a test failure](solutions/architecture/manifest-single-source-derivation.md)
