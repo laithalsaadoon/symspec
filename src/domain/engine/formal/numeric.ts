@@ -117,6 +117,18 @@ export interface NumericPredicate {
    * per quantity, so two prohibitions are satisfied together by never doing the action.
    */
   readonly negated?: true
+  /**
+   * The condition clause that follows the bound in its slot (`when the mode is heating`,
+   * `after the tank fills`), lowercased and whitespace-collapsed; absent when nothing that
+   * reads as one follows. The bound holds only under it, and this tier reads no condition
+   * out of it, so it is part of the comparison class: two bounds meet only under the same
+   * qualifier text, and a pair split by one is disclosed rather than compared (spec 007
+   * AC-2-6). `parse` leaves such a clause inside the response, and read without it `keep the
+   * temperature above 30 °C when the mode is heating` against `... below 20 °C when the mode
+   * is cooling` was a conflict everywhere; `run the pump at most 2 minutes after the tank
+   * fills` is a delay from an event, not a bound on how long the pump runs.
+   */
+  readonly qualifier?: string
   /** The original slot substring the predicate came from (evidence). */
   readonly sourceText: string
 }
@@ -141,6 +153,12 @@ export interface NumericPredicate {
  * the two would conflict read as one quantity, `numeric-contradiction.ts` discloses it
  * (`FND_NUMERIC_UNCOMPARED`), because "complete the infusion within 30 minutes" and
  * "... for at least 60 minutes" is that shape too, and it is a real conflict.
+ *
+ * An unmarked bound followed by a condition clause is not a magnitude of the whole
+ * response: `run the pump at most 2 minutes after the tank fills` is a delay from an event.
+ * Its {@link NumericPredicate.qualifier} keeps it apart from every bound without that same
+ * clause, so it never meets `run the pump for at least 10 minutes` on one variable, and the
+ * pair is disclosed.
  *
  * A role is a TIME role: `keep the positioning error within 5 mm` is a tolerance on a
  * distance, not a deadline, and carries no role. A unit this tier does not recognize
@@ -529,6 +547,29 @@ const COMPARATOR_LEXICON: ReadonlyArray<{ phrase: string; comparator: NumericCom
  * refused whole by the same lookahead, never read as a prefix of itself.
  */
 const NUMBER = String.raw`((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d{1,3})?)(?!\d|[.,]\d|[eE][+-]?\d)`
+
+/**
+ * A condition clause after a bound: a subordinating or temporal word, as a whole word,
+ * anywhere in what follows the bound's unit, and everything after it. Searched rather than
+ * anchored, because `respond within 30 ms to a request while idle` conditions the bound as
+ * much as `respond within 30 ms while idle` does. A clause that is really about some later
+ * part of the slot only SPLITS the bound's comparison class, the prover's safe direction,
+ * and the split is disclosed.
+ */
+const QUALIFIER =
+  /(?:^|[\s,;(])((?:when|whenever|while|whilst|if|unless|until|after|before|once|during|upon)(?![\p{L}\p{N}])[\s\S]*)$/iu
+
+/** The normalized {@link NumericPredicate.qualifier} of the text after a bound, if any. */
+function qualifierOf(after: string): string | undefined {
+  const m = QUALIFIER.exec(after)
+  if (m === null) return undefined
+  const clause = m[1]!
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[\s.,;:!?)]+$/u, '')
+    .trim()
+  return clause === '' ? undefined : clause
+}
 
 /** A tolerance after the number (`200 ± 5`): the bound is a range, not the point. */
 const TOLERANCE = /^\s*(?:±|\+\/-|\+-)/
@@ -1071,6 +1112,7 @@ export function extractNumericPredicates(
       }
 
       const { exact, difference, days, dimension, baseUnit } = bound
+      const qualifier = qualifierOf(rest.slice(unit.length))
 
       out.push({
         quantity: quantityKey(systemName, label, quantityAliases),
@@ -1084,6 +1126,7 @@ export function extractNumericPredicates(
         baseUnit,
         role: reading.role,
         slot,
+        ...(qualifier !== undefined ? { qualifier } : {}),
         sourceText: text.slice(labelEnd, end).trim(),
       })
     }
@@ -1099,7 +1142,7 @@ export function extractNumericPredicates(
  *
  * The key names every field of the record that carries a claim — slot, quantity,
  * comparator, exact value, difference reading, civil days, dimension, base unit, role,
- * negation — so two
+ * negation, qualifier — so two
  * predicates that differ anywhere both survive. `sourceText` is excluded deliberately: it
  * is the audit substring, and two spellings of one bound in one slot are one claim.
  *
@@ -1124,6 +1167,7 @@ function dedupe(preds: NumericPredicate[]): NumericPredicate[] {
       p.baseUnit,
       p.role,
       p.negated === true,
+      p.qualifier ?? '',
     ])
     if (seen.has(key)) continue
     seen.add(key)

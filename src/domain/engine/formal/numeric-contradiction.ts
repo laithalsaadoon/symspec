@@ -183,7 +183,9 @@ export interface RequirementPredicates {
 /**
  * Group key for the comparison partition: the canonical quantity PLUS its unit
  * class ({@link unitClassOf} — the dimension and the unit the value was
- * normalized onto, or the raw text of a unit no dimension recognizes). A JSON
+ * normalized onto, or the raw text of a unit no dimension recognizes) PLUS the
+ * bound's trailing condition clause ({@link NumericPredicate.qualifier}), which this
+ * tier does not read as a guard and so never asserts across. A JSON
  * array, so no character a system name or a raw unit can contain makes the join
  * ambiguous.
  *
@@ -194,7 +196,7 @@ export interface RequirementPredicates {
  * every predicate lands in exactly one arithmetically-coherent group.
  */
 function comparisonKey(pred: NumericPredicate): string {
-  return JSON.stringify([pred.quantity, unitClassOf(pred)])
+  return JSON.stringify([pred.quantity, unitClassOf(pred), pred.qualifier ?? ''])
 }
 
 /**
@@ -692,7 +694,7 @@ export async function analyzeNumericBounds(
 
 /**
  * Pairs of bounds on ONE quantity that no cell asserted together, and that could conflict
- * if they were. Two shapes, each a deletion by a partition the prover is right to make and
+ * if they were. Three shapes, each a deletion by a partition the prover is right to make and
  * a run is not entitled to certify over
  * (`.erpaval/solutions/architecture/a-finer-key-is-not-uniformly-safer.md`):
  *
@@ -712,6 +714,12 @@ export async function analyzeNumericBounds(
  *     together is unsatisfiable under some reading, so a guarded pair that co-holds anyway
  *     (`<= 30 ms`, `>= 10 ms`) costs nothing. A GUARD bound is a condition on where its
  *     requirement applies, not an obligation, so two guards are never such a pair.
+ *   - QUALIFIERS. Two co-live RESPONSE bounds in one unit class whose trailing condition
+ *     clauses differ ({@link NumericPredicate.qualifier}): `keep the temperature above 30 °C
+ *     when the mode is heating` and `... below 20 °C when the mode is cooling`, or `run the
+ *     pump at most 2 minutes after the tank fills` and `run the pump for at least 10
+ *     minutes`. The cells keep them apart because the tier cannot tell where each applies;
+ *     the same `conflictTogether` test decides whether the split hid anything.
  *
  * Two prohibitions are never reported: not doing the action satisfies both.
  *
@@ -729,7 +737,11 @@ async function uncomparedPairs(
   const recognized = (p: NumericPredicate) =>
     p.dimension !== RAW_UNIT_DIMENSION && p.dimension !== ''
 
-  type Candidate = { readonly a: Entry; readonly b: Entry; readonly shape: 'units' | 'contexts' }
+  type Candidate = {
+    readonly a: Entry
+    readonly b: Entry
+    readonly shape: 'units' | 'contexts' | 'qualifiers'
+  }
   const candidates: Candidate[] = []
   for (let i = 0; i < reqPreds.length; i += 1) {
     for (let j = i + 1; j < reqPreds.length; j += 1) {
@@ -749,10 +761,11 @@ async function uncomparedPairs(
             candidates.push({ a, b, shape: 'units' })
             continue
           }
-          // Co-live in one unit class: a cell asserted the two together and decided them.
-          if (together) continue
+          const sameQualifier = (pa.qualifier ?? '') === (pb.qualifier ?? '')
+          // Co-live in one comparison class: a cell asserted the two together and decided them.
+          if (together && sameQualifier) continue
           if (pa.slot !== 'resp' || pb.slot !== 'resp') continue
-          candidates.push({ a, b, shape: 'contexts' })
+          candidates.push({ a, b, shape: together ? 'qualifiers' : 'contexts' })
         }
       }
     }
@@ -764,7 +777,7 @@ async function uncomparedPairs(
     const ids = [a.id, b.id].sort()
     const key = JSON.stringify([a.pred.quantity, ids])
     if (out.has(key)) continue
-    if (shape === 'contexts') {
+    if (shape !== 'units') {
       if (bounds.budget?.expired() === true) {
         bounds.budget.truncate('numeric-contradiction', candidates.length - index)
         break
@@ -773,6 +786,8 @@ async function uncomparedPairs(
     }
     const pair = `(${a.pred.sourceText} vs ${b.pred.sourceText})`
     const unitOf = (p: NumericPredicate) => (p.baseUnit === '' ? 'no unit' : `"${p.baseUnit}"`)
+    const qualifierOf = (p: NumericPredicate) =>
+      p.qualifier === undefined ? 'none' : `"${p.qualifier}"`
     out.set(key, {
       code: 'FND_NUMERIC_UNCOMPARED',
       severity: 'info',
@@ -784,12 +799,20 @@ async function uncomparedPairs(
             `${unitOf(b.pred)}), so it never compared them. Restate both in one unit it ` +
             'recognizes so any conflict is proved, or waive this finding if they are ' +
             'consistent. This is a disclosure, not a verdict.'
-          : `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
-            'that conflict if both apply at once, under guards no context group the numeric ' +
-            'tier checked asserts together, so it never compared them. If the two contexts ' +
-            'can hold at once, change one requirement so it no longer contradicts the other ' +
-            'there; if they cannot, waive this finding. Then re-run `symspec check`. This is a ' +
-            'disclosure, not a verdict.',
+          : shape === 'qualifiers'
+            ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
+              'that conflict if both apply at once, under different trailing conditions ' +
+              `(${qualifierOf(a.pred)} and ${qualifierOf(b.pred)}) the numeric tier does not read ` +
+              'as guards, so it never compared them. Move each condition into the ' +
+              "requirement's trigger or precondition so the tier can tell where each bound " +
+              'applies, or waive this finding once you have checked they cannot apply ' +
+              'together. Then re-run `symspec check`. This is a disclosure, not a verdict.'
+            : `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
+              'that conflict if both apply at once, under guards no context group the numeric ' +
+              'tier checked asserts together, so it never compared them. If the two contexts ' +
+              'can hold at once, change one requirement so it no longer contradicts the other ' +
+              'there; if they cannot, waive this finding. Then re-run `symspec check`. This is ' +
+              'a disclosure, not a verdict.',
     })
   }
   return [...out.values()]

@@ -214,6 +214,21 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
     expect(read('keep at least one of 3 replicas online')).toEqual([])
   })
 
+  it('keeps a trailing condition on the bound, so it is never asserted unconditionally', () => {
+    const qualifier = (text: string) =>
+      extractNumericPredicates(text, 'svc', 'resp').map((p) => [p.label, p.qualifier])
+    expect(
+      qualifier('keep the temperature above 30 degrees celsius when the mode is heating'),
+    ).toEqual([['keep the temperature', 'when the mode is heating']])
+    expect(qualifier('run the pump at most 2 minutes after the tank fills.')).toEqual([
+      ['run the pump', 'after the tank fills'],
+    ])
+    expect(qualifier('respond within 30 ms to a request,  While   Idle')).toEqual([
+      ['respond', 'while idle'],
+    ])
+    expect(qualifier('respond within 30 ms')).toEqual([['respond', undefined]])
+  })
+
   it('does not read a comparator inside a longer word', () => {
     expect(read('complete the handover 5 seconds after the alarm')).toEqual([])
   })
