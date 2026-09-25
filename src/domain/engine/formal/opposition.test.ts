@@ -444,3 +444,60 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
     )
   })
 })
+
+describe('AC-2-1 with I-1 — a glossary alias carries its phrase’s contraries', () => {
+  // A glossary entry says two phrases name ONE action, which is strengthening (spec 007 I-1): it
+  // may only add findings. It used to move the aliased phrase onto the canonical's opposition key
+  // and forget its own, so aliasing ONE side of a proven contrary pair split the pair, and
+  // "open the door" plus "close the door" while the train moves went from FND_CONTRADICTION to
+  // a clean `verified: true`. The alias IS "open the door", so ¬(open the door ∧ close the door)
+  // still holds of the atom it now names.
+  const MOVING = 'While the train is moving, the door controller shall'
+  const contradictionsOf = async (
+    sentences: readonly string[],
+    glossary: readonly { canonical: string; aliases: string[] }[],
+  ) => {
+    const doc = (await docOf(sentences)) as unknown as { glossary: unknown[] }
+    doc.glossary = [...glossary]
+    const report = await runCheck(doc as never)
+    return report.findings
+      .filter((f) => f.code === 'FND_CONTRADICTION')
+      .map((f) => f.requirementIds)
+  }
+  const HATCH = [{ canonical: 'open the hatch', aliases: ['open the door'] }]
+
+  it('aliasing one side of a seeded pair keeps the pair a contradiction', async () => {
+    expect(
+      await contradictionsOf([`${MOVING} open the door.`, `${MOVING} close the door.`], HATCH),
+    ).toEqual([[idOf(1), idOf(2)]])
+  })
+
+  it('so does a requirement that uses the CANONICAL wording', async () => {
+    // "open the hatch" IS "open the door" by the entry, so "close the door" is its contrary too.
+    expect(
+      await contradictionsOf([`${MOVING} open the hatch.`, `${MOVING} close the door.`], HATCH),
+    ).toEqual([[idOf(1), idOf(2)]])
+  })
+
+  it('and a canonical outside every antonym class still inherits its alias’s contrary', async () => {
+    const UNLATCH = [{ canonical: 'unlatch the hatch', aliases: ['open the door'] }]
+    expect(
+      await contradictionsOf([`${MOVING} open the door.`, `${MOVING} close the door.`], UNLATCH),
+    ).toEqual([[idOf(1), idOf(2)]])
+  })
+
+  it('"do neither" stays consistent through an alias', async () => {
+    expect(
+      await contradictionsOf(
+        [`${MOVING} not open the door.`, `${MOVING} not close the door.`],
+        HATCH,
+      ),
+    ).toEqual([])
+  })
+
+  it('an alias relates nothing it does not name: open the hatch / close the gate', async () => {
+    expect(
+      await contradictionsOf([`${MOVING} open the hatch.`, `${MOVING} close the gate.`], HATCH),
+    ).toEqual([])
+  })
+})
