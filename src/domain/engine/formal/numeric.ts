@@ -80,6 +80,14 @@ export interface NumericPredicate {
    */
   readonly difference?: Rational
   /**
+   * The bound's length in CIVIL DAYS, present only for a calendar unit (`day`, `week`).
+   * `exact` is then the nominal 24-hour reading, which is only right on a day with no
+   * daylight-saving change: a civil day runs 23 to 25 hours. `numeric-contradiction.ts`
+   * proves a conflict against a day length bounded by those two, and discloses a pair that
+   * conflicts only at the nominal length.
+   */
+  readonly days?: Rational
+  /**
    * The unit dimension the bound is on: a {@link DIMENSIONS} name (`time`,
    * `distance`, …) when the unit is recognized, {@link RAW_UNIT_DIMENSION} when a
    * unit token is present but recognized by no dimension, `''` when the number has
@@ -89,7 +97,7 @@ export interface NumericPredicate {
   /**
    * The unit the value is expressed in: the dimension's base when the unit is
    * recognized (`ms`, `m`, `B`, …), the unit's RAW TEXT, case preserved, when it is
-   * not (`days`, `percent`, `Mb`), and `''` when there is no unit.
+   * not (`months`, `times per minute`, `Mb`), and `''` when there is no unit.
    */
   readonly baseUnit: string
   /**
@@ -136,7 +144,7 @@ export interface NumericPredicate {
  *
  * A role is a TIME role: `keep the positioning error within 5 mm` is a tolerance on a
  * distance, not a deadline, and carries no role. A unit this tier does not recognize
- * (`days`) or no unit at all may still be a time, so those keep their marker.
+ * (`months`) or no unit at all may still be a time, so those keep their marker.
  *
  * `within` BEFORE another comparator (`complete the infusion within at most 30
  * minutes`) stays in the quantity label, so the key already names the deadline
@@ -159,6 +167,11 @@ export const RAW_UNIT_DIMENSION = 'unrecognized'
 export interface UnitScale {
   readonly factor: string
   readonly offset?: string
+  /**
+   * The unit's length in civil days, for a calendar unit whose `factor` is only its
+   * nominal length (`day`: `"1"`, `week`: `"7"`). See {@link NumericPredicate.days}.
+   */
+  readonly days?: string
 }
 
 /**
@@ -181,14 +194,24 @@ export interface Dimension {
 const k = (factor: string, offset?: string): UnitScale =>
   offset === undefined ? { factor } : { factor, offset }
 
+/** A calendar unit: `days` civil days, nominally 24 hours each. */
+const civil = (days: string): UnitScale => ({
+  factor: String(BigInt(days) * 86_400_000n),
+  days,
+})
+
 /**
  * Known unit dimensions. Extend conservatively: a spelling that is not listed is
  * not dropped, it keys on its raw text, which only ever SPLITS a comparison.
  *
  * Deliberately absent:
- *   - `day`, `week`, `month`, `year`. A calendar month and year have no fixed
- *     length, and a civil day is 23 or 25 hours across a DST change, so none of
- *     them converts into milliseconds exactly. Each keys on its own raw text.
+ *   - `month`, `year`. A calendar month and year have no fixed length, so neither
+ *     converts into milliseconds. Each keys on its own raw text, and a bound in one is
+ *     disclosed against a bound in any other unit rather than compared.
+ *   - `day` and `week` as FIXED lengths. A civil day is 23 or 25 hours across a DST
+ *     change, so each is listed as a time with its length in civil days
+ *     ({@link UnitScale.days}), and the decide tier reads it against a bounded day length
+ *     rather than as 86 400 000 ms.
  *   - `m` as MINUTES. `m` is the metre, as in the R6 lint unit list
  *     (`lint/gtwr.ts` `R6_RECOGNIZED_UNITS`), so `lower the hook at least 10 m`
  *     is a distance, and never meets `within 30 seconds`.
@@ -231,6 +254,10 @@ export const DIMENSIONS: readonly Dimension[] = [
       hrs: k('3600000'),
       hour: k('3600000'),
       hours: k('3600000'),
+      day: civil('1'),
+      days: civil('1'),
+      week: civil('7'),
+      weeks: civil('7'),
     },
   },
   {
@@ -575,14 +602,20 @@ function readUnit(rest: string): { raw: string; length: number } {
 /**
  * Normalize a number and its raw unit into the bound's dimension, base unit, and
  * exact value. An unrecognized unit is not dropped: it keys on its own raw text, so
- * `90 days` meets `30 days` and never `1 year`. Keyed on `''`, every unknown unit
+ * `9 months` meets `3 months` and never `1 year`. Keyed on `''`, every unknown unit
  * was the unitless bound, and `at least 90 days` against `at most 1 year` was
  * `>= 90 ∧ <= 1`.
  */
 function normalizeBound(
   numberText: string,
   rawUnit: string,
-): { exact: Rational; difference?: Rational; dimension: string; baseUnit: string } {
+): {
+  exact: Rational
+  difference?: Rational
+  days?: Rational
+  dimension: string
+  baseUnit: string
+} {
   const magnitude = parseRational(numberText.replace(/,/g, ''))
   if (rawUnit === '') return { exact: magnitude, dimension: '', baseUnit: '' }
   const resolved = resolveUnit(rawUnit)
@@ -590,6 +623,14 @@ function normalizeBound(
     return { exact: magnitude, dimension: RAW_UNIT_DIMENSION, baseUnit: rawUnit }
   }
   const scaled = mulR(magnitude, parseRational(resolved.scale.factor))
+  if (resolved.scale.days !== undefined) {
+    return {
+      exact: scaled,
+      days: mulR(magnitude, parseRational(resolved.scale.days)),
+      dimension: resolved.dimension,
+      baseUnit: resolved.base,
+    }
+  }
   if (resolved.scale.offset === undefined) {
     return { exact: scaled, dimension: resolved.dimension, baseUnit: resolved.base }
   }
@@ -654,7 +695,7 @@ export function opposedComparators(a: NumericComparator, b: NumericComparator): 
  * keep naming only the first. Comparability is a property of a PAIR of predicates,
  * so the unit belongs in the comparison partition, not the identity: see
  * {@link unitClassOf}, which `numeric-contradiction.ts` (`comparisonKey`) groups on
- * so a unitless bound, a `days` bound, and an `ms` bound are never compared with
+ * so a unitless bound, a `months` bound, and an `ms` bound are never compared with
  * one another — and which `quantity-alias.ts` requires to agree before it pairs.
  * Folding the unit in here would also rename the `quantity` in every emitted
  * `evidence.numeric` block and every SMT-LIB2 Real const, changing observable
@@ -1029,7 +1070,7 @@ export function extractNumericPredicates(
         continue
       }
 
-      const { exact, difference, dimension, baseUnit } = bound
+      const { exact, difference, days, dimension, baseUnit } = bound
 
       out.push({
         quantity: quantityKey(systemName, label, quantityAliases),
@@ -1038,6 +1079,7 @@ export function extractNumericPredicates(
         value: toDisplayNumber(exact),
         exact,
         ...(difference !== undefined ? { difference } : {}),
+        ...(days !== undefined ? { days } : {}),
         dimension,
         baseUnit,
         role: reading.role,
@@ -1056,7 +1098,8 @@ export function extractNumericPredicates(
  * Drop exact-duplicate predicates.
  *
  * The key names every field of the record that carries a claim — slot, quantity,
- * comparator, exact value, difference reading, dimension, base unit, role, negation — so two
+ * comparator, exact value, difference reading, civil days, dimension, base unit, role,
+ * negation — so two
  * predicates that differ anywhere both survive. `sourceText` is excluded deliberately: it
  * is the audit substring, and two spellings of one bound in one slot are one claim.
  *
@@ -1076,6 +1119,7 @@ function dedupe(preds: NumericPredicate[]): NumericPredicate[] {
       p.comparator,
       `${p.exact.numerator}/${p.exact.denominator}`,
       p.difference === undefined ? '' : `${p.difference.numerator}/${p.difference.denominator}`,
+      p.days === undefined ? '' : `${p.days.numerator}/${p.days.denominator}`,
       p.dimension,
       p.baseUnit,
       p.role,

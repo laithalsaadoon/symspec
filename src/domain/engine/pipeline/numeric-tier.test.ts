@@ -117,9 +117,9 @@ const drone = (systemResponse: string): ReqSpec => ({
 
 describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exactly', () => {
   it('does not compare 90 days against 1 year: an unrecognized unit keys on its own text', async () => {
-    // `day` and `year` are not in any dimension (a year is not a fixed number of days), so
-    // each contributes its raw text to the key and the two bounds are never asserted on one
-    // variable. Keyed on `''`, `>= 90` and `<= 1` are UNSAT.
+    // `year` is in no dimension (a year is not a fixed number of days), so it contributes its
+    // raw text to the key and never meets the `days` bound on one variable. Keyed on `''`,
+    // `>= 90` and `<= 1` are UNSAT.
     expect(
       await numericFindings(
         archive('retain audit logs for at least 90 days'),
@@ -137,10 +137,49 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
   it('still proves a conflict between two bounds in the SAME unrecognized unit', async () => {
     // The control: raw-text keying partitions, it does not switch the tier off.
     const found = await numericFindings(
-      archive('retain audit logs for at least 90 days'),
-      archive('retain audit logs for at most 30 days'),
+      archive('retain audit logs for at least 9 months'),
+      archive('retain audit logs for at most 3 months'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
+  it('proves a day bound against an hour bound under every civil day length', async () => {
+    // A civil day is at least 23 hours, so `at least 2 days` is at least 46 hours under any
+    // daylight-saving policy, and `at most 24 hours` conflicts with it. Keyed on the raw text
+    // `days`, the pair was neither compared nor disclosed, and the document certified.
+    const found = await numericFindings(
+      archive('retain logs for at least 2 days'),
+      archive('retain logs for at most 24 hours'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+    // Two bounds in days share one day length, so `over 2 days` meets `at most 2 days`
+    // exactly as it did in the day unit, and a week is seven of them.
+    for (const [a, b] of [
+      ['retain logs for over 2 days', 'retain logs for at most 2 days'],
+      ['retain logs for at least 1 week', 'retain logs for at most 6 days'],
+    ] as const) {
+      const pair = await numericFindings(archive(a), archive(b))
+      expect(
+        pair.map((f) => f.requirementIds),
+        a,
+      ).toEqual([[ID_A, ID_B]])
+    }
+  })
+
+  it('does not prove a conflict that holds only for a 24-hour day, and DISCLOSES it', async () => {
+    // `at least 1 day` against `at most 1439 minutes` conflicts for a 24-hour day and not for
+    // the 23-hour day of a spring-forward change. Proving it would fabricate; certifying it
+    // would hide it.
+    const pair = [
+      archive('retain logs for at least 1 day'),
+      archive('retain logs for at most 1439 minutes'),
+    ] as const
+    expect(await errorCodes(...pair)).toEqual([])
+    const report = await runCheck(pairDoc(...pair) as never, {})
+    const disclosed = report.findings.filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
+    expect(disclosed.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+    expect(disclosed[0]?.message).toContain('23 to 25 hours')
+    expect(report.coverage.demotions.map((d) => d.reason)).toContain('numeric-bounds-uncompared')
   })
 
   it('never compares a percent with a bare ratio, and DISCLOSES the pair instead', async () => {
@@ -730,9 +769,10 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
     }
   })
 
-  it('DISCLOSES two unrecognized units it did not compare: 400 days against 1 year', async () => {
-    // Keyed on its raw text, `days` never meets `year` (AC-2-5), which is right for `90 days`
-    // and a miss for `400 days`. The pair is disclosed rather than silently certified.
+  it('DISCLOSES units it did not compare: 400 days against 1 year', async () => {
+    // Keyed on its raw text, `year` never meets a `days` bound (AC-2-5), which is right for
+    // `90 days` and a miss for `400 days`. The pair is disclosed rather than silently
+    // certified.
     const doc = manyDoc(
       ...twoTriggers(
         { systemName: 'archive service' },

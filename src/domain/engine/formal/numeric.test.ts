@@ -78,10 +78,10 @@ describe('a bound carries its dimension, its unit, and an exact value (spec 007 
   })
 
   it('keys an unrecognized unit on its raw text, case and rate suffix included', () => {
-    expect(one('retain audit logs for at least 90 days')).toEqual({
-      exact: '90/1',
+    expect(one('retain audit logs for at least 3 months')).toEqual({
+      exact: '3/1',
       dimension: RAW_UNIT_DIMENSION,
-      baseUnit: 'days',
+      baseUnit: 'months',
     })
     expect(one('sample the sensor at least 100 times per minute')).toEqual({
       exact: '100/1',
@@ -89,6 +89,21 @@ describe('a bound carries its dimension, its unit, and an exact value (spec 007 
       baseUnit: 'times per minute',
     })
     expect(one('keep the firmware image at least 64 Mb').baseUnit).toBe('Mb')
+  })
+
+  it('reads a day or a week as a time, carrying its length in civil days', () => {
+    // A civil day is 23 to 25 hours across a daylight-saving change, so the nominal 24-hour
+    // value is only the display and disclosure reading; the proof reads `days` against a
+    // bounded day length (`numeric-contradiction.ts`).
+    const civil = (text: string) => {
+      const [p] = extractNumericPredicates(text, 'svc', 'resp')
+      return [p?.dimension, p?.baseUnit, p?.value, `${p?.days?.numerator}/${p?.days?.denominator}`]
+    }
+    expect(civil('retain logs for at least 2 days')).toEqual(['time', 'ms', 172_800_000, '2/1'])
+    expect(civil('retain logs for at least 1 day')).toEqual(['time', 'ms', 86_400_000, '1/1'])
+    expect(civil('retain logs for at most 1.5 weeks')).toEqual(['time', 'ms', 907_200_000, '21/2'])
+    // A fixed-length unit carries no civil-day count.
+    expect(civil('retain logs for at most 24 hours')[3]).toBe('undefined/undefined')
   })
 
   it('reads `%` and `percent` as one percent dimension, never as a bare number', () => {

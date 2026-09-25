@@ -75,7 +75,7 @@
  * The same argument covers a unit no dimension recognizes (spec 007 AC-2-5). It
  * used to normalize to `''`, so `retain audit logs for at least 90 days` and `… for
  * at most 1 year` were two unitless bounds, `>= 90 ∧ <= 1`, and an error. An
- * unrecognized unit now keys on its raw text: `days` meets `days`, and never `year`
+ * unrecognized unit now keys on its raw text: `year` meets `year`, and never `days`
  * or a bare number. A recognized unit keys on its DIMENSION as well as its base, and
  * converts into that base exactly (`numeric.ts` `Rational`), so `2 km` meets `500
  * meters` as `2000 m` and `500 m`, and `1.1 hours` meets `66 minutes` at one point.
@@ -95,7 +95,9 @@
  * for at least 30 seconds` do not), and whether a °F or K bound is an absolute
  * temperature or a difference (`a differential of at most 36 °F` is 20 °C of
  * difference, and `-160/9` °C only as an absolute). So a cell is PROVED only when it
- * is unsatisfiable with the roles apart AND under both temperature readings. A cell
+ * is unsatisfiable with the roles apart AND under both temperature readings. A day or week
+ * bound is a third such reading: it is read against a day length anywhere from 23 to 25
+ * hours, and a pair that conflicts only at the nominal 24 is disclosed. A cell
  * that is unsatisfiable under some other reading is neither proved nor silently
  * dropped: it is reported as `FND_NUMERIC_UNCOMPARED`, info, which demotes
  * `verified`. Declining the proof is the prover's safe direction and disclosing it is
@@ -187,7 +189,7 @@ export interface RequirementPredicates {
  *
  * Units are part of the key rather than a post-hoc filter because comparability
  * is a property of the pair, not of one predicate: `ms` bounds are mutually
- * comparable, unitless bounds are mutually comparable, `days` bounds are mutually
+ * comparable, unitless bounds are mutually comparable, `months` bounds are mutually
  * comparable, and none of those sets mix. Keying makes that partition total —
  * every predicate lands in exactly one arithmetically-coherent group.
  */
@@ -207,11 +209,31 @@ function comparisonKey(pred: NumericPredicate): string {
 interface Reading {
   readonly roles: 'split' | 'merged'
   readonly temperature: 'absolute' | 'difference'
+  /**
+   * `'civil'` reads a day or week bound ({@link NumericPredicate.days}) against a day
+   * length bounded by 23 and 25 hours, one per variable; `'nominal'` reads it as 24 hours.
+   * Nominal is one civil day length, so a civil proof implies the nominal one and never the
+   * reverse: the proof readings are civil, and nominal only ever feeds a disclosure.
+   */
+  readonly calendar: 'civil' | 'nominal'
 }
-const SPLIT_ABSOLUTE: Reading = { roles: 'split', temperature: 'absolute' }
-const SPLIT_DIFFERENCE: Reading = { roles: 'split', temperature: 'difference' }
-const MERGED_ABSOLUTE: Reading = { roles: 'merged', temperature: 'absolute' }
-const MERGED_DIFFERENCE: Reading = { roles: 'merged', temperature: 'difference' }
+const SPLIT_ABSOLUTE: Reading = { roles: 'split', temperature: 'absolute', calendar: 'civil' }
+const SPLIT_DIFFERENCE: Reading = { roles: 'split', temperature: 'difference', calendar: 'civil' }
+const MERGED_ABSOLUTE: Reading = { roles: 'merged', temperature: 'absolute', calendar: 'civil' }
+const MERGED_DIFFERENCE: Reading = {
+  roles: 'merged',
+  temperature: 'difference',
+  calendar: 'civil',
+}
+const SPLIT_NOMINAL: Reading = { roles: 'split', temperature: 'absolute', calendar: 'nominal' }
+const MERGED_NOMINAL: Reading = { roles: 'merged', temperature: 'absolute', calendar: 'nominal' }
+
+/**
+ * The shortest and longest civil day, in ms: 23 and 25 hours, the lengths of the two days a
+ * one-hour daylight-saving change produces.
+ */
+const SHORTEST_DAY_MS = 82_800_000
+const LONGEST_DAY_MS = 90_000_000
 
 type Entry = { readonly id: string; readonly pred: NumericPredicate }
 
@@ -256,7 +278,21 @@ function boundFormula(
       : pred.role !== ''
         ? [`${pred.quantity}#${pred.role}`]
         : marked.map((r) => `${pred.quantity}#${r}`)
-  const parts = names.map((name) => compareTo(ctx.Real.const(name), pred.comparator, v))
+  const parts = names.map((name) => {
+    const q = ctx.Real.const(name)
+    if (reading.calendar === 'nominal' || pred.days === undefined) {
+      return compareTo(q, pred.comparator, v)
+    }
+    // `n days` is `n × L` for a day length `L` shared by every day bound on this variable,
+    // so `more than 2 days` still meets `at most 2 days` exactly as it did in days, and `at
+    // least 2 days` is at least 46 hours against an hour bound.
+    const dayLength = ctx.Real.const(`${name}#day`)
+    return ctx.And(
+      dayLength.ge(SHORTEST_DAY_MS),
+      dayLength.le(LONGEST_DAY_MS),
+      compareTo(q, pred.comparator, dayLength.mul(ctx.Real.val(pred.days))),
+    )
+  })
   const bound = parts.length === 1 ? parts[0]! : ctx.And(...parts)
   // An obligation does the action AND bounds it; a prohibition bounds it only if it happens
   // (`numeric.ts` `NumericPredicate.negated`). One occurrence literal per quantity, never an
@@ -269,7 +305,7 @@ function boundFormula(
 function compareTo(
   q: ReturnType<Z3Context['Real']['const']>,
   comparator: NumericPredicate['comparator'],
-  v: ReturnType<Z3Context['Real']['val']>,
+  v: ReturnType<Z3Context['Real']['const']>,
 ): Z3Bool {
   switch (comparator) {
     case '<':
@@ -497,10 +533,17 @@ function disagreementOf(reading: Reading, marked: readonly BoundRole[]): string 
     'a bound on an offset temperature scale (°F, K) reads one way as an absolute ' +
     'temperature and another as a difference (a differential, rise, or overshoot), and ' +
     'the sentence does not say which'
-  if (reading.roles === 'merged' && marked.length >= 2) {
-    return reading.temperature === 'difference' ? `${roles}; and ${temperature}` : roles
-  }
-  return temperature
+  const calendar =
+    'a day or week bound reads as 24 hours a day only on a day with no daylight-saving ' +
+    'change, and a civil day runs 23 to 25 hours; the bounds conflict at the nominal length ' +
+    'and not at every civil one'
+  const merged = reading.roles === 'merged' && marked.length >= 2
+  const rest = [
+    ...(reading.temperature === 'difference' ? [temperature] : []),
+    ...(reading.calendar === 'nominal' ? [calendar] : []),
+  ]
+  if (merged) return [roles, ...rest].join('; and ')
+  return rest.length > 0 ? rest.join('; and ') : temperature
 }
 
 /**
@@ -555,16 +598,19 @@ export async function analyzeNumericBounds(
     const ids = [...distinctIds].sort()
     const marked = markedRoles(entries)
     const hasDifference = entries.some((e) => e.pred.difference !== undefined)
+    const hasCalendar = entries.some((e) => e.pred.days !== undefined)
     const proofReadings = hasDifference ? [SPLIT_ABSOLUTE, SPLIT_DIFFERENCE] : [SPLIT_ABSOLUTE]
 
     const proof = await unsatUnderAll(ctx, solverEntries, ids, proofReadings, marked, bounds)
     if (!proof.unsat) {
       // Not proved. Is there a reading under which it IS a conflict? Only a cell with
-      // two marked roles or an offset-scale bound has one.
+      // two marked roles, an offset-scale bound, or a day bound has one.
       const readings: Reading[] = [
         ...(marked.length >= 2 ? [MERGED_ABSOLUTE] : []),
         ...(hasDifference ? proofReadings : []),
         ...(marked.length >= 2 && hasDifference ? [MERGED_DIFFERENCE] : []),
+        ...(hasCalendar ? [SPLIT_NOMINAL] : []),
+        ...(marked.length >= 2 && hasCalendar ? [MERGED_NOMINAL] : []),
       ]
       for (const reading of readings) {
         const out = await solveUnder(ctx, solverEntries, ids, reading, marked, bounds)
