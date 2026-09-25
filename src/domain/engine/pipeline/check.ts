@@ -83,6 +83,7 @@ import { type AntonymEntry, buildAntonymIndexWithDoc } from '../formal/antonyms.
 import {
   areContrary,
   contraryPairs,
+  glossaryContraries,
   glossaryIndex,
   makeAtomize,
   normalize,
@@ -413,6 +414,12 @@ export interface CoverageDemotion {
     // or split an atom the document already shares, and a rewrite is the route instead) or by
     // waiving the finding (declared distinct) — the finding is the triage record.
     | 'opposite-polarity-near-duplicate'
+    // A committed glossary entry names two CONTRARIES as one action ("open the door" with alias
+    // "close the door"). With the antonym table's ¬(A ∧ B) that entry makes both actions
+    // impossible, which no requirement is checked against, so the atomizer keeps each contrary
+    // phrase on its own atom (where the axiom still relates it) and this demotes over every
+    // requirement whose response the entry names. Discharged by removing the contrary alias.
+    | 'contrary-glossary-alias'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
   action: string
@@ -2024,6 +2031,42 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
               'opposite or splits an atom the document already shares. ') +
           'If they are genuinely distinct, waive FND_SIMILAR_SEMANTIC for the pair. Then re-run ' +
           '`symspec check`.',
+      })
+    }
+    // A glossary entry naming two contraries as one action: its consequence (neither action ever
+    // happens) is not decided, because the atomizer keeps the contraries apart.
+    const glossaryEntries = new Map(doc.glossary.map((e) => [normalize(e.canonical), e]))
+    for (const entry of glossaryContraries(
+      glossaryIndex(doc.glossary),
+      docAntonymIndex(doc),
+      termIndex(doc.terms ?? []),
+    )) {
+      const phrases = new Set(entry.phrases)
+      const ids = requirements
+        .filter((r) => phrases.has(normalize(r.systemResponse)))
+        .map((r) => r.id)
+        .sort()
+      if (ids.length === 0) continue
+      const stored = glossaryEntries.get(entry.canonical)
+      const spelled = (phrase: string) =>
+        stored?.aliases.find((a) => normalize(a) === phrase) ?? phrase.replace(/_/g, ' ')
+      const canonical = stored?.canonical ?? entry.canonical.replace(/_/g, ' ')
+      const removals = [...new Set(entry.contraries.flat())]
+        .filter((phrase) => phrase !== entry.canonical)
+        .map((phrase) => `\`symspec glossary "${canonical}" "${spelled(phrase)}" --remove\``)
+      demotions.push({
+        reason: 'contrary-glossary-alias',
+        requirementIds: ids,
+        action:
+          `The glossary entry "${canonical}" names contraries as one action (` +
+          entry.contraries
+            .map(([p, q]) => `"${p.replace(/_/g, ' ')}" / "${q.replace(/_/g, ' ')}"`)
+            .join(', ') +
+          '). The antonym table says the two cannot both happen, so an entry saying they are ' +
+          'one action says neither ever happens, and nothing checks the requirements above ' +
+          'against that. The formal tier keeps each contrary phrase on its own atom instead. ' +
+          'If they are two actions, remove the alias that names the opposite one: ' +
+          `${removals.join(' or ')}. Then re-run \`symspec check\`.`,
       })
     }
     for (const f of openOppositionFindings) {

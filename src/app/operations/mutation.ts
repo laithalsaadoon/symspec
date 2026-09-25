@@ -35,7 +35,12 @@
 
 import { Effect, Schema } from 'effect'
 import { ANTONYM_INDEX, buildAntonymIndexWithDoc } from '../../domain/engine/formal/antonyms.ts'
-import { normalize } from '../../domain/engine/formal/atomize.ts'
+import {
+  glossaryContraries,
+  glossaryIndex,
+  normalize,
+  termIndex,
+} from '../../domain/engine/formal/atomize.ts'
 import { ESTABLISH_VERBS } from '../../domain/engine/formal/guard-implication.ts'
 import { deInflectHead } from '../../domain/engine/formal/lemma.ts'
 // STATIC. A dynamic import here bought nothing: `operations/parse.ts` imports
@@ -221,6 +226,39 @@ const MUTATE_OPTIONS: MutateOptions = {
       `"${offending}" is a verb the formal tier reads — the antonym table or the ` +
       'state-bridge lexicon — and substituting one inside a body moves the polarity the solver ' +
       'computes without moving the parse that recognises the bridge'
+    )
+  },
+  /**
+   * The glossary twin of the two guards above: an entry must not name two contraries.
+   *
+   * "close the door" as an alias of "open the door" says the two are one action while the seed
+   * pair open/close says they cannot both happen, and committed it turned FND_CONTRADICTION into
+   * `verified: true`. The propose tier already withholds that merge (AC-3-6); this refuses the
+   * committed op. Read through the document's OWN antonyms and terms, the tables the atomizer
+   * uses. Defense in depth only — an antonym or term committed afterwards forms the same entry
+   * with no glossary write to refuse, so the soundness guarantee is `atomize` keeping each
+   * contrary on its own atom and `check` demoting (`contrary-glossary-alias`).
+   */
+  validateGlossary: (document, canonical, alias) => {
+    let antonyms: ReturnType<typeof buildAntonymIndexWithDoc> = ANTONYM_INDEX
+    try {
+      antonyms = buildAntonymIndexWithDoc(
+        document.antonyms.map((p) => [normalize(p.a), normalize(p.b)] as const),
+      )
+    } catch {
+      // An inconsistent committed table is refused at ITS write; check falls back to the seeds.
+    }
+    const entry = glossaryContraries(
+      glossaryIndex(document.glossary),
+      antonyms,
+      termIndex(document.terms ?? []),
+    ).find((e) => e.canonical === canonical)
+    const pair = entry?.contraries.find(([p, q]) => p === alias || q === alias)
+    if (pair === undefined) return undefined
+    const other = (pair[0] === alias ? pair[1] : pair[0]).replace(/_/g, ' ')
+    return (
+      `it is a contrary of "${other}" under the antonym table, so one entry naming both would ` +
+      'say neither action ever happens'
     )
   },
 }

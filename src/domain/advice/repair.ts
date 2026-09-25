@@ -315,6 +315,18 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
         ],
       }
 
+    case 'contrary-glossary-alias':
+      // A glossary entry names two contraries as one action. NO OPS: which alias to remove —
+      // which of the two actions the author meant — is a judgment no run can make. The action
+      // prose names the exact `glossary --remove` for each side; the commands are the reads.
+      return {
+        ops: [],
+        commands: [
+          ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
+          `symspec check ${context.docPath}`,
+        ],
+      }
+
     case 'conditional-conflict-unchecked':
       // Two requirements demand opposite things of one response under guards the solver
       // never asserted together. NO OPS: whether the guards can co-occur is a fact about

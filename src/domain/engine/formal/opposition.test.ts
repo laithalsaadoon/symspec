@@ -586,6 +586,73 @@ describe('AC-2-1 with I-1 — a glossary alias carries its phrase’s contraries
     ).toEqual([])
   })
 
+  it('an alias that MERGES the two sides of a pair keeps them contraries', async () => {
+    // With ¬(open the door ∧ close the door), an entry saying the two are ONE action makes both
+    // impossible. Merging them onto one atom instead read the conflict as a redundancy, and
+    // `verified: true` came back over it. The atomizer keeps each contrary phrase on its own
+    // atom, so the contrary axiom still relates them.
+    const STOPS = 'When the train stops, the door controller shall'
+    for (const glossary of [
+      [{ canonical: 'open the door', aliases: ['close the door'] }],
+      [{ canonical: 'close the door', aliases: ['open the door'] }],
+      [{ canonical: 'operate the door', aliases: ['open the door', 'close the door'] }],
+    ]) {
+      for (const lead of [MOVING, STOPS]) {
+        expect(
+          await contradictionsOf([`${lead} open the door.`, `${lead} close the door.`], glossary),
+          JSON.stringify(glossary),
+        ).toEqual([[idOf(1), idOf(2)]])
+      }
+    }
+    expect(
+      await contradictionsOf(
+        [`${STOPS} grant access.`, `${STOPS} revoke access.`],
+        [{ canonical: 'grant access', aliases: ['revoke access'] }],
+      ),
+    ).toEqual([[idOf(1), idOf(2)]])
+  })
+
+  it('a contrary alias keeps its own atom, and the canonical does not carry its reading', () => {
+    // The alias is not the canonical's atom any more, so its contraries are not the canonical's
+    // either: "operate the door" (outside every class) reads no opposition at all, rather than
+    // both sides of open/close at once.
+    const glossary = new Map([
+      ['open_the_door', 'operate_the_door'],
+      ['close_the_door', 'operate_the_door'],
+    ])
+    const resp = (text: string) => atomize({ kind: 'resp', text, systemName: 'door', glossary })
+    expect(resp('open the door').name).toBe('sys__door__resp__open_the_door')
+    expect(resp('close the door').name).toBe('sys__door__resp__close_the_door')
+    expect(resp('operate the door').opposition).toBeUndefined()
+    // A guard is not a response: the antonym table never reads it, so the entry still merges it.
+    expect(
+      atomize({ kind: 'trig', text: 'close the door', systemName: 'door', glossary }).name,
+    ).toBe(atomize({ kind: 'trig', text: 'operate the door', systemName: 'door', glossary }).name)
+  })
+
+  it('a contrary alias demotes `verified`, and a benign alias beside it still merges', async () => {
+    const STOPS = 'When the train stops, the door controller shall'
+    const doc = (await docOf([
+      `${STOPS} open the door.`,
+      `${STOPS} open the hatch.`,
+    ])) as unknown as { glossary: unknown[] }
+    doc.glossary = [{ canonical: 'open the door', aliases: ['close the door', 'open the hatch'] }]
+    const report = await runCheck(doc as never)
+    const demotions = report.coverage.demotions.filter(
+      (d) => d.reason === 'contrary-glossary-alias',
+    )
+    // Neither requirement uses "close the door", yet the entry makes "open the door" impossible:
+    // no requirement is checked against that, so the run must not certify.
+    expect(demotions.map((d) => d.requirementIds)).toEqual([[idOf(1), idOf(2)]])
+    expect(demotions[0]?.action).toContain(
+      'symspec glossary "open the door" "close the door" --remove',
+    )
+    expect(demotions[0]?.action).not.toContain('"open the hatch" --remove')
+    expect(report.verified).toBe(false)
+    // "open the hatch" is not a contrary of anything in the entry, so it still names the atom.
+    expect(report.findings.map((f) => f.code)).toContain('FND_REDUNDANCY')
+  })
+
   it('an alias relates nothing it does not name: open the hatch / close the gate', async () => {
     expect(
       await contradictionsOf([`${MOVING} open the hatch.`, `${MOVING} close the gate.`], HATCH),

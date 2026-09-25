@@ -574,6 +574,13 @@ const applyGlossary = (
             ? { canonical: e.canonical, aliases: [...e.aliases, alias] }
             : e,
         )
+  const refused = options.validateGlossary?.({ ...document, glossary }, canonicalKey, aliasKey)
+  if (refused !== undefined) {
+    return fail('ERR_USAGE', `"${alias}" cannot be an alias of "${canonical}": ${refused}.`, [
+      'A glossary entry says its phrases are ONE action; an antonym pair says two actions cannot both happen.',
+      'If the two are opposites, keep them apart — the antonym table already relates them. If they are one action, rewrite one requirement in the other`s words.',
+    ])
+  }
   return { document: { ...document, glossary }, noop: false }
 }
 
@@ -661,6 +668,24 @@ export interface MutateOptions {
    * which is the one outcome the propose/decide split exists to prevent.
    */
   readonly validateTerms?: (canonical: string, alias: string) => string | undefined
+  /**
+   * Validate a candidate GLOSSARY entry: `document` is the fold's result with the alias added,
+   * and `canonical` / `alias` are the entry's two keys, normalized. Return an error MESSAGE to
+   * refuse the write, or `undefined` to accept.
+   *
+   * Injected for the same reason as {@link validateAntonyms}. What it refuses: an alias that is
+   * a CONTRARY of another phrase its entry names under the antonym table ("close the door" as an
+   * alias of "open the door"). The entry says the two are one action and the table says they
+   * cannot both happen, so together they say neither ever does. Defense in depth — an antonym
+   * or term committed afterwards can form the same entry with no glossary write to refuse, so
+   * the soundness guarantee is the atomizer keeping each contrary on its own atom, and `check`
+   * demoting over it.
+   */
+  readonly validateGlossary?: (
+    document: RequirementsDocument,
+    canonical: string,
+    alias: string,
+  ) => string | undefined
 }
 
 const applyAntonym = (

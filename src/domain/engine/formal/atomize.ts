@@ -955,6 +955,87 @@ function antonymReading(
   }
 }
 
+const NO_PHRASES: ReadonlySet<string> = new Set()
+
+/**
+ * The CONTRARY pairs among the phrases one glossary entry names — its canonical and every alias
+ * mapped to it, all normalized — sorted, each pair sorted: two phrases some reading of which a
+ * seeded or committed antonym pair relates over one key, read through the same terms step as a
+ * slot body. Empty for an entry that names no two contraries, which is every entry an author
+ * means.
+ *
+ * An entry says its phrases are ONE action; the antonym table says two of them cannot both
+ * happen. Together they say neither ever happens — which no requirement is checked against —
+ * and merging the two onto one atom read "open the door" + "close the door" as a redundancy,
+ * turning FND_CONTRADICTION into `verified: true`. So {@link atomize} keeps each contrary phrase
+ * on its own atom, where the contrary axiom still relates it, and `check` demotes over the
+ * consequence it does not decide (`contrary-glossary-alias`). One scope stands in for every
+ * system: the phrases of one entry are always read under one system, and a key's scope never
+ * decides whether two of its readings are opposed.
+ */
+function glossaryGroupContraries(
+  canonical: string,
+  glossary: ReadonlyMap<string, string>,
+  index: ReadonlyMap<string, AntonymEntry>,
+  terms: ReadonlyMap<string, readonly string[]> | undefined,
+): Array<readonly [string, string]> {
+  const phrases = [canonical]
+  for (const [alias, target] of glossary) {
+    if (target === canonical && alias !== canonical) phrases.push(alias)
+  }
+  if (phrases.length < 2) return []
+  const readings = phrases.map(
+    (p) =>
+      antonymReading(terms !== undefined ? substituteTerms(p, terms) : p, 'glossary', index)
+        .readings,
+  )
+  const pairs: Array<readonly [string, string]> = []
+  for (let i = 0; i < phrases.length; i++) {
+    for (let j = i + 1; j < phrases.length; j++) {
+      const [ri, rj] = [readings[i] ?? [], readings[j] ?? []]
+      if (!ri.some((x) => rj.some((y) => readingsOpposed(x, y)))) continue
+      const [p, q] = [phrases[i] as string, phrases[j] as string]
+      pairs.push(p < q ? [p, q] : [q, p])
+    }
+  }
+  return pairs.sort(([a, b], [c, d]) => (a !== c ? (a < c ? -1 : 1) : b < d ? -1 : b > d ? 1 : 0))
+}
+
+/** Every phrase that appears in one of the pairs. */
+const contraryPhrases = (pairs: ReadonlyArray<readonly [string, string]>): ReadonlySet<string> =>
+  pairs.length === 0 ? NO_PHRASES : new Set(pairs.flat())
+
+/** One glossary entry that names two contraries as one action ({@link glossaryContraries}). */
+export interface ContraryGlossaryEntry {
+  /** The entry's normalized canonical. */
+  readonly canonical: string
+  /** Every normalized phrase the entry names: the canonical, then its aliases. */
+  readonly phrases: readonly string[]
+  /** The contrary pairs among {@link phrases}, sorted. */
+  readonly contraries: ReadonlyArray<readonly [string, string]>
+}
+
+/**
+ * Every committed glossary entry that names two CONTRARIES as one action (see
+ * `glossaryGroupContraries`), sorted by canonical — the entries whose contrary aliases
+ * {@link atomize} keeps on their own atoms. `check` demotes over each one a requirement uses,
+ * and the `glossary` op refuses to create one.
+ */
+export function glossaryContraries(
+  glossary: ReadonlyMap<string, string>,
+  antonyms: ReadonlyMap<string, AntonymEntry> = ANTONYM_INDEX,
+  terms?: ReadonlyMap<string, readonly string[]>,
+): ContraryGlossaryEntry[] {
+  const out: ContraryGlossaryEntry[] = []
+  for (const canonical of [...new Set(glossary.values())].sort()) {
+    const contraries = glossaryGroupContraries(canonical, glossary, antonyms, terms)
+    if (contraries.length === 0) continue
+    const aliases = [...glossary].filter(([a, c]) => c === canonical && a !== canonical)
+    out.push({ canonical, phrases: [canonical, ...aliases.map(([a]) => a)], contraries })
+  }
+  return out
+}
+
 /**
  * Turn one EARS slot into a scoped Boolean {@link Atom}. Pure and deterministic.
  *
@@ -973,9 +1054,18 @@ export function atomize(args: AtomizeArgs): Atom {
   // so an agent-confirmed synonym is rewritten to its canonical phrasing and
   // then participates in the same antonym/atom logic as any native phrase.
   // A no-op when no glossary is supplied or the body is not an alias.
+  //
+  // Except, for a RESPONSE, an alias that is a contrary of another phrase its entry names
+  // ({@link glossaryGroupContraries}): it keeps its own atom, so the contrary axiom still relates
+  // the two. Merging them read "open the door" + "close the door" as a redundancy.
+  const index = args.antonyms ?? ANTONYM_INDEX
+  const contrariesOf = (canonical: string): ReadonlySet<string> =>
+    args.kind === 'resp' && args.glossary !== undefined
+      ? contraryPhrases(glossaryGroupContraries(canonical, args.glossary, index, args.terms))
+      : NO_PHRASES
   if (args.glossary !== undefined) {
     const canonical = args.glossary.get(body)
-    if (canonical !== undefined) body = canonical
+    if (canonical !== undefined && !contrariesOf(canonical).has(body)) body = canonical
   }
   // The committed phrase this slot names, before terms: the key every alias of it maps to.
   const named = body
@@ -1013,10 +1103,9 @@ export function atomize(args: AtomizeArgs): Atom {
   // The antonym lookup applies only to responses (spec AC-4-2a: "polar-opposite
   // responses"); see antonymReading for the head rule and the key it records.
   if (args.kind === 'resp' && body.length > 0) {
-    // Consult the doc-augmented antonym index when supplied (#1), else the
+    // `index` is the doc-augmented antonym index when supplied (#1), else the
     // code-committed seed table — same lookup shape, so an agent-confirmed pair
     // (open/shut) unifies exactly like a seed pair (grant/revoke).
-    const index = args.antonyms ?? ANTONYM_INDEX
     const own = antonymReading(body, scope, index)
     body = own.body
     // Every OTHER committed phrase that names this atom — each alias whose canonical is this
@@ -1025,8 +1114,10 @@ export function atomize(args: AtomizeArgs): Atom {
     const same = (a: OppositionReading, b: OppositionReading) =>
       a.key === b.key && a.head === b.head && a.negative === b.negative
     if (args.glossary !== undefined) {
+      // A contrary alias keeps its own atom (above), so its reading is not this atom's.
+      const contrary = contrariesOf(named)
       for (const [alias, canonical] of args.glossary) {
-        if (canonical !== named || alias === named) continue
+        if (canonical !== named || alias === named || contrary.has(alias)) continue
         // The alias's own readings, through the same terms step its canonical went through.
         const aliasBody = args.terms !== undefined ? substituteTerms(alias, args.terms) : alias
         for (const reading of antonymReading(aliasBody, scope, index).readings) {
