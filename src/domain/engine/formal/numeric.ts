@@ -590,10 +590,22 @@ function qualifierOf(after: string): string | undefined {
  * ever SPLITS: a bound they match carries its whole clause as
  * {@link NumericPredicate.qualifier}, which the prover never asserts across, and a phrasing
  * neither matches keeps the reading every bound had before. `numeric.test.ts` pins every
- * member, so a dropped one is a red test.
+ * member, so a dropped one is a red test. A member inside a hyphenated compound
+ * (`once-daily`) is part of a word, and a {@link TIME_PREPOSITION} right before a time bound is
+ * that bound's own word; neither opens a clause.
  */
 const CONDITION_WORD =
-  /(?:^|[\s,;(])(?:when|whenever|while|whilst|if|unless|until|till|after|before|once|during|upon|provided|providing|following|since|where|wherever|whereupon|assuming|as\s+soon\s+as|as\s+long\s+as|so\s+long\s+as|in\s+case|in\s+the\s+event|in\s+the\s+case|on\s+condition|any\s*time|each\s+time|every\s+time|the\s+moment|the\s+instant|by\s+the\s+time|now\s+that|given\s+that)(?![\p{L}\p{N}])/iu
+  /(?:^|[\s,;(])(?:when|whenever|while|whilst|if|unless|until|till|after|before|once|during|upon|provided|providing|following|since|where|wherever|whereupon|assuming|as\s+soon\s+as|as\s+long\s+as|so\s+long\s+as|in\s+case|in\s+the\s+event|in\s+the\s+case|on\s+condition|any\s*time|each\s+time|every\s+time|the\s+moment|the\s+instant|by\s+the\s+time|now\s+that|given\s+that)(?![\p{L}\p{N}-])/giu
+
+/**
+ * The {@link CONDITION_WORD} members that are also PREPOSITIONS taking a length of time as
+ * their object: `expire the idle session after at most 30 minutes` is a delay of at most 30
+ * minutes, and `after` opens no clause. Right before a time bound, one of these is the bound's
+ * own word, in the label as `within` before another comparator is ({@link BoundRole}), so two
+ * such bounds share a key and are compared. Before any other bound it still opens a clause:
+ * `after at least 5 people arrive` has a subject and a verb.
+ */
+const TIME_PREPOSITION = /^(?:after|before|until|till|upon|following|since|during)$/i
 
 /**
  * A finite verb or modal in a RESPONSE's text before a bound: `open the drain the moment the
@@ -603,9 +615,42 @@ const CONDITION_WORD =
  * connective, or none, opened it. The paradigm is closed, where connectives run on
  * (`as soon as`, `in the event that`, `any time`, `so long as`, each once an error). Not a
  * guard's: `the level is above 5 meters` predicates the guard's own subject.
+ *
+ * A spelling right after an article, quantifier, or possessive is a noun (`fill the can with at
+ * most 2 liters`, `each will`), and one inside a hyphenated compound is a word part
+ * (`can-opener`); neither is a verb, and reading either as one split a real conflict. Every
+ * rule here that splits is pinned against a pair it must leave in one cell
+ * (`pipeline/numeric-qualifier.test.ts`), because a split that fires on a subject with no
+ * clause only ever drops a proof.
  */
 const FINITE_VERB =
-  /(?:^|[\s,;(])(?:is|are|was|were|has|had|does|did|can|cannot|could|will|won['’]t|would|may|might|must|should|shall)(?![\p{L}\p{N}])/iu
+  /(?:^|[\s,;(])(?<!(?:^|[\s,;(])(?:the|a|an|each|every|per|any|no|its|their|his|her|our|your|my)\s+)(?:is|are|was|were|has|had|does|did|can|cannot|could|will|won['’]t|would|may|might|must|should|shall)(?![\p{L}\p{N}-])/giu
+
+/**
+ * A response whose own verb asserts the clause it takes (`ensure that the response time is below
+ * 200 milliseconds`, `verify the pressure is at most 5 bar`): the complement clause IS the
+ * obligation, and its one finite verb is its copula, not a condition's. Closed on purpose: `report
+ * that the level is above 5 meters` asserts a message, and `verify whether` asserts nothing, so
+ * each keeps the {@link FINITE_VERB} reading.
+ */
+const ASSERTING_COMPLEMENT =
+  /^\s*(?:ensure|verify|confirm|guarantee|assure)\s+(?:that\s+)?(?!(?:whether|if)(?![\p{L}\p{N}-]))/iu
+
+/** A relative pronoun: a clause inside the complement that picks WHICH thing, not the claim. */
+const RELATIVE = /(?:^|[\s,;(])(?:who|whom|whose|which|that)(?![\p{L}\p{N}-])/iu
+
+/**
+ * The {@link FINITE_VERB} matches in a response's `subject` that mark a nested clause: all of
+ * them, except the one finite verb of an {@link ASSERTING_COMPLEMENT} with no relative pronoun
+ * in it. A complement with two (`ensure that the pump is off and the level is above 5 meters`)
+ * keeps both, because the tier cannot tell a conjunct from a condition.
+ */
+function nestedClauseVerbs(subject: string): number {
+  const verbs = [...subject.matchAll(FINITE_VERB)].length
+  const complement = ASSERTING_COMPLEMENT.exec(subject)
+  if (complement === null || verbs !== 1) return verbs
+  return RELATIVE.test(subject.slice(complement[0].length)) ? verbs : 0
+}
 
 /**
  * The {@link NumericPredicate.qualifier} of a bound at `[start, end)` in `text`, where
@@ -620,9 +665,11 @@ const FINITE_VERB =
  *     it neither asserts the later bound unconditionally nor drops it: two such bounds meet
  *     only under identical clauses, and a pair whose clauses differ is disclosed.
  *   - After a {@link CONDITION_WORD} in its subject, it is that clause from the word on, this
- *     bound included, for the same reason.
+ *     bound included, for the same reason. A {@link TIME_PREPOSITION} right before a time bound
+ *     (`dimension`) opens no clause and is skipped.
  *   - After a {@link FINITE_VERB} in a response's subject, it is the whole slot: the clause's
- *     start is not marked, and the slot contains it.
+ *     start is not marked, and the slot contains it. The copula of an
+ *     {@link ASSERTING_COMPLEMENT} is not such a verb ({@link nestedClauseVerbs}).
  *   - Otherwise, the text after the bound's unit ({@link qualifierOf}).
  */
 function qualifierAt(
@@ -631,13 +678,25 @@ function qualifierAt(
   end: number,
   firstEnd: number | undefined,
   slot: PredicateSlot,
+  dimension: string,
 ): string | undefined {
   if (firstEnd !== undefined && firstEnd <= start) return qualifierOf(text.slice(firstEnd))
   const subject = text.slice(0, start)
-  const condition = CONDITION_WORD.exec(subject)
-  if (condition !== null) return qualifierOf(text.slice(condition.index))
-  if (slot === 'resp' && FINITE_VERB.test(subject)) return qualifierOf(text)
+  const condition = [...subject.matchAll(CONDITION_WORD)].find(
+    (m) => !(dimension === 'time' && governsBound(subject, m)),
+  )
+  if (condition !== undefined) return qualifierOf(text.slice(condition.index))
+  if (slot === 'resp' && nestedClauseVerbs(subject) > 0) return qualifierOf(text)
   return qualifierOf(text.slice(end))
+}
+
+/**
+ * Whether a {@link CONDITION_WORD} match is a {@link TIME_PREPOSITION} with nothing after it
+ * but the bound: the bound's own word, not a clause (the caller asks only of a time bound).
+ */
+function governsBound(subject: string, m: RegExpMatchArray): boolean {
+  const word = m[0].replace(/^[\s,;(]+/, '')
+  return TIME_PREPOSITION.test(word) && subject.slice(m.index! + m[0].length).trim() === ''
 }
 
 /** A tolerance after the number (`200 ± 5`): the bound is a range, not the point. */
@@ -1226,6 +1285,7 @@ export function extractNumericPredicates(
         end,
         first?.[0] === start ? undefined : first?.[1],
         slot,
+        pred.dimension,
       )
       if (qualifier === undefined) return pred
       // An unmarked time bound before other text may be a delay from its event, not a

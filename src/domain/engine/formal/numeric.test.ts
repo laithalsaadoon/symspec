@@ -353,6 +353,46 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
     expect(guard?.qualifier).toBeUndefined()
   })
 
+  it('splits no bound off on a subject that holds no clause', () => {
+    const qualifier = (text: string) =>
+      extractNumericPredicates(text, 'svc', 'resp').map((p) => p.qualifier)
+    // Each would pass the clause rules above, and each is one obligation with no condition.
+    for (const text of [
+      // The complement clause of a verb that asserts it: its copula is the obligation's.
+      'ensure that the response time is below 200 milliseconds',
+      'verify that the response time is below 200 milliseconds',
+      'confirm the water can reach at most 60 degrees celsius',
+      // A time preposition governing the time bound itself.
+      'expire the idle session after at most 30 minutes',
+      'hold the lock until at most 5 seconds',
+      // A connective inside a hyphenated compound, and a modal spelling used as a noun.
+      'keep the once-daily dose below 5 milligrams',
+      'fill the can with at most 2 liters',
+    ]) {
+      expect(qualifier(text), text).toEqual([undefined])
+    }
+    // The controls: each still holds a clause, and keeps it.
+    for (const [text, clause] of [
+      ['report that the level is above 5 meters', 'report that the level is above 5 meters'],
+      ['verify whether the level is above 5 meters', 'verify whether the level is above 5 meters'],
+      [
+        'ensure that the tank whose level is above 5 meters is drained',
+        'ensure that the tank whose level is above 5 meters is drained',
+      ],
+      [
+        'ensure that the pump is off and the level is above 5 meters',
+        'ensure that the pump is off and the level is above 5 meters',
+      ],
+      ['open the door after at least 5 people arrive', 'after at least 5 people arrive'],
+      [
+        'expire the session after the user leaves at most 30 minutes',
+        'after the user leaves at most 30 minutes',
+      ],
+    ] as const) {
+      expect(qualifier(text), text).toEqual([clause])
+    }
+  })
+
   it('does not read a comparator inside a longer word', () => {
     expect(read('complete the handover 5 seconds after the alarm')).toEqual([])
   })

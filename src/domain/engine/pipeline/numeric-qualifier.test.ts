@@ -266,3 +266,123 @@ describe('AC-2-6: an unmarked time bound before other text is its own role', () 
     }
   })
 })
+
+describe('AC-2-6: every rule that splits a bound off is tested against a pair that shares one', () => {
+  // A qualifier rule only ever SPLITS a comparison class, and a split can only drop a proof. It
+  // drops a REAL one whenever the rule fires on a subject that holds no clause, so each rule
+  // below is pinned against a conflicting pair it must leave in one cell, next to the control
+  // it exists for.
+
+  it('PROVES two bounds in the complement clause of ensure, verify, confirm, or guarantee', async () => {
+    // `ensure that the response time is below 200 ms`: the `is` is the complement clause's
+    // copula, and the clause is the obligation. The finite-verb rule read it as a condition,
+    // and a conflict 669c0e9 proved became an info disclosure.
+    for (const verb of ['ensure that', 'verify that', 'confirm that', 'guarantee that', 'ensure']) {
+      for (const [system, a, b] of [
+        [
+          'server',
+          'the response time is below 200 milliseconds',
+          'the response time is above 500 milliseconds',
+        ],
+        [
+          'boiler',
+          'the water can reach at most 60 degrees celsius',
+          'the water can reach at least 80 degrees celsius',
+        ],
+      ] as const) {
+        const out = await verdict(system, `${verb} ${a}`, `${verb} ${b}`)
+        expect(out.errors, `${verb} ${a}`).toEqual(['FND_NUMERIC_CONTRADICTION'])
+      }
+    }
+    // The consistent twin stays consistent.
+    const ok = await verdict(
+      'server',
+      'ensure that the response time is below 500 milliseconds',
+      'ensure that the response time is above 200 milliseconds',
+    )
+    expect(ok).toEqual({ errors: [], uncompared: [] })
+  })
+
+  it('still discloses a bound in a relative clause or a reported clause, never proves it', async () => {
+    // The controls: a relative clause picks WHICH tank, and `report that` asserts a message,
+    // not the pressure. Both pairs are consistent, and base proved each one.
+    for (const [a, b] of [
+      [
+        'ensure that the tank whose level is above 5 meters is drained',
+        'ensure that the tank whose level is below 3 meters is drained',
+      ],
+      [
+        'ensure that the tank that is above 5 meters is drained',
+        'ensure that the tank that is below 3 meters is drained',
+      ],
+      ['report that the level is above 5 meters', 'report that the level is below 3 meters'],
+      ['verify whether the level is above 5 meters', 'verify whether the level is below 3 meters'],
+      [
+        'ensure that the pump is off and the level is above 5 meters',
+        'ensure that the pump is off and the level is below 3 meters',
+      ],
+    ] as const) {
+      const out = await verdict('pump controller', a, b)
+      expect(out.errors, a).toEqual([])
+      expect(out.uncompared, a).toEqual([[ID_A, ID_B]])
+    }
+  })
+
+  it('PROVES two time bounds a time preposition introduces, and discloses a clause it opens', async () => {
+    // `expire the idle session after at most 30 minutes`: `after` governs the bound itself, a
+    // delay, and opens no clause. The condition-word rule split the gaming harness's own
+    // numeric baseline, and every preposition below, off into two qualifiers.
+    for (const word of ['after', 'before', 'until', 'upon', 'following', 'since', 'during']) {
+      const out = await verdict(
+        'session service',
+        `expire the idle session ${word} at most 30 minutes`,
+        `expire the idle session ${word} at least 45 minutes`,
+      )
+      expect(out.errors, word).toEqual(['FND_NUMERIC_CONTRADICTION'])
+    }
+    // The controls: a count after the same word is a clause's subject (`after at least 5
+    // people arrive`), and `when` is never a preposition.
+    for (const [a, b] of [
+      [
+        'open the door after at least 5 people arrive',
+        'open the door after at most 2 people arrive',
+      ],
+      [
+        'open the door when at least 5 people are waiting',
+        'open the door when at most 2 people are waiting',
+      ],
+    ] as const) {
+      const out = await verdict('door controller', a, b)
+      // `people` is no unit the lint knows (GTWR R6), which is not this tier's verdict.
+      expect(out.errors, a).not.toContain('FND_NUMERIC_CONTRADICTION')
+      expect(out.uncompared, a).toEqual([[ID_A, ID_B]])
+    }
+  })
+
+  it('PROVES two bounds whose subject holds a condition word inside a hyphenated compound', async () => {
+    const out = await verdict(
+      'dispenser',
+      'keep the once-daily dose below 5 milligrams',
+      'keep the once-daily dose above 8 milligrams',
+    )
+    expect(out.errors).toEqual(['FND_NUMERIC_CONTRADICTION'])
+  })
+
+  it('PROVES two bounds whose subject holds a modal spelling used as a noun', async () => {
+    // `the can` is a container, not a modal: nothing in `fill the can with at most 2 liters`
+    // is a nested clause. The control, `whose level can rise`, is.
+    const out = await verdict(
+      'filler',
+      'fill the can with at most 2 liters',
+      'fill the can with at least 5 liters',
+    )
+    expect(out.errors).toEqual(['FND_NUMERIC_CONTRADICTION'])
+    const clause = await verdict(
+      'pump controller',
+      'open the drain of a tank whose level can rise above 5 meters',
+      'open the drain of a tank whose level can rise below 3 meters',
+    )
+    expect(clause.errors).toEqual([])
+    expect(clause.uncompared).toEqual([[ID_A, ID_B]])
+  })
+})
