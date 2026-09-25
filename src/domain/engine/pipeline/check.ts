@@ -89,6 +89,7 @@ import {
   contraryPairs,
   glossaryIndex,
   makeAtomize,
+  makeDigitSeparatorFoldAtomize,
   normalize,
   type Opposition,
   termIndex,
@@ -813,6 +814,19 @@ function pipelineAtomize(doc: Doc): Atomize {
 }
 
 /**
+ * {@link pipelineAtomize} in digit-separator fold space, over the same committed tables: the
+ * PROPOSE-only encoding `findNumberSpellingCandidates` compares against the real one. Built from
+ * the same three indexes, so a table threaded into one and not the other cannot compile away.
+ */
+function pipelineDigitSeparatorFoldAtomize(doc: Doc): Atomize {
+  return makeDigitSeparatorFoldAtomize(
+    glossaryIndex(doc.glossary),
+    docAntonymIndex(doc),
+    termIndex(doc.terms ?? []),
+  )
+}
+
+/**
  * AC-3-6: the whole-document admission test for a glossary merge the semantic tier proposes
  * ({@link FindSimilarSemanticOptions.admitsMerge}). The semantic finder sees one pair; a
  * glossary entry is global, so only here can a candidate be tried against every slot.
@@ -1477,8 +1491,15 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // through the solver's own atomizer: a `1_500 ms` that R6 keeps out is still half of a
       // pair 669c0e9 proved against `1.500 ms`, and only a pair demotion names its partner. A
       // propose-only demotion over an untrusted slot can only withhold `verified`.
+      //
+      // A committed glossary or term alias is a spelling too: an alias written `1,5 m pipe`
+      // no longer matches a body that spells `1.5 m pipe`, so the table rewrites one side only
+      // and the two atoms' folds differ. Each requirement is therefore also encoded in fold
+      // space, tables included, and a pair that shares an atom THERE is named as well.
+      const foldAtomize = pipelineDigitSeparatorFoldAtomize(doc)
       const numberSpellingCandidates = findNumberSpellingCandidates(
         reqs.map((r) => encodedById.get(r.id) ?? encode(toEncodable(r), atomize)),
+        reqs.map((r) => encode(toEncodable(r), foldAtomize)),
       )
 
       // Issue #2 (reproducer b + aggregate/relational families): detect the

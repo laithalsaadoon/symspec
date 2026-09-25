@@ -17,7 +17,12 @@ import { renderSentence } from '../core/render.ts'
 import type { Requirement } from '../core/schema.ts'
 import { parseLine } from '../parse/result.ts'
 import { runCheck } from '../pipeline/check.ts'
-import { digitSeparatorFold, makeAtomize } from './atomize.ts'
+import {
+  digitSeparatorFold,
+  makeAtomize,
+  makeDigitSeparatorFoldAtomize,
+  termIndex,
+} from './atomize.ts'
 import { encode } from './encode.ts'
 import { findNumberSpellingCandidates } from './number-spelling.ts'
 
@@ -29,7 +34,16 @@ interface Waive {
   readonly line: number
 }
 
-const checkRendered = async (sentences: readonly string[], waive: readonly Waive[] = []) => {
+interface Tables {
+  readonly glossary?: readonly { readonly canonical: string; readonly aliases: readonly string[] }[]
+  readonly terms?: readonly { readonly canonical: string; readonly aliases: readonly string[] }[]
+}
+
+const checkRendered = async (
+  sentences: readonly string[],
+  waive: readonly Waive[] = [],
+  tables: Tables = {},
+) => {
   const requirements: Record<string, Requirement> = {}
   for (const [i, sentence] of sentences.entries()) {
     const parsed = await parseLine(sentence)
@@ -60,10 +74,10 @@ const checkRendered = async (sentences: readonly string[], waive: readonly Waive
   }
   return runCheck({
     requirements,
-    glossary: [],
+    glossary: tables.glossary ?? [],
     antonyms: [],
     waivers: waive.map((w) => ({ code: w.code, requirementId: idOf(w.line), reason: 'reviewed' })),
-    terms: [],
+    terms: tables.terms ?? [],
     stateModel: { variables: [] },
   } as never)
 }
@@ -195,6 +209,108 @@ describe('a digit-separator split is demoted by name (C2/C3)', () => {
   })
 })
 
+/**
+ * A committed table row is a spelling too. `normalize` keeps `1,5` and `1.5` apart in an alias
+ * exactly as it does in a body, so an alias written with the other separator than the body it
+ * was meant for no longer matches it: the substitution rewrites one side only, the pair lands on
+ * two atoms that no separator fold of the ATOMS relates (`open_the_north_pipe` vs
+ * `open_the_1.5_m_pipe`), and 669c0e9's proof became exit 0, `verified: true`, no demotion. The
+ * finder also reads every requirement as the tables WOULD rewrite it if a digit separator were a
+ * token boundary in bodies and table keys alike, so the pair is demoted by name.
+ */
+describe('a committed alias spelled with the other digit separator is demoted by name (C3)', () => {
+  const PIPE = [
+    'When the pump starts, the controller shall open the 1,5 m pipe.',
+    'When the pump starts, the controller shall not open the 1.5 m pipe.',
+  ]
+  // `1,5 m` is a decimal comma the numeric tier refuses, so R6 needs a reviewed waiver on it.
+  const PIPE_WAIVERS = [
+    { code: R6, line: 0 },
+    { code: R6, line: 1 },
+  ]
+
+  it.each([
+    [
+      '(a) term alias `1,5 m pipe`',
+      { terms: [{ canonical: 'north pipe', aliases: ['1,5 m pipe'] }] },
+    ],
+    [
+      '(b) term alias `1.5 m pipe`',
+      { terms: [{ canonical: 'north pipe', aliases: ['1.5 m pipe'] }] },
+    ],
+    [
+      '(c) glossary alias `open the 1,5 m pipe`',
+      { glossary: [{ canonical: 'open the north pipe', aliases: ['open the 1,5 m pipe'] }] },
+    ],
+  ] as const)('%s: a body spelled both ways', async (_, tables) => {
+    expectDemotedPair(await checkRendered(PIPE, PIPE_WAIVERS, tables), 0, 1)
+  })
+
+  const CHIME = (response: string) => [
+    `When the door opens, the controller shall ${response}.`,
+    'When the door opens, the controller shall not start the alarm sequence.',
+  ]
+
+  it('a glossary alias `1,5 s` for a body that spells `1.5 s`', async () => {
+    const report = await checkRendered(CHIME('sound the chime within 1.5 s'), [], {
+      glossary: [
+        { canonical: 'start the alarm sequence', aliases: ['sound the chime within 1,5 s'] },
+      ],
+    })
+    expectDemotedPair(report, 0, 1)
+  })
+
+  it.each([
+    ['1.5 s chime', '1,5 s chime'],
+    ['1.5 kHz buzzer', '1,5 kHz buzzer'],
+  ])('a term alias for `%s` spelled `%s`', async (body, alias) => {
+    const report = await checkRendered(
+      [
+        `When the door opens, the controller shall sound the ${body}.`,
+        'When the door opens, the controller shall not sound the alarm horn.',
+      ],
+      [],
+      { terms: [{ canonical: 'alarm horn', aliases: [alias] }] },
+    )
+    expectDemotedPair(report, 0, 1)
+  })
+
+  it('two aliases that differ only in a digit separator, routed to two canonicals', async () => {
+    // Each body matches its own alias exactly, so the two land on `east` and `west`. In fold
+    // space the two aliases are one key, so the pair is named.
+    const report = await checkRendered(PIPE, PIPE_WAIVERS, {
+      glossary: [
+        { canonical: 'open the east pipe', aliases: ['open the 1,5 m pipe'] },
+        { canonical: 'open the west pipe', aliases: ['open the 1.5 m pipe'] },
+      ],
+    })
+    expectDemotedPair(report, 0, 1)
+    const finding = report.findings.find((f) => f.code === 'FND_NUMBER_SPELLING_CANDIDATE')
+    expect(finding?.message).toMatch(/committed glossary or term alias/)
+  })
+
+  it('an alias spelled like its body still merges them, and the pair is proved', async () => {
+    const glossary = await checkRendered(CHIME('sound the chime within 1.5 s'), [], {
+      glossary: [
+        { canonical: 'start the alarm sequence', aliases: ['sound the chime within 1.5 s'] },
+      ],
+    })
+    const terms = await checkRendered(
+      [
+        'When the door opens, the controller shall sound the 1.5 s chime.',
+        'When the door opens, the controller shall not sound the alarm horn.',
+      ],
+      [],
+      { terms: [{ canonical: 'alarm horn', aliases: ['1.5 s chime'] }] },
+    )
+    for (const report of [glossary, terms]) {
+      const codes = report.findings.map((f) => f.code)
+      expect(codes).toContain('FND_CONTRADICTION')
+      expect(codes).not.toContain('FND_NUMBER_SPELLING_CANDIDATE')
+    }
+  })
+})
+
 describe('findNumberSpellingCandidates', () => {
   const enc = (id: string, response: string, trigger?: string) =>
     encode(
@@ -243,6 +359,44 @@ describe('findNumberSpellingCandidates', () => {
       enc('b', 'close the valve 1.5'),
     ])
     expect(found.map((f) => f.requirementIds)).toEqual([['a', 'b']])
+  })
+
+  it('reads a committed table in fold space when handed the folded encoding', () => {
+    const terms = termIndex([{ canonical: 'north pipe', aliases: ['1,5 m pipe'] }])
+    const real = makeAtomize(undefined, undefined, terms)
+    const folded = makeDigitSeparatorFoldAtomize(new Map(), undefined, terms)
+    const req = (id: string, response: string) =>
+      ({ id, patternType: 'ubiquitous', systemName: 'pump', systemResponse: response }) as never
+    const reqs = [req('a', 'open the 1,5 m pipe'), req('b', 'open the 1.5 m pipe')]
+    const encoded = reqs.map((r) => encode(r, real))
+    // The alias rewrote `a` only, so the atoms' own folds differ and nothing is found ...
+    expect(encoded.map((e) => e.atoms[0]?.atom)).toEqual([
+      'sys__pump__resp__open_the_north_pipe',
+      'sys__pump__resp__open_the_1.5_m_pipe',
+    ])
+    expect(findNumberSpellingCandidates(encoded)).toEqual([])
+    // ... until the fold-space encoding, where the alias rewrites both.
+    const found = findNumberSpellingCandidates(
+      encoded,
+      reqs.map((r) => encode(r, folded)),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([['a', 'b']])
+    // With no table, fold space is the fold of the atoms and changes nothing.
+    const plain = [enc('a', 'respond within 1,500 ms'), enc('b', 'respond within 1.500 ms')]
+    const plainFolded = makeDigitSeparatorFoldAtomize(new Map(), undefined, new Map())
+    expect(plain.map((e) => e.atoms.map((row) => digitSeparatorFold(row.atom)))).toEqual(
+      ['respond within 1,500 ms', 'respond within 1.500 ms'].map((systemResponse, i) =>
+        encode(
+          {
+            id: String(i),
+            patternType: 'ubiquitous',
+            systemName: 'api gateway',
+            systemResponse,
+          } as never,
+          plainFolded,
+        ).atoms.map((row) => row.atom),
+      ),
+    )
   })
 
   it('the fold reads a digit separator as a token boundary, and nothing else', () => {

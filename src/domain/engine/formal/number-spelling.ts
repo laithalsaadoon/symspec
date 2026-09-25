@@ -43,33 +43,52 @@ interface Spelling {
   readonly id: string
   readonly identity: string
   readonly slotText: string
+  /** The identity the same row has in fold space, tables included (see `folded` below). */
+  readonly foldedIdentity: string
 }
+
+/** A row's identities, atom name first: two namespaces (U+0000 cannot occur in either). */
+const identitiesOf = (row: EncodedRequirement['atoms'][number]): string[] => [
+  `atom\u0000${row.atom}`,
+  ...(row.opposition !== undefined ? [`key\u0000${row.opposition.key}`] : []),
+]
 
 /**
  * Every pair of requirements that write one phrase with numbers differing only in a digit
  * separator, sorted by id pair. At most one finding per pair (the first split found).
+ *
+ * `folded[i]` is `encoded[i]` re-encoded through `makeDigitSeparatorFoldAtomize`: the same
+ * requirement with every digit separator, in its slots AND in the committed glossary and term
+ * tables, read as a token boundary. Two rows that share an identity there but not in `encoded`
+ * are a split the fold of the atoms alone cannot see, because a table alias spelled with the other
+ * separator rewrote only one of them. Omitted, each row's fold space is the fold of its own atom
+ * (a table-free document).
  */
 export function findNumberSpellingCandidates(
   encoded: readonly EncodedRequirement[],
+  folded?: readonly EncodedRequirement[],
 ): NumberSpellingCandidateFinding[] {
-  // Every identity a row carries. Atom names and antonym keys live in two namespaces (U+0000
-  // cannot occur in either), so an atom is never paired with a key.
-  const spellings: Spelling[] = encoded.flatMap((e) =>
-    e.atoms.flatMap((row) => [
-      { id: e.id, identity: `atom\u0000${row.atom}`, slotText: row.slotText },
-      ...(row.opposition !== undefined
-        ? [{ id: e.id, identity: `key\u0000${row.opposition.key}`, slotText: row.slotText }]
-        : []),
-    ]),
+  const spellings: Spelling[] = encoded.flatMap((e, i) =>
+    e.atoms.flatMap((row, k) => {
+      const foldedRow = folded?.[i]?.atoms[k]
+      const foldedIds = foldedRow !== undefined ? identitiesOf(foldedRow) : []
+      return identitiesOf(row).map((identity, n) => ({
+        id: e.id,
+        identity,
+        slotText: row.slotText,
+        foldedIdentity: foldedIds[n] ?? digitSeparatorFold(identity),
+      }))
+    }),
   )
-  // Fold -> the spellings under it. A class is opened only by a spelling WITH a separator, and a
-  // separator-free spelling (`1_500`, `1 500`) that folds to itself joins a class already open.
+  // Fold -> the spellings under it. Every spelling sits under the fold of its own identity and
+  // under its fold-space identity. Two spellings with no separator anywhere fold to themselves, so
+  // a class can pair two DIFFERENT identities only through a separator.
   const byFold = new Map<string, Spelling[]>()
   for (const s of spellings) {
-    const fold = digitSeparatorFold(s.identity)
-    if (fold !== s.identity) byFold.set(fold, [...(byFold.get(fold) ?? []), s])
+    for (const fold of new Set([digitSeparatorFold(s.identity), s.foldedIdentity])) {
+      byFold.set(fold, [...(byFold.get(fold) ?? []), s])
+    }
   }
-  for (const s of spellings) byFold.get(s.identity)?.push(s)
 
   const found = new Map<string, NumberSpellingCandidateFinding>()
   for (const members of byFold.values()) {
@@ -81,19 +100,30 @@ export function findNumberSpellingCandidates(
         const [lo, hi] = x.id < y.id ? [x, y] : [y, x]
         const key = `${lo.id}|${hi.id}`
         if (found.has(key)) continue
+        // Their own atoms fold apart, so only a committed alias related them in fold space.
+        const viaTable = digitSeparatorFold(lo.identity) !== digitSeparatorFold(hi.identity)
         found.set(key, {
           code: 'FND_NUMBER_SPELLING_CANDIDATE',
           severity: 'info',
           requirementIds: [lo.id, hi.id],
-          message:
-            `${lo.id} and ${hi.id} write the same phrase with numbers that differ only in a ` +
-            `digit separator ("${lo.slotText}" vs "${hi.slotText}"), so they are two atoms and ` +
-            'the solver never compared them. A `,` or `.` between digits is a thousands ' +
-            'separator in one convention and a decimal point in the other, so symspec does not ' +
-            'decide whether they are one number. If they are, rewrite one requirement with ' +
-            '`symspec update` so both spell the number identically: they then share one atom and ' +
-            're-running `symspec check` proves any conflict. If they are different numbers, ' +
-            'waive this finding for the pair. This is a suggestion, not a verdict.',
+          message: viaTable
+            ? `${lo.id} ("${lo.slotText}") and ${hi.id} ("${hi.slotText}") would share one ` +
+              'atom through a committed glossary or term alias if a digit separator in it were ' +
+              'spelled the way the requirement spells it, so they are two atoms and the solver ' +
+              'never compared them. A `,` or `.` between digits is a thousands separator in one ' +
+              'convention and a decimal point in the other, so symspec does not decide whether ' +
+              'the alias and the requirement write one number. If they do, rewrite the ' +
+              'requirement with `symspec update` (or re-commit the alias) so both spell the ' +
+              'number identically, and re-run `symspec check`. If they are different numbers, ' +
+              'waive this finding for the pair. This is a suggestion, not a verdict.'
+            : `${lo.id} and ${hi.id} write the same phrase with numbers that differ only in a ` +
+              `digit separator ("${lo.slotText}" vs "${hi.slotText}"), so they are two atoms and ` +
+              'the solver never compared them. A `,` or `.` between digits is a thousands ' +
+              'separator in one convention and a decimal point in the other, so symspec does not ' +
+              'decide whether they are one number. If they are, rewrite one requirement with ' +
+              '`symspec update` so both spell the number identically: they then share one atom ' +
+              'and re-running `symspec check` proves any conflict. If they are different ' +
+              'numbers, waive this finding for the pair. This is a suggestion, not a verdict.',
         })
       }
     }

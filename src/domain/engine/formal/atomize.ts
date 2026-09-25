@@ -633,6 +633,40 @@ export function digitSeparatorFold(name: string): string {
 }
 
 /**
+ * {@link makeAtomize} over the {@link digitSeparatorFold} of everything it reads: the slot text,
+ * the system name, and every key and value of the committed glossary and term tables. The atom
+ * names it returns are the ones the document WOULD have if a digit separator were a token
+ * boundary in bodies and table rows alike. PROPOSE-only, exactly as the fold is.
+ *
+ * Folding the atoms after the fact is not enough once a table is committed. A term alias
+ * `1,5 m pipe` no longer matches a body that spells `1.5 m pipe`, so the substitution rewrites
+ * one requirement to `open_the_north_pipe` and leaves the other on `open_the_1.5_m_pipe`: two
+ * atoms whose folds differ, and nothing names the pair. In fold space the alias matches both
+ * bodies, both land on one atom, and `number-spelling.ts` demotes the pair. The same holds for a
+ * whole-body glossary alias, and for two aliases that differ only in a separator.
+ */
+export function makeDigitSeparatorFoldAtomize(
+  glossary: ReadonlyMap<string, string>,
+  antonyms: ReadonlyMap<string, AntonymEntry> | undefined,
+  terms: ReadonlyMap<string, readonly string[]>,
+): Atomize {
+  const foldedGlossary = new Map<string, string>()
+  for (const [alias, canonical] of glossary) {
+    foldedGlossary.set(digitSeparatorFold(alias), digitSeparatorFold(canonical))
+  }
+  const foldedTerms = new Map<string, readonly string[]>()
+  for (const [alias, canonical] of terms) {
+    foldedTerms.set(
+      digitSeparatorFold(alias),
+      canonical.flatMap((token) => digitSeparatorFold(token).split('_')),
+    )
+  }
+  const inner = makeAtomize(foldedGlossary, antonyms, foldedTerms)
+  return (kind, slotText, systemName, negated) =>
+    inner(kind, digitSeparatorFold(slotText), digitSeparatorFold(systemName), negated)
+}
+
+/**
  * The punctuation {@link normalize} deletes: the characters that carry no identity (spec 007
  * AC-2-4). Each becomes a token boundary. The set is closed:
  *   - connectors, dashes, brackets and quotes (`\p{Pc}` `\p{Pd}` `\p{Ps}` `\p{Pe}` `\p{Pi}`
