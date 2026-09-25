@@ -224,8 +224,8 @@ const keyBody = (atom: ResponseAtom): string | undefined => atom.opposition?.bod
 /**
  * Whether ANY two key bodies of the atoms — every reading of an opposition ({@link keyBody} is the
  * first), else the atom body, else the raw response — satisfy `test`. An atom in a governed class
- * reads two keys, the literal remainder and the one with its own governed preposition marked
- * out, and a pair can meet on either: "include the file in the box" and "exclude the file in the
+ * reads the literal remainder and the one with its own governed preposition marked out (and,
+ * before a bare noun, the one with that locative left out), and a pair can meet on any: "include the file in the box" and "exclude the file in the
  * boxes" meet only on the literal one, "include the tile in the view" and "exclude the tiles from
  * the view" only on the governed one.
  */
@@ -679,7 +679,7 @@ function isNegatingPrefixPair(a: string, b: string): boolean {
 
 /**
  * The prepositions the antonym-remainder rule used to drop after ANY antonym head. A propose
- * signal only (see {@link onePrepositionApart}): the decide key now drops a preposition only
+ * signal only (see {@link onePrepositionApart}): the decide key now marks a preposition only
  * where the head verb itself governs it (`GOVERNED_PREPOSITIONS` in antonyms.ts).
  */
 const PREPOSITIONS: ReadonlySet<string> = new Set([
@@ -695,16 +695,26 @@ const PREPOSITIONS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * True when two object remainders are one token apart and both of those tokens are
- * prepositions ("access to the user" / "access from the user"): the shape the old
- * antonym-remainder rule read as one object. The decide key no longer does, because the
- * preposition may carry direction, so a same-class pair of this shape is PROPOSED instead —
- * lenient on purpose, since it only ever selects a pair to demote on and names no atom.
+ * True when two object remainders are one preposition apart: one token apart with both of those
+ * tokens prepositions ("access to the user" / "access from the user"), or one remainder the other
+ * with one preposition added ("the pump Monday" / "the pump on Monday"). That is the shape the old
+ * antonym-remainder rule read as one object. The decide key reads it only where the head governs
+ * the preposition, because it may carry direction, so a same-class pair of this shape is PROPOSED
+ * instead — lenient on purpose, since it only ever selects a pair to demote on and names no atom.
  */
 function onePrepositionApart(x: string, y: string): boolean {
   const tx = x.split('_')
   const ty = y.split('_')
-  if (tx.length !== ty.length) return false
+  if (tx.length !== ty.length) {
+    const [long, short] = tx.length > ty.length ? [tx, ty] : [ty, tx]
+    if (long.length !== short.length + 1) return false
+    const i = long.findIndex((t, at) => t !== short[at])
+    const at = i === -1 ? long.length - 1 : i
+    return (
+      PREPOSITIONS.has(long[at] as string) &&
+      long.slice(at + 1).every((t, k) => t === short[at + k])
+    )
+  }
   let apart = 0
   for (let i = 0; i < tx.length; i++) {
     if (tx[i] === ty[i]) continue

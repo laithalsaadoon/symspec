@@ -269,7 +269,6 @@ describe('the to/from contraries prove end to end (AC-2-1, the governed-preposit
     ['grant access on the server', 'deny access to the server'],
     ['remove the user in the group', 'add the user to the group'],
     ['suspend the user from the service', 'resume the user in the service'],
-    ['grant access on the server to the user', 'revoke access on the server from the user'],
   ] as const
   for (const [x, y] of PLACE_WORDINGS) {
     it(`${x} / ${y} is FND_CONTRADICTION`, async () => {

@@ -38,8 +38,8 @@
  *          "the session authenticated" name one guard state;
  *        - when (and only when) the head is in an ANTONYM class, the atom gains an
  *          {@link Opposition} naming the class and the verbs a pair opposes to it,
- *          and each preposition the head verb governs is marked out of a further KEY
- *          ({@link governedKeyRests}), so "include X in the view" /
+ *          and the first place preposition, when the head verb governs it, is marked out of a further KEY
+ *          ({@link governedReadings}), so "include X in the view" /
  *          "exclude X from the view" share one opposition key and are contraries.
  *          The body is never touched: `approve` and `accept` are two atoms, and so
  *          are "allow calls to X" and "allow calls from X".
@@ -299,7 +299,7 @@ export interface Opposition {
   readonly opposes: readonly string[]
   /**
    * The same atom's OTHER readings, when they differ from the reading above: its LITERAL
-   * remainder when the fields above read a governed one (see `governedKeyRests`), and the
+   * remainder when the fields above read a governed one (see `governedReadings`), and the
    * opposition of every committed glossary phrase that names it (spec 007 I-1).
    *
    * A glossary entry says two phrases are one action, so a contrary of either is a contrary of
@@ -882,23 +882,151 @@ function stripCopula(body: string): string {
 }
 
 /**
- * The GOVERNED opposition-key remainders of an antonym-class response (A4): one per token of
- * `rest` after the first that the head verb ITSELF governs ({@link AntonymEntry.governs}), with
- * that token replaced by the mark of the place it introduces — an empty token for the place, two
+ * The prepositions the antonym-remainder rule once dropped after ANY antonym head, the first of
+ * them wherever it fell (669c0e9). A governed key still marks at most that one position: the FIRST
+ * of these, or of the head's own governed prepositions, after the remainder's first token. So no
+ * governed key relates two remainders the old rule kept apart, and a preposition that modifies a
+ * noun further on ("add the filter on messages TO the admin" / "remove the filter on messages FROM
+ * the admin": outbound and inbound messages) is never read as the verb's own place.
+ */
+const PLACE_PREPOSITIONS: ReadonlySet<string> = new Set([
+  'at',
+  'from',
+  'in',
+  'inside',
+  'into',
+  'on',
+  'onto',
+  'to',
+  'within',
+])
+
+/**
+ * The locatives a remainder may also leave out, as ordinary requirements English does before a
+ * bare time or place noun: "start the pump Monday" / "stop the pump on Monday".
+ */
+const ELIDABLE: ReadonlySet<string> = new Set(['at', 'in', 'inside', 'on'])
+
+/**
+ * The words that open a noun phrase with a determiner. A locative before one is never left out
+ * ("hide the user on the dashboard" is not "hide the user the dashboard"), and the ditransitive
+ * "show the user the dashboard" — the dashboard shown TO the user — must not meet it.
+ */
+const DETERMINERS: ReadonlySet<string> = new Set([
+  'a',
+  'all',
+  'an',
+  'any',
+  'each',
+  'every',
+  'her',
+  'his',
+  'its',
+  'my',
+  'our',
+  'some',
+  'that',
+  'the',
+  'their',
+  'these',
+  'this',
+  'those',
+  'your',
+])
+
+/**
+ * The words that make a `within` a DEADLINE rather than a place ("within 5 seconds", "within the
+ * hour", "within one day"): time units, as the numeric tier spells them and the calendar units it
+ * deliberately does not convert, and the spelled-out numbers. A closed list; a deadline it misses
+ * reads as a place, and base 669c0e9 read every `within` as one.
+ */
+const DEADLINE_WORDS: ReadonlySet<string> = new Set([
+  'cycle',
+  'cycles',
+  'day',
+  'days',
+  'deadline',
+  'eight',
+  'fifteen',
+  'five',
+  'four',
+  'h',
+  'half',
+  'hour',
+  'hours',
+  'hr',
+  'hrs',
+  'hundred',
+  'interval',
+  'microsecond',
+  'microseconds',
+  'millisecond',
+  'milliseconds',
+  'min',
+  'mins',
+  'minute',
+  'minutes',
+  'month',
+  'months',
+  'ms',
+  'nanosecond',
+  'nanoseconds',
+  'nine',
+  'ns',
+  'one',
+  'period',
+  's',
+  'sec',
+  'second',
+  'seconds',
+  'secs',
+  'seven',
+  'six',
+  'sixty',
+  'ten',
+  'thirty',
+  'three',
+  'tick',
+  'ticks',
+  'time',
+  'timeout',
+  'twelve',
+  'twenty',
+  'two',
+  'us',
+  'week',
+  'weeks',
+  'year',
+  'years',
+])
+
+/** Whether the words after a `within` open a deadline: a number or a time word within three. */
+const opensDeadline = (after: readonly string[]): boolean =>
+  after.slice(0, 3).some((t) => /\d/.test(t) || DEADLINE_WORDS.has(t))
+
+/**
+ * The GOVERNED opposition-key remainders of an antonym-class response (A4). The remainder's
+ * first place preposition ({@link PLACE_PREPOSITIONS}, or one the head governs) after its first
+ * token is the verb's own place when the head ITSELF governs it ({@link AntonymEntry.governs}),
+ * and then the key replaces it with the mark of that place — an empty token for the place, two
  * for the outside ({@link AntonymEntry.outside}). So "hide the alarm from the display" and "show
  * the alarm on the display" both read `the_alarm__the_display` and are contraries: for those verbs
  * the HEAD carries the direction (show vs hide) and the preposition only introduces the place.
+ * When that first preposition is one the head does not govern, or a `within` that opens a
+ * deadline, the remainder has no governed key: the preposition after it modifies something else.
  *
  * Marked, not dropped, and per verb. The mark keeps the position, and `normalize` never emits an
  * empty token, so a governed key can meet only another governed key with the same mark in the
  * same place — never a literal remainder that happens to lack the word, and never the other
- * place's mark. One key per governed position, because a remainder can name two places ("grant
- * access on the server to the user" meets "revoke access on the server from the user" at the
- * second); each key differs from the literal remainder in that one token and nowhere else. Per
- * verb, because a preposition only the CONTRARY governs carries direction after this verb:
- * "connect calls FROM the number" and "disconnect calls TO the number" are consistent, and a
- * class-wide set made them one key. Every response also keeps its LITERAL remainder as a key
+ * place's mark. Per verb, because a preposition only the CONTRARY governs carries direction after
+ * this verb: "connect calls FROM the number" and "disconnect calls TO the number" are consistent,
+ * and a class-wide set made them one key. Every response also keeps its LITERAL remainder as a key
  * ({@link antonymReading}), so identical remainders are contraries whatever their prepositions.
+ *
+ * One more key when the marked place is a locative before a bare noun ({@link ELIDABLE}, no
+ * {@link DETERMINERS}): the remainder with the locative left out, so "stop the pump on Monday"
+ * meets "start the pump Monday". Only when nothing else in it is a place preposition, so the one
+ * remainder it can equal names no place of its own.
  *
  * Only in the key. "allow calls to the number" and "allow calls from the number" are different
  * acts, and the rule that dropped the first of `in into from within inside to onto at on` for
@@ -907,17 +1035,31 @@ function stripCopula(body: string): string {
  * produce distinct keys, because only the preposition is marked, never the noun phrase; and the
  * atom body keeps every token, so no two remainders that differ in a word share an atom.
  */
-function governedKeyRests(rest: string, entry: AntonymEntry): readonly string[] {
+function governedReadings(rest: string, entry: AntonymEntry): readonly string[] {
   if (rest === '' || entry.governs.length === 0) return []
   const tokens = rest.split('_')
-  const keys: string[] = []
-  for (let i = 1; i < tokens.length; i++) {
-    const token = tokens[i] as string
-    if (!entry.governs.includes(token)) continue
-    const marked = [...tokens]
-    // `_` joins to `a___b`: two empty tokens, which neither `normalize` nor the place mark emits.
-    marked[i] = entry.outside.includes(token) ? '_' : ''
-    keys.push(marked.join('_'))
+  const i = tokens.findIndex(
+    (t, at) => at > 0 && (PLACE_PREPOSITIONS.has(t) || entry.governs.includes(t)),
+  )
+  if (i === -1) return []
+  const token = tokens[i] as string
+  if (!entry.governs.includes(token)) return []
+  if (token === 'within' && opensDeadline(tokens.slice(i + 1))) return []
+  const outside = entry.outside.includes(token)
+  const marked = [...tokens]
+  // `_` joins to `a___b`: two empty tokens, which neither `normalize` nor the place mark emits.
+  marked[i] = outside ? '_' : ''
+  const keys = [marked.join('_')]
+  const next = tokens[i + 1]
+  const elided = [...tokens.slice(0, i), ...tokens.slice(i + 1)]
+  if (
+    !outside &&
+    ELIDABLE.has(token) &&
+    next !== undefined &&
+    !DETERMINERS.has(next) &&
+    !elided.some((t, at) => at > 0 && PLACE_PREPOSITIONS.has(t))
+  ) {
+    keys.push(elided.join('_'))
   }
   return keys
 }
@@ -949,7 +1091,7 @@ function spelling(
  * rule) and looked up longest-prefix-first — two tokens ("roll_back") before one ("roll") — so
  * multiword opposites like commit/roll-back resolve. On a hit the result carries its
  * class-and-remainder readings: the GOVERNED ones first when the head governs a preposition in the
- * remainder (see {@link governedKeyRests}), then the LITERAL one. Each must match another reading
+ * remainder (see {@link governedReadings}), then the LITERAL one. Each must match another reading
  * byte for byte, so "grant access"/"revoke access" are contraries but "grant access"/"revoke
  * permission" are unrelated. Either way the de-inflected head replaces the surface head, so
  * "opens the valve" and "open the valve" collide.
@@ -989,7 +1131,7 @@ function antonymReading(
   }
   return {
     body: rest === '' ? head : `${head}_${rest}`,
-    readings: [...governedKeyRests(rest, entry).map(reading), reading(rest)],
+    readings: [...governedReadings(rest, entry).map(reading), reading(rest)],
   }
 }
 

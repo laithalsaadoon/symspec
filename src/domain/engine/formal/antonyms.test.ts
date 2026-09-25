@@ -90,28 +90,28 @@ describe('the resolved seed index', () => {
       canonical: 'conceal',
       negated: false,
       opposes: ['expose', 'unseal'],
-      governs: ['at', 'from', 'in', 'inside', 'on'],
+      governs: ['at', 'from', 'in', 'inside', 'on', 'within'],
       outside: [],
     })
     expect(ANTONYM_INDEX.get('conceal')).toEqual({
       canonical: 'conceal',
       negated: false,
       opposes: ['expose'],
-      governs: ['at', 'from', 'in', 'inside', 'on'],
+      governs: ['at', 'from', 'in', 'inside', 'on', 'within'],
       outside: [],
     })
     expect(ANTONYM_INDEX.get('expose')).toEqual({
       canonical: 'conceal',
       negated: true,
       opposes: ['conceal', 'seal'],
-      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to'],
+      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to', 'within'],
       outside: [],
     })
     expect(ANTONYM_INDEX.get('unseal')).toEqual({
       canonical: 'conceal',
       negated: true,
       opposes: ['seal'],
-      governs: ['at', 'in', 'inside', 'on'],
+      governs: ['at', 'in', 'inside', 'on', 'within'],
       outside: [],
     })
   })
@@ -148,8 +148,16 @@ describe('the resolved seed index', () => {
       'onto',
       'to',
       'with',
+      'within',
     ])
-    expect(ANTONYM_INDEX.get('disconnect')?.governs).toEqual(['at', 'from', 'in', 'inside', 'on'])
+    expect(ANTONYM_INDEX.get('disconnect')?.governs).toEqual([
+      'at',
+      'from',
+      'in',
+      'inside',
+      'on',
+      'within',
+    ])
     expect(ANTONYM_INDEX.get('grant')?.governs).toEqual([
       'at',
       'in',
@@ -158,11 +166,23 @@ describe('the resolved seed index', () => {
       'on',
       'onto',
       'to',
+      'within',
     ])
-    expect(ANTONYM_INDEX.get('revoke')?.governs).toEqual(['at', 'from', 'in', 'inside', 'on'])
+    // revoke and suspend take away a right, which names its place with `to` as grant does
+    // ("revoke access to the server" / "grant access on the server").
+    expect(ANTONYM_INDEX.get('revoke')?.governs).toEqual([
+      'at',
+      'from',
+      'in',
+      'inside',
+      'on',
+      'to',
+      'within',
+    ])
     // No verb that does not remove its object FROM the place governs `from`, and no verb that
-    // does governs a goal: those prepositions carry direction ("allow calls to" / "deny calls
-    // from"). `release … to` is the one goal after a from-verb, and it names the OTHER place.
+    // does governs a goal, but for the `to` of the two removers of a right: those prepositions
+    // carry direction ("allow calls to" / "deny calls from", "remove the item to the trash").
+    // `release … to` is the one other goal after a from-verb, and it names the OTHER place.
     const removers = new Set([
       'exclude',
       'remove',
@@ -188,7 +208,7 @@ describe('the resolved seed index', () => {
           expect(
             entry.governs.includes(goal) && !entry.outside.includes(goal),
             `${verb} ${goal}`,
-          ).toBe(false)
+          ).toBe(goal === 'to' && (verb === 'revoke' || verb === 'suspend'))
         }
       }
     }
@@ -247,21 +267,21 @@ describe('a document pair that touches a seed class', () => {
       canonical: 'commit',
       negated: false,
       opposes: ['roll_back', 'rollback'],
-      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to'],
+      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to', 'within'],
       outside: [],
     })
     expect(merged.get('commit')).toEqual({
       canonical: 'abort',
       negated: true,
       opposes: ['abort', 'roll_back', 'rollback'],
-      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to'],
+      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to', 'within'],
       outside: [],
     })
     expect(merged.get('roll_back')).toEqual({
       canonical: 'abort',
       negated: false,
       opposes: ['commit'],
-      governs: ['at', 'from', 'in', 'inside', 'on'],
+      governs: ['at', 'from', 'in', 'inside', 'on', 'within'],
       outside: [],
     })
   })
