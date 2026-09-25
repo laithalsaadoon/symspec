@@ -452,7 +452,15 @@ describe('the worked example produces the outcomes it claims', () => {
   it('step 1 checks CLEAN over a flat contradiction — the silence trap', async () => {
     const { before } = await run()
     expect(before.counts.error, 'the section claims zero errors before the antonym').toBe(0)
-    expect(before.findings).toEqual([])
+    expect(before.counts.warn, 'the section claims zero warnings before the antonym').toBe(0)
+    // The section names the one info finding: the no-state-model reachability disclosure.
+    expect(before.findings.map((f) => [f.code, f.severity])).toEqual([
+      ['FND_REACHABILITY_NOT_CHECKED', 'info'],
+    ])
+    // Negative guard on the literal that disclosure made stale.
+    const body = CRAFT_SECTIONS.find((s) => s.id === 'worked-example')?.body ?? ''
+    expect(body).toContain('FND_REACHABILITY_NOT_CHECKED')
+    expect(body).not.toMatch(/findings: \d/)
     expect(before.verified).toBe(true)
     // The ONLY visible tell, and the number the section points at.
     expect(before.progress.atomsUncompared).toBe(2)

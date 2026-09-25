@@ -252,12 +252,34 @@ function someKeyPair(
  * a class the two are contraries, `¬(A ∧ B)`: only both asserted conflicts, and "shall not open"
  * plus "shall not close" is the consistent "do neither", never a contradiction.
  */
-function wouldConflict(a: ResponseAtom, b: ResponseAtom): boolean {
+function wouldConflict(a: ConflictLiteral, b: ConflictLiteral): boolean {
   const contrarySides =
     a.opposition !== undefined &&
     b.opposition !== undefined &&
     a.opposition.negative !== b.opposition.negative
   return contrarySides ? !a.negated && !b.negated : a.negated !== b.negated
+}
+
+/** The part of a response literal {@link wouldConflict} and {@link literalsConflict} read. */
+export interface ConflictLiteral {
+  readonly name: string
+  readonly negated: boolean
+  readonly opposition?: Opposition
+}
+
+/**
+ * True when two response literals CONFLICT as written, both holding (spec 007 AC-2-1): one atom
+ * at opposite polarity (`X` against `¬X`), or two contraries — distinct atoms on opposite sides
+ * of ONE opposition key ({@link areContrary}) — both asserted. Both negated is the consistent
+ * "do neither", never a conflict.
+ *
+ * {@link wouldConflict} with the "same thing" half made exact: there the words are compared up
+ * to inflection by the caller, here the two must be one atom or one key. The pipeline's AC-3-2
+ * conditional-conflict scan reads this, so that detector and the AC-3-6 near-duplicate rule
+ * share one reading of "would conflict" and cannot drift apart.
+ */
+export function literalsConflict(a: ConflictLiteral, b: ConflictLiteral): boolean {
+  return (a.name === b.name || areContrary(a, b)) && wouldConflict(a, b)
 }
 
 /**

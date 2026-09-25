@@ -63,12 +63,14 @@ const ERR_CODES_SNAPSHOT = [
   'ERR_DOC_EXISTS',
   'ERR_EMBED_MODEL_MISSING',
   'ERR_DUPLICATE_KEY',
+  // Spec 007 AC-2-2: a leading clause with no EARS slot is refused, not dropped.
+  'ERR_CLAUSE_UNBOUND',
 ] as const
 
 describe('append-only ERR_* catalog', () => {
-  it('holds all 21 v4 codes', () => {
-    expect(ERR_CODES).toHaveLength(21)
-    expect(ERR_CODES_SNAPSHOT).toHaveLength(21)
+  it('holds the 21 v4 codes plus the greenfield appends', () => {
+    expect(ERR_CODES).toHaveLength(22)
+    expect(ERR_CODES_SNAPSHOT).toHaveLength(22)
   })
 
   it('keeps every shipped code at its original index', () => {

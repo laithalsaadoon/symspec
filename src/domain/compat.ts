@@ -57,9 +57,11 @@
 
 import type { Doc } from './engine/core/doc.ts'
 import type { Requirement as EngineRequirement } from './engine/core/schema.ts'
+import { requirementsContentHash } from './requirements/content-hash.ts'
 import type {
   Requirement as DocumentRequirement,
   RequirementsDocument,
+  Waiver,
 } from './requirements/document.ts'
 
 /**
@@ -104,6 +106,22 @@ export const toEngineRequirement = (r: DocumentRequirement): EngineRequirement =
 })
 
 /**
+ * True unless `w` is bound to reviewed text that has since changed.
+ *
+ * A waiver carrying a `contentHash` records that someone read the requirements it scopes AS THEY
+ * WERE WRITTEN THEN. The tier cannot hash (it never sees the document's own fields), so the check
+ * is made here and a stale waiver never crosses: the finding it covered comes back, with its
+ * demotion, for the new text to be reviewed. Dropping a waiver can only put a finding back, never
+ * invent one, so this direction is the safe one. A hash with no requirement to bind to, or naming
+ * a requirement that is gone, binds nothing and is dropped too.
+ */
+const bindsCurrentText = (document: RequirementsDocument, w: Waiver): boolean => {
+  if (w.contentHash === undefined) return true
+  const ids = w.requirementIds ?? (w.requirementId !== undefined ? [w.requirementId] : [])
+  return ids.length > 0 && requirementsContentHash(document, ids) === w.contentHash
+}
+
+/**
  * Project a v3 document onto v4's document shape — the ONE boundary
  * crossing.
  *
@@ -125,11 +143,14 @@ export const toEngineDoc = (document: RequirementsDocument): Doc => {
     requirements,
     glossary: document.glossary.map((g) => ({ canonical: g.canonical, aliases: [...g.aliases] })),
     antonyms: document.antonyms.map((a) => ({ a: a.a, b: a.b })),
-    waivers: document.waivers.map((w) => ({
-      code: w.code,
-      reason: w.reason,
-      ...(w.requirementId !== undefined ? { requirementId: w.requirementId } : {}),
-    })),
+    waivers: document.waivers
+      .filter((w) => bindsCurrentText(document, w))
+      .map((w) => ({
+        code: w.code,
+        reason: w.reason,
+        ...(w.requirementId !== undefined ? { requirementId: w.requirementId } : {}),
+        ...(w.requirementIds !== undefined ? { requirementIds: [...w.requirementIds] } : {}),
+      })),
     terms: document.terms.map((t) => ({ canonical: t.canonical, aliases: [...t.aliases] })),
   }
 }

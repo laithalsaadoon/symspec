@@ -1,7 +1,7 @@
 /**
  * The ERR_* -> wire projection.
  *
- * The 21 error classes and their catalog readers live in `ports/errors.ts` —
+ * The error classes and their catalog readers live in `ports/errors.ts` —
  * they are contract vocabulary any ring may name. This file is the app-ring
  * half: the one function that turns an {@link OperationalError} into the wire
  * envelope, plus the exit code that family maps to.

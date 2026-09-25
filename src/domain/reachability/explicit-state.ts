@@ -29,7 +29,11 @@
  *   may lie outside a declared range — that is `FND_RANGE_VIOLATION`'s business, not a
  *   disabled step). A variable it does not write is PINNED to its pre-state value when the
  *   frame pins it (`full`: every variable; `declared`: the `stable` ones; `none`: none),
- *   and otherwise FREE: it takes every value in its declared domain.
+ *   and otherwise FREE: it takes every value in its declared domain, or KEEPS its
+ *   pre-state value when an earlier write left that outside the domain. Keeping is always
+ *   an environment choice, and it is what nests the frames (every `full` step is a
+ *   `declared` step, every `declared` step a `none` step), so a search that holds under a
+ *   weaker frame holds under every stronger one.
  *
  * ## When it does not run, and what that means for the proof
  *
@@ -761,7 +765,19 @@ export const explicitCheck = (
           const d = digit(at, post[at] as Value)
           base = d === undefined ? undefined : base + d * ((weight as number[])[at] as number)
         }
-        const projection: Key = base ?? fixed.map((at) => String(post[at])).join('\u0000')
+        // A free variable whose current value lies OUTSIDE its declared domain (a write
+        // left its range) may keep it, so that value is one more choice, and the successor
+        // set depends on it: it joins the projection. See the module header.
+        const kept: number[] = []
+        for (const at of free) {
+          const domain = domains.get(names[at] as string)
+          if (domain !== undefined && !domain.has(post[at] as Value)) kept.push(at)
+        }
+        const fixedPart: Key = base ?? fixed.map((at) => String(post[at])).join('\u0000')
+        const projection: Key =
+          kept.length === 0
+            ? fixedPart
+            : `${String(fixedPart)}\u0001${kept.map((at) => `${at}=${String(post[at])}`).join('\u0000')}`
         if (expanded.has(projection)) continue
         expanded.add(projection)
         // Sized BEFORE generating. The successors of one projection are pairwise distinct
@@ -775,7 +791,7 @@ export const explicitCheck = (
               `the unbounded int ${names[at]} is free in a step, so a step has infinitely many successors`,
             )
           }
-          fanOut *= domain.size
+          fanOut *= domain.size + (kept.includes(at) ? 1n : 0n)
         }
         if (fanOut > BigInt(REACHABILITY_BFS_STATE_CAP)) {
           return beyondCap(
@@ -794,13 +810,17 @@ export const explicitCheck = (
         // same order as nested loops over the declarations. A successor is built as a state
         // only when its key is new: a duplicate costs one key, and a numeric key costs one
         // addition per step of the odometer.
-        const odometer = free.map(choicesAt)
+        // A kept out-of-domain value comes LAST and has no digit, so a step with one keys
+        // every successor by `keyOf` rather than by addition.
+        const odometer = free.map((at) =>
+          kept.includes(at) ? [...choicesAt(at), post[at] as Value] : choicesAt(at),
+        )
         const digits = free.map(() => 0)
         const row = [...post]
         free.forEach((at, k) => {
           row[at] = (odometer[k] as readonly Value[])[0] as Value
         })
-        let code = base
+        let code = kept.length === 0 ? base : undefined
         for (;;) {
           work += 1
           const successorKey: Key = code ?? keyOf(row)

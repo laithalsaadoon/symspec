@@ -53,7 +53,13 @@
 import { Duration, Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { resetZ3, type Z3Context, type Z3Module } from '../../domain/engine/formal/backend.ts'
-import { interruptibleSolve, SOLVER_CONCURRENCY, SolverService } from '../../ports/solver.ts'
+import {
+  INTERRUPT_REISSUE_MS,
+  interruptAndSettle,
+  interruptibleSolve,
+  SOLVER_CONCURRENCY,
+  SolverService,
+} from '../../ports/solver.ts'
 import { solverServiceLayer } from './solver-service.ts'
 
 // ---------------------------------------------------------------------------
@@ -363,11 +369,10 @@ describe('the await-after-interrupt discipline (negative control)', () => {
         return lowLevelProbe(module, 'no-await')
       })
 
-      // (c) INTERRUPT AND AWAIT — exactly what `interruptibleSolve`'s canceler does.
-      yield* Effect.promise(async () => {
-        hung.interrupt()
-        await pending.catch(() => undefined)
-      })
+      // (c) INTERRUPT AND AWAIT — `interruptibleSolve`'s canceler body itself, not a copy:
+      // a copy that interrupted ONCE is what timed this test out under load, because an
+      // interrupt landing before the query is interruptible is dropped.
+      yield* Effect.promise(() => interruptAndSettle(hung, pending))
       const afterAwait = yield* Effect.sync(() => lowLevelProbe(module, 'awaited'))
 
       return { afterAbandon, afterInterruptNoAwait, afterAwait }
@@ -401,6 +406,53 @@ describe('the await-after-interrupt discipline (negative control)', () => {
       r.afterAwait.accepted,
       r.afterAwait.accepted ? '' : `still wedged after interrupt+await: ${r.afterAwait.error}`,
     ).toBe(true)
+  })
+})
+
+describe('a dropped interrupt is re-issued', () => {
+  /**
+   * `Z3_interrupt` reaches only a query that has already registered with its context, so
+   * one issued the instant `start()` returns is DROPPED and an unbounded query runs on.
+   * Measured before the fix: the probe-20 query was still running 5 s after a same-tick
+   * interrupt. That window is not exotic — under CPU contention the solver thread can
+   * take longer than the 500 ms the tests above sleep to begin, which is how it surfaced
+   * (a 45 s timeout in the negative control under a full `pnpm check`).
+   *
+   * Sacrificial module, as above: if the re-issue ever regresses, the hung query keeps
+   * its capability slot, so this test must not share a module with anything.
+   */
+  it('stops a query interrupted in the same tick it started, and frees the module', async () => {
+    const program = Effect.gen(function* () {
+      const solver = yield* SolverService
+      const { module } = yield* solver.boot
+      const hung = makeHungSpacerQuery(module)
+      const settled = yield* Effect.promise(() => {
+        const pending = hung.start()
+        pending.catch(() => undefined)
+        // No sleep: the interrupt is issued before the query can have registered.
+        return Promise.race([
+          interruptAndSettle(hung, pending).then(() => 'settled' as const),
+          new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 10_000)),
+        ])
+      })
+      const probe = yield* Effect.sync(() => lowLevelProbe(module, 'reissued'))
+      return { settled, probe }
+    })
+
+    const r = await Effect.runPromise(program.pipe(Effect.provide(Layer.fresh(solverServiceLayer))))
+    resetZ3()
+
+    expect(r.settled, 'a same-tick interrupt was dropped and never re-issued').toBe('settled')
+    expect(
+      r.probe.accepted,
+      r.probe.accepted ? '' : `module still wedged after the re-issued interrupt: ${r.probe.error}`,
+    ).toBe(true)
+  })
+
+  it('re-issues on a period far inside every solver budget', () => {
+    // The smallest budget any tier runs under by default is 2000 ms; a re-issue period
+    // near it would let a dropped interrupt cost a whole budget.
+    expect(INTERRUPT_REISSUE_MS).toBeLessThanOrEqual(100)
   })
 })
 

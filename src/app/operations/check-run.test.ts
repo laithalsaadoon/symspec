@@ -24,6 +24,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { stubEmbedder } from '../../adapters/embedding/embedder.ts'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import type { Embedder } from '../../domain/engine/formal/embed.ts'
+import { DEFAULT_SEMANTIC_THRESHOLD } from '../../domain/engine/formal/semantic.ts'
 import {
   emptyDocument,
   type LoadedDocument,
@@ -157,6 +158,28 @@ describe('AC-3-5: the stub embedder is a run-weakening move', () => {
     const data = await runWith(stubService, { semantic: false })
     expect(data.run.embedder).toBe('off')
     expect(data.coverage.demotions.map((d) => d.reason)).toEqual(['semantic-tier-skipped'])
+  })
+})
+
+describe('I-1: a --semantic-threshold above the default is a run-weakening move', () => {
+  it('control: the default threshold is disclosed and certifies', async () => {
+    const data = await runWith(embedderLayerOf(orthogonalEmbedder()))
+    expect(data.run).toEqual({ embedder: 'model', semanticThreshold: DEFAULT_SEMANTIC_THRESHOLD })
+    expect(data.verified).toBe(true)
+  })
+
+  it('a raised threshold demotes, is disclosed, and its repair drops the flag', async () => {
+    const data = await runWith(embedderLayerOf(orthogonalEmbedder()), {
+      semanticThreshold: 0.99,
+      strict: true,
+    })
+    expect(data.run.semanticThreshold).toBe(0.99)
+    expect(data.coverage.demotions.map((d) => d.reason)).toEqual(['run-weakened'])
+    // The model ran, so the repair is the plain invocation — not the stub switch, and never a
+    // command that carries the raised threshold again.
+    expect(data.coverage.demotions[0]?.repair?.commands).toEqual(['symspec check doc.json'])
+    expect(data.verified).toBe(false)
+    expect(data.strictGate).toBe('fail')
   })
 })
 

@@ -43,8 +43,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { emitCandidatePairs } from '../solvers/free/pairwise-filter.ts'
-import { asView } from '../solvers/types.ts'
-import { runCheck } from './check.ts'
+import { asView, type ReqView } from '../solvers/types.ts'
+import { runCheck, toEncodable } from './check.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
 const ID = 'aaaaaaaa-0000-4000-8000-000000000001'
@@ -417,5 +417,40 @@ describe('a numeric conflict spanning a guard and a response', () => {
       ['resp', '<', 100],
       ['pre', '>', 500],
     ])
+  })
+})
+
+describe('toEncodable: the leading-negator fallback for stored response text', () => {
+  const view = (systemResponse: string): ReqView => ({
+    id: ID,
+    patternType: 'ubiquitous',
+    preCondition: undefined,
+    trigger: undefined,
+    systemName: 'gateway',
+    systemResponse,
+    negated: false,
+    sentence: `The gateway shall ${systemResponse}.`,
+    priority: 'medium',
+    status: 'draft',
+  })
+
+  it.each([
+    ['not log requests', 'log requests'],
+    ['never log requests', 'log requests'],
+    ['do not log requests', 'log requests'],
+    ['does not log requests', 'log requests'],
+  ])('a baked-in negator is stripped to a negated positive atom — %s', (response, positive) => {
+    expect(toEncodable(view(response))).toMatchObject({ systemResponse: positive, negated: true })
+  })
+
+  it.each([
+    'not only log requests but also forward them',
+    'Not only log requests but also forward them',
+    'do not only log requests but also forward them',
+    'does not only log requests but also forward them',
+  ])('"not only X but also Y" is a positive obligation, passed through (AC-2-3) — %s', (response) => {
+    // The parse stores this form `negated: false` with "not only" kept in the response. If this
+    // scan re-negated it, `check` would encode the prohibition the parse declined to store.
+    expect(toEncodable(view(response))).toMatchObject({ systemResponse: response, negated: false })
   })
 })

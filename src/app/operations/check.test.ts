@@ -34,6 +34,8 @@ import {
   type Requirement,
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
+import { foldOps } from '../../domain/requirements/mutate.ts'
+import type { DocumentOp } from '../../domain/requirements/ops.ts'
 import { DocPath, DocStore, makeDocPath, type SaveInput } from '../../ports/doc-store.ts'
 import { embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound, type OperationalError } from '../../ports/errors.ts'
@@ -742,7 +744,7 @@ describe('check — the solver Layer', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The reachability tier (G4) — wired in, and a PURE ADDITION
+// The reachability tier (G4) — wired in, and opt-in
 // ---------------------------------------------------------------------------
 
 /**
@@ -752,10 +754,10 @@ describe('check — the solver Layer', () => {
  *
  * 1. When a state model IS committed, the tier runs and its verdicts reach `findings[]`,
  *    `coverage.demotions[]`, `counts`, `verified`, and the exit code.
- * 2. When one is NOT committed, NOTHING changes — no key, no finding, no demotion. That
- *    is what makes the tier a pure addition, and it is asserted DIRECTLY rather than left
- *    implicit in the other fixtures: those could all grow a state model one day without
- *    anyone noticing this property had been the reason they were safe.
+ * 2. When one is NOT committed, the tier's absence is DISCLOSED and nothing else changes —
+ *    no key, no demotion, one info `FND_REACHABILITY_NOT_CHECKED`, which is what the
+ *    published scope promises. Asserted DIRECTLY rather than left implicit in the other
+ *    fixtures: those could all grow a state model one day without anyone noticing.
  */
 describe('the reachability tier runs ONLY when a state model is committed (G4)', () => {
   /** A UUID-shaped id, so the document schema accepts it. */
@@ -827,17 +829,49 @@ describe('the reachability tier runs ONLY when a state model is committed (G4)',
   // The tier is OFF without a state model
   // -------------------------------------------------------------------------
 
-  it('emits NO `reachability` key and NO reachability finding without a state model', async () => {
+  it('without a state model: no `reachability` key, one NOT_CHECKED disclosure, no demotion', async () => {
+    // Two requirements co-live under one trigger, so the rest of the run certifies and the
+    // assertion below can see that the disclosure does not demote.
     const payload = await expectOk(
-      docOf(req({ id: rid(1), sentence: 'The system shall operate.' })),
+      docOf(
+        req({
+          id: rid(1),
+          patternType: 'event-driven',
+          trigger: 'the operator presses start',
+          systemResponse: 'start the pump',
+          sentence: 'When the operator presses start, the system shall start the pump.',
+        }),
+        req({
+          id: rid(2),
+          patternType: 'event-driven',
+          trigger: 'the operator presses start',
+          systemResponse: 'sound the chime',
+          sentence: 'When the operator presses start, the system shall sound the chime.',
+        }),
+      ),
     )
-    // ABSENT, not empty — the key must not exist at all, which is what leaves the payload
-    // byte-identical to a run from before this tier existed.
+    // ABSENT, not empty — the tier did not run, so it has no numbers to report.
     expect('reachability' in payload).toBe(false)
-    expect(payload.findings.some((f) => f.code.startsWith('FND_REACHABILITY'))).toBe(false)
+    // The published scope promises the tier's absence is DISCLOSED, not silent.
+    const reach = payload.findings.filter((f) => f.code.startsWith('FND_REACHABILITY'))
+    expect(reach.map((f) => [f.code, f.severity])).toEqual([
+      ['FND_REACHABILITY_NOT_CHECKED', 'info'],
+    ])
+    expect(reach[0]?.message).toMatch(/no state model is committed/)
+    expect(payload.counts.info).toBeGreaterThanOrEqual(1)
+    // The tier is opt-in, like the temporal tier: its absence is disclosed but does not demote.
     expect(
       payload.coverage.demotions.some((d) => String(d.reason).startsWith('reachability')),
     ).toBe(false)
+    expect(payload.verified).toBe(true)
+  })
+
+  it('the no-state-model disclosure honours --min-severity like every other info finding', async () => {
+    const payload = await expectOk(
+      docOf(req({ id: rid(1), sentence: 'The system shall operate.' })),
+      { minSeverity: 'warn' },
+    )
+    expect(payload.findings.some((f) => f.code === 'FND_REACHABILITY_NOT_CHECKED')).toBe(false)
   })
 
   it('is off for an EMPTY state model too, not merely for a missing one', async () => {
@@ -1736,5 +1770,142 @@ describe('check — the terminology tier is spliced in without reaching the verd
     )
     expect(payload.terminology?.keysExamined).toBe(0)
     expect(payload.findings.some((f) => f.code === 'FND_TERM_INCONSISTENT')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A pair waiver followed verbatim covers exactly the pair and text it was raised on
+// ---------------------------------------------------------------------------
+
+describe('the numeric/relational repair waiver is bound to its finding and its text', () => {
+  const W = '00000000-0000-4000-8000-000000000001'
+  const X = 'ffffffff-0000-4000-8000-000000000002'
+  const Y = '88888888-0000-4000-8000-000000000003'
+  const siren = (id: string, systemResponse: string) =>
+    req({
+      id,
+      patternType: 'event-driven',
+      trigger: 'the smoke detector trips',
+      systemName: 'fire panel',
+      systemResponse,
+      sentence: `When the smoke detector trips, the fire panel shall ${systemResponse}.`,
+    })
+  const PAIR_REASONS = ['relational-reasoning-not-attempted', 'numeric-bounds-uncompared'] as const
+  const REASON = 'reviewed: siren starts within 2 s and then runs 30 s; consistent'
+
+  const fold = (document: RequirementsDocument, ops: readonly DocumentOp[]) => {
+    const result = foldOps(document, ops, TS)
+    if (result.abortedAt !== undefined) {
+      throw new Error(`fold aborted: ${JSON.stringify(result.results)}`)
+    }
+    return result.document
+  }
+  const reasonsOf = (payload: CheckPayload) => payload.coverage.demotions.map((d) => d.reason)
+
+  /** The siren pair, with every repair waiver `check` offers applied as-is (reason filled in). */
+  const triaged = async () => {
+    const doc = docOf(
+      siren(W, 'sound the siren within 2 seconds'),
+      siren(X, 'sound the siren for at least 30 seconds'),
+    )
+    const first = await expectOk(doc)
+    expect(reasonsOf(first)).toEqual(expect.arrayContaining([...PAIR_REASONS]))
+    const waives = first.coverage.demotions
+      .filter((d) => (PAIR_REASONS as readonly string[]).includes(d.reason))
+      .flatMap((d) => (d.repair?.ops ?? []) as readonly DocumentOp[])
+      .filter((op) => op.op === 'waive')
+      .map((op) => ({ ...op, reason: REASON }) as DocumentOp)
+    expect(waives).toHaveLength(2)
+    return { doc, waives, waived: fold(doc, waives) }
+  }
+
+  it('offers the exact id set plus the content hash, never a one-id ref', async () => {
+    const { waives } = await triaged()
+    for (const op of waives) {
+      expect(op).not.toHaveProperty('ref')
+      expect(op).toMatchObject({
+        refs: [W, X].sort(),
+        contentHash: expect.stringMatching(/^sha256:/),
+      })
+    }
+  })
+
+  it('discharges the triaged pair', async () => {
+    const { waived } = await triaged()
+    const payload = await expectOk(waived)
+    for (const reason of PAIR_REASONS) expect(reasonsOf(payload)).not.toContain(reason)
+    expect(payload.waived).toBe(2)
+  })
+
+  it('(a) does not discharge the cluster a third requirement joins', async () => {
+    const { waived } = await triaged()
+    const grown = fold(waived, [
+      {
+        op: 'add',
+        id: Y,
+        patternType: 'event-driven',
+        trigger: 'the smoke detector trips',
+        systemName: 'fire panel',
+        systemResponse: 'sound the siren after at least 10 seconds',
+      },
+    ])
+    const payload = await expectOk(grown)
+    expect(reasonsOf(payload)).toContain('relational-reasoning-not-attempted')
+    expect(payload.verified).toBe(false)
+  })
+
+  it('(b) does not discharge the pair once the partner is edited into another bound', async () => {
+    const { waived } = await triaged()
+    const edited = fold(waived, [
+      {
+        op: 'update',
+        ref: X,
+        attr: 'systemResponse',
+        value: 'sound the siren after at least 10 seconds',
+      },
+    ])
+    const payload = await expectOk(edited)
+    expect(reasonsOf(payload)).toContain('relational-reasoning-not-attempted')
+    expect(payload.waived).toBe(0)
+  })
+
+  it('(c) does not certify the pair rewritten into the infusion conflict', async () => {
+    const { waived } = await triaged()
+    const rewritten = fold(waived, [
+      {
+        op: 'update',
+        ref: W,
+        attr: 'systemResponse',
+        value: 'complete the infusion within 30 minutes',
+      },
+      {
+        op: 'update',
+        ref: X,
+        attr: 'systemResponse',
+        value: 'complete the infusion for at least 60 minutes',
+      },
+    ])
+    const payload = await expectOk(rewritten)
+    expect(reasonsOf(payload)).toEqual(expect.arrayContaining([...PAIR_REASONS]))
+    expect(payload.findings.map((f) => f.code)).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(payload.waived).toBe(0)
+  })
+
+  it('refuses to commit the offered waiver over text edited after the check', async () => {
+    const doc = docOf(
+      siren(W, 'sound the siren within 2 seconds'),
+      siren(X, 'sound the siren for at least 30 seconds'),
+    )
+    const waive = (await expectOk(doc)).coverage.demotions
+      .flatMap((d) => (d.repair?.ops ?? []) as readonly DocumentOp[])
+      .find((op): op is Extract<DocumentOp, { op: 'waive' }> => op.op === 'waive')
+    expect(waive).toBeDefined()
+    const edited = fold(doc, [
+      { op: 'update', ref: X, attr: 'systemResponse', value: 'sound the siren for 5 seconds' },
+    ])
+    const result = foldOps(edited, [{ ...waive!, reason: REASON }], TS)
+    expect(result.abortedAt).toBe(0)
+    expect(result.results[0]).toMatchObject({ ok: false, code: 'ERR_USAGE' })
+    expect(result.results[0]?.error).toMatch(/changed since the finding was raised/)
   })
 })
