@@ -616,10 +616,13 @@ export const SYMBOL_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
   // (letter-preceded) and `1-2` (digit-preceded) are untouched. Without the guard, every hyphenated
   // word in the corpus would gain a `minus` token. The Unicode MINUS SIGN (U+2212) is the same
   // sign and spells the same word (spec 007 AC-2-4): deleting it as punctuation read `−5 °C` as
-  // `5 °C`. Letters and digits of every script count as the preceding word, so `α-2` stays a
-  // hyphenated name.
+  // `5 °C`. So is every dash that leads a number — HYPHEN through HORIZONTAL BAR (U+2010–U+2015),
+  // SMALL HYPHEN-MINUS (U+FE63) and FULLWIDTH HYPHEN-MINUS (U+FF0D) — because a word processor
+  // substitutes an en dash for a typed leading minus and a CJK input method types the fullwidth
+  // one; deleted as `\p{Pd}`, `–20 °C` and `20 °C` were one guard. Letters and digits of every
+  // script count as the preceding word, so `α-2` stays a hyphenated name and `10–20` a range.
   [/(?<![\p{L}\p{N}])\+(?=\p{N})/gu, ' plus '],
-  [/(?<![\p{L}\p{N}])[-\u2212](?=\p{N})/gu, ' minus '],
+  [/(?<![\p{L}\p{N}])[-\u2010-\u2015\u2212\uFE63\uFF0D](?=\p{N})/gu, ' minus '],
 ]
 
 /**
