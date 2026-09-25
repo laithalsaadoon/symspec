@@ -20,7 +20,8 @@
  *   the document was dirty.
  * - {@link MOVES}: every gaming move expressible on today's document format, each a function
  *   from a fixture to an op stream, a re-parse, or a run-setting change — the same three
- *   channels an agent has. Each carries its I-1 direction as DATA.
+ *   channels an agent has. A move's I-1 direction is DERIVED from the op verbs it emits
+ *   (`OP_DIRECTION` in `ops.ts`), never typed on the move, and G-D measures that label.
  * - {@link NOT_APPLICABLE_YET}: the AC-8-2 moves whose target does not exist yet (intent,
  *   policy, `narrow` certificates, environment assumptions, `derived`). Enumerated in code so
  *   AC-8-2's list is complete here and a later story has a row to promote.
@@ -28,6 +29,9 @@
  *   the AC that closes it. The gate is that this table is EXACT, in both directions.
  * - {@link OP_COVERAGE}: every op verb in `ops.ts`, mapped to the moves that exercise it or to
  *   a written reason it has none (AC-8-2's last sentence).
+ * - {@link KNOWN_NONMONOTONE}: every (fixture, move) pair whose ops are all labelled
+ *   `strengthening` and whose run nonetheless LOST a member of D, the verdict-bearing set —
+ *   G-D, the measurement of the direction labels. Exact in both directions, like the escapes.
  *
  * ## "Clean" and "escape", precisely
  *
@@ -81,7 +85,14 @@ import {
   type RequirementsDocument,
 } from '../domain/requirements/document.ts'
 import { foldOps, type MutateOptions } from '../domain/requirements/mutate.ts'
-import type { AddOp, DocumentOp, OpVerb } from '../domain/requirements/ops.ts'
+import {
+  type AddOp,
+  type DocumentOp,
+  joinDirections,
+  OP_DIRECTION,
+  type OpDirection,
+  type OpVerb,
+} from '../domain/requirements/ops.ts'
 import { resolveRef } from '../domain/requirements/resolve.ts'
 import { DocPath, DocStore, makeDocPath } from '../ports/doc-store.ts'
 import {
@@ -437,14 +448,16 @@ export const FIXTURES: readonly Fixture[] = [
 // ---------------------------------------------------------------------------
 
 /**
- * The I-1 direction of a move, as data.
+ * The I-1 direction of a move: an op direction, or `run-weakening` for a move that turns a run
+ * knob instead of emitting ops.
  *
- * `weakening` covers every move that can remove a finding by changing what a requirement
- * means or which requirements exist — the class Story 5 admits only with a certificate.
- * `strengthening` moves can only add findings IN THE LOGIC; an escape by one is therefore a
- * defect in the encoding rather than a gap in the gate, and is labelled that way below.
+ * An op move's direction is the JOIN of `OP_DIRECTION` over the verbs it emits
+ * ({@link cellDirection}), so relabelling a verb in `ops.ts` relabels every move that uses it
+ * and G-D re-measures the claim. `strengthening` moves can only add members of D; a
+ * strengthening move that loses one is a defect in the encoding rather than a gap in the gate,
+ * and is listed in {@link KNOWN_NONMONOTONE}.
  */
-export type Direction = 'strengthening' | 'weakening' | 'run-weakening'
+export type Direction = OpDirection | 'run-weakening'
 
 /** What a move hands the runner, before the runner folds or checks anything. */
 type Edit =
@@ -464,7 +477,6 @@ export interface Move {
   readonly id: string
   /** The AC-8-2 clause this move realizes, or the op verb it exists to cover. */
   readonly clause: string
-  readonly direction: Direction
   readonly edit: (ctx: MoveContext) => Edit
 }
 
@@ -544,13 +556,11 @@ const SIDES = [
 const oneSided = (
   id: string,
   clause: string,
-  direction: Direction,
   edit: (target: Requirement, key: string, ctx: MoveContext) => Edit,
 ): readonly Move[] =>
   SIDES.map(([side, i]) => ({
     id: `${id}@${side}`,
     clause,
-    direction,
     edit: (ctx: MoveContext) => {
       const key = ctx.fixture.culprits[i]
       return edit(req(ctx.doc, key), key, ctx)
@@ -580,7 +590,6 @@ const aliasBothWays = (
   DIRECTIONS.map(([dir, from, to]) => ({
     id: `alias-contraries-${table}@${dir}`,
     clause,
-    direction: 'strengthening',
     edit: ({ fixture, doc }: MoveContext): Edit => {
       const canonical = req(doc, fixture.culprits[from]).systemResponse
       const alias = req(doc, fixture.culprits[to]).systemResponse
@@ -639,7 +648,6 @@ const termOverPhrase = (): readonly Move[] =>
   TERM_OVERLAPS.map(([shape, side, aliasOf]) => ({
     id: `term-over-phrase@${shape}`,
     clause: 'alias a phrase that overlaps a committed term (term table)',
-    direction: 'strengthening' as const,
     edit: ({ fixture, doc }: MoveContext): Edit => {
       const entry = doc.terms[0]
       const committed = side === 'canonical' ? entry?.canonical : entry?.aliases[0]
@@ -716,7 +724,6 @@ const glossaryOverTerm = (): readonly Move[] =>
       GLOSSARY_OVER_TERM_ORDERS.map((order) => ({
         id: `glossary-over-term@${shape}${side === 'canonical' ? '-canonical' : ''}/${order}`,
         clause: 'alias a phrase a committed term rewrites (glossary over term table)',
-        direction: 'strengthening' as const,
         edit: ({ fixture, doc }: MoveContext): Edit => {
           const entry = doc.terms[0]
           const termAlias = entry?.aliases[0]
@@ -750,14 +757,13 @@ const glossaryOverTerm = (): readonly Move[] =>
   )
 
 export const MOVES: readonly Move[] = [
-  ...oneSided('rename-system', 'rename a system', 'weakening', (r, key) => ({
+  ...oneSided('rename-system', 'rename a system', (r, key) => ({
     kind: 'ops',
     ops: [{ op: 'update', ref: key, attr: 'systemName', value: `${r.systemName} unit` }],
   })),
   {
     id: 'split-system',
     clause: 'split a system into two parents (two names; part-of parents need AC-4-1)',
-    direction: 'weakening',
     edit: ({ fixture, doc }) => {
       const [ka, kb] = fixture.culprits
       return {
@@ -780,7 +786,6 @@ export const MOVES: readonly Move[] = [
   {
     id: 'waive-by-code',
     clause: 'waive by code',
-    direction: 'weakening',
     // Every code the baseline report shows, document-wide: the strongest form of the move,
     // and the one an agent that reads the report and wants a green run would type.
     edit: ({ baselineCodes }) =>
@@ -795,37 +800,31 @@ export const MOVES: readonly Move[] = [
             })),
           },
   },
-  ...oneSided('delete-requirement', 'delete a requirement', 'weakening', (_r, key) => ({
+  ...oneSided('delete-requirement', 'delete a requirement', (_r, key) => ({
     kind: 'ops',
     ops: [{ op: 'delete', ref: key }],
   })),
-  ...oneSided('flip-negated', 'flip `negated`', 'weakening', (r) => ({
+  ...oneSided('flip-negated', 'flip `negated`', (r) => ({
     kind: 'ops',
     ops: readd(r, { negated: !r.negated }),
   })),
-  ...oneSided(
-    'condition-into-response',
-    'move a condition into the response text',
-    'weakening',
-    (r) => {
-      const guard = guardOf(r)
-      if (guard === undefined)
-        return { kind: 'inapplicable', reason: 'this culprit carries no condition' }
-      return {
-        kind: 'ops',
-        ops: readd(r, {
-          patternType: 'ubiquitous',
-          trigger: undefined,
-          preCondition: undefined,
-          systemResponse: `${r.systemResponse} ${guard.word} ${guard.text}`,
-        }),
-      }
-    },
-  ),
+  ...oneSided('condition-into-response', 'move a condition into the response text', (r) => {
+    const guard = guardOf(r)
+    if (guard === undefined)
+      return { kind: 'inapplicable', reason: 'this culprit carries no condition' }
+    return {
+      kind: 'ops',
+      ops: readd(r, {
+        patternType: 'ubiquitous',
+        trigger: undefined,
+        preCondition: undefined,
+        systemResponse: `${r.systemResponse} ${guard.word} ${guard.text}`,
+      }),
+    }
+  }),
   {
     id: 'add-decoys',
     clause: 'add decoy requirements',
-    direction: 'strengthening',
     edit: ({ fixture, doc }) => {
       const a = req(doc, fixture.culprits[0])
       return {
@@ -843,7 +842,6 @@ export const MOVES: readonly Move[] = [
   ...oneSided(
     'shall-to-should',
     'change `shall` to `should` (re-parse the edited sentence)',
-    'weakening',
     (r, key) => ({
       kind: 'reparse',
       ref: key,
@@ -853,7 +851,6 @@ export const MOVES: readonly Move[] = [
   {
     id: 'link-culprits',
     clause: 'op coverage: trace edges between the two culprits',
-    direction: 'strengthening',
     edit: ({ fixture }) => {
       const [to, from] = fixture.culprits
       return {
@@ -870,7 +867,6 @@ export const MOVES: readonly Move[] = [
   {
     id: 'unglossary',
     clause: 'op coverage: drop the committed glossary alias the conflict rests on',
-    direction: 'weakening',
     edit: ({ doc }) =>
       doc.glossary.length === 0
         ? { kind: 'inapplicable', reason: 'the fixture commits no glossary alias' }
@@ -888,7 +884,6 @@ export const MOVES: readonly Move[] = [
   {
     id: 'unantonym',
     clause: 'op coverage: drop the committed contrary axiom the conflict rests on',
-    direction: 'weakening',
     edit: ({ doc }) =>
       doc.antonyms.length === 0
         ? { kind: 'inapplicable', reason: 'the fixture commits no antonym' }
@@ -900,7 +895,6 @@ export const MOVES: readonly Move[] = [
   {
     id: 'unterm',
     clause: 'op coverage: drop the committed term the conflict rests on',
-    direction: 'weakening',
     edit: ({ doc }) =>
       doc.terms.length === 0
         ? { kind: 'inapplicable', reason: 'the fixture commits no term' }
@@ -914,7 +908,6 @@ export const MOVES: readonly Move[] = [
   {
     id: 'declassify-constraint',
     clause: 'op coverage: clear the classification of the violated constraint',
-    direction: 'weakening',
     edit: ({ doc }) => {
       const constraint = Object.values(doc.requirements).find(
         (r) => r.responseKind === 'constraint',
@@ -930,7 +923,6 @@ export const MOVES: readonly Move[] = [
   {
     id: 'rebind-effect',
     clause: 'op coverage (`update`): rewrite the offending effect so it writes nothing forbidden',
-    direction: 'weakening',
     edit: ({ doc }) => {
       const effect = Object.values(doc.requirements).find((r) => r.responseKind === 'effect')
       return effect === undefined
@@ -952,7 +944,6 @@ export const MOVES: readonly Move[] = [
     id: 'vacuous-initial',
     clause:
       'op coverage (`state-initial`): an unsatisfiable initial predicate, so no state is reachable',
-    direction: 'weakening',
     edit: ({ doc }) =>
       doc.stateModel.variables.length === 0
         ? { kind: 'inapplicable', reason: 'the fixture declares no state model' }
@@ -961,7 +952,6 @@ export const MOVES: readonly Move[] = [
   {
     id: 'release-frame',
     clause: 'op coverage: re-declare a state variable with its frame released',
-    direction: 'weakening',
     edit: ({ doc }) => {
       const [variable] = doc.stateModel.variables
       if (variable === undefined)
@@ -984,7 +974,6 @@ export const MOVES: readonly Move[] = [
   {
     id: 'unstate',
     clause: 'op coverage: remove the state variable the constraint reads',
-    direction: 'weakening',
     edit: ({ doc }) => {
       const [variable] = doc.stateModel.variables
       return variable === undefined
@@ -995,37 +984,31 @@ export const MOVES: readonly Move[] = [
   {
     id: 'embedding-stub',
     clause: 'run with the embedding stub',
-    direction: 'run-weakening',
     edit: () => ({ kind: 'run', knobs: {}, embedder: 'stub-env' }),
   },
   {
     id: 'semantic-off',
     clause: 'run with `--semantic=false`',
-    direction: 'run-weakening',
     edit: () => ({ kind: 'run', knobs: { semantic: false } }),
   },
   {
     id: 'solver-budget-1ms',
     clause: 'run with a one-millisecond budget (`--solver-budget-ms 1`)',
-    direction: 'run-weakening',
     edit: () => ({ kind: 'run', knobs: { solverBudgetMs: 1 } }),
   },
   {
     id: 'solver-timeout-1ms',
     clause: 'run with a one-millisecond budget (`--timeout-ms 1`)',
-    direction: 'run-weakening',
     edit: () => ({ kind: 'run', knobs: { timeoutMs: 1 } }),
   },
   {
     id: 'temporal-bound-1',
     clause: 'run with `--temporal-bound 1`',
-    direction: 'run-weakening',
     edit: () => ({ kind: 'run', knobs: { temporalBound: 1 } }),
   },
   {
     id: 'temporal-off',
     clause: 'run with the temporal tier off (`--temporal-bound 0`, the default)',
-    direction: 'run-weakening',
     edit: () => ({ kind: 'run', knobs: { temporalBound: 0 } }),
   },
 ]
@@ -1037,7 +1020,12 @@ export const MOVES: readonly Move[] = [
  */
 const TIMING_SENSITIVE: ReadonlySet<string> = new Set(['solver-budget-1ms', 'solver-timeout-1ms'])
 
-/** An AC-8-2 move whose target does not exist on today's document format. */
+/**
+ * An AC-8-2 move whose target does not exist on today's document format.
+ *
+ * Its direction is TYPED, unlike a registered move's, because it emits no op yet to derive one
+ * from. The story that registers the move deletes the field along with the row.
+ */
 export interface PendingMove {
   readonly id: string
   readonly clause: string
@@ -1125,11 +1113,45 @@ export const AC_8_2: readonly { readonly clause: string; readonly moves: readonl
 export type MoveStatus = 'registered-caught' | 'registered-escapes-known-gap' | 'not-applicable-yet'
 
 /**
+ * The direction of one move on one fixture: the join of its emitted verbs' `OP_DIRECTION`,
+ * `run-weakening` for a run-setting move, and `undefined` when the move does not apply.
+ */
+export const cellDirection = (edit: Edit, ctx: MoveContext): Direction | undefined =>
+  edit.kind === 'run'
+    ? 'run-weakening'
+    : joinDirections(editVerbs(edit, ctx).map((verb) => OP_DIRECTION[verb].direction))
+
+/**
+ * A registered move's direction: the join of {@link cellDirection} over every fixture it
+ * applies to. A move whose verbs depend on the fixture (a re-add that re-classifies only a
+ * classified requirement) takes the highest direction it reaches anywhere.
+ */
+export const moveDirection = (move: Move, options: MutateOptions): Direction => {
+  const directions = FIXTURES.flatMap((fixture) => {
+    const ctx = { fixture, doc: buildDoc(fixture.ops, options), baselineCodes: ['FND_PLACEHOLDER'] }
+    const d = cellDirection(move.edit(ctx), ctx)
+    return d === undefined ? [] : [d]
+  })
+  if (directions.includes('run-weakening')) {
+    if (directions.some((d) => d !== 'run-weakening'))
+      throw new Error(`${move.id} both turns a run knob and emits ops`)
+    return 'run-weakening'
+  }
+  const joined = joinDirections(directions.filter((d): d is OpDirection => d !== 'run-weakening'))
+  if (joined === undefined)
+    throw new Error(`${move.id} applies to no fixture, so it has no direction`)
+  return joined
+}
+
+/**
  * Every move's standing, derived from the tables — never stated. A registered move is caught
  * unless {@link KNOWN_ESCAPES} lists it, and the shards hold that table exact, so this report
- * is as true as the last green run.
+ * is as true as the last green run. Its direction is derived from what it emits, under
+ * `apply`'s own mutate options.
  */
-export const moveStatuses = (): readonly {
+export const moveStatuses = (
+  options: MutateOptions,
+): readonly {
   readonly id: string
   readonly direction: Direction
   readonly status: MoveStatus
@@ -1140,7 +1162,7 @@ export const moveStatuses = (): readonly {
     const rows = KNOWN_ESCAPES.filter((k) => k.move === m.id)
     return {
       id: m.id,
-      direction: m.direction,
+      direction: moveDirection(m, options),
       status:
         rows.length > 0
           ? ('registered-escapes-known-gap' as const)
@@ -1290,6 +1312,84 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     'Rewriting the effect so it never writes the forbidden value discharges the violation while the sentence still says "open the valve". The binding changed and removed a finding with no `narrow` certificate (`FND_SEMANTIC_DRIFT`); AC-6-6 separately flags the effect as no longer the rendering of its sentence.',
   ),
 ]
+
+// ---------------------------------------------------------------------------
+// G-D: the op directions, measured
+// ---------------------------------------------------------------------------
+
+/**
+ * One (fixture, move) pair whose emitted verbs are all `strengthening` and whose run LOST a
+ * member of D anyway, with exactly the members it lost.
+ *
+ * `lost` is part of the key. A row pins WHICH verdict or signal the move loses, so a move that
+ * starts losing a different one is a visible failure rather than a row that still matches.
+ */
+export interface KnownNonmonotone {
+  readonly fixture: string
+  readonly move: string
+  /** The lost members, rendered by {@link renderMember} and sorted. */
+  readonly lost: readonly string[]
+  /** The AC whose landing closes the row, in the {@link KnownEscape.closedBy} form. */
+  readonly closedBy: string
+  readonly why: string
+}
+
+/**
+ * Every strengthening move that is measured to lose a member of D. EXACT: an unlisted loss
+ * fails the gate, and so does a row that no longer loses what it lists (I-5).
+ *
+ * A row here is not an escape — most of these moves are still caught, by a demotion outside D
+ * — but it IS a label the measurement contradicts: the verb says it can only add to D, and on
+ * this fixture it took something away.
+ */
+export const KNOWN_NONMONOTONE: readonly KnownNonmonotone[] = [
+  ...(['alias-contraries-term@forward', 'alias-contraries-term@reverse'] as const).map(
+    (move): KnownNonmonotone => ({
+      fixture: 'registered-contrary',
+      move,
+      lost: ['FND_CONTRADICTION(REG-R1,REG-R2)'],
+      closedBy: 'AC-4-6',
+      why: '`term` is labelled strengthening because an alias is an added equality, but the term table is a one-pass substitution: merging ratify/veto, contraries only through the committed antonym table, rewrites both responses onto one phrase and the contradiction the antonym carried is gone. The same pair escapes (KNOWN_ESCAPES). AC-4-6 refuses a merge of registered contraries whichever table it is written to.',
+    }),
+  ),
+  ...(
+    [
+      'glossary-over-term@containing/term-then-glossary',
+      'glossary-over-term@containing-canonical/term-then-glossary',
+    ] as const
+  ).map(
+    (move): KnownNonmonotone => ({
+      fixture: 'term-bridged',
+      move,
+      lost: ['FND_CONTRADICTION(TRM-R1,TRM-R2)'],
+      closedBy: 'S4 / AC-4-2 (cross-table fence + check twin)',
+      why: '`glossary` is labelled strengthening, but a glossary alias containing a phrase the committed term rewrites takes that response out of the term table (the glossary lookup runs first), so the two phrases the term calls one noun reach the solver as two atoms. The `glossary-then-term` order emits `unterm` and is weakening, so G-D does not measure it; this order emits `glossary` alone.',
+    }),
+  ),
+]
+
+/** A member of D as one line: `FND_CONTRADICTION(R1,R2)` or `demotion:reason(R1,R2)`. */
+export const renderMember = (m: DMemberView): string =>
+  `${m.kind === 'demotion' ? 'demotion:' : ''}${m.name}(${m.requirementIds.join(',')})`
+
+/**
+ * What a cell LOST from D against its fixture's baseline, or `undefined` when the cell is not
+ * measured: G-D reads only moves whose verbs all join to `strengthening`, that the tool did not
+ * refuse, and whose run and baseline both completed.
+ */
+export const lostFromD = (
+  baseline: Outcome | undefined,
+  cell: Cell,
+  covers: VerdictBearing['covers'],
+): readonly string[] | undefined => {
+  if (cell.direction !== 'strengthening') return undefined
+  if (baseline?.kind !== 'ran' || cell.outcome.kind !== 'ran') return undefined
+  const after = cell.outcome.d
+  return baseline.d
+    .filter((m) => !covers(m, after))
+    .map(renderMember)
+    .sort()
+}
 
 // ---------------------------------------------------------------------------
 // Op coverage (AC-8-2, last sentence)
@@ -1543,6 +1643,28 @@ export interface GamingWiring {
    * move is folded behind exactly the write-time fences an agent's `apply` meets.
    */
   readonly mutateOptions: MutateOptions
+  /**
+   * D, the verdict-bearing set, and its identity map (`app/runtime/signal-classes.ts`). Handed
+   * in for the same ring reason as `check`: the classes are the app's published tables, and G-D
+   * must measure the directions against the SAME D the manifest states them over.
+   */
+  readonly verdictBearing: VerdictBearing
+}
+
+/** One member of D, as `app/runtime/signal-classes.ts` projects it. */
+export interface DMemberView {
+  readonly kind: 'finding' | 'demotion'
+  readonly name: string
+  readonly class: string
+  readonly requirementIds: readonly string[]
+}
+
+/** The D projection and its identity map, injected by the shard. */
+export interface VerdictBearing {
+  /** Project a report onto D. */
+  readonly of: (report: CheckView) => readonly DMemberView[]
+  /** Whether a member of D before a move is still in D after it. */
+  readonly covers: (member: DMemberView, after: readonly DMemberView[]) => boolean
 }
 
 /**
@@ -1575,6 +1697,8 @@ export interface RunResult {
   readonly errorCodes: readonly string[]
   readonly demotions: readonly string[]
   readonly codes: readonly string[]
+  /** D for this run, with requirement ids read as their keys so a lost member reads as prose. */
+  readonly d: readonly DMemberView[]
 }
 
 /** A move the tool refused before `check` ran: the fold, or the parse, said no. */
@@ -1594,6 +1718,8 @@ export interface Cell {
   readonly move: string
   readonly outcome: Outcome
   readonly changed: boolean
+  /** The move's direction ON THIS FIXTURE, from the verbs it emitted here. */
+  readonly direction: Direction | undefined
 }
 
 export interface Matrix {
@@ -1655,6 +1781,7 @@ const runCheck = async (
     return { kind: 'operational', tag: String(failure?._tag ?? 'unknown') }
   }
   const { exit, data } = result.success
+  const keyOf = (id: string): string => document.requirements[id]?.key ?? id
   return {
     kind: 'ran',
     exit,
@@ -1663,6 +1790,9 @@ const runCheck = async (
     errorCodes: uniq(data.findings.filter((f) => f.severity === 'error').map((f) => f.code)),
     demotions: uniq(data.coverage.demotions.map((d) => d.reason)),
     codes: uniq(data.findings.map((f) => f.code)),
+    d: wiring.verdictBearing
+      .of(data)
+      .map((m) => ({ ...m, requirementIds: m.requirementIds.map(keyOf).sort() })),
   }
 }
 
@@ -1709,11 +1839,9 @@ export const runMatrix = async (
       }
       const baselineCodes = baseline.kind === 'ran' ? baseline.codes : []
       for (const move of moves) {
-        const applied = await applyEdit(
-          move.edit({ fixture, doc, baselineCodes }),
-          doc,
-          wiring.mutateOptions,
-        )
+        const ctx = { fixture, doc, baselineCodes }
+        const edit = move.edit(ctx)
+        const applied = await applyEdit(edit, doc, wiring.mutateOptions)
         const outcome: Outcome =
           applied.kind === 'check'
             ? await run(applied.doc, applied.knobs, applied.embedder)
@@ -1723,6 +1851,7 @@ export const runMatrix = async (
           move: move.id,
           outcome,
           changed: applied.kind !== 'check' || applied.changed,
+          direction: cellDirection(edit, ctx),
         })
       }
     } finally {
@@ -1748,6 +1877,16 @@ export interface GateFailures {
   readonly staleEscapes: readonly string[]
   /** A move that changed neither the document nor the run. */
   readonly inertMoves: readonly string[]
+  /** G-D: a strengthening move that lost a member of D, unlisted in {@link KNOWN_NONMONOTONE}. */
+  readonly unlistedNonmonotone: readonly string[]
+  /** G-D: a {@link KNOWN_NONMONOTONE} row whose pair no longer loses exactly what it lists. */
+  readonly staleNonmonotone: readonly string[]
+  /**
+   * G-D non-vacuity: a baseline whose D is EMPTY. Every fixture seeds a verdict-bearing defect,
+   * so an empty D means the projection stopped reading the report, and every loss would be
+   * invisible.
+   */
+  readonly emptyBaselineD: readonly string[]
 }
 
 const pairKey = (fixture: string, move: string): string => `${fixture} × ${move}`
@@ -1760,9 +1899,20 @@ const brief = (outcome: Outcome): string =>
 /** Score a matrix against the registry. Only rows for fixtures IN the matrix are considered. */
 export const gateFailures = (
   matrix: Matrix,
+  covers: VerdictBearing['covers'],
   known: readonly KnownEscape[] = KNOWN_ESCAPES,
+  nonmonotone: readonly KnownNonmonotone[] = KNOWN_NONMONOTONE,
 ): GateFailures => {
   const scored = new Set(matrix.baselines.keys())
+  const lossKey = (fixture: string, move: string, lost: readonly string[]) =>
+    `${pairKey(fixture, move)} lost [${lost.join(', ')}]`
+  const measuredLoss = matrix.cells.flatMap((c) => {
+    const lost = lostFromD(matrix.baselines.get(c.fixture), c, covers)
+    return lost === undefined || lost.length === 0 ? [] : [lossKey(c.fixture, c.move, lost)]
+  })
+  const listedLoss = nonmonotone
+    .filter((k) => scored.has(k.fixture))
+    .map((k) => lossKey(k.fixture, k.move, [...k.lost].sort()))
   const listed = new Set(
     known.filter((k) => scored.has(k.fixture)).map((k) => pairKey(k.fixture, k.move)),
   )
@@ -1781,6 +1931,11 @@ export const gateFailures = (
       .map((c) => pairKey(c.fixture, c.move)),
     staleEscapes: [...listed].filter((k) => !escaping.has(k)),
     inertMoves: matrix.cells.filter((c) => !c.changed).map((c) => pairKey(c.fixture, c.move)),
+    emptyBaselineD: [...matrix.baselines]
+      .filter(([, o]) => o.kind !== 'ran' || o.d.length === 0)
+      .map(([id]) => id),
+    unlistedNonmonotone: measuredLoss.filter((k) => !listedLoss.includes(k)),
+    staleNonmonotone: listedLoss.filter((k) => !measuredLoss.includes(k)),
   }
 }
 
@@ -1859,7 +2014,7 @@ export const describeGamingShard = (key: string, wiring: GamingWiring): void => 
     // budget is a hang detector with room for a loaded 2-core runner, not a performance claim.
     beforeAll(async () => {
       matrix = await runMatrix(wiring, fixtures)
-      failures = gateFailures(matrix)
+      failures = gateFailures(matrix, wiring.verdictBearing.covers)
     }, 180_000)
 
     it('every baseline detects its seeded defect, by the named signal', () => {
@@ -1883,6 +2038,23 @@ export const describeGamingShard = (key: string, wiring: GamingWiring): void => 
 
     it('every applied move changed the document or the run', () => {
       expect(failures.inertMoves).toEqual([])
+    })
+
+    it('G-D: every baseline has a non-empty D to lose — the measurement is not vacuous', () => {
+      expect(failures.emptyBaselineD).toEqual([])
+    })
+
+    it('G-D: no strengthening move loses a member of D unless KNOWN_NONMONOTONE lists it', () => {
+      expect(
+        failures.unlistedNonmonotone,
+        'a verb labelled strengthening removed a verdict-bearing member: relabel the verb, fix the encoding, or list the pair',
+      ).toEqual([])
+    })
+
+    it('G-D: every KNOWN_NONMONOTONE row still loses exactly what it lists (I-5)', () => {
+      expect(failures.staleNonmonotone, 'the row no longer matches: update or delete it').toEqual(
+        [],
+      )
     })
 
     it('the whole matrix is pinned, so a move caught a different way is a visible diff', async () => {

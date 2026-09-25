@@ -7,6 +7,12 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { REACHABILITY_FND_CODES } from '../../domain/reachability/reachability-codes.ts'
+import {
+  OP_DIRECTION,
+  OP_DIRECTIONS,
+  OP_VERBS,
+  type OpVerb,
+} from '../../domain/requirements/ops.ts'
 import { ERR_CODES, errCodeCatalog } from '../../ports/errors.ts'
 import { API_VERSION } from '../runtime/envelope.ts'
 import { toErrorEnvelope } from '../runtime/errors.ts'
@@ -167,6 +173,26 @@ describe('manifest', () => {
     expect(scope.reachabilityModelScoped).toContain('STATE MODEL you declared')
   })
 
+  it('publishes every op verb with its direction, in the append-only verb order (AC-5-1)', () => {
+    const { opDirections } = currentManifest()
+    expect(opDirections.verbs.map((v) => v.verb)).toEqual([...OP_VERBS])
+    for (const v of opDirections.verbs) {
+      expect(v.direction, v.verb).toBe(OP_DIRECTION[v.verb as OpVerb].direction)
+    }
+    // The set the directions are stated over is published with them, or a label is a word.
+    expect(opDirections.rule).toContain('verdict-bearing')
+    expect(opDirections.directions.map((d) => d.direction)).toEqual([...OP_DIRECTIONS])
+  })
+
+  it('publishes a class for every finding code it publishes', () => {
+    const { signalClasses, findingCodes, lintCodes } = currentManifest()
+    const classed = new Set(signalClasses.findings.map((f) => f.code))
+    for (const row of findingCodes) expect(classed.has(row.code), row.code).toBe(true)
+    // The lint family is one row: every GtWR rule is a wording rule.
+    expect(lintCodes.length).toBeGreaterThan(0)
+    expect(classed.has('GTWR')).toBe(true)
+  })
+
   it('publishes an honest input schema for every operation', () => {
     for (const row of currentManifest().operations) {
       // Never the object-or-array lowering an empty struct produces raw.
@@ -237,6 +263,8 @@ describe('explain — AC-A-3: every code through the operation', () => {
     expect(env.data.family).toBe('FND')
     expect(env.data.severity).toBe('error')
     expect(env.data.tier).toBe('formal')
+    expect(env.data.class).toBe('verdict')
+    expect(env.data.waivable).toBe('never')
     expect(env.data.meaning).toContain('unsat')
   })
 

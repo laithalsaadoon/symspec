@@ -19,7 +19,9 @@ import {
   editVerbs,
   FIXTURES,
   KNOWN_ESCAPES,
+  KNOWN_NONMONOTONE,
   MOVES,
+  moveDirection,
   moveStatuses,
   NOT_APPLICABLE_YET,
   OP_COVERAGE,
@@ -189,6 +191,46 @@ describe('the gaming registry', () => {
     }
   })
 
+  it('every KNOWN_NONMONOTONE row names a real strengthening pair, once, with what it loses', () => {
+    // G-D reads only moves whose verbs all join to `strengthening`, so a row on any other move
+    // could never be measured and would sit in the table as a stale permission slip.
+    const fixtures = new Set(FIXTURES.map((f) => f.id))
+    const pairs = KNOWN_NONMONOTONE.map((k) => `${k.fixture} × ${k.move}`)
+    expect(pairs.length).toBe(new Set(pairs).size)
+    for (const k of KNOWN_NONMONOTONE) {
+      const label = `${k.fixture} × ${k.move}`
+      expect(fixtures.has(k.fixture), label).toBe(true)
+      const move = MOVES.find((m) => m.id === k.move)
+      expect(move, label).toBeDefined()
+      if (move === undefined) continue
+      expect(moveDirection(move, MUTATE_OPTIONS), label).toBe('strengthening')
+      expect(k.lost.length, label).toBeGreaterThan(0)
+      const cited = CLOSED_BY.exec(k.closedBy)?.[1]
+      expect(cited, `${label}: closedBy ${k.closedBy}`).toMatch(/^AC-[4-7]-\d+$/)
+      expect(SPEC, `${label} cites ${k.closedBy}`).toMatch(new RegExp(`^${cited}\\b`, 'm'))
+      expect(k.why.length, label).toBeGreaterThan(40)
+    }
+  })
+
+  it('derives every registered move`s direction from the verbs it emits', () => {
+    // The labels come from OP_DIRECTION, so a move is weakening the moment any verb it emits
+    // is — `glossary-then-term` emits `unterm`, and is weakening although its glossary half is
+    // not. Pinned on the cases where the join is the point.
+    const direction = (id: string) => {
+      const move = MOVES.find((m) => m.id === id)
+      if (move === undefined) throw new Error(`no move ${id}`)
+      return moveDirection(move, MUTATE_OPTIONS)
+    }
+    expect(direction('add-decoys')).toBe('strengthening')
+    expect(direction('link-culprits')).toBe('strengthening')
+    expect(direction('glossary-over-term@containing/term-then-glossary')).toBe('strengthening')
+    expect(direction('glossary-over-term@containing/glossary-then-term')).toBe('weakening')
+    expect(direction('delete-requirement@first')).toBe('weakening')
+    expect(direction('flip-negated@first')).toBe('weakening')
+    expect(direction('shall-to-should@first')).toBe('weakening')
+    expect(direction('embedding-stub')).toBe('run-weakening')
+  })
+
   it('the shards partition the fixtures, and every shard has its file', () => {
     const sharded = Object.values(SHARDS).flat()
     expect(sharded.length, 'a fixture is in two shards').toBe(new Set(sharded).size)
@@ -208,11 +250,11 @@ describe('the gaming registry', () => {
   })
 
   it('reports every move with its status, derived from the tables', async () => {
-    const report = moveStatuses()
+    const report = moveStatuses(MUTATE_OPTIONS)
       .map((s) => `${s.status}\t${s.direction}\t${s.id}\t${s.acs.join(',')}`)
       .join('\n')
     await expect(`${report}\n`).toMatchFileSnapshot('./__snapshots__/gaming-moves.txt')
     // Every registered and pending move is reported — the report is the complete AC-8-2 list.
-    expect(moveStatuses().length).toBe(REGISTERED.size + PENDING.size)
+    expect(moveStatuses(MUTATE_OPTIONS).length).toBe(REGISTERED.size + PENDING.size)
   })
 })

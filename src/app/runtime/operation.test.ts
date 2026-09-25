@@ -305,6 +305,21 @@ describe('buildManifest() — projection (b)', () => {
       findingCodes: [{ code: 'FND_CONTRADICTION', description: 'a proven conflict' }],
       lintCodes: [{ code: 'GTWR_R1_PATTERN', description: 'not EARS' }],
       scope: { silence: 'silence is not a consistency certificate' },
+      opDirections: {
+        rule: 'D is the verdict-bearing set.',
+        directions: [{ direction: 'strengthening', meaning: 'only adds members of D' }],
+        verbs: [{ verb: 'add', direction: 'strengthening', why: 'adds a constraint' }],
+      },
+      signalClasses: {
+        findingClasses: [
+          { class: 'verdict', meaning: 'proved', waivable: 'never', verdictBearing: true },
+        ],
+        demotionClasses: [{ class: 'run', meaning: 'weakened run', verdictBearing: false }],
+        findings: [
+          { code: 'FND_CONTRADICTION', class: 'verdict', waivable: 'never', why: 'proved' },
+        ],
+        demotions: [{ reason: 'run-weakened', class: 'run', drift: false, why: 'the run' }],
+      },
     })
 
   it('reads name, summary and type off the operation', () => {
@@ -326,6 +341,16 @@ describe('buildManifest() — projection (b)', () => {
     expect(m.version).toBe('9.9.9')
     expect(m.exitCodes).toEqual([{ code: 0, meaning: 'clean' }])
     expect(m.errorCodes).toEqual([{ code: 'ERR_IO', description: 'io' }])
+  })
+
+  it('carries the op-direction and signal-class tables through unchanged', () => {
+    const m = manifest()
+    expect(m.opDirections.verbs).toEqual([
+      { verb: 'add', direction: 'strengthening', why: 'adds a constraint' },
+    ])
+    expect(m.signalClasses.demotions).toEqual([
+      { reason: 'run-weakened', class: 'run', drift: false, why: 'the run' },
+    ])
   })
 
   it('is JSON-serializable', () => {

@@ -109,13 +109,15 @@ describe('all 88 codes are projected, in all three families', () => {
     }
   })
 
-  it('publishes severity AND tier for the FND_* family, where they decide the response', () => {
+  it('publishes severity, tier, class AND waivability for the FND_* family, where they decide the response', () => {
     const rendered = doc()
-    expect(rendered).toContain('| Code | Severity | Tier | Meaning |')
+    expect(rendered).toContain('| Code | Severity | Tier | Class | Waivable | Meaning |')
     // Spot-check the shape on the code an agent most often has to act on.
-    expect(rendered).toContain('| `FND_CONTRADICTION` | error | formal |')
+    expect(rendered).toContain('| `FND_CONTRADICTION` | error | formal | verdict | never |')
     // And the honest dual severity, uncollapsed.
-    expect(rendered).toContain('| `FND_AMBIGUOUS_QUANTIFIER` | warn/info | lint |')
+    expect(rendered).toContain(
+      '| `FND_AMBIGUOUS_QUANTIFIER` | warn/info | lint | wording | scoped |',
+    )
   })
 
   it('does NOT print an empty severity column for ERR_* or GTWR_*', () => {
@@ -144,6 +146,37 @@ describe('all 88 codes are projected, in all three families', () => {
       for (const cellText of cells) {
         expect(cellText.trim().length, `empty cell in: ${line.slice(0, 80)}`).toBeGreaterThan(0)
       }
+    }
+  })
+})
+
+describe('op directions and signal classes are projected whole (spec 007 AC-5-1)', () => {
+  it('states D, each direction, and every verb with its direction and reason', () => {
+    const rendered = doc()
+    const { opDirections } = currentManifest()
+    expect(rendered).toContain(opDirections.rule)
+    for (const d of opDirections.directions) {
+      expect(rendered, d.direction).toContain(`- **\`${d.direction}\`** — ${d.meaning}`)
+    }
+    expect(opDirections.verbs.length).toBeGreaterThan(0)
+    for (const v of opDirections.verbs) {
+      expect(rendered, `${v.verb} is missing its direction`).toContain(
+        `| \`${v.verb}\` | ${v.direction} | ${v.why} |`,
+      )
+    }
+  })
+
+  it('publishes every finding class and every demotion reason with its class', () => {
+    const rendered = doc()
+    const { findingClasses, demotions } = currentManifest().signalClasses
+    for (const c of findingClasses) {
+      expect(rendered, c.class).toContain(`| \`${c.class}\` | ${c.waivable} |`)
+    }
+    expect(demotions.length).toBeGreaterThan(0)
+    for (const d of demotions) {
+      expect(rendered, d.reason).toContain(
+        `| \`${d.reason}\` | ${d.class} | ${d.drift ? 'yes' : 'no'} | ${d.why} |`,
+      )
     }
   })
 })

@@ -399,6 +399,55 @@ export interface Manifest {
    * agent may conclude from a clean run.
    */
   readonly scope: Readonly<Record<string, string>>
+  /**
+   * Every op verb's I-1 direction (spec 007 AC-5-1), with the set the directions are stated
+   * over. Read `rule` first: a direction is an upper bound on what the verb can do to D.
+   */
+  readonly opDirections: ManifestOpDirections
+  /** What every finding code and demotion reason MEANS, and which a waiver may suppress. */
+  readonly signalClasses: ManifestSignalClasses
+}
+
+/** The op-direction table as the manifest publishes it. */
+export interface ManifestOpDirections {
+  /** The definition of D, the verdict-bearing set. */
+  readonly rule: string
+  /** What each direction claims about D, in lattice order. */
+  readonly directions: readonly { readonly direction: string; readonly meaning: string }[]
+  /** One row per op verb, in the append-only verb order. */
+  readonly verbs: readonly {
+    readonly verb: string
+    readonly direction: string
+    readonly why: string
+  }[]
+}
+
+/** The signal-class tables as the manifest publishes them. */
+export interface ManifestSignalClasses {
+  readonly findingClasses: readonly {
+    readonly class: string
+    readonly meaning: string
+    readonly waivable: string
+    readonly verdictBearing: boolean
+  }[]
+  readonly demotionClasses: readonly {
+    readonly class: string
+    readonly meaning: string
+    readonly verdictBearing: boolean
+  }[]
+  /** One row per finding code; `GTWR` stands for the whole lint family. */
+  readonly findings: readonly {
+    readonly code: string
+    readonly class: string
+    readonly waivable: string
+    readonly why: string
+  }[]
+  readonly demotions: readonly {
+    readonly reason: string
+    readonly class: string
+    readonly drift: boolean
+    readonly why: string
+  }[]
 }
 
 /**
@@ -418,6 +467,8 @@ export const buildManifest = (args: {
   readonly findingCodes: readonly CodeRow[]
   readonly lintCodes: readonly CodeRow[]
   readonly scope: Readonly<Record<string, string>>
+  readonly opDirections: ManifestOpDirections
+  readonly signalClasses: ManifestSignalClasses
 }): Manifest => ({
   apiVersion: args.apiVersion,
   version: args.version,
@@ -432,6 +483,8 @@ export const buildManifest = (args: {
   findingCodes: args.findingCodes,
   lintCodes: args.lintCodes,
   scope: args.scope,
+  opDirections: args.opDirections,
+  signalClasses: args.signalClasses,
 })
 
 // ---------------------------------------------------------------------------

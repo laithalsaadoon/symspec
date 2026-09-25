@@ -478,6 +478,137 @@ export const OP_VERBS = [
 ] as const
 export type OpVerb = (typeof OP_VERBS)[number]
 
+// ---------------------------------------------------------------------------
+// Direction (spec 007 invariant I-1, AC-5-1)
+// ---------------------------------------------------------------------------
+
+/**
+ * The three op directions, in LATTICE order: a batch of ops takes the highest direction any
+ * of its verbs carries ({@link joinDirections}).
+ *
+ * What each one means is stated over D, the verdict-bearing set, which is defined by the
+ * signal classes (`app/runtime/signal-classes.ts`) and published beside this table in the
+ * manifest: `strengthening` can only ADD members of D, `weakening` can remove one, and
+ * `conditional` is decided per instance by symspec. A label is therefore an UPPER BOUND on
+ * what the verb can do, and the gaming gate MEASURES it (G-D) rather than trusting it.
+ *
+ * `run-weakening` is deliberately absent. A run knob (`--semantic=false`, a low budget) is not
+ * an op, so it has no row here; it is disclosed on the run as `run-weakened`.
+ */
+export const OP_DIRECTIONS = ['strengthening', 'conditional', 'weakening'] as const
+export type OpDirection = (typeof OP_DIRECTIONS)[number]
+
+/**
+ * Every op verb's direction, with the reason in words.
+ *
+ * Bound by `satisfies Record<OpVerb, …>`, so appending a verb to {@link OP_VERBS} without
+ * deciding its direction does not compile. The `why` column is the argument an agent reads in
+ * the manifest; the gaming gate's G-D is the measurement that the argument holds on every
+ * registered move, with its exceptions listed exactly (`KNOWN_NONMONOTONE` in
+ * `testing/gaming.ts`).
+ */
+export const OP_DIRECTION = {
+  add: {
+    direction: 'strengthening',
+    why: 'Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). It can discharge coverage demotions, which are outside D.',
+  },
+  update: {
+    direction: 'weakening',
+    why: 'Rewriting a slot, `negated`, the pattern, `stateEffect` or `stateConstraint` changes what the requirement MEANS, so it can remove a conflict the old wording carried. Metadata attributes change nothing a tier reads, but the verb is labelled by what it can do.',
+  },
+  delete: {
+    direction: 'weakening',
+    why: 'Removes a requirement, and with it every finding and demotion that named it. Deleting one side of a conflict leaves a consistent document.',
+  },
+  derive: {
+    direction: 'strengthening',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and never removes a verdict.',
+  },
+  satisfy: {
+    direction: 'strengthening',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and never removes a verdict.',
+  },
+  verify: {
+    direction: 'strengthening',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and never removes a verdict.',
+  },
+  refine: {
+    direction: 'strengthening',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and never removes a verdict.',
+  },
+  'remove-edge': {
+    direction: 'weakening',
+    why: 'Removes a trace edge, which can remove an FND_CYCLE (a structural error finding, and so a member of D).',
+  },
+  glossary: {
+    direction: 'strengthening',
+    why: 'Identifies two phrases as one atom, and an added equality cannot make an unsatisfiable set satisfiable (I-1). The fold refuses an alias of two committed contraries; the measured exceptions to the bound are listed in the gaming gate.',
+  },
+  antonym: {
+    direction: 'strengthening',
+    why: 'Commits a contrary axiom, which only adds constraints, so it can only add conflicts. The fold refuses a pair the committed tables make inconsistent.',
+  },
+  waive: {
+    direction: 'weakening',
+    why: 'Suppresses a finding. A waiver removes what the report shows without changing what the document says.',
+  },
+  unwaive: {
+    direction: 'strengthening',
+    why: 'Removes a waiver, which can only reinstate a finding the waiver was hiding.',
+  },
+  unglossary: {
+    direction: 'weakening',
+    why: 'Splits two phrases the glossary made one atom, so a conflict that rested on the alias disappears.',
+  },
+  unantonym: {
+    direction: 'weakening',
+    why: 'Removes a contrary axiom, so a conflict that rested on the two phrases being contraries disappears.',
+  },
+  state: {
+    direction: 'weakening',
+    why: 'Declares or REDECLARES a state variable. A redeclaration can release a frame, widen a range, or change the initial state, and each can remove a reachability violation.',
+  },
+  unstate: {
+    direction: 'weakening',
+    why: 'Undeclares a state variable, which takes the constraints that read it out of the reachability tier.',
+  },
+  'state-initial': {
+    direction: 'weakening',
+    why: 'Sets or clears the model-wide initial predicate. A changed initial state changes which states are reachable, so a violation can disappear.',
+  },
+  classify: {
+    direction: 'weakening',
+    why: "Sets or retracts one requirement's response kind and its expression. That rebinds what the requirement does to the state model, and a retraction takes a constraint out of the reachability tier.",
+  },
+  term: {
+    direction: 'strengthening',
+    why: 'Identifies two noun phrases inside every atom body, an added equality (I-1). The fold refuses a term that contains a verb the antonym or state-bridge tables read; the measured exceptions to the bound are listed in the gaming gate.',
+  },
+  unterm: {
+    direction: 'weakening',
+    why: 'Splits two noun phrases the term table made one, so a conflict that rested on the term disappears.',
+  },
+} as const satisfies Record<OpVerb, { readonly direction: OpDirection; readonly why: string }>
+
+/** The direction table as rows, in the append-only {@link OP_VERBS} order the manifest publishes. */
+export const opDirectionRows = (): readonly {
+  readonly verb: OpVerb
+  readonly direction: OpDirection
+  readonly why: string
+}[] => OP_VERBS.map((verb) => ({ verb, ...OP_DIRECTION[verb] }))
+
+/**
+ * The direction of a BATCH: the least upper bound of its verbs' directions in
+ * {@link OP_DIRECTIONS} order, so one weakening verb makes the whole batch weakening.
+ * `undefined` for an empty batch, which changes nothing and has nothing to label.
+ */
+export const joinDirections = (directions: readonly OpDirection[]): OpDirection | undefined =>
+  directions.reduce<OpDirection | undefined>(
+    (joined, d) =>
+      joined === undefined || OP_DIRECTIONS.indexOf(d) > OP_DIRECTIONS.indexOf(joined) ? d : joined,
+    undefined,
+  )
+
 /** Decode one raw op record. `{onExcessProperty:'error'}` so a misspelled field is
  * a LOUD per-op failure instead of a silently dropped value — the same guard the
  * kernel puts on operation input, for the same reason. */

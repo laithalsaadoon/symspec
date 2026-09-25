@@ -26,7 +26,9 @@
  * - the envelope contract → `./envelope.ts`'s `API_VERSION`;
  * - the honest-scope disclosure → `./scope.ts`, all seven claims (unlike the installed
  *   skill, which quotes two — this surface can afford them);
- * - the authoring craft → `./craft.ts`.
+ * - the authoring craft → `./craft.ts`;
+ * - op directions and signal classes → `requirements/ops.ts` and `./signal-classes.ts`,
+ *   read through the manifest.
  *
  * The consequence is the property the spec asks for: appending an operation or a code makes
  * it appear here with no edit to this file, and a description edit propagates on the next
@@ -85,10 +87,11 @@ const exitTable = (manifest: Manifest): string =>
 const codeTable = (rows: readonly CodeEntry[], family: 'ERR' | 'FND' | 'GTWR'): string => {
   if (family === 'FND') {
     return [
-      '| Code | Severity | Tier | Meaning |',
-      '|---|---|---|---|',
+      '| Code | Severity | Tier | Class | Waivable | Meaning |',
+      '|---|---|---|---|---|---|',
       ...rows.map(
-        (r) => `| \`${r.code}\` | ${r.severity ?? '—'} | ${r.tier ?? '—'} | ${cell(r.meaning)} |`,
+        (r) =>
+          `| \`${r.code}\` | ${r.severity ?? '—'} | ${r.tier ?? '—'} | ${r.class ?? '—'} | ${r.waivable ?? '—'} | ${cell(r.meaning)} |`,
       ),
     ].join('\n')
   }
@@ -96,6 +99,45 @@ const codeTable = (rows: readonly CodeEntry[], family: 'ERR' | 'FND' | 'GTWR'): 
     '| Code | Meaning |',
     '|---|---|',
     ...rows.map((r) => `| \`${r.code}\` | ${cell(r.meaning)} |`),
+  ].join('\n')
+}
+
+/** The op-direction table, projected from the manifest: D's rule, each direction, each verb. */
+const directionsSection = (manifest: Manifest): string =>
+  [
+    manifest.opDirections.rule,
+    '',
+    ...manifest.opDirections.directions.map((d) => `- **\`${d.direction}\`** — ${d.meaning}`),
+    '',
+    '| Verb | Direction | Why |',
+    '|---|---|---|',
+    ...manifest.opDirections.verbs.map(
+      (v) => `| \`${v.verb}\` | ${v.direction} | ${cell(v.why)} |`,
+    ),
+  ].join('\n')
+
+/** The finding classes and the demotion reasons, projected from the manifest. */
+const classesSection = (manifest: Manifest): string => {
+  const { findingClasses, demotionClasses, demotions } = manifest.signalClasses
+  return [
+    '| Finding class | Waivable | In D | Meaning |',
+    '|---|---|---|---|',
+    ...findingClasses.map(
+      (c) =>
+        `| \`${c.class}\` | ${c.waivable} | ${c.verdictBearing ? 'yes' : 'no'} | ${cell(c.meaning)} |`,
+    ),
+    '',
+    '| Demotion class | In D | Meaning |',
+    '|---|---|---|',
+    ...demotionClasses.map(
+      (c) => `| \`${c.class}\` | ${c.verdictBearing ? 'yes' : 'no'} | ${cell(c.meaning)} |`,
+    ),
+    '',
+    '| Demotion reason | Class | Drift | Why |',
+    '|---|---|---|---|',
+    ...demotions.map(
+      (d) => `| \`${d.reason}\` | ${d.class} | ${d.drift ? 'yes' : 'no'} | ${cell(d.why)} |`,
+    ),
   ].join('\n')
 }
 
@@ -193,6 +235,20 @@ All ${SCOPE_KEYS.length} claims, verbatim:
 ${scopeParagraphs()
   .map((claim) => `> ${claim}`)
   .join('\n>\n')}
+
+## Op directions — what each op can do to the verdict
+
+Every op verb carries a direction, as data. A direction is an UPPER BOUND on what the verb can
+do to D, and the gaming gate measures it on every registered move rather than trusting it.
+
+${directionsSection(manifest)}
+
+## Signal classes — what a finding or a demotion MEANS
+
+A class is decided per code, by meaning, not by tier or severity. Waivability is derived from
+the class.
+
+${classesSection(manifest)}
 
 ## Error codes (\`ERR_*\`)
 
