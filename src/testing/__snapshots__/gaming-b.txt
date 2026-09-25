@@ -5,8 +5,10 @@ contrary-pair	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
 one-trigger-contradiction	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
 one-trigger-contradiction	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
-one-trigger-contradiction	alias-contraries-glossary	inapplicable
-one-trigger-contradiction	alias-contraries-term	inapplicable
+one-trigger-contradiction	alias-contraries-glossary@forward	inapplicable
+one-trigger-contradiction	alias-contraries-glossary@reverse	inapplicable
+one-trigger-contradiction	alias-contraries-term@forward	inapplicable
+one-trigger-contradiction	alias-contraries-term@reverse	inapplicable
 one-trigger-contradiction	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -35,8 +37,10 @@ one-trigger-contradiction	temporal-off	exit 1 verified=true signal=fires errors=
 contrary-pair	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
 contrary-pair	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
 contrary-pair	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
-contrary-pair	alias-contraries-glossary	CLEAN verified=true signal=gone errors=[] demotions=[]
-contrary-pair	alias-contraries-term	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	alias-contraries-glossary@forward	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	alias-contraries-glossary@reverse	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	alias-contraries-term@forward	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	alias-contraries-term@reverse	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]

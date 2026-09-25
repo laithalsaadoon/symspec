@@ -523,6 +523,44 @@ const oneSided = (
     },
   }))
 
+/** Which culprit's response an alias move makes canonical, as it appears in the move id. */
+const DIRECTIONS = [
+  ['forward', 0, 1],
+  ['reverse', 1, 0],
+] as const
+
+/**
+ * An alias between the two culprits' responses, registered once per direction as
+ * `alias-contraries-<table>@forward` (the first culprit's phrase is canonical) and `@reverse`.
+ * An alias only identifies two phrases, so under I-1 neither direction should remove a
+ * finding. But the table is a one-pass substitution, not an equivalence, so which phrase is
+ * canonical can decide what the other phrases in the document rewrite to, and that choice is
+ * the agent's. The reason is the same as {@link oneSided}'s: register one direction, and the
+ * other goes unmeasured.
+ */
+const aliasBothWays = (
+  table: 'glossary' | 'term',
+  clause: string,
+  committed: (doc: RequirementsDocument, canonical: string, alias: string) => boolean,
+): readonly Move[] =>
+  DIRECTIONS.map(([dir, from, to]) => ({
+    id: `alias-contraries-${table}@${dir}`,
+    clause,
+    direction: 'strengthening',
+    edit: ({ fixture, doc }: MoveContext): Edit => {
+      const canonical = req(doc, fixture.culprits[from]).systemResponse
+      const alias = req(doc, fixture.culprits[to]).systemResponse
+      if (canonical === alias)
+        return {
+          kind: 'inapplicable',
+          reason: 'the two culprits already share one response phrase',
+        }
+      if (committed(doc, canonical, alias))
+        return { kind: 'inapplicable', reason: `the ${table} alias is already committed` }
+      return { kind: 'ops', ops: [{ op: table, canonical, alias }] }
+    },
+  }))
+
 export const MOVES: readonly Move[] = [
   ...oneSided('rename-system', 'rename a system', 'weakening', (r, key) => ({
     kind: 'ops',
@@ -543,40 +581,12 @@ export const MOVES: readonly Move[] = [
       }
     },
   },
-  {
-    id: 'alias-contraries-glossary',
-    clause: 'alias two contraries (glossary)',
-    direction: 'strengthening',
-    edit: ({ fixture, doc }) => {
-      const a = req(doc, fixture.culprits[0]).systemResponse
-      const b = req(doc, fixture.culprits[1]).systemResponse
-      if (a === b)
-        return {
-          kind: 'inapplicable',
-          reason: 'the two culprits already share one response phrase',
-        }
-      if (doc.glossary.some((g) => g.canonical === a && g.aliases.includes(b)))
-        return { kind: 'inapplicable', reason: 'the alias is already committed' }
-      return { kind: 'ops', ops: [{ op: 'glossary', canonical: a, alias: b }] }
-    },
-  },
-  {
-    id: 'alias-contraries-term',
-    clause: 'alias two contraries (term table)',
-    direction: 'strengthening',
-    edit: ({ fixture, doc }) => {
-      const a = req(doc, fixture.culprits[0]).systemResponse
-      const b = req(doc, fixture.culprits[1]).systemResponse
-      if (a === b)
-        return {
-          kind: 'inapplicable',
-          reason: 'the two culprits already share one response phrase',
-        }
-      if (doc.terms.some((t) => t.canonical === a && t.aliases.includes(b)))
-        return { kind: 'inapplicable', reason: 'the term is already committed' }
-      return { kind: 'ops', ops: [{ op: 'term', canonical: a, alias: b }] }
-    },
-  },
+  ...aliasBothWays('glossary', 'alias two contraries (glossary)', (doc, a, b) =>
+    doc.glossary.some((g) => g.canonical === a && g.aliases.includes(b)),
+  ),
+  ...aliasBothWays('term', 'alias two contraries (term table)', (doc, a, b) =>
+    doc.terms.some((t) => t.canonical === a && t.aliases.includes(b)),
+  ),
   {
     id: 'waive-by-code',
     clause: 'waive by code',
@@ -882,7 +892,15 @@ export const NOT_APPLICABLE_YET: readonly PendingMove[] = [
  */
 export const AC_8_2: readonly { readonly clause: string; readonly moves: readonly string[] }[] = [
   { clause: 'rename a system', moves: ['rename-system@first', 'rename-system@second'] },
-  { clause: 'alias two contraries', moves: ['alias-contraries-glossary', 'alias-contraries-term'] },
+  {
+    clause: 'alias two contraries',
+    moves: [
+      'alias-contraries-glossary@forward',
+      'alias-contraries-glossary@reverse',
+      'alias-contraries-term@forward',
+      'alias-contraries-term@reverse',
+    ],
+  },
   { clause: 'waive by code', moves: ['waive-by-code'] },
   {
     clause: 'delete a requirement',
@@ -1021,17 +1039,28 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `refine` certificate.",
     ),
   ),
-  ...escapes(
-    'alias-contraries-glossary',
-    'AC-4-6',
-    ['contrary-pair'],
-    'The fold accepts an alias between two responses whose verbs are committed contraries. Canonicalization rewrites `reject the claim` to `accept the claim` before the antonym axiom applies, so the conflict disappears — a STRENGTHENING move that escapes, i.e. the string-atom encoding is not monotone under aliasing, contrary to I-1.',
+  ...(['alias-contraries-glossary@forward', 'alias-contraries-glossary@reverse'] as const).flatMap(
+    (move) =>
+      escapes(
+        move,
+        'AC-4-6',
+        ['contrary-pair'],
+        'The fold accepts an alias between two responses whose verbs are committed contraries, in either direction. Canonicalization rewrites one of `accept the claim` / `reject the claim` to the other before the antonym axiom applies, so the conflict disappears. That is a STRENGTHENING move that escapes: the string-atom encoding is not monotone under aliasing, contrary to I-1.',
+      ),
+  ),
+  ...(['alias-contraries-term@forward', 'alias-contraries-term@reverse'] as const).flatMap((move) =>
+    escapes(
+      move,
+      'AC-4-6',
+      ['contrary-pair'],
+      'The term table accepts the same contrary merge the glossary does, through the noun-phrase path, in either direction, with the same effect.',
+    ),
   ),
   ...escapes(
-    'alias-contraries-term',
-    'AC-4-6',
-    ['contrary-pair'],
-    'The term table accepts the same contrary merge the glossary does, through the noun-phrase path, with the same effect.',
+    'alias-contraries-term@reverse',
+    'AC-4-2',
+    ['term-bridged'],
+    'Making `charge the customer order` canonical for `charge the purchase order` SWAPS the two responses rather than merging them. Term substitution is one longest-match pass: TRM-R1 now rewrites to `charge the customer order`, while TRM-R2 still rewrites through the committed `customer order` -> `purchase order` term to `charge the purchase order`. The two atoms stay distinct and the conflict the fixture seeds disappears. An alias only identifies phrases, so this is a STRENGTHENING move that escapes (I-1). The forward direction is caught because it rewrites TRM-R2 onto TRM-R1. The op path in `apply` refuses this op at write time: the canonical contains a committed term alias. That fence is defence in depth: `check` accepts the same table from a stored document, and the contradiction disappears there too. AC-4-6 does not close this row, because the two phrases are not contraries. AC-4-2 does: once atoms are scoped by vocabulary id, an alias is a merge of two ids and cannot depend on which phrase is canonical.',
   ),
   ...escapes(
     'unglossary',
@@ -1088,7 +1117,7 @@ export const OP_COVERAGE: Readonly<
       '(FND_ORPHAN, FND_MISSING_TRACE_LINK) are not a consistency verdict; the move is ' +
       '`link-culprits` inverted, and is registered when a traced fixture exists.',
   },
-  glossary: { moves: ['alias-contraries-glossary'] },
+  glossary: { moves: ['alias-contraries-glossary@forward', 'alias-contraries-glossary@reverse'] },
   antonym: {
     reason:
       'Commits a contrary axiom: strengthening under I-1 in the logic the decide tier uses, ' +
@@ -1106,7 +1135,7 @@ export const OP_COVERAGE: Readonly<
   unstate: { moves: ['unstate'] },
   'state-initial': { moves: ['vacuous-initial'] },
   classify: { moves: ['declassify-constraint', 'flip-negated@second'] },
-  term: { moves: ['alias-contraries-term'] },
+  term: { moves: ['alias-contraries-term@forward', 'alias-contraries-term@reverse'] },
   unterm: { moves: ['unterm'] },
 }
 

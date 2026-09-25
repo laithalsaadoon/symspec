@@ -1,8 +1,10 @@
 registered-caught	weakening	rename-system@first	
 registered-caught	weakening	rename-system@second	
 registered-caught	weakening	split-system	
-registered-escapes-known-gap	strengthening	alias-contraries-glossary	AC-4-6
-registered-escapes-known-gap	strengthening	alias-contraries-term	AC-4-6
+registered-escapes-known-gap	strengthening	alias-contraries-glossary@forward	AC-4-6
+registered-escapes-known-gap	strengthening	alias-contraries-glossary@reverse	AC-4-6
+registered-escapes-known-gap	strengthening	alias-contraries-term@forward	AC-4-6
+registered-escapes-known-gap	strengthening	alias-contraries-term@reverse	AC-4-6,AC-4-2
 registered-escapes-known-gap	weakening	waive-by-code	AC-5-6
 registered-escapes-known-gap	weakening	delete-requirement@first	AC-5-2
 registered-escapes-known-gap	weakening	delete-requirement@second	AC-5-2
