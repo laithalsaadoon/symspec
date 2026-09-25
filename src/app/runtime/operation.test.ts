@@ -307,7 +307,8 @@ describe('buildManifest() — projection (b)', () => {
       scope: { silence: 'silence is not a consistency certificate' },
       opDirections: {
         rule: 'D is the verdict-bearing set.',
-        directions: [{ direction: 'strengthening', meaning: 'only adds members of D' }],
+        identity: 'a member is its code over its requirements',
+        directions: [{ direction: 'strengthening', meaning: 'only adds constraints' }],
         verbs: [{ verb: 'add', direction: 'strengthening', why: 'adds a constraint' }],
       },
       signalClasses: {

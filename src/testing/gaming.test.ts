@@ -12,6 +12,10 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { MUTATE_OPTIONS } from '../app/operations/mutate-options.ts'
+import {
+  DEFAULT_OPPOSITION_COSINE_FLOOR,
+  DEFAULT_SEMANTIC_THRESHOLD,
+} from '../domain/engine/formal/semantic.ts'
 import { OP_VERBS, type OpVerb } from '../domain/requirements/ops.ts'
 import {
   AC_8_2,
@@ -23,8 +27,10 @@ import {
   MOVES,
   moveDirection,
   moveStatuses,
+  NEAR_COSINE,
   NOT_APPLICABLE_YET,
   OP_COVERAGE,
+  orthogonalEmbedder,
   SHARDS,
 } from './gaming.ts'
 
@@ -214,8 +220,8 @@ describe('the gaming registry', () => {
 
   it('derives every registered move`s direction from the verbs it emits', () => {
     // The labels come from OP_DIRECTION, so a move is weakening the moment any verb it emits
-    // is — `glossary-then-term` emits `unterm`, and is weakening although its glossary half is
-    // not. Pinned on the cases where the join is the point.
+    // is — `link-culprits` joins four edge verbs and stays strengthening, and `flip-negated`
+    // joins `delete` and `add` and is weakening. Pinned on the cases where the join is the point.
     const direction = (id: string) => {
       const move = MOVES.find((m) => m.id === id)
       if (move === undefined) throw new Error(`no move ${id}`)
@@ -223,12 +229,33 @@ describe('the gaming registry', () => {
     }
     expect(direction('add-decoys')).toBe('strengthening')
     expect(direction('link-culprits')).toBe('strengthening')
-    expect(direction('glossary-over-term@containing/term-then-glossary')).toBe('strengthening')
-    expect(direction('glossary-over-term@containing/glossary-then-term')).toBe('weakening')
+    expect(direction('add-negation')).toBe('strengthening')
+    expect(direction('contrary-to-bystander')).toBe('strengthening')
+    expect(direction('branch-into-cycle')).toBe('strengthening')
+    // An alias is weakening: it can refute an opposition candidate outright.
+    expect(direction('alias-contraries-glossary@forward')).toBe('weakening')
+    expect(direction('alias-contraries-term@forward')).toBe('weakening')
     expect(direction('delete-requirement@first')).toBe('weakening')
     expect(direction('flip-negated@first')).toBe('weakening')
     expect(direction('shall-to-should@first')).toBe('weakening')
     expect(direction('embedding-stub')).toBe('run-weakening')
+  })
+
+  it('a `near` pair meets at NEAR_COSINE: above the opposition floor, below the similarity threshold', async () => {
+    expect(NEAR_COSINE).toBeGreaterThanOrEqual(DEFAULT_OPPOSITION_COSINE_FLOOR)
+    expect(NEAR_COSINE).toBeLessThan(DEFAULT_SEMANTIC_THRESHOLD)
+    const embed = orthogonalEmbedder([['fill the tank', 'drain the tank']])
+    const [fill, drain, other] = await embed(['fill the tank', 'drain the tank', 'log the level'])
+    const dot = (a?: Float32Array, b?: Float32Array) =>
+      (a ?? new Float32Array()).reduce((sum, x, i) => sum + x * (b?.[i] ?? 0), 0)
+    expect(dot(fill, fill)).toBeCloseTo(1, 6)
+    expect(dot(fill, drain)).toBeCloseTo(NEAR_COSINE, 6)
+    expect(dot(fill, other)).toBe(0)
+    // And the fixture that exists for it declares a pair its culprits really say.
+    const opposition = FIXTURES.find((f) => f.id === 'opposition-candidate')
+    const doc = buildDoc(opposition?.ops ?? [], MUTATE_OPTIONS)
+    const responses = Object.values(doc.requirements).map((r) => r.systemResponse)
+    for (const phrase of opposition?.near?.flat() ?? []) expect(responses).toContain(phrase)
   })
 
   it('the shards partition the fixtures, and every shard has its file', () => {

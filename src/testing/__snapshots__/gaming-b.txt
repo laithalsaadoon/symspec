@@ -34,6 +34,11 @@ one-trigger-contradiction	add-decoys	exit 1 verified=true signal=fires errors=[F
 one-trigger-contradiction	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 one-trigger-contradiction	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 one-trigger-contradiction	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	contrary-to-bystander	inapplicable
+one-trigger-contradiction	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+one-trigger-contradiction	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+one-trigger-contradiction	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	branch-into-cycle	inapplicable
 one-trigger-contradiction	supply-dangling-target	inapplicable
 one-trigger-contradiction	unglossary	inapplicable
 one-trigger-contradiction	unantonym	inapplicable
@@ -81,6 +86,11 @@ contrary-pair	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADIC
 contrary-pair	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 contrary-pair	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 contrary-pair	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	contrary-to-bystander	inapplicable
+contrary-pair	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+contrary-pair	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	branch-into-cycle	inapplicable
 contrary-pair	supply-dangling-target	inapplicable
 contrary-pair	unglossary	inapplicable
 contrary-pair	unantonym	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]

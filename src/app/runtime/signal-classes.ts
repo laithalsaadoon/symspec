@@ -520,9 +520,30 @@ export const VERDICT_BEARING = {
 export const verdictBearingRule = (): string =>
   `D, the verdict-bearing set, is every ${VERDICT_BEARING.findingSeverity}-severity finding of class ${VERDICT_BEARING.findingClasses.map((c) => `\`${c}\``).join(' or ')}, and every demotion of class ${VERDICT_BEARING.demotionClasses.map((c) => `\`${c}\``).join(' or ')}.`
 
+/**
+ * The finding codes that state two requirements are EQUIVALENT: the same slots
+ * (FND_EXACT_DUPLICATE), or formulas that imply each other (FND_REDUNDANCY, a bi-implication).
+ * FND_SUBSUMPTION is one-way, so it is not here: a verdict on the stronger requirement is not a
+ * verdict on the weaker one.
+ */
+export const EQUIVALENCE_CODES = [
+  'FND_EXACT_DUPLICATE',
+  'FND_REDUNDANCY',
+] as const satisfies readonly (keyof typeof FINDING_CLASS)[]
+
+const codeList = (codes: readonly string[]): string => codes.map((c) => `\`${c}\``).join(', ')
+
+/**
+ * How a member of D is compared across an edit, as one paragraph built from the tables it names.
+ * It is what "contains" means in each direction's claim, so it is published beside them.
+ */
+export const dIdentityStatement = (): string =>
+  `A member of D is its code or demotion reason over the requirements it names, compared under these identity maps. A \`conflict-signal\` demotion is kept by a \`verdict\` finding that names every requirement it named: the proof is the same conflict, seen. And requirements the same report states equivalent (${codeList(EQUIVALENCE_CODES)}) count as one: an equivalent pair makes two overlapping conflicts, and the formal tier reports one representative of them.`
+
 /** What each op direction claims about D. */
 export const DIRECTION_MEANING = {
-  strengthening: 'The verb can only ADD members of D.',
+  strengthening:
+    'The verb only adds constraints, so no conflict the document carries goes away. What it can do to the REPORT is DISPLACE a member of D: the formal and temporal tiers report one minimal core per set of overlapping conflicts, and the trace tier one cycle per depth-first back edge, so a new member can take the place of an overlapping old one of the same code. That is the only loss the label allows. The gaming gate lists every measured displacement, and fails on any loss that is not one.',
   conditional:
     'symspec decides the effect per instance, with a counterfactual run or baseline drift attribution.',
   weakening: 'The verb can remove a member of D.',
@@ -594,25 +615,84 @@ export const verdictBearingOf = (report: ReportView): readonly DMember[] => [
 const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((id, i) => id === b[i])
 
+/** The equivalence groups a report states: each {@link EQUIVALENCE_CODES} finding's ids, sorted. */
+export const equivalencesOf = (report: ReportView): readonly (readonly string[])[] =>
+  report.findings
+    .filter((f) => (EQUIVALENCE_CODES as readonly string[]).includes(f.code))
+    .map((f) => [...f.requirementIds].sort())
+
 /**
- * Whether `member` of D before a move is still in D after it, under the one identity map
- * Phase 3 needs: a `conflict-signal` demotion is KEPT when a `verdict` finding now names every
- * requirement it named. The demotion was the tool saying "these may conflict and I cannot see
- * it"; a proof over them is the same conflict, seen. Every other member is kept only by
- * itself, over the same requirements.
- *
- * The other identity map G-D is specified with, a symbol merge renaming evidence, has nothing
- * to rename yet: D is keyed on codes, reasons and requirement ids, and no op merges symbols.
+ * Each id's representative under the stated equivalences: the least id of its connected group
+ * (the groups are joined transitively, so `a≡b` and `b≡c` put all three in one). An id no group
+ * names is its own representative.
  */
-export const dCovers = (member: DMemberLike, after: readonly DMemberLike[]): boolean =>
-  after.some(
-    (m) =>
-      (m.kind === member.kind &&
-        m.name === member.name &&
-        sameIds(m.requirementIds, member.requirementIds)) ||
+const representativeOf = (groups: readonly (readonly string[])[]): ((id: string) => string) => {
+  const parent = new Map<string, string>()
+  const find = (id: string): string => {
+    const p = parent.get(id)
+    if (p === undefined || p === id) return id
+    const root = find(p)
+    parent.set(id, root)
+    return root
+  }
+  for (const group of groups) {
+    for (const id of group) {
+      const [a, b] = [find(group[0] ?? id), find(id)]
+      if (a !== b) parent.set(a < b ? b : a, a < b ? a : b)
+    }
+  }
+  return find
+}
+
+/**
+ * Whether `member` of D before a move is still in D after it, under the identity maps
+ * {@link dIdentityStatement} publishes.
+ *
+ * 1. A `conflict-signal` demotion is KEPT when a `verdict` finding now names every requirement
+ *    it named. The demotion was the tool saying "these may conflict and I cannot see it"; a
+ *    proof over them is the same conflict, seen.
+ * 2. Requirement ids are compared through `equivalences`, the groups the AFTER report states
+ *    equivalent ({@link equivalencesOf}). An `add` of a requirement equivalent to R1 makes the
+ *    cores {R1,R2} and {R3,R2} overlap, and the formal tier reports one of them, so the verdict
+ *    on (R1,R2) comes back as (R3,R2). The report itself says R3 ≡ R1, so that is the same
+ *    verdict under another representative. Only equivalences the report STATES are used: a
+ *    requirement that merely looks alike, or one that subsumes another, is not the same one.
+ *
+ * Every other member is kept only by itself, over the same requirements. The identity map the
+ * plan also names, a symbol merge renaming evidence, has nothing to rename yet: D is keyed on
+ * codes, reasons and requirement ids, and no op merges symbols.
+ */
+export const dCovers = (
+  member: DMemberLike,
+  after: readonly DMemberLike[],
+  equivalences: readonly (readonly string[])[] = [],
+): boolean => {
+  const rep = representativeOf(equivalences)
+  const canon = (ids: readonly string[]): readonly string[] => ids.map(rep).sort()
+  const ids = canon(member.requirementIds)
+  return after.some((m) => {
+    const other = canon(m.requirementIds)
+    return (
+      (m.kind === member.kind && m.name === member.name && sameIds(other, ids)) ||
       (member.class === 'conflict-signal' &&
         m.class === 'verdict' &&
-        member.requirementIds.every((id) => m.requirementIds.includes(id))),
+        ids.every((id) => other.includes(id)))
+    )
+  })
+}
+
+/**
+ * Whether a member of D that a move lost was DISPLACED rather than removed: the after-set holds a
+ * member of the same kind and code over an overlapping set of requirements. This is the only loss
+ * {@link DIRECTION_MEANING}'s `strengthening` row allows, and the gaming gate holds every loss a
+ * strengthening move shows to it.
+ */
+export const dDisplaced = (member: DMemberLike, after: readonly DMemberLike[]): boolean =>
+  after.some(
+    (m) =>
+      m.kind === member.kind &&
+      m.name === member.name &&
+      m.requirementIds.some((id) => member.requirementIds.includes(id)),
   )
 
 // ---------------------------------------------------------------------------
@@ -622,6 +702,7 @@ export const dCovers = (member: DMemberLike, after: readonly DMemberLike[]): boo
 /** The op-direction table as the manifest publishes it: D's rule, the directions, the verbs. */
 export const manifestOpDirections = (): ManifestOpDirections => ({
   rule: verdictBearingRule(),
+  identity: dIdentityStatement(),
   directions: OP_DIRECTIONS.map((direction) => ({
     direction,
     meaning: DIRECTION_MEANING[direction],

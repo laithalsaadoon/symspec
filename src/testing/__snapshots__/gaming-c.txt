@@ -33,6 +33,11 @@ numeric-conflict	add-decoys	exit 1 verified=true signal=fires errors=[FND_NUMERI
 numeric-conflict	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
 numeric-conflict	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
 numeric-conflict	link-culprits	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	contrary-to-bystander	inapplicable
+numeric-conflict	add-negation	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_NUMERIC_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+numeric-conflict	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_EXACT_DUPLICATE,FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	branch-into-cycle	inapplicable
 numeric-conflict	supply-dangling-target	inapplicable
 numeric-conflict	unglossary	inapplicable
 numeric-conflict	unantonym	inapplicable
@@ -80,6 +85,11 @@ temporal-conflict	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTR
 temporal-conflict	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
 temporal-conflict	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
 temporal-conflict	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	contrary-to-bystander	inapplicable
+temporal-conflict	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	branch-into-cycle	inapplicable
 temporal-conflict	supply-dangling-target	inapplicable
 temporal-conflict	unglossary	inapplicable
 temporal-conflict	unantonym	inapplicable

@@ -412,6 +412,8 @@ export interface Manifest {
 export interface ManifestOpDirections {
   /** The definition of D, the verdict-bearing set. */
   readonly rule: string
+  /** How a member of D is compared across an edit: the identity maps "contains" is read under. */
+  readonly identity: string
   /** What each direction claims about D, in lattice order. */
   readonly directions: readonly { readonly direction: string; readonly meaning: string }[]
   /** One row per op verb, in the append-only verb order. */

@@ -34,6 +34,11 @@ waived-blocking-lint	add-decoys	exit 1 verified=true signal=fires errors=[FND_CO
 waived-blocking-lint	shall-to-should@first	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
 waived-blocking-lint	shall-to-should@second	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
 waived-blocking-lint	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+waived-blocking-lint	contrary-to-bystander	inapplicable
+waived-blocking-lint	add-negation	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal]
+waived-blocking-lint	add-equivalent@exact	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal]
+waived-blocking-lint	add-equivalent@case	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,GTWR_R7_VAGUE] demotions=[excluded-from-formal]
+waived-blocking-lint	branch-into-cycle	inapplicable
 waived-blocking-lint	supply-dangling-target	inapplicable
 waived-blocking-lint	unglossary	inapplicable
 waived-blocking-lint	unantonym	inapplicable
@@ -81,6 +86,11 @@ dangling-target	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRAD
 dangling-target	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 dangling-target	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]
 dangling-target	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]
+dangling-target	contrary-to-bystander	inapplicable
+dangling-target	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE,FND_EXACT_DUPLICATE] demotions=[]
+dangling-target	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE,FND_EXACT_DUPLICATE] demotions=[]
+dangling-target	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]
+dangling-target	branch-into-cycle	inapplicable
 dangling-target	supply-dangling-target	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 dangling-target	unglossary	inapplicable
 dangling-target	unantonym	inapplicable

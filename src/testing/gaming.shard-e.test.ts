@@ -13,7 +13,12 @@ import { checkOp } from '../app/operations/check.ts'
 import { MUTATE_OPTIONS } from '../app/operations/mutate-options.ts'
 import { exitCodeForEnvelope } from '../app/runtime/exit.ts'
 import { runOperation } from '../app/runtime/operation.ts'
-import { dCovers, verdictBearingOf } from '../app/runtime/signal-classes.ts'
+import {
+  dCovers,
+  dDisplaced,
+  equivalencesOf,
+  verdictBearingOf,
+} from '../app/runtime/signal-classes.ts'
 import { describeGamingShard } from './gaming.ts'
 
 describeGamingShard('e', {
@@ -24,5 +29,10 @@ describeGamingShard('e', {
   solver: solverServiceLayer,
   envEmbedder: embedderServiceLayer,
   mutateOptions: MUTATE_OPTIONS,
-  verdictBearing: { of: verdictBearingOf, covers: dCovers },
+  verdictBearing: {
+    of: verdictBearingOf,
+    equivalences: equivalencesOf,
+    covers: dCovers,
+    displaced: dDisplaced,
+  },
 })

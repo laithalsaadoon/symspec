@@ -15,8 +15,9 @@
  *
  * One row per document: `<corpus>/<id>`, the exit code, `verified`, the findings (code,
  * severity, requirements) and the coverage demotions (reason, requirements), each list sorted.
- * Requirements print as `key ?? id`: the gaming fixtures are folded from `add` ops, which mint
- * random UUIDs, so an id would make every row differ on every run.
+ * Requirements print as `key ?? id`: the eval-round and fabrication documents carry their own
+ * ids, and a gaming fixture's id is derived from its key or fixed by the fixture, so the key is the
+ * one name every corpus shares.
  *
  * Messages, suggestions and evidence are left out on purpose. They are wording, and a wording
  * change is not a verdict change; pinning them would make every prose edit a diff here and bury
@@ -26,9 +27,11 @@
  *
  * The real `check` operation (injected, as in `./gaming.ts` — `testing/` may not name `app/` or
  * `adapters/`), `--strict`, under the gaming harness's {@link ARMED} knobs and its
- * {@link orthogonalEmbedder}. The orthogonal table lets the semantic tier RUN and discharge its
+ * {@link fixtureEmbedder}. The orthogonal table lets the semantic tier RUN and discharge its
  * own demotion while proposing nothing, so every row is a verdict of the decide tier; the stub
- * would demote every row `run-weakened` and pin nothing else.
+ * would demote every row `run-weakened` and pin nothing else. A gaming fixture's `near` pairs are
+ * the one exception, and they are the fixture's own: its row shows the opposition candidate the
+ * fixture exists to raise.
  */
 
 import { Effect, Layer, ManagedRuntime } from 'effect'
@@ -39,12 +42,21 @@ import { embedderLayerOf } from '../ports/embedder.ts'
 import { ErrDocNotFound } from '../ports/errors.ts'
 import { asRequirementsDocument, evalRoundCases } from './eval-rounds.ts'
 import { fabricationCases } from './fabrication.ts'
-import { ARMED, buildDoc, FIXTURES, type GamingWiring, orthogonalEmbedder } from './gaming.ts'
+import {
+  ARMED,
+  buildDoc,
+  FIXTURES,
+  type Fixture,
+  fixtureEmbedder,
+  type GamingWiring,
+} from './gaming.ts'
 
 /** One document of the corpus, labelled `<corpus>/<id>` so a diff line names where to look. */
 export interface ReportSource {
   readonly label: string
   readonly doc: RequirementsDocument
+  /** The `near` pairs the baseline embedder relates, for a gaming document; none otherwise. */
+  readonly near?: Fixture['near']
 }
 
 /** The corpora, by label prefix. Each must contribute at least one row. */
@@ -59,8 +71,7 @@ export const REPORT_CORPORA = ['eval-rounds', 'fabrication', 'gaming', 'gaming-c
  * - `gaming-control`: each fixture's consistent twin, where one exists, so the corpus holds
  *   documents that reach a clean verdict under the armed run and a lost `verified` shows up.
  *
- * Built fresh on every call: the gaming documents carry fresh UUIDs, so nothing here may depend
- * on an id surviving between two calls. The gaming documents fold under `apply`'s own options,
+ * Built fresh on every call. The gaming documents fold under `apply`'s own options,
  * handed in as the harness hands them in, so a corpus document is one `apply` could write.
  */
 export const reportSources = (options: MutateOptions): readonly ReportSource[] => {
@@ -70,9 +81,10 @@ export const reportSources = (options: MutateOptions): readonly ReportSource[] =
   }
   for (const c of fabricationCases()) out.push({ label: `fabrication/${c.id}`, doc: c.doc })
   for (const f of FIXTURES) {
-    out.push({ label: `gaming/${f.id}`, doc: buildDoc(f.ops, options) })
+    const near = f.near === undefined ? {} : { near: f.near }
+    out.push({ label: `gaming/${f.id}`, doc: buildDoc(f.ops, options), ...near })
     if ('ops' in f.control) {
-      out.push({ label: `gaming-control/${f.id}`, doc: buildDoc(f.control.ops, options) })
+      out.push({ label: `gaming-control/${f.id}`, doc: buildDoc(f.control.ops, options), ...near })
     }
   }
   return out
@@ -98,7 +110,7 @@ const entry = (head: string, ids: readonly string[], doc: RequirementsDocument):
  */
 const reportRow = async (
   wiring: ReportCorpusWiring,
-  { label, doc }: ReportSource,
+  { label, doc, near }: ReportSource,
 ): Promise<string> => {
   const store = Layer.succeed(DocStore)(
     DocStore.of({
@@ -120,7 +132,7 @@ const reportRow = async (
           Layer.mergeAll(
             store,
             Layer.succeed(DocPath)(makeDocPath({})),
-            embedderLayerOf(orthogonalEmbedder()),
+            embedderLayerOf(fixtureEmbedder(near === undefined ? {} : { near })),
           ),
         ),
       ),

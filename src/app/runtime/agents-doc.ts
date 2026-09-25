@@ -111,6 +111,8 @@ const directionsSection = (manifest: Manifest): string =>
   [
     manifest.opDirections.rule,
     '',
+    manifest.opDirections.identity,
+    '',
     ...manifest.opDirections.directions.map((d) => `- **\`${d.direction}\`** — ${d.meaning}`),
     '',
     '| Verb | Direction | Why |',

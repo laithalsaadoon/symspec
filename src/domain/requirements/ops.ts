@@ -488,8 +488,9 @@ export type OpVerb = (typeof OP_VERBS)[number]
  *
  * What each one means is stated over D, the verdict-bearing set, which is defined by the
  * signal classes (`app/runtime/signal-classes.ts`) and published beside this table in the
- * manifest: `strengthening` can only ADD members of D, `weakening` can remove one, and
- * `conditional` is decided per instance by symspec. A label is therefore an UPPER BOUND on
+ * manifest: `strengthening` only adds constraints, so it can DISPLACE a reported member of D
+ * (a new overlapping conflict takes an old one's place in the report) but never remove one;
+ * `weakening` can remove one; and `conditional` is decided per instance by symspec. A label is therefore an UPPER BOUND on
  * what the verb can do, and the gaming gate MEASURES it (G-D) rather than trusting it.
  *
  * `run-weakening` is deliberately absent. A run knob (`--semantic=false`, a low budget) is not
@@ -510,7 +511,7 @@ export type OpDirection = (typeof OP_DIRECTIONS)[number]
 export const OP_DIRECTION = {
   add: {
     direction: 'strengthening',
-    why: 'Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). It can discharge coverage demotions, and with an explicit `id` the FND_DANGLING_REFERENCE of an edge that names that id; both are outside D.',
+    why: 'Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). A new conflict through a requirement that is already in one can DISPLACE the reported core, because the formal tier reports one minimal core per overlapping set (measured: `overlapping-contrary` × `add-negation`); an equivalent requirement under a lower id re-keys the verdict onto itself, which the identity map reads as the same member. It can discharge coverage demotions, and with an explicit `id` the FND_DANGLING_REFERENCE of an edge that names that id; both are outside D.',
   },
   update: {
     direction: 'weakening',
@@ -522,31 +523,31 @@ export const OP_DIRECTION = {
   },
   derive: {
     direction: 'strengthening',
-    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and never removes a verdict.',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`).',
   },
   satisfy: {
     direction: 'strengthening',
-    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and never removes a verdict.',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`).',
   },
   verify: {
     direction: 'strengthening',
-    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and never removes a verdict.',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`).',
   },
   refine: {
     direction: 'strengthening',
-    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and never removes a verdict.',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`).',
   },
   'remove-edge': {
     direction: 'weakening',
     why: 'Removes a trace edge, which can remove an FND_CYCLE (a structural error finding, and so a member of D).',
   },
   glossary: {
-    direction: 'strengthening',
-    why: 'Identifies two phrases as one atom, and an added equality cannot make an unsatisfiable set satisfiable (I-1). The fold refuses an alias of two committed contraries; the measured exceptions to the bound are listed in the gaming gate.',
+    direction: 'weakening',
+    why: 'Identifies two phrases as one atom. An equality cannot make an unsatisfiable set satisfiable, but it can REFUTE a conflict signal: aliasing the two sides of an open opposition candidate says they are one action, so the candidate and its demotion go away and nothing replaces them (measured: `opposition-candidate` × `alias-contraries-glossary`, a clean run over fill and drain). The fold refuses an alias only over committed contraries, and it cannot see an embedding-proposed pair. The table is also a one-pass lookup that runs before term substitution, so an alias over a phrase the term table rewrites removes the verdict the term carried (`term-bridged` × `glossary-over-term`).',
   },
   antonym: {
     direction: 'strengthening',
-    why: 'Commits a contrary axiom, which only adds constraints, so it can only add conflicts. The fold refuses a pair the committed tables make inconsistent.',
+    why: 'Commits a contrary axiom, which only adds constraints, so no conflict goes away. A new conflict through a requirement that is already in one can DISPLACE the reported core, because the formal tier reports one minimal core per overlapping set (measured: `overlapping-contrary` × `contrary-to-bystander`). The fold refuses a pair the committed tables make inconsistent.',
   },
   waive: {
     direction: 'weakening',
@@ -581,8 +582,8 @@ export const OP_DIRECTION = {
     why: "Sets or retracts one requirement's response kind and its expression. That rebinds what the requirement does to the state model, and a retraction takes a constraint out of the reachability tier.",
   },
   term: {
-    direction: 'strengthening',
-    why: 'Identifies two noun phrases inside every atom body, an added equality (I-1). The fold refuses a term that contains a verb the antonym or state-bridge tables read; the measured exceptions to the bound are listed in the gaming gate.',
+    direction: 'weakening',
+    why: 'Identifies two noun phrases inside every atom body. The table is a one-pass substitution, not an equivalence, so an entry can rewrite two contraries onto one phrase and the conflict the contrary carried is gone (measured: `registered-contrary` × `alias-contraries-term`, where ratify/veto are contraries only through the committed antonym table). The fold refuses a term that contains a verb the seed antonym or state-bridge tables read, and does not read the committed antonyms.',
   },
   unterm: {
     direction: 'weakening',

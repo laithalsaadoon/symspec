@@ -65,6 +65,11 @@
  * rescuing nothing — so an escape measured here is an escape of the decide tier, which is the
  * tier the verdict rests on. The stub itself is one of the moves.
  *
+ * The one exception is a fixture's own `near` pairs, which the embedder places at a fixed
+ * cosine between the opposition floor and the similarity threshold. Without them no fixture
+ * could raise an embedding-proposed conflict signal, and G-D would be blind to every move
+ * against one (`opposition-candidate` exists for that).
+ *
  * ## What "caught" does not prove
  *
  * A move is caught on a fixture when the moved run is not clean. That can mean the defect still
@@ -168,6 +173,33 @@ export interface Fixture {
    * names the AC that would let one exist.
    */
   readonly control: { readonly ops: readonly DocumentOp[] } | { readonly none: string }
+  /**
+   * Response phrases the baseline embedder places at {@link NEAR_COSINE} instead of on
+   * orthogonal axes: topically related, and below the similarity threshold. The only way a
+   * fixture raises an embedding-proposed conflict signal (an opposition candidate), so the only
+   * way G-D can measure a move against one.
+   */
+  readonly near?: readonly (readonly [string, string])[]
+}
+
+/**
+ * A fixture requirement's id, derived from its key: four FNV-1a passes, each seeded differently,
+ * laid out as a v4-shaped UUID.
+ *
+ * Derived, not minted, because the engine's reported representatives depend on id ORDER. The
+ * formal tier feeds the solver in ascending id order and reports one minimal core per overlapping
+ * set, and the trace tier's cycle search visits requirements in document order. With random ids,
+ * a (fixture, move) cell whose report names one representative of several would change between
+ * runs, and a gate that pins that report exactly would be a coin toss.
+ */
+const fixtureId = (key: string): string => {
+  const pass = (seed: number): string => {
+    let h = (0x811c9dc5 ^ seed) >>> 0
+    for (const ch of `gaming:${key}`) h = Math.imul(h ^ (ch.codePointAt(0) ?? 0), 0x01000193) >>> 0
+    return h.toString(16).padStart(8, '0')
+  }
+  const hex = [1, 2, 3, 4].map(pass).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
 }
 
 const add = (
@@ -176,6 +208,7 @@ const add = (
 ): AddOp => ({
   op: 'add',
   key,
+  id: fixtureId(key),
   patternType:
     slots.patternType ??
     (slots.trigger !== undefined
@@ -409,6 +442,87 @@ const danglingOps = (r2Negated: boolean, withTarget: boolean): readonly Document
   ...(withTarget ? [] : [{ op: 'delete', ref: 'DNG-R3' } as const]),
 ]
 
+/**
+ * A contradiction beside a BYSTANDER that shares its trigger and system: grant/revoke is a seed
+ * contrary pair, and `withhold access` is related to neither side by any table. The ids are fixed
+ * so the solver order is grant < withhold < revoke, which is the order the CLI reproducer used.
+ * The formal tier reports ONE minimal core per overlapping set of conflicts, so a strengthening
+ * op that creates a second conflict through `OVL-R1` (a contrary axiom to the bystander, or an
+ * added requirement) can DISPLACE the reported one: the old conflict is still in the document and
+ * is no longer in the report.
+ */
+const overlapOps = (r2Response: string): readonly DocumentOp[] => [
+  add('OVL-R1', {
+    id: 'aaaaaaaa-0000-4000-8000-000000000000',
+    trigger: 'the user submits valid credentials',
+    systemName: 'auth service',
+    systemResponse: 'grant access',
+  }),
+  add('OVL-R2', {
+    id: 'cccccccc-0000-4000-8000-000000000000',
+    trigger: 'the user submits valid credentials',
+    systemName: 'auth service',
+    systemResponse: r2Response,
+  }),
+  add('OVL-R3', {
+    id: 'bbbbbbbb-0000-4000-8000-000000000000',
+    trigger: 'the user submits valid credentials',
+    systemName: 'auth service',
+    systemResponse: 'withhold access',
+  }),
+]
+
+/**
+ * A derives cycle `CYC-A → CYC-C → CYC-A` beside a branch `CYC-A → CYC-B`. The trace tier's cycle
+ * search is a depth-first walk with one visited set across every start node, so it reports the
+ * cycles its back edges close and not every elementary cycle. An edge from the branch into the
+ * cycle (`CYC-B → CYC-C`) makes the walk finish `CYC-C` through `CYC-B` first, and the reported
+ * cycle becomes `A → B → C → A` while `A → C → A` is still in the graph. The ids are fixed so the
+ * document order the walk visits is A, B, C. All three share one trigger and system, so the
+ * propositional tier compares them and none is demoted uncovered.
+ */
+const cycleOps = (closed: boolean): readonly DocumentOp[] => [
+  add('CYC-A', {
+    id: '10000000-0000-4000-8000-000000000001',
+    trigger: 'the operator requests a status',
+    systemName: 'monitor service',
+    systemResponse: 'report the status',
+  }),
+  add('CYC-B', {
+    id: '10000000-0000-4000-8000-000000000002',
+    trigger: 'the operator requests a status',
+    systemName: 'monitor service',
+    systemResponse: 'log the status',
+  }),
+  add('CYC-C', {
+    id: '10000000-0000-4000-8000-000000000003',
+    trigger: 'the operator requests a status',
+    systemName: 'monitor service',
+    systemResponse: 'store the status',
+  }),
+  { op: 'derive', from: 'CYC-A', to: 'CYC-B' },
+  { op: 'derive', from: 'CYC-A', to: 'CYC-C' },
+  ...(closed ? [{ op: 'derive', from: 'CYC-C', to: 'CYC-A' } as const] : []),
+]
+
+/**
+ * Fill and drain under one trigger: two verbs on one object that no table relates, so only the
+ * semantic tier's opposition candidate says they may conflict. The fixture's `near` pair is what
+ * lets the orthogonal embedder raise it.
+ */
+const oppositionOps = (r2Response: string): readonly DocumentOp[] => [
+  add('OPP-R1', {
+    trigger: 'the level sensor reports low',
+    systemName: 'pump controller',
+    systemResponse: 'fill the tank',
+  }),
+  add('OPP-R2', {
+    trigger: 'the level sensor reports low',
+    systemName: 'pump controller',
+    systemResponse: r2Response,
+  }),
+]
+
 export const FIXTURES: readonly Fixture[] = [
   {
     id: 'feature-interaction',
@@ -518,6 +632,34 @@ export const FIXTURES: readonly Fixture[] = [
     signal: { code: 'FND_CONTRADICTION', names: ['DNG-R1', 'DNG-R2'] },
     control: { ops: danglingOps(false, true) },
   },
+  {
+    id: 'overlapping-contrary',
+    seeded:
+      'Under one trigger, R1 grants access and R2 revokes it; grant/revoke are seed contraries. R3 withholds access under the same trigger, and no table relates withhold to either verb, so R3 is a bystander that measures what a SECOND conflict through R1 does to the reported one.',
+    ops: overlapOps('revoke access'),
+    culprits: ['OVL-R1', 'OVL-R2'],
+    signal: { code: 'FND_CONTRADICTION', names: ['OVL-R1', 'OVL-R2'] },
+    control: { ops: overlapOps('audit access') },
+  },
+  {
+    id: 'derives-cycle',
+    seeded:
+      'CYC-A derives CYC-C and CYC-C derives CYC-A (FND_CYCLE); CYC-A also derives CYC-B, a branch off the cycle.',
+    ops: cycleOps(true),
+    culprits: ['CYC-A', 'CYC-C'],
+    signal: { code: 'FND_CYCLE', names: ['CYC-A', 'CYC-C'] },
+    control: { ops: cycleOps(false) },
+  },
+  {
+    id: 'opposition-candidate',
+    seeded:
+      'Under one trigger, R1 fills the tank and R2 drains it. No table relates fill and drain, so the decide tier sees two unrelated atoms; the semantic tier proposes them as an opposition candidate (FND_OPPOSITION_CANDIDATE) and demotes `open-opposition-candidate`.',
+    ops: oppositionOps('drain the tank'),
+    culprits: ['OPP-R1', 'OPP-R2'],
+    signal: { demotion: 'open-opposition-candidate', names: ['OPP-R1', 'OPP-R2'] },
+    control: { ops: oppositionOps('log the level') },
+    near: [['fill the tank', 'drain the tank']],
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -530,9 +672,9 @@ export const FIXTURES: readonly Fixture[] = [
  *
  * An op move's direction is the JOIN of `OP_DIRECTION` over the verbs it emits
  * ({@link cellDirection}), so relabelling a verb in `ops.ts` relabels every move that uses it
- * and G-D re-measures the claim. `strengthening` moves can only add members of D; a
- * strengthening move that loses one is a defect in the encoding rather than a gap in the gate,
- * and is listed in {@link KNOWN_NONMONOTONE}.
+ * and G-D re-measures the claim. A `strengthening` move can lose a member of D only by
+ * displacing it with an overlapping one of the same code; every such loss is listed in
+ * {@link KNOWN_NONMONOTONE}, and a loss that is not a displacement fails the gate outright.
  */
 export type Direction = OpDirection | 'run-weakening'
 
@@ -618,6 +760,22 @@ const DECOYS: readonly (readonly [string, string])[] = [
   ['DECOY-2', 'sign the report'],
   ['DECOY-3', 'archive the report'],
 ]
+
+/**
+ * The spellings an `add-equivalent` move writes the first culprit's response in, each under its
+ * own id below every fixture's: the same text (`FND_EXACT_DUPLICATE`), and a case variant
+ * (`FND_REDUNDANCY`, a bi-implication). Either way the formal tier's lowest-id pick re-keys a
+ * verdict on the culprit onto the added requirement, and G-D's identity map is what reads that as
+ * the same verdict.
+ */
+const EQUIVALENT_SPELLINGS = [
+  ['exact', (s: string) => s, '00000000-0000-4000-8000-000000000002'],
+  [
+    'case',
+    (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase()),
+    '00000000-0000-4000-8000-000000000003',
+  ],
+] as const
 
 /** Which culprit a one-sided move edits, as it appears in the move id. */
 const SIDES = [
@@ -954,6 +1112,92 @@ export const MOVES: readonly Move[] = [
           { op: 'verify', from, to },
           { op: 'refine', from, to },
         ],
+      }
+    },
+  },
+  {
+    id: 'contrary-to-bystander',
+    clause:
+      "op coverage (`antonym`): commit a contrary between a culprit's verb and a bystander's, under one trigger",
+    // A bystander shares the first culprit's guard and system and is neither culprit. The antonym
+    // makes a SECOND conflict through that culprit, which is all a contrary axiom can do.
+    edit: ({ fixture, doc }) => {
+      const a = req(doc, fixture.culprits[0])
+      const culpritIds = new Set(fixture.culprits.map((k) => req(doc, k).id))
+      const headOf = (r: Requirement) =>
+        r.systemResponse.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
+      const bystander = Object.values(doc.requirements)
+        .filter(
+          (r) =>
+            !culpritIds.has(r.id) &&
+            r.systemName === a.systemName &&
+            guardOf(r)?.text === guardOf(a)?.text &&
+            headOf(r) !== headOf(a),
+        )
+        .sort((x, y) => ((x.key ?? x.id) < (y.key ?? y.id) ? -1 : 1))[0]
+      if (bystander === undefined)
+        return {
+          kind: 'inapplicable',
+          reason: "no other requirement shares the first culprit's guard and system",
+        }
+      return { kind: 'ops', ops: [{ op: 'antonym', a: headOf(a), b: headOf(bystander) }] }
+    },
+  },
+  {
+    id: 'add-negation',
+    clause:
+      'op coverage (`add`): add the negation of the first culprit, a second conflict through it',
+    // The lowest id in any fixture, so the added requirement sorts first in the solver order: the
+    // formal tier reports one minimal core per overlapping set, and the id order picks it.
+    edit: ({ fixture, doc }) => ({
+      kind: 'ops',
+      ops: [
+        addOf(req(doc, fixture.culprits[0]), {
+          key: 'NEG-1',
+          id: '00000000-0000-4000-8000-000000000001',
+          negated: !req(doc, fixture.culprits[0]).negated,
+        }),
+      ],
+    }),
+  },
+  ...EQUIVALENT_SPELLINGS.map(
+    ([shape, spell, id]): Move => ({
+      id: `add-equivalent@${shape}`,
+      clause:
+        'op coverage (`add`): add a requirement equivalent to the first culprit, under a lower id',
+      edit: ({ fixture, doc }) => {
+        const a = req(doc, fixture.culprits[0])
+        return {
+          kind: 'ops',
+          ops: [addOf(a, { key: `EQV-${shape}`, id, systemResponse: spell(a.systemResponse) })],
+        }
+      },
+    }),
+  ),
+  {
+    id: 'branch-into-cycle',
+    clause: 'op coverage (`derive`): an edge from a branch off a derives cycle back into the cycle',
+    // A branch is a requirement with a derives edge IN from a node that has a second derives
+    // target, and no derives edge OUT. The edge goes from the branch to that second target.
+    edit: ({ doc }) => {
+      const byKey = (x: Requirement, y: Requirement) => ((x.key ?? x.id) < (y.key ?? y.id) ? -1 : 1)
+      for (const parent of Object.values(doc.requirements).sort(byKey)) {
+        const targets = parent.derives.filter((t) => doc.requirements[t] !== undefined)
+        for (const t of targets) {
+          const branch = doc.requirements[t]
+          const other = targets.find((u) => u !== t)
+          if (branch === undefined || other === undefined || branch.derives.length > 0) continue
+          const to = doc.requirements[other]
+          if (to === undefined) continue
+          return {
+            kind: 'ops',
+            ops: [{ op: 'derive', from: branch.key ?? branch.id, to: to.key ?? to.id }],
+          }
+        }
+      }
+      return {
+        kind: 'inapplicable',
+        reason: 'no requirement derives two others, one of which derives nothing',
       }
     },
   },
@@ -1342,6 +1586,8 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'term-bridged',
       'waived-blocking-lint',
       'dangling-target',
+      'overlapping-contrary',
+      'opposition-candidate',
     ],
     'Deleting one side of a conflict leaves a consistent document. Nothing records that the deleted requirement stood for an intent item, so its disappearance is not a finding; `FND_INTENT_UNCOVERED` makes it one. On temporal-conflict this side escapes where the other does not: deleting `AUD-R1` leaves `AUD-R2` and `AUD-R3`, which share a trigger: a consistent, fully compared document.',
   ),
@@ -1357,6 +1603,8 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'glossary-bridged',
       'term-bridged',
       'waived-blocking-lint',
+      'overlapping-contrary',
+      'opposition-candidate',
     ],
     'The same deletion from the other side. On temporal-conflict it is caught only because deleting `AUD-R2` leaves `AUD-R1` uncovered — a coverage accident, not a defence, which is why the `@first` row exists. On dangling-target it is caught only because the dangling edge on `DNG-R1` survives the deletion.',
   ),
@@ -1373,8 +1621,15 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'term-bridged',
       'waived-blocking-lint',
       'dangling-target',
+      'overlapping-contrary',
     ],
     'A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable.',
+  ),
+  ...escapes(
+    'waive-by-code',
+    'AC-5-6',
+    ['derives-cycle'],
+    'A code-only waiver suppresses FND_CYCLE, an error-severity structural finding, and nothing else is wrong, so the run verifies. AC-5-6 refuses a waiver that does not name the requirement ids and content hash it was raised on; a structural finding stays waivable only that way (`scoped`).',
   ),
   ...(['flip-negated@first', 'flip-negated@second'] as const).flatMap((move) =>
     escapes(
@@ -1386,6 +1641,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
         'temporal-conflict',
         'glossary-bridged',
         'term-bridged',
+        'overlapping-contrary',
       ],
       "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `narrow` certificate.",
     ),
@@ -1412,6 +1668,15 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       ['term-bridged'],
       'A glossary alias that contains a phrase the committed term rewrites — its alias (`charge the customer order`) or its canonical (`charge the purchase order`) — onto a fresh canonical, takes that response out of the term table: the glossary is a whole-body lookup that runs BEFORE term substitution, so R2 reaches the solver as the fresh canonical while R1 still reads `charge purchase order`, and the conflict the term carries disappears. Either write order escapes, because neither fence reads the other table: the term overlap fence checks only terms, and the glossary fence only glossary entries and antonyms. The `equal` twin (the bare term alias as a glossary alias) is caught on this fixture only because no slot body is exactly `customer order`. S4 closes it with a cross-table fence on both ops and a check-time twin for a hand-edited table.',
     ),
+  ),
+  ...(['alias-contraries-glossary@forward', 'alias-contraries-glossary@reverse'] as const).flatMap(
+    (move) =>
+      escapes(
+        move,
+        'AC-5-9 (drift on the conflict signal an alias removed; F1 resolved-by-unification must not excuse it)',
+        ['opposition-candidate'],
+        'A glossary alias between fill the tank and drain the tank, in either direction, puts both responses on one atom, so the opposition candidate the semantic tier raised is gone and the pair reads as a redundancy. The glossary fence refuses an alias only over committed contraries, and fill/drain are contraries only as the embedder sees them. `glossary` is labelled weakening for this reason. The alias is a vocabulary change that took a conflict signal away, which is what AC-5-9 reports as drift once a baseline exists.',
+      ),
   ),
   ...escapes(
     'unglossary',
@@ -1460,38 +1725,56 @@ export interface KnownNonmonotone {
   readonly why: string
 }
 
+/** The `closedBy` of a displaced core: the label is AC-5-1's, and only an engine edit closes it. */
+const CLOSED_BY_EVERY_CORE =
+  'AC-5-1 (engine: report every minimal core, not one per overlapping set; a followup)'
+
 /**
  * Every strengthening move that is measured to lose a member of D. EXACT: an unlisted loss
  * fails the gate, and so does a row that no longer loses what it lists (I-5).
  *
- * A row here is not an escape — most of these moves are still caught, by a demotion outside D
- * — but it IS a label the measurement contradicts: the verb says it can only add to D, and on
- * this fixture it took something away.
+ * Every row is a DISPLACEMENT: the engine reports one representative where several members of D
+ * overlap, and the move made a new one the representative. The conflict it lost is still in the
+ * document. That is the one loss the `strengthening` label allows (`DIRECTION_MEANING`), and the
+ * gate checks it on every loss, listed or not ({@link GateFailures.nonDisplacingLoss}): a move
+ * that removes a member outright is mislabelled, and a row here cannot excuse it. None of these
+ * is an escape, because the new member still fails the run.
  */
 export const KNOWN_NONMONOTONE: readonly KnownNonmonotone[] = [
-  ...(['alias-contraries-term@forward', 'alias-contraries-term@reverse'] as const).map(
-    (move): KnownNonmonotone => ({
-      fixture: 'registered-contrary',
-      move,
-      lost: ['FND_CONTRADICTION(REG-R1,REG-R2)'],
-      closedBy: 'AC-4-6',
-      why: '`term` is labelled strengthening because an alias is an added equality, but the term table is a one-pass substitution: merging ratify/veto, contraries only through the committed antonym table, rewrites both responses onto one phrase and the contradiction the antonym carried is gone. The same pair escapes (KNOWN_ESCAPES). AC-4-6 refuses a merge of registered contraries whichever table it is written to.',
-    }),
-  ),
   ...(
     [
-      'glossary-over-term@containing/term-then-glossary',
-      'glossary-over-term@containing-canonical/term-then-glossary',
+      ['contrary-pair', ['FND_CONTRADICTION(CTR-R1,CTR-R2)']],
+      ['overlapping-contrary', ['FND_CONTRADICTION(OVL-R1,OVL-R2)']],
+      ['registered-contrary', ['FND_CONTRADICTION(REG-R1,REG-R2)']],
+      [
+        'temporal-conflict',
+        ['FND_CONTRADICTION(AUD-R1,AUD-R2)', 'FND_TEMPORAL_CONTRADICTION(AUD-R1,AUD-R2)'],
+      ],
     ] as const
   ).map(
-    (move): KnownNonmonotone => ({
-      fixture: 'term-bridged',
-      move,
-      lost: ['FND_CONTRADICTION(TRM-R1,TRM-R2)'],
-      closedBy: 'S4 / AC-4-2 (cross-table fence + check twin)',
-      why: '`glossary` is labelled strengthening, but a glossary alias containing a phrase the committed term rewrites takes that response out of the term table (the glossary lookup runs first), so the two phrases the term calls one noun reach the solver as two atoms. The `glossary-then-term` order emits `unterm` and is weakening, so G-D does not measure it; this order emits `glossary` alone.',
+    ([fixture, lost]): KnownNonmonotone => ({
+      fixture,
+      move: 'add-negation',
+      lost,
+      closedBy: CLOSED_BY_EVERY_CORE,
+      why: 'The added negation of the first culprit makes a second conflict through it, under the lowest id in the document. The formal and temporal tiers report ONE minimal core per set of overlapping conflicts, and the id-sorted solver order hands them the new one, so the seeded conflict is still in the document and no longer in the report. The run still exits 1 on the new core, which overlaps the old one (G-D checks that every loss is such a displacement).',
     }),
   ),
+  {
+    fixture: 'overlapping-contrary',
+    move: 'contrary-to-bystander',
+    lost: ['FND_CONTRADICTION(OVL-R1,OVL-R2)'],
+    closedBy: CLOSED_BY_EVERY_CORE,
+    why: 'Committing grant/withhold makes a second contradiction through OVL-R1 (grant against the bystander that withholds). The formal tier reports one minimal core per overlapping set, so FND_CONTRADICTION(OVL-R1,OVL-R3) is reported and the grant/revoke contradiction, still in the document, is not.',
+  },
+  {
+    fixture: 'derives-cycle',
+    move: 'branch-into-cycle',
+    lost: ['FND_CYCLE(CYC-A,CYC-C)'],
+    closedBy:
+      'AC-5-1 (engine: enumerate every elementary cycle, not one per back edge; a followup)',
+    why: 'The edge CYC-B → CYC-C lets the depth-first cycle search reach CYC-C through the branch, so the back edge CYC-C → CYC-A closes A → B → C → A and the walk never revisits CYC-C from CYC-A. FND_CYCLE(CYC-A,CYC-B,CYC-C) is reported and A → C → A, still in the graph, is not.',
+  },
 ]
 
 /** A member of D as one line: `FND_CONTRADICTION(R1,R2)` or `demotion:reason(R1,R2)`. */
@@ -1506,15 +1789,19 @@ export const renderMember = (m: DMemberView): string =>
 export const lostFromD = (
   baseline: Outcome | undefined,
   cell: Cell,
-  covers: VerdictBearing['covers'],
-): readonly string[] | undefined => {
+  d: Pick<VerdictBearing, 'covers' | 'displaced'>,
+): { readonly lost: readonly string[]; readonly removed: readonly string[] } | undefined => {
   if (cell.direction !== 'strengthening') return undefined
   if (baseline?.kind !== 'ran' || cell.outcome.kind !== 'ran') return undefined
-  const after = cell.outcome.d
-  return baseline.d
-    .filter((m) => !covers(m, after))
-    .map(renderMember)
-    .sort()
+  const { d: after, equivalences } = cell.outcome
+  const lost = baseline.d.filter((m) => !d.covers(m, after, equivalences))
+  return {
+    lost: lost.map(renderMember).sort(),
+    removed: lost
+      .filter((m) => !d.displaced(m, after))
+      .map(renderMember)
+      .sort(),
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1536,6 +1823,9 @@ export const OP_COVERAGE: Readonly<
     moves: [
       'add-decoys',
       'supply-dangling-target',
+      'add-negation',
+      'add-equivalent@exact',
+      'add-equivalent@case',
       'flip-negated@second',
       'condition-into-response@second',
       'shall-to-should@second',
@@ -1543,22 +1833,19 @@ export const OP_COVERAGE: Readonly<
   },
   update: { moves: ['rename-system@second', 'split-system', 'rebind-effect'] },
   delete: { moves: ['delete-requirement@second', 'flip-negated@second', 'shall-to-should@second'] },
-  derive: { moves: ['link-culprits'] },
+  derive: { moves: ['link-culprits', 'branch-into-cycle'] },
   satisfy: { moves: ['link-culprits'] },
   verify: { moves: ['link-culprits'] },
   refine: { moves: ['link-culprits'] },
   'remove-edge': {
     reason:
-      'Removes a trace edge. No seeded fixture carries an edge, and trace findings ' +
-      '(FND_ORPHAN, FND_MISSING_TRACE_LINK) are not a consistency verdict; the move is ' +
-      '`link-culprits` inverted, and is registered when a traced fixture exists.',
+      'Removes a trace edge. On `derives-cycle` that is the DESIGNED repair of FND_CYCLE, so ' +
+      'the moved run is clean, and the gate would have to list a legitimate fix as an escape ' +
+      'with no AC to close it. The verb is labelled weakening, so G-D does not measure it ' +
+      'either; it is `link-culprits` inverted.',
   },
   glossary: { moves: ['alias-contraries-glossary@forward', 'alias-contraries-glossary@reverse'] },
-  antonym: {
-    reason:
-      'Commits a contrary axiom: strengthening under I-1 in the logic the decide tier uses, ' +
-      'so it can only add findings. `unantonym` is its weakening inverse, and is registered.',
-  },
+  antonym: { moves: ['contrary-to-bystander'] },
   waive: { moves: ['waive-by-code'] },
   unwaive: { moves: ['unwaive'] },
   unglossary: { moves: ['unglossary'] },
@@ -1782,34 +2069,70 @@ export interface DMemberView {
   readonly requirementIds: readonly string[]
 }
 
-/** The D projection and its identity map, injected by the shard. */
+/** The D projection and its identity maps, injected by the shard. */
 export interface VerdictBearing {
   /** Project a report onto D. */
   readonly of: (report: CheckView) => readonly DMemberView[]
-  /** Whether a member of D before a move is still in D after it. */
-  readonly covers: (member: DMemberView, after: readonly DMemberView[]) => boolean
+  /** The groups of requirements the report states equivalent (an identity map's input). */
+  readonly equivalences: (report: CheckView) => readonly (readonly string[])[]
+  /** Whether a member of D before a move is still in D after it, under the identity maps. */
+  readonly covers: (
+    member: DMemberView,
+    after: readonly DMemberView[],
+    equivalences: readonly (readonly string[])[],
+  ) => boolean
+  /** Whether a lost member was displaced by an overlapping member of the same code. */
+  readonly displaced: (member: DMemberView, after: readonly DMemberView[]) => boolean
 }
 
 /**
- * Every distinct phrase on its own axis. Fresh per run, so a vector depends only on the order
- * phrases are first seen inside ONE run — deterministic for a fixed document.
+ * The cosine the baseline embedder gives a fixture's `near` pair: above the opposition floor
+ * (0.5) and below the similarity threshold (0.72), so the pair is topically related and nothing
+ * else. `gaming.test.ts` pins it between the engine's two constants.
  */
-export const orthogonalEmbedder = (): Embedder => {
+export const NEAR_COSINE = 0.6
+
+/**
+ * Every distinct phrase on its own axis, except that each `near` pair also shares one axis of
+ * its own, weighted so the two phrases meet at {@link NEAR_COSINE}. Fresh per run, so a vector
+ * depends only on the order phrases are first seen inside ONE run — deterministic for a fixed
+ * document.
+ */
+export const orthogonalEmbedder = (near: readonly (readonly [string, string])[] = []): Embedder => {
   const axes = new Map<string, number>()
   const DIM = 512
+  const axisOf = (name: string): number => {
+    let axis = axes.get(name)
+    if (axis === undefined) {
+      axis = axes.size
+      if (axis >= DIM) throw new Error('orthogonal embedder ran out of axes')
+      axes.set(name, axis)
+    }
+    return axis
+  }
+  // A NUL-led name cannot be a response phrase, so a shared axis never collides with one.
+  const shared = new Map<string, string>()
+  near.forEach(([a, b], i) => {
+    shared.set(a, `\u0000near:${i}`)
+    shared.set(b, `\u0000near:${i}`)
+  })
   return async (texts) =>
     texts.map((t) => {
-      let axis = axes.get(t)
-      if (axis === undefined) {
-        axis = axes.size
-        if (axis >= DIM) throw new Error('orthogonal embedder ran out of axes')
-        axes.set(t, axis)
-      }
       const v = new Float32Array(DIM)
-      v[axis] = 1
+      const pair = shared.get(t)
+      if (pair === undefined) {
+        v[axisOf(t)] = 1
+        return v
+      }
+      v[axisOf(t)] = Math.sqrt(1 - NEAR_COSINE)
+      v[axisOf(pair)] = Math.sqrt(NEAR_COSINE)
       return v
     })
 }
+
+/** The baseline embedder one fixture runs under: orthogonal, with the fixture's `near` pairs. */
+export const fixtureEmbedder = (fixture: Pick<Fixture, 'near'>): Embedder =>
+  orthogonalEmbedder(fixture.near ?? [])
 
 /** One `check` result, reduced to what the gate and the snapshot read. */
 export interface RunResult {
@@ -1822,6 +2145,8 @@ export interface RunResult {
   readonly codes: readonly string[]
   /** D for this run, with requirement ids read as their keys so a lost member reads as prose. */
   readonly d: readonly DMemberView[]
+  /** The equivalence groups this run's report states, read as keys like {@link d}. */
+  readonly equivalences: readonly (readonly string[])[]
 }
 
 /** A move the tool refused before `check` ran: the fold, or the parse, said no. */
@@ -1873,8 +2198,9 @@ const runCheck = async (
   document: RequirementsDocument,
   knobs: Knobs,
   embedder: EmbedderChoice,
-  signal: Signal,
+  fixture: Pick<Fixture, 'near' | 'signal'>,
 ): Promise<Outcome> => {
+  const signal = fixture.signal
   if (embedder === 'stub-env' && process.env[EMBED_STUB_ENV] !== '1') {
     throw new Error(`the embedding-stub move needs ${EMBED_STUB_ENV}=1 (vitest.config.ts sets it)`)
   }
@@ -1894,7 +2220,7 @@ const runCheck = async (
         Layer.mergeAll(
           store,
           Layer.succeed(DocPath)(makeDocPath({})),
-          embedder === 'stub-env' ? wiring.envEmbedder : embedderLayerOf(orthogonalEmbedder()),
+          embedder === 'stub-env' ? wiring.envEmbedder : embedderLayerOf(fixtureEmbedder(fixture)),
         ),
       ),
     ),
@@ -1916,6 +2242,7 @@ const runCheck = async (
     d: wiring.verdictBearing
       .of(data)
       .map((m) => ({ ...m, requirementIds: m.requirementIds.map(keyOf).sort() })),
+    equivalences: wiring.verdictBearing.equivalences(data).map((group) => group.map(keyOf).sort()),
   }
 }
 
@@ -1950,7 +2277,7 @@ export const runMatrix = async (
     const runtime: Runtime = ManagedRuntime.make(wiring.solver)
     try {
       const run = (doc: RequirementsDocument, knobs: Knobs, embedder: EmbedderChoice) =>
-        runCheck(wiring, runtime, doc, knobs, embedder, fixture.signal)
+        runCheck(wiring, runtime, doc, knobs, embedder, fixture)
       const doc = buildDoc(fixture.ops, wiring.mutateOptions)
       const baseline = await run(doc, ARMED, 'orthogonal')
       baselines.set(fixture.id, baseline)
@@ -2005,6 +2332,13 @@ export interface GateFailures {
   /** G-D: a {@link KNOWN_NONMONOTONE} row whose pair no longer loses exactly what it lists. */
   readonly staleNonmonotone: readonly string[]
   /**
+   * G-D: a strengthening move that REMOVED a member of D, listed or not: no member of the same
+   * code over an overlapping set of requirements took its place. Displacement is the only loss
+   * the `strengthening` label allows, so a removal means the verb is mislabelled, and no table
+   * row can excuse it.
+   */
+  readonly nonDisplacingLoss: readonly string[]
+  /**
    * G-D non-vacuity: a baseline whose D is EMPTY. Every fixture seeds a verdict-bearing defect,
    * so an empty D means the projection stopped reading the report, and every loss would be
    * invisible.
@@ -2022,17 +2356,18 @@ const brief = (outcome: Outcome): string =>
 /** Score a matrix against the registry. Only rows for fixtures IN the matrix are considered. */
 export const gateFailures = (
   matrix: Matrix,
-  covers: VerdictBearing['covers'],
+  d: Pick<VerdictBearing, 'covers' | 'displaced'>,
   known: readonly KnownEscape[] = KNOWN_ESCAPES,
   nonmonotone: readonly KnownNonmonotone[] = KNOWN_NONMONOTONE,
 ): GateFailures => {
   const scored = new Set(matrix.baselines.keys())
   const lossKey = (fixture: string, move: string, lost: readonly string[]) =>
     `${pairKey(fixture, move)} lost [${lost.join(', ')}]`
-  const measuredLoss = matrix.cells.flatMap((c) => {
-    const lost = lostFromD(matrix.baselines.get(c.fixture), c, covers)
-    return lost === undefined || lost.length === 0 ? [] : [lossKey(c.fixture, c.move, lost)]
+  const measured = matrix.cells.flatMap((c) => {
+    const loss = lostFromD(matrix.baselines.get(c.fixture), c, d)
+    return loss === undefined || loss.lost.length === 0 ? [] : [{ cell: c, ...loss }]
   })
+  const measuredLoss = measured.map((m) => lossKey(m.cell.fixture, m.cell.move, m.lost))
   const listedLoss = nonmonotone
     .filter((k) => scored.has(k.fixture))
     .map((k) => lossKey(k.fixture, k.move, [...k.lost].sort()))
@@ -2059,6 +2394,9 @@ export const gateFailures = (
       .map(([id]) => id),
     unlistedNonmonotone: measuredLoss.filter((k) => !listedLoss.includes(k)),
     staleNonmonotone: listedLoss.filter((k) => !measuredLoss.includes(k)),
+    nonDisplacingLoss: measured
+      .filter((m) => m.removed.length > 0)
+      .map((m) => lossKey(m.cell.fixture, m.cell.move, m.removed)),
   }
 }
 
@@ -2119,6 +2457,8 @@ export const SHARDS: Readonly<Record<string, readonly string[]>> = {
   d: ['glossary-bridged', 'term-bridged'],
   e: ['registered-contrary'],
   f: ['waived-blocking-lint', 'dangling-target'],
+  g: ['overlapping-contrary', 'opposition-candidate'],
+  h: ['derives-cycle'],
 }
 
 /**
@@ -2137,7 +2477,7 @@ export const describeGamingShard = (key: string, wiring: GamingWiring): void => 
     // budget is a hang detector with room for a loaded 2-core runner, not a performance claim.
     beforeAll(async () => {
       matrix = await runMatrix(wiring, fixtures)
-      failures = gateFailures(matrix, wiring.verdictBearing.covers)
+      failures = gateFailures(matrix, wiring.verdictBearing)
     }, 180_000)
 
     it('every baseline detects its seeded defect, by the named signal', () => {
@@ -2171,6 +2511,13 @@ export const describeGamingShard = (key: string, wiring: GamingWiring): void => 
       expect(
         failures.unlistedNonmonotone,
         'a verb labelled strengthening removed a verdict-bearing member: relabel the verb, fix the encoding, or list the pair',
+      ).toEqual([])
+    })
+
+    it('G-D: every loss a strengthening move shows is a displacement, never a removal', () => {
+      expect(
+        failures.nonDisplacingLoss,
+        'a verb labelled strengthening removed a verdict-bearing member outright: relabel the verb or fix the encoding',
       ).toEqual([])
     })
 

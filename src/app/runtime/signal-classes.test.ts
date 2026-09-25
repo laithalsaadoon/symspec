@@ -20,7 +20,12 @@ import { allCodes } from './catalog.ts'
 import {
   DEMOTION_CLASS,
   DEMOTION_CLASSES,
+  DIRECTION_MEANING,
   dCovers,
+  dDisplaced,
+  dIdentityStatement,
+  EQUIVALENCE_CODES,
+  equivalencesOf,
   FINDING_CLASS,
   FINDING_CLASSES,
   findingClassOf,
@@ -308,5 +313,87 @@ describe('D, the verdict-bearing set', () => {
     // And a verdict is kept only by the same verdict over the same requirements.
     expect(dCovers(verdict(['a', 'b']), [verdict(['a', 'b'])])).toBe(true)
     expect(dCovers(verdict(['a', 'b']), [verdict(['a', 'b', 'c'])])).toBe(false)
+  })
+
+  it('counts a verdict re-keyed onto a requirement the report states equivalent as kept', () => {
+    const verdict = (ids: readonly string[]) =>
+      ({
+        kind: 'finding',
+        name: 'FND_CONTRADICTION',
+        class: 'verdict',
+        requirementIds: ids,
+      }) as const
+    // `add` of r3 ≡ r1 under a lower id: the reported core moves from (r1,r2) to (r2,r3).
+    const moved = [verdict(['r2', 'r3'])]
+    expect(dCovers(verdict(['r1', 'r2']), moved, [['r1', 'r3']])).toBe(true)
+    // Transitively: r1 ≡ r4 and r4 ≡ r3 put all three in one group.
+    expect(
+      dCovers(verdict(['r1', 'r2']), moved, [
+        ['r1', 'r4'],
+        ['r3', 'r4'],
+      ]),
+    ).toBe(true)
+    // Only an equivalence the report STATES counts: without one, or with one over other ids,
+    // the member is lost.
+    expect(dCovers(verdict(['r1', 'r2']), moved)).toBe(false)
+    expect(dCovers(verdict(['r1', 'r2']), moved, [['r3', 'r9']])).toBe(false)
+    // A conflict signal upgrades through the same map.
+    const signal = {
+      kind: 'demotion',
+      name: 'open-opposition-candidate',
+      class: 'conflict-signal',
+      requirementIds: ['r1', 'r2'],
+    } as const
+    expect(dCovers(signal, moved, [['r1', 'r3']])).toBe(true)
+  })
+
+  it('reads equivalence from exact duplicates and bi-implications only, never a one-way subsumption', () => {
+    expect([...EQUIVALENCE_CODES].sort()).toEqual(['FND_EXACT_DUPLICATE', 'FND_REDUNDANCY'])
+    const report = {
+      findings: [
+        { code: 'FND_EXACT_DUPLICATE', severity: 'error', requirementIds: ['b', 'a'] },
+        { code: 'FND_REDUNDANCY', severity: 'warn', requirementIds: ['d', 'c'] },
+        { code: 'FND_SUBSUMPTION', severity: 'warn', requirementIds: ['e', 'f'] },
+        { code: 'FND_CONTRADICTION', severity: 'error', requirementIds: ['a', 'e'] },
+      ],
+      coverage: { demotions: [] },
+    }
+    expect(equivalencesOf(report)).toEqual([
+      ['a', 'b'],
+      ['c', 'd'],
+    ])
+  })
+
+  it('tells a displaced member from a removed one', () => {
+    const cycle = (ids: readonly string[]) =>
+      ({ kind: 'finding', name: 'FND_CYCLE', class: 'structural', requirementIds: ids }) as const
+    // The trace tier reports A → B → C → A where it used to report A → C → A.
+    expect(dDisplaced(cycle(['a', 'c']), [cycle(['a', 'b', 'c'])])).toBe(true)
+    expect(dDisplaced(cycle(['p', 'q', 'r']), [cycle(['p', 'r', 'x'])])).toBe(true)
+    // Nothing of the same code overlaps: removed.
+    expect(dDisplaced(cycle(['a', 'c']), [cycle(['x', 'y'])])).toBe(false)
+    expect(dDisplaced(cycle(['a', 'c']), [])).toBe(false)
+    // A different code over the same requirements does not take its place.
+    expect(
+      dDisplaced(cycle(['a', 'c']), [
+        {
+          kind: 'finding',
+          name: 'FND_CONTRADICTION',
+          class: 'verdict',
+          requirementIds: ['a', 'c'],
+        },
+      ]),
+    ).toBe(false)
+  })
+
+  it('publishes the identity maps and the displacement bound, never the stale "only ADD" claim', () => {
+    for (const code of EQUIVALENCE_CODES) expect(dIdentityStatement()).toContain(code)
+    expect(dIdentityStatement()).not.toContain('FND_SUBSUMPTION')
+    expect(DIRECTION_MEANING.strengthening).toMatch(/DISPLACE/)
+    // The negative guard: the label used to say it could only ADD members of D, which the
+    // gaming gate measured false (a displaced core, a displaced cycle).
+    expect(DIRECTION_MEANING.strengthening).not.toMatch(/can only ADD/i)
+    // And the identity paragraph names its maps without counting them.
+    expect(dIdentityStatement()).not.toMatch(/\b(two|three|\d+) identity maps\b/i)
   })
 })

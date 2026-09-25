@@ -357,7 +357,13 @@ precedent):
 
 A verb's direction says what it CAN do to D:
 
-- `strengthening`: it can only add members of D.
+- `strengthening`: it only adds constraints, so no conflict the document carries goes away. It
+  can DISPLACE a reported member of D, and nothing else: the formal and temporal tiers report one
+  minimal core per set of overlapping conflicts, and the trace tier one cycle per depth-first
+  back edge, so a new member can take an overlapping old one's place in the report (measured in
+  S2: `overlapping-contrary` × `add-negation` and × `contrary-to-bystander`, `derives-cycle` ×
+  `branch-into-cycle`). Reporting every minimal core and every elementary cycle is an engine
+  edit, outside Phase 3.
 - `weakening`: it can remove a member of D.
 - `conditional`: symspec decides the effect per instance, either with a counterfactual on every
   run or with baseline drift attribution.
@@ -373,28 +379,31 @@ generated AGENTS.md. The table is `OP_DIRECTION satisfies Record<OpVerb, {direct
 
 **G-D MEASURES the labels.** For every non-refused move whose emitted verbs all join to
 `strengthening`, D after the move must contain D before it. The containment is measured under
-two identity maps: a verdict finding may upgrade a conflict-signal demotion on the same
-requirements, and a symbol merge may rename evidence. The exceptions are listed in an exact
-`KNOWN_NONMONOTONE` table.
+three identity maps: a verdict finding may upgrade a conflict-signal demotion on the same
+requirements; requirements the after report states equivalent (FND_EXACT_DUPLICATE,
+FND_REDUNDANCY) count as one, because an equivalent requirement under a lower id re-keys the
+reported core onto itself; and a symbol merge may rename evidence. The exceptions are listed in
+an exact `KNOWN_NONMONOTONE` table, and every one must be a displacement: a loss with no
+overlapping member of the same code after the move fails G-D whether or not it is listed.
 
 ### 3.2 Existing verbs
 
 | verb | direction | why |
 |---|---|---|
-| add | strengthening | adds constraints; the decide logic is monotone under added constraints (I-1) |
+| add | strengthening | adds constraints; the decide logic is monotone under added constraints (I-1). Can displace a reported core (measured in S2: `add-negation`); an equivalent requirement under a lower id re-keys it, which the equivalence identity map reads as the same member (`add-equivalent`) |
 | update | weakening | a slot, `negated`, pattern, stateEffect or stateConstraint change rebinds; metadata attributes are outside the binding |
 | delete | weakening | |
-| derive, satisfy, verify, refine (EDGE) | strengthening | trace graph only; can add FND_CYCLE |
+| derive, satisfy, verify, refine (EDGE) | strengthening | trace graph only; can add FND_CYCLE, and can displace a reported cycle (measured in S2: `derives-cycle` × `branch-into-cycle`) |
 | remove-edge | weakening | can remove FND_CYCLE (structural) |
-| glossary | strengthening | contrary- and numeral-destroying merges refused (S4); refused in v4 |
-| antonym | strengthening | re-validates the vocabulary (V1, V-OPP) before committing |
+| glossary | weakening | measured in S2: an alias over an open opposition candidate removes the candidate and nothing replaces it (`opposition-candidate` × `alias-contraries-glossary`, a clean run over fill/drain); the one-pass table also loses the verdict a term carried (`term-bridged` × `glossary-over-term`). Contrary- and numeral-destroying merges refused (S4); refused in v4 |
+| antonym | strengthening | re-validates the vocabulary (V1, V-OPP) before committing; can displace a reported core (measured in S2: `overlapping-contrary` × `contrary-to-bystander`) |
 | waive | weakening | |
 | unwaive | weakening | measured in S2: a waived blocking GtWR lint re-admits its requirement to the solver, so removing the waiver removes the verdicts it was part of (`waived-blocking-lint` × `unwaive`) |
 | unglossary | weakening | refused in v4 |
 | unantonym | weakening | |
 | state, unstate, state-initial | weakening | a redeclaration can release a frame or change the initial state |
 | classify | weakening | rebinds one requirement's effect |
-| term | strengthening | refused in v4 |
+| term | weakening | measured in S2: the one-pass substitution rewrites two committed contraries onto one phrase (`registered-contrary` × `alias-contraries-term`); refused in v4 |
 | unterm | weakening | refused in v4 |
 
 ### 3.3 New verbs (APPENDED to `OP_VERBS` and never interleaved)

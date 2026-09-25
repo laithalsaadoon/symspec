@@ -1,0 +1,54 @@
+derives-cycle	(baseline)	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
+derives-cycle	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+derives-cycle	rename-system@first	exit 1 verified=false signal=fires errors=[FND_CYCLE] demotions=[uncovered-requirement]
+derives-cycle	rename-system@second	exit 1 verified=false signal=fires errors=[FND_CYCLE] demotions=[uncovered-requirement]
+derives-cycle	split-system	exit 1 verified=false signal=fires errors=[FND_CYCLE] demotions=[no-decide-tier-comparison,uncovered-requirement]
+derives-cycle	alias-contraries-glossary@forward	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
+derives-cycle	alias-contraries-glossary@reverse	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
+derives-cycle	alias-contraries-term@forward	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
+derives-cycle	alias-contraries-term@reverse	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
+derives-cycle	term-over-phrase@inside-canonical	inapplicable
+derives-cycle	term-over-phrase@equal-canonical	inapplicable
+derives-cycle	term-over-phrase@around-canonical	inapplicable
+derives-cycle	term-over-phrase@straddle-canonical	inapplicable
+derives-cycle	term-over-phrase@straddle-alias	inapplicable
+derives-cycle	glossary-over-term@equal/term-then-glossary	inapplicable
+derives-cycle	glossary-over-term@equal/glossary-then-term	inapplicable
+derives-cycle	glossary-over-term@containing/term-then-glossary	inapplicable
+derives-cycle	glossary-over-term@containing/glossary-then-term	inapplicable
+derives-cycle	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+derives-cycle	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+derives-cycle	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+derives-cycle	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+derives-cycle	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+derives-cycle	unwaive	inapplicable
+derives-cycle	delete-requirement@first	exit 1 verified=true signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[]
+derives-cycle	delete-requirement@second	exit 1 verified=true signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[]
+derives-cycle	flip-negated@first	exit 1 verified=true signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[]
+derives-cycle	flip-negated@second	exit 1 verified=true signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[]
+derives-cycle	condition-into-response@first	exit 1 verified=false signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[uncovered-requirement]
+derives-cycle	condition-into-response@second	exit 1 verified=false signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[uncovered-requirement]
+derives-cycle	add-decoys	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
+derives-cycle	shall-to-should@first	exit 1 verified=true signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[]
+derives-cycle	shall-to-should@second	exit 1 verified=true signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[]
+derives-cycle	link-culprits	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
+derives-cycle	contrary-to-bystander	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_CYCLE] demotions=[]
+derives-cycle	add-negation	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_CYCLE] demotions=[]
+derives-cycle	add-equivalent@exact	exit 1 verified=true signal=fires errors=[FND_CYCLE,FND_EXACT_DUPLICATE] demotions=[]
+derives-cycle	add-equivalent@case	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
+derives-cycle	branch-into-cycle	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
+derives-cycle	supply-dangling-target	inapplicable
+derives-cycle	unglossary	inapplicable
+derives-cycle	unantonym	inapplicable
+derives-cycle	unterm	inapplicable
+derives-cycle	declassify-constraint	inapplicable
+derives-cycle	rebind-effect	inapplicable
+derives-cycle	vacuous-initial	inapplicable
+derives-cycle	release-frame	inapplicable
+derives-cycle	unstate	inapplicable
+derives-cycle	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CYCLE] demotions=[run-weakened]
+derives-cycle	semantic-off	exit 1 verified=false signal=fires errors=[FND_CYCLE] demotions=[semantic-tier-skipped]
+derives-cycle	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+derives-cycle	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+derives-cycle	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
+derives-cycle	temporal-off	exit 1 verified=true signal=fires errors=[FND_CYCLE] demotions=[]
