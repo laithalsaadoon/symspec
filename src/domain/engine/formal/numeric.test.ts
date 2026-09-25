@@ -266,6 +266,93 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
     ])
   })
 
+  it('reads a bound in its subject clause as conditional, by connective or by finite verb', () => {
+    const qualifier = (text: string) =>
+      extractNumericPredicates(text, 'svc', 'resp').map((p) => p.qualifier)
+    // Every connective, each before a lexical verb so no finite `is` gives the clause away.
+    for (const connective of [
+      'when',
+      'whenever',
+      'while',
+      'whilst',
+      'if',
+      'unless',
+      'until',
+      'till',
+      'after',
+      'before',
+      'once',
+      'since',
+      'where',
+      'wherever',
+      'whereupon',
+      'provided',
+      'providing',
+      'assuming',
+      'as soon as',
+      'as long as',
+      'so long as',
+      'in case',
+      'in the event that',
+      'in the case that',
+      'on condition that',
+      'any time',
+      'anytime',
+      'each time',
+      'every time',
+      'the moment',
+      'the instant',
+      'by the time',
+      'now that',
+      'given that',
+    ]) {
+      expect(
+        qualifier(`open the drain ${connective} the level rises above 5 meters`),
+        connective,
+      ).toEqual([`${connective} the level rises above 5 meters`])
+    }
+    // Prepositions that open a condition on a noun rather than a clause.
+    for (const connective of ['during', 'upon', 'following']) {
+      expect(qualifier(`open the drain ${connective} a flood above 5 meters`), connective).toEqual([
+        `${connective} a flood above 5 meters`,
+      ])
+    }
+    // No connective, but a finite verb or modal: a response's own verb follows `shall` in its
+    // base form, so one of these is a nested clause's, and the bound is in that clause.
+    for (const verb of [
+      'is',
+      'are',
+      'was',
+      'were',
+      'has risen',
+      'had risen',
+      'does rise',
+      'did rise',
+      'can rise',
+      'cannot rise',
+      'could rise',
+      'will rise',
+      "won't rise",
+      'would rise',
+      'may rise',
+      'might rise',
+      'must rise',
+      'should rise',
+      'shall rise',
+    ]) {
+      const text = `open the drain of a tank whose level ${verb} above 5 meters`
+      expect(qualifier(text), verb).toEqual([text])
+    }
+    // The controls: a subject with neither is the obligation's own, with no qualifier.
+    expect(qualifier('keep the temperature of the tank below 5 degrees celsius')).toEqual([
+      undefined,
+    ])
+    expect(qualifier('be open for at most 5 seconds')).toEqual([undefined])
+    // And a guard's subject is predicated by its own `is`: that is the guard, not a clause in it.
+    const [guard] = extractNumericPredicates('the level is above 5 meters', 'svc', 'trig')
+    expect(guard?.qualifier).toBeUndefined()
+  })
+
   it('does not read a comparator inside a longer word', () => {
     expect(read('complete the handover 5 seconds after the alarm')).toEqual([])
   })

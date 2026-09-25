@@ -579,16 +579,33 @@ function qualifierOf(after: string): string | undefined {
 }
 
 /**
- * A condition word in the text BEFORE a bound (`open the valve when the pressure is above 5
+ * A connective in the text BEFORE a bound (`open the valve when the pressure is above 5
  * bar`): the bound is inside the response's condition, not the obligation it imposes.
  *
- * A list, unlike {@link qualifierOf}, because the text before a bound is its subject, and no
- * rule reads a condition out of a subject without one. The list only ever SPLITS: a bound it
- * matches carries its whole clause as {@link NumericPredicate.qualifier}, and a phrasing it
- * misses keeps the reading every bound had before it.
+ * The closed class of English subordinators that open a condition or a time, the multiword
+ * ones included (`as soon as`, `in the event that`, `each time`, `the moment`), and the
+ * prepositions that open one on a noun (`during`, `upon`, `following`). Unlike
+ * {@link qualifierOf}, the text before a bound is its subject, so no rule can take ALL of it;
+ * but a connective is not the only mark of a clause: see {@link FINITE_VERB}. Either only
+ * ever SPLITS: a bound they match carries its whole clause as
+ * {@link NumericPredicate.qualifier}, which the prover never asserts across, and a phrasing
+ * neither matches keeps the reading every bound had before. `numeric.test.ts` pins every
+ * member, so a dropped one is a red test.
  */
 const CONDITION_WORD =
-  /(?:^|[\s,;(])(?:when|whenever|while|whilst|if|unless|until|after|before|once|during|upon|provided|following|since)(?![\p{L}\p{N}])/iu
+  /(?:^|[\s,;(])(?:when|whenever|while|whilst|if|unless|until|till|after|before|once|during|upon|provided|providing|following|since|where|wherever|whereupon|assuming|as\s+soon\s+as|as\s+long\s+as|so\s+long\s+as|in\s+case|in\s+the\s+event|in\s+the\s+case|on\s+condition|any\s*time|each\s+time|every\s+time|the\s+moment|the\s+instant|by\s+the\s+time|now\s+that|given\s+that)(?![\p{L}\p{N}])/iu
+
+/**
+ * A finite verb or modal in a RESPONSE's text before a bound: `open the drain the moment the
+ * level is above 5 meters`, `... whose level can rise above 5 meters`. A response's own verb
+ * follows `shall` in its base form (`keep`, `open`, `be`), so a finite form of `be`, `have`,
+ * or `do`, or a modal, is some nested clause's verb, and the bound is in that clause whatever
+ * connective, or none, opened it. The paradigm is closed, where connectives run on
+ * (`as soon as`, `in the event that`, `any time`, `so long as`, each once an error). Not a
+ * guard's: `the level is above 5 meters` predicates the guard's own subject.
+ */
+const FINITE_VERB =
+  /(?:^|[\s,;(])(?:is|are|was|were|has|had|does|did|can|cannot|could|will|won['’]t|would|may|might|must|should|shall)(?![\p{L}\p{N}])/iu
 
 /**
  * The {@link NumericPredicate.qualifier} of a bound at `[start, end)` in `text`, where
@@ -604,6 +621,8 @@ const CONDITION_WORD =
  *     only under identical clauses, and a pair whose clauses differ is disclosed.
  *   - After a {@link CONDITION_WORD} in its subject, it is that clause from the word on, this
  *     bound included, for the same reason.
+ *   - After a {@link FINITE_VERB} in a response's subject, it is the whole slot: the clause's
+ *     start is not marked, and the slot contains it.
  *   - Otherwise, the text after the bound's unit ({@link qualifierOf}).
  */
 function qualifierAt(
@@ -611,10 +630,13 @@ function qualifierAt(
   start: number,
   end: number,
   firstEnd: number | undefined,
+  slot: PredicateSlot,
 ): string | undefined {
   if (firstEnd !== undefined && firstEnd <= start) return qualifierOf(text.slice(firstEnd))
-  const condition = CONDITION_WORD.exec(text.slice(0, start))
+  const subject = text.slice(0, start)
+  const condition = CONDITION_WORD.exec(subject)
   if (condition !== null) return qualifierOf(text.slice(condition.index))
+  if (slot === 'resp' && FINITE_VERB.test(subject)) return qualifierOf(text)
   return qualifierOf(text.slice(end))
 }
 
@@ -1198,7 +1220,13 @@ export function extractNumericPredicates(
   )
   const preds = dedupe(
     out.map(({ pred, start, end }) => {
-      const qualifier = qualifierAt(text, start, end, first?.[0] === start ? undefined : first?.[1])
+      const qualifier = qualifierAt(
+        text,
+        start,
+        end,
+        first?.[0] === start ? undefined : first?.[1],
+        slot,
+      )
       if (qualifier === undefined) return pred
       // An unmarked time bound before other text may be a delay from its event, not a
       // magnitude of the response ({@link BoundRole} `anchored`).

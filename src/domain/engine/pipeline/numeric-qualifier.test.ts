@@ -175,6 +175,32 @@ describe('AC-2-6: a bound inside a condition is not an obligation', () => {
     }
   })
 
+  it('never asserts a number inside a condition, whatever connective opens it', async () => {
+    // `open the drain <C> the level is above 5 meters` against `... below 3 meters` is one
+    // action under two disjoint conditions. Only a listed connective gave the bound its
+    // clause, and every connective below was an error.
+    for (const connective of [
+      'as soon as',
+      'in the event that',
+      'in case',
+      'as long as',
+      'where',
+      'any time',
+      'each time',
+      'so long as',
+      'on condition that',
+      'in the case that',
+    ]) {
+      const out = await verdict(
+        'pump controller',
+        `open the drain ${connective} the level is above 5 meters`,
+        `open the drain ${connective} the level is below 3 meters`,
+      )
+      expect(out.errors, connective).toEqual([])
+      expect(out.uncompared, connective).toEqual([[ID_A, ID_B]])
+    }
+  })
+
   it('discloses, and never certifies, a second obligation behind a first bound', async () => {
     // Whatever joins them, a later bound in the slot lies in the text after the first, and
     // the tier does not know whether it is a condition or a conjunct. `and keep the level
