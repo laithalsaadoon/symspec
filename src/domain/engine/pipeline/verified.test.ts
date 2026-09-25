@@ -967,6 +967,57 @@ describe('differsOnlyByInflection', () => {
 })
 
 /**
+ * The "nothing was compared" prose must not contradict `coverage.requirements`. Two copies of
+ * one requirement share every atom and one guard, and the solver asserts them together in a
+ * decided group (both participate), but the pairwise tier reports an exact-duplicate pair as
+ * FND_EXACT_DUPLICATE instead of comparing it, so `pairsChecked` is 0. The verdict (`verified:
+ * false`) is right; the prose used to say "no two requirements shared an atom" and "their guards
+ * are never asserted together", and send the author to vocabulary rewrites.
+ */
+describe('coverage prose: an exact-duplicate pair', () => {
+  const TICK = 'the tick arrives'
+  const dupDoc = () =>
+    docOf([
+      { id: 'dup-1', systemName: 'counter', trigger: TICK, systemResponse: 'update the count' },
+      { id: 'dup-2', systemName: 'counter', trigger: TICK, systemResponse: 'update the count' },
+    ])
+  const noPairs = (report: Awaited<ReturnType<typeof runCheck>>) =>
+    report.findings.find((f) => f.code === 'FND_NO_PAIRS_CHECKED')
+
+  it('names the duplicate as the cause, and never claims unshared atoms or unjoined guards', async () => {
+    const report = await runCheck(dupDoc(), SEMANTIC())
+    // Premise: the pair is a duplicate, co-live, and uncompared by the pairwise tier.
+    expect(report.findings.map((f) => f.code)).toContain('FND_EXACT_DUPLICATE')
+    expect(report.coverage.requirements.map((r) => r.participates)).toEqual([true, true])
+    expect(report.pairsChecked).toBe(0)
+    expect(report.verified).toBe(false)
+
+    const disclaimer = noPairs(report)?.message ?? ''
+    expect(disclaimer).toContain('FND_EXACT_DUPLICATE')
+    expect(disclaimer).not.toMatch(/no two requirements shared an atom/)
+    expect(disclaimer).not.toMatch(/align vocabulary/i)
+
+    const [d] = report.coverage.demotions.filter((x) => x.reason === 'no-decide-tier-comparison')
+    expect(d?.action).toContain('FND_EXACT_DUPLICATE')
+    expect(d?.action).not.toMatch(/never asserted together/)
+    expect(d?.action).not.toMatch(/align vocabulary/i)
+  })
+
+  it('control: requirements that share no atom keep the vocabulary advice', async () => {
+    const report = await runCheck(
+      docOf([
+        { id: 'v-1', systemName: 'counter', trigger: TICK, systemResponse: 'update the count' },
+        { id: 'v-2', systemName: 'pump', systemResponse: 'hold the pressure' },
+      ]),
+      SEMANTIC(),
+    )
+    expect(noPairs(report)?.message).toMatch(/no two requirements shared an atom/)
+    const [d] = report.coverage.demotions.filter((x) => x.reason === 'no-decide-tier-comparison')
+    expect(d?.action).toMatch(/Align vocabulary/)
+  })
+})
+
+/**
  * Invariant I-1's run-weakening row, for the semantic threshold. The paraphrase pass (and with
  * it the AC-3-6 near-duplicate demotion) only sees pairs at or above the threshold, so a run with
  * the threshold RAISED above the measured default can drop a demotion the pinned run would keep.

@@ -339,10 +339,11 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       }
 
     case 'no-decide-tier-comparison':
-      // No two requirements shared an atom. The mechanical lever is a glossary or
-      // antonym link — but WHICH terms to link is a judgment about the document's
-      // meaning that no run can make. So the command is the inspection that lets an
-      // agent decide, not a fabricated link.
+      // No pair was compared: usually no two requirements shared an atom, else the pair
+      // was an exact duplicate or its guards were never asserted together (the action
+      // says which). The levers — a glossary or antonym link, deleting a copy, a rewrite —
+      // are judgments about the document's meaning that no run can make. So the command
+      // is the inspection that lets an agent decide, not a fabricated edit.
       return { ops: [], commands: [`symspec list ${context.docPath}`] }
 
     // ---------------------------------------------------------------------

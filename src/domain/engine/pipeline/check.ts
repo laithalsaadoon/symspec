@@ -1817,8 +1817,18 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   // suppress it, so the disclosure still fires when truly nothing was compared.
   const noPairsChecked =
     report.pairsChecked === 0 && requirements.length >= 2 && !crossRequirementFired
+  // Why nothing was compared, so neither the disclaimer nor the `no-decide-tier-comparison`
+  // advice names a cause the coverage rows contradict: shared atoms are not a vocabulary gap,
+  // and an exact-duplicate pair is reported rather than compared.
+  const noPairsCause = {
+    atomsShared: [...coverageAtomOwners.values()].some((o) => o.size >= 2),
+    exactDuplicates: findings.some((f) => f.code === 'FND_EXACT_DUPLICATE'),
+  }
   if (noPairsChecked) {
-    const coverage = noPairsCheckedFinding(requirements.map((r) => r.id))
+    const coverage = noPairsCheckedFinding(
+      requirements.map((r) => r.id),
+      noPairsCause,
+    )
     findings.push({
       code: coverage.code,
       severity: coverage.severity,
@@ -2085,18 +2095,29 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
     }
     if (inconclusive) {
       // When the requirements ALREADY share vocabulary, "align vocabulary" is the wrong
-      // advice: what kept them apart is guards that are never asserted together, which the
-      // coverage rows and any `conditional-conflict-unchecked` demotion name precisely.
-      const vocabularyShared = [...coverageAtomOwners.values()].some((o) => o.size >= 2)
+      // advice, and the cause the prose names must agree with the coverage rows: an
+      // exact-duplicate pair is reported rather than compared; requirements no decided group
+      // asserted together are named by the rows and any `conditional-conflict-unchecked` /
+      // `solver-unknown` demotion; and co-live requirements may still yield no candidate pair.
+      const action = !noPairsCause.atomsShared
+        ? 'No cross-requirement comparison happened. Align vocabulary across requirements (shared ' +
+          'guards/objects) or commit glossary/antonym links so the decide tier can compare pairs.'
+        : noPairsCause.exactDuplicates
+          ? 'No decide-tier pair comparison was recorded. The requirements share atoms, but an ' +
+            'exact-duplicate pair is reported as FND_EXACT_DUPLICATE rather than compared. Delete ' +
+            'one copy of each duplicate, then re-run `symspec check`.'
+          : coLive.size === 0
+            ? 'No cross-requirement comparison happened. The requirements share atoms, but no ' +
+              'context group the solver decided asserted any two of them together, so no pair ' +
+              'was compared — see `coverage.requirements` and any `conditional-conflict-unchecked` ' +
+              'or `solver-unknown` demotion for which.'
+            : 'No decide-tier pair comparison was recorded. The requirements share atoms and ' +
+              'some were asserted together in a decided context group, but no pair of them was ' +
+              'a candidate for the pairwise tier — see `coverage.requirements`.'
       demotions.push({
         reason: 'no-decide-tier-comparison',
         requirementIds: requirements.map((r) => r.id),
-        action: vocabularyShared
-          ? 'No cross-requirement comparison happened. The requirements share atoms, but their ' +
-            'guards are never asserted together, so no pair was compared — see ' +
-            '`coverage.requirements` and any `conditional-conflict-unchecked` demotion for which.'
-          : 'No cross-requirement comparison happened. Align vocabulary across requirements (shared ' +
-            'guards/objects) or commit glossary/antonym links so the decide tier can compare pairs.',
+        action,
       })
     }
     // AC-3-5: the stub ran in the model's place. Inside the ≥2 guard with
