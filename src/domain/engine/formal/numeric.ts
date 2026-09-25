@@ -920,8 +920,10 @@ function finiteVerbIn(subject: string): string | undefined {
  *     tells it from a compound (`keep the tank level below 3 meters`), so both are disclosed.
  *   - A time bound its own role word introduces (`marker`: `for`, `in`, `within`, `every`, or a
  *     governing time preposition) right after ONE noun (`expire the session after at most 30
- *     minutes`, `retain the logs for at least 90 days`, where the noun may be a plural because
- *     nothing follows it for the bound to modify). A TIME bound: `dimension` is exactly `time`.
+ *     minutes`, `retain the logs for at least 90 days`, where the noun may be a plural). That the
+ *     role word's phrase is the action's and not the noun's is a reading no closed-class word
+ *     marks (`flag calls for over 60 minutes`: calls that last an hour), recorded as an open gap
+ *     in `testing/recorded-gaps.test.ts`. A TIME bound: `dimension` is exactly `time`.
  *     A role word before a unit no dimension recognizes, or before no unit, marks no span or
  *     point of the action (`approve the loan for over 50000 dollars`, `waive the fee for at least
  *     10 items`, `retain the log for at least 9 months`: which loan, which fee, and a calendar
@@ -936,7 +938,8 @@ function finiteVerbIn(subject: string): string | undefined {
  * compared with no bound not spelled identically, and `numeric-contradiction.ts` discloses the
  * pair. What this cannot see is a sense no closed-class word marks: a plural no `-s` marks (`keep
  * the fish above 3 meters`), or `keep` meaning retain on a singular (`keep the reading above 90
- * degrees celsius`); the object is then read as the quantity, as it is written.
+ * degrees celsius`); the object is then read as the quantity, as it is written, a gap recorded in
+ * `testing/recorded-gaps.test.ts`.
  */
 function unheldBy(
   subject: string,
