@@ -25,13 +25,13 @@ const FROZEN: Record<(typeof SCOPE_KEYS)[number], string> = {
   silence:
     'Because paraphrases become distinct atoms, a real conflict can be missed (a false negative): silence is not a consistency certificate, so the formal tier reporting no conflict does not prove the spec consistent.',
   overUnification:
-    'The one false-positive risk is over-unification (too-aggressive normalization collapsing two distinct conditions into one atom); it is mitigated by conservative normalization (no stemming or stopword-stripping beyond leading articles) and the info-severity FND_SIMILAR_UNUNIFIED reporter.',
+    'The one false-positive risk is over-unification: too-aggressive normalization collapsing two distinct conditions into one atom, or a committed vocabulary entry relating two things the domain keeps apart (a glossary or term alias naming two different things as one, or an antonym pair naming two compatible actions as contraries). It is mitigated by conservative normalization (no stemming or stopword-stripping beyond a leading article, a single copula in a trigger or precondition, and a closed third-person -s rule on the leading response verb), by the refusal of any term that rewrites a verb the solver reads, and by the info-severity FND_SIMILAR_UNUNIFIED reporter.',
   contextualAmbiguityNotChecked:
     'Deterministic ambiguity detectors (vague terms, quantifier/coordination scope, and referential ambiguity) run and report; but whether a phrase is vague in its domain context — pragmatic/contextual ambiguity — is surfaced for review (FND_AMBIGUITY_NEEDS_JUDGMENT), not decided by symspec, and any LLM ambiguity judgment is propose-only, never a verdict.',
   semanticProposeOnly:
     'Semantic similarity is a propose-only assist: the always-on embedding tier suggests glossary merges and opposition candidates for paraphrased or polar-opposite responses but never emits a conflict verdict, so `check` remains reproducible given the document, its glossary, and the pinned embedding model. A missing model fails the run closed (ERR_EMBED_MODEL_MISSING) rather than silently skipping the tier; pre-warm with `symspec download-model`.',
   numericChecked:
-    'Numeric conflicts are checked over linear integer/real arithmetic (LIA/LRA): requirements placing jointly unsatisfiable bounds on the same per-system quantity (unit-normalized) are reported as FND_NUMERIC_CONTRADICTION. Nonlinear-integer arithmetic remains out of scope (undecidable).',
+    'Numeric conflicts are checked over linear integer/real arithmetic (LIA/LRA): requirements placing jointly unsatisfiable bounds on the same per-system quantity, in one role and one dimension, are reported as FND_NUMERIC_CONTRADICTION. A deadline (`within`), a duration (`for`), and a period (`every`) are three roles, an unmarked bound meets every role, and units convert exactly within a dimension. A pair the tier cannot decide as written (a deadline against a duration, two units no conversion relates, or guards the solver never asserted together) is disclosed as FND_NUMERIC_UNCOMPARED, which demotes verified and is never a verdict. Nonlinear-integer arithmetic remains out of scope (undecidable).',
   reachabilityModelScoped:
     'The unbounded reachability tier proves a declared constraint over EVERY reachable state with no bound on path length (Z3 Spacer), every proof is independently re-verified by three plain-SMT obligations so a claim never rests on trusting the solver, and a violation carries the counterexample trace naming which requirements fired, in order. But the claim is about the STATE MODEL you declared, not about the requirement text: the `classify` expressions ARE the model, so a mis-declared effect yields a sound proof of the wrong thing. It runs only when a state model is committed (otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not run), every proof over a small model is ALSO re-decided by an independent explicit-state search (a disagreement is FND_CERTIFICATE_DISAGREES and withdraws the proof, and a search that stops without showing the model is too large to cover withholds the proof as FND_REACHABILITY_UNKNOWN), a proof that needs variables held fixed is FND_REACHABILITY_UNDER_HYPOTHESES only when the document DECLARES them `frame: stable` — and demotes verified — while one that needs undeclared frames is FND_REACHABILITY_UNKNOWN naming them, a write outside a declared range is FND_RANGE_VIOLATION rather than a silently disabled step, and an unsatisfiable initial state makes every constraint hold vacuously, reported at error severity because it MASKS violations rather than merely failing to prove one.',
   coverageDemotion:
@@ -64,6 +64,18 @@ describe('the scope corpus is pinned, claim by claim', () => {
     expect(SCOPE.contextualAmbiguityNotChecked).toContain('not decided by symspec')
     expect(SCOPE.semanticProposeOnly).toContain('propose-only assist')
     expect(SCOPE.numericChecked).toContain('LIA/LRA')
+    // Spec 007 AC-2-5/2-6: a bound is compared only within one role and one dimension, and
+    // the pair it keeps apart is DISCLOSED rather than dropped. The pre-role wording claimed
+    // every jointly unsatisfiable pair on one quantity key is proved, which a deadline
+    // against a duration now is not, so it is asserted ABSENT.
+    expect(SCOPE.numericChecked).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(SCOPE.numericChecked).toContain('in one role and one dimension')
+    expect(SCOPE.numericChecked).not.toContain('per-system quantity (unit-normalized) are reported')
+    // The decide key strips a guard copula and de-inflects the leading verb, so "nothing
+    // beyond leading articles" was false; and a committed table can over-unify too.
+    expect(SCOPE.overUnification).toContain('a single copula in a trigger or precondition')
+    expect(SCOPE.overUnification).toContain('committed vocabulary entry')
+    expect(SCOPE.overUnification).not.toContain('beyond leading articles)')
     expect(SCOPE.coverageDemotion).toContain('demote verified, never promote')
     // Spec 007 Story 3: the claim must say that sharing vocabulary is not a comparison, and
     // that a weakened run cannot certify — and must not keep the old, looser wording.

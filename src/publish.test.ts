@@ -29,7 +29,9 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { currentManifest } from './app/operations/index.ts'
+import { SCOPE_KEYS, scopeParagraphs } from './app/runtime/scope.ts'
 import { VERSION } from './app/runtime/version.ts'
+import { DEFAULT_SEMANTIC_THRESHOLD } from './domain/engine/formal/semantic.ts'
 
 const read = (relative: string): string =>
   readFileSync(fileURLToPath(new URL(`../${relative}`, import.meta.url)), 'utf8')
@@ -314,6 +316,32 @@ describe('the README is a PACKAGE readme, greenfield-first and honest', () => {
     expect(prose).toContain('"no conflict was proven"')
   })
 
+  it('quotes EVERY scope claim verbatim, and nothing else, as the section says', () => {
+    // The section says the claims are the tool's own words, verbatim, and that this test
+    // holds it to that. The phrase checks above passed for years over blockquotes that were
+    // abridged paraphrases of the corpus — the numeric claim lost its middle clause, and a
+    // phrase check cannot see a claim that was shortened. So the blockquotes are parsed out of
+    // the section and compared to the corpus as a LIST: a missing claim, a reworded one, and a
+    // stale copy left beside the new one each fail.
+    const section = readme.slice(
+      readme.indexOf('## Honest scope'),
+      readme.indexOf('The practical consequence is that'),
+    )
+    const quotes = section
+      .split(/\n\s*\n/)
+      .filter((block) => block.startsWith('>'))
+      .map((block) =>
+        block
+          .split('\n')
+          .map((line) => line.replace(/^>\s?/, ''))
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      )
+    expect(quotes).toHaveLength(SCOPE_KEYS.length)
+    expect(quotes).toEqual([...scopeParagraphs()])
+  })
+
   it('makes NO certify claim — honesty by absence', () => {
     // `certify` was removed from the spec at Gate 1 and no encoding exists, so the README
     // must not imply one. This is the assertion that keeps a future marketing edit honest:
@@ -401,6 +429,31 @@ describe('the README is a PACKAGE readme, greenfield-first and honest', () => {
     expect(study).toMatch(/symspec glossary \\?"[^"\\]+\\?" \\?"[^"\\]+\\?"/)
   })
 
+  it('proves the case study on two bounds of ONE role, and says why the other pair does not', () => {
+    const study = readme.slice(
+      readme.indexOf('## Two requirements that quietly disagree'),
+      readme.indexOf('## The state model'),
+    )
+    // Spec 007 AC-2-6 made a deadline (`within`) and a duration (`for`) two roles the numeric
+    // tier never asserts on one variable. The section's first pair, "complete the infusion
+    // within 30 minutes" against "run ... for at least 60 minutes", therefore stopped proving:
+    // on the built CLI the glossary commit yields FND_NUMERIC_UNCOMPARED, not a contradiction.
+    // The proof is now shown on two durations, measured, and the old pair is kept only as the
+    // explained counter-case. NEGATIVE GUARDS on the stale transcript: its glossary command
+    // and its contradiction message must be gone, not merely joined by the new ones.
+    expect(study).toContain('symspec glossary "administer the infusion" "run the infusion"')
+    expect(study).not.toContain('symspec glossary "complete the infusion" "run the infusion"')
+    expect(study).not.toContain('numeric constraints\n         on "complete the infusion"')
+    expect(study).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(study.indexOf('FND_NUMERIC_CONTRADICTION')).toBeLessThan(
+      study.indexOf('FND_NUMERIC_UNCOMPARED'),
+    )
+    // The measured counts after the commit include the no-state-model disclosure; the count
+    // printed before that disclosure existed is asserted ABSENT.
+    expect(study).toContain('"counts":{"error":1,"warn":4,"info":3}')
+    expect(study).not.toContain('"counts":{"error":1,"warn":4,"info":2}')
+  })
+
   it('shows the WHOLE-DOCUMENT vocabulary pass, including what it refuses', () => {
     expect(readme).toContain('## Designing the vocabulary in one pass')
     const section = readme.slice(
@@ -412,14 +465,25 @@ describe('the README is a PACKAGE readme, greenfield-first and honest', () => {
     // convenience and skip the reason to trust it: the refusal happens ABOVE the similarity
     // threshold, which is the one fact that shows cosine is not deciding.
     expect(section).toContain('opposition-candidate')
-    expect(section).toContain('0.811')
-    expect(section).toContain('above the 0.72')
+    expect(section).toContain('0.806')
+    // The threshold is the constant `check` and `propose-glossary` default to, so a retuned
+    // default fails here rather than leaving a stale number in the prose.
+    expect(section).toContain(`above the ${DEFAULT_SEMANTIC_THRESHOLD}`)
     // And the non-vacuity signal, so "nothing to merge" is distinguishable from "did not look".
     expect(section).toContain('pairsCompared')
     // NEGATIVE GUARD on the re-measurement. The section claims every number is measured on
     // this build; the previous fixture's cosine must be GONE, not merely joined by the new
     // one. A positive-only check passes on prose carrying both.
     expect(section).not.toContain('0.809')
+    // Re-measured again once the section printed the fixture it was measured on: 0.811 came
+    // from a document the README never showed, and the shown one measures 0.806.
+    expect(section).not.toContain('0.811')
+    // The fixture is IN the section now, so "every number below is measured" is checkable by
+    // running it. And the gradient's pipe runs as written: the stale step that wrote an
+    // envelope into plan.jsonl and told the reader to "edit the JSON out" is asserted gone.
+    expect(section).toContain('cat > reqs.jsonl')
+    expect(section).toContain('jq -r .data.opsJsonl > plan.jsonl')
+    expect(section).not.toContain('then edit the JSON out')
   })
 
   it('shows the GUARD half, and that it is never applyable', () => {

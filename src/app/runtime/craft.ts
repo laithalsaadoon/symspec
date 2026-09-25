@@ -68,6 +68,8 @@
  *   a running system.
  */
 
+import { DEFAULT_SEMANTIC_THRESHOLD } from '../../domain/engine/formal/semantic.ts'
+
 // ---------------------------------------------------------------------------
 // The section shape
 // ---------------------------------------------------------------------------
@@ -226,18 +228,18 @@ when NOTHING was cross-compared at all.
    only those. Paraphrase is the enemy here, not repetition — a spec that reads
    repetitively is a spec whose conflicts are provable.
 4. **Commit oppositions you rely on.** If the conflict you care about is
-   "start" vs "halt", run \`symspec antonym add start halt\` so the solver treats them
+   "start" vs "halt", run \`symspec antonym start halt\` so the solver treats them
    as contraries — two actions that cannot both hold. Until you do, the solver sees two
    unrelated facts and proves nothing.
 5. **Commit synonyms you could not avoid.** Where two teams genuinely use different
-   words for one thing, \`symspec glossary add "<canonical>" "<alias>"\` unifies them.
+   words for one thing, \`symspec glossary "<canonical>" "<alias>"\` unifies them.
 6. **Only then \`check\`.** The propose-only tier will suggest what you missed
    (\`FND_SIMILAR_SEMANTIC\`, \`FND_OPPOSITION_CANDIDATE\`,
    \`FND_QUANTITY_ALIAS_CANDIDATE\`) — treat each as a gap in step 3, not as a chore.
 
 **The one thing never to do mechanically.** An \`FND_OPPOSITION_CANDIDATE\` offers TWO
-mutually exclusive remedies: \`antonym add\` if the verbs are opposites,
-\`glossary add\` if they are synonyms. Committing the wrong one MANUFACTURES a false
+mutually exclusive remedies: \`symspec antonym\` if the verbs are opposites,
+\`symspec glossary\` if they are synonyms. Committing the wrong one MANUFACTURES a false
 contradiction, and embeddings cannot tell which is right because antonyms embed close
 together. Read the pair and decide; the always-safe third option is the reviewed waiver
 in the demotion's \`repair.ops\`, which records "I triaged this pair, as written, and it is
@@ -494,9 +496,10 @@ field rather than assuming a code's severity from its name.`,
  * same outcomes, so the example cannot rot into a plausible-looking fiction.
  *
  * The example is deliberately the SILENCE trap rather than a lint fix, because that is
- * what an author actually gets wrong. Step 1 produces a document that looks perfect —
- * `verified: true`, no error or warning, exit 0 — and contains a flat contradiction. The only
- * visible tell is `progress.atomsUncompared: 2`.
+ * what an author actually gets wrong. Step 1 produces a document that exits 0 with no error
+ * or warning and contains a flat contradiction. The tells are `progress.atomsUncompared: 2`
+ * and, with the pinned model, an open `FND_OPPOSITION_CANDIDATE` that demotes `verified` —
+ * which an agent reading only the exit code never sees.
  */
 const WORKED_EXAMPLE: CraftSection = {
   id: 'worked-example',
@@ -504,8 +507,8 @@ const WORKED_EXAMPLE: CraftSection = {
   summary:
     'Two requirements that contradict each other, a clean check, and the one op that makes the conflict provable.',
   codes: ['FND_CONTRADICTION'],
-  body: `Measured on this build. The point of the example is that **step 1 looks
-perfect and is wrong.**
+  body: `Measured on this build, with the pinned embedding model. The point of the example
+is that **step 1 exits 0 and is wrong.**
 
 **Step 1 — author two requirements that contradict each other.**
 
@@ -522,18 +525,31 @@ symspec check
 Result:
 
 \`\`\`
-verified: true    counts.error: 0    counts.warn: 0    exit 0
-pairsChecked: 1   progress.atomsUncompared: 2
+counts.error: 0    counts.warn: 0    counts.info: 3    exit 0
+verified: false    progress.demotions: 1    progress.atomsUncompared: 2
+pairsChecked: 1
 \`\`\`
 
-(The one info finding is \`FND_REACHABILITY_NOT_CHECKED\`: no state model is committed, so the
-reachability tier did not run. It says nothing about these two sentences.)
-
 The document says the scheduler shall both start and halt the same run on the same
-trigger, and \`check\` is **clean**. Nothing is broken — this is the soundness boundary
-working as designed. "start" and "halt" are two unrelated atoms, so the solver had
-nothing to contradict. The only signal is \`atomsUncompared: 2\`: two atoms had no
-cross-requirement partner.
+trigger, and \`check\` exits **0** with no error. Nothing is broken — this is the soundness
+boundary working as designed. "start" and "halt" are two unrelated atoms, so the solver had
+nothing to contradict, and \`atomsUncompared: 2\` says two atoms had no cross-requirement
+partner.
+
+What keeps it from being silent is the propose tier, and all three info findings are worth
+reading:
+
+- \`FND_OPPOSITION_CANDIDATE\` — the two responses share an object and differ in their
+  leading verb, so they may be opposites. The open candidate is the one demotion, which is why
+  \`verified\` is false and \`check --strict\` exits 3.
+- \`FND_SIMILAR_SEMANTIC\` — the model scores the responses at cosine 0.813, above the
+  ${DEFAULT_SEMANTIC_THRESHOLD} threshold. Similarity alone cannot tell a paraphrase from an opposite, which is the point.
+- \`FND_REACHABILITY_NOT_CHECKED\` — no state model is committed, so the reachability tier
+  did not run. It says nothing about these two sentences.
+
+The demotion's \`repair.commands\` hand back BOTH readings, \`symspec antonym start halt\` and
+\`symspec glossary "start the nightly run" "halt the nightly run"\`, and do not choose. An agent
+that branches only on the exit code stops here and ships the contradiction.
 
 **Step 2 — commit the opposition, so the solver can SEE it.**
 
@@ -545,19 +561,21 @@ symspec check
 Result:
 
 \`\`\`
-verified: true    counts.error: 1    exit 1
+counts.error: 1    counts.info: 1    exit 1
+verified: true    progress.demotions: 0    progress.atomsUncompared: 0    progress.openFindings: 1
 FND_CONTRADICTION (error) — names BOTH requirement ids, with the unsat core as evidence
-progress.atomsUncompared: 0    progress.openFindings: 1
 \`\`\`
 
 **What changed, and what did not.** The document is byte-identical apart from one
 antonym entry. No requirement was edited. The conflict was always there; committing the
 vocabulary is what made it PROVABLE. \`atomsUncompared\` fell from 2 to 0 because the
-two responses are now contraries, so the solver compares them.
+two responses are now contraries, so the solver compares them, and the opposition candidate
+is gone because the pair is decided.
 
-**Read \`verified\` correctly.** It is \`true\` in BOTH runs, and that is not a bug —
-\`verified\` answers "was consistency actually CHECKED", not "is the document clean". A
-proven contradiction is the strongest evidence the decide tier ran. What says the
+**Read \`verified\` correctly.** It went from \`false\` to \`true\` while the document went
+from exit 0 to exit 1, and that is not a bug — \`verified\` answers "was consistency actually
+CHECKED", not "is the document clean". It was false while an opposition candidate was open,
+and a proven contradiction is the strongest evidence the decide tier ran. What says the
 document is bad is \`counts.error\` and the exit code, which went 0 → 1.
 
 **The loop, generalized.**
@@ -790,6 +808,9 @@ symspec check --field data.reachability
  "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":148,"timeoutMs":2000}
 \`\`\`
 
+(\`elapsedMs\` is wall-clock time on the machine that measured it, so yours will differ.
+Every other number is the model's.)
+
 TX-C1 holds — and the verdict is \`PROVED_UNDER_HYPOTHESES\`, not \`PROVED\`, exactly as
 the frame section predicts. The finding says so and names the hypothesis:
 
@@ -797,7 +818,10 @@ the frame section predicts. The finding says so and names the hypothesis:
 TX-C1: PROVED_UNDER_HYPOTHESES — no reachable state violates this constraint, ASSUMING
 these variables, which the document declares \`frame: stable\`, change only when a
 requirement changes them: held (written by TX-A1, TX-A2); queued (written by TX-A1, TX-A3).
-That is a HYPOTHESIS: no requirement establishes it.
+That is a HYPOTHESIS: no requirement establishes it, and with the frame released the
+constraint IS violable, so this is a proof about the declared model and not about the
+system as specified — \`verified\` is demoted accordingly. A variable written by NO
+requirement is the sharpest case: nothing in the document keeps it from changing.
 \`\`\`
 
 **Step 2 — add a second invariant that sounds obviously true, and watch it FAIL.**
@@ -811,7 +835,7 @@ symspec check --field data.reachability
 
 \`\`\`json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":324,"timeoutMs":2000}
+ "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":344,"timeoutMs":2000}
 \`\`\`
 
 Exit **1**, through the existing contract — the error-severity finding lands in
@@ -842,7 +866,7 @@ symspec check --field data.reachability
 
 \`\`\`json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":228,"timeoutMs":2000}
+ "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":179,"timeoutMs":2000}
 \`\`\`
 
 Exit **0**. Both invariants now hold, and the change was to the requirement the trace

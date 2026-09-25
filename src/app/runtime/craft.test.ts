@@ -34,7 +34,7 @@ import {
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
 import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
-import { embedderLayerOf } from '../../ports/embedder.ts'
+import { type Embedder, embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
 import { type CheckPayload, checkOp } from '../operations/check.ts'
@@ -380,6 +380,30 @@ describe('the compound section`s routing advice is real', () => {
  * half stopped being true, the section would be teaching a fiction — and it is the
  * section an author is most likely to trust, because it comes with numbers.
  */
+/**
+ * The two responses' cosine, MEASURED with the pinned model on the built CLI: 0.813.
+ *
+ * The suite never loads the model, and the hash stub scores these two phrases far below the
+ * 0.72 threshold — so under the stub the propose tier is silent and step 1 reports
+ * `verified: true`, which is not what a user with the model sees. This embedder returns the
+ * measured cosine for exactly the two response phrases and defers to the stub for every other
+ * text, so the test asserts the section's real-model outcome rather than the stub's.
+ */
+const MEASURED_COSINE = 0.813
+const measuredEmbedder = (): Embedder => {
+  const stub = stubEmbedder()
+  const dim = 16
+  const axis = (v: readonly number[]) => Float32Array.from({ length: dim }, (_, i) => v[i] ?? 0)
+  const table: Record<string, Float32Array> = {
+    'start the nightly run': axis([1]),
+    'halt the nightly run': axis([MEASURED_COSINE, Math.sqrt(1 - MEASURED_COSINE ** 2)]),
+  }
+  return async (texts) => {
+    const fallback = await stub(texts)
+    return texts.map((t, i) => table[t] ?? (fallback[i] as Float32Array))
+  }
+}
+
 describe('the worked example produces the outcomes it claims', () => {
   const run = async () => {
     let document: RequirementsDocument = emptyDocument()
@@ -403,7 +427,7 @@ describe('the worked example produces the outcomes it claims', () => {
       ),
       Layer.succeed(DocPath)(makeDocPath({})),
       solverServiceLayer,
-      embedderLayerOf(stubEmbedder()),
+      embedderLayerOf(measuredEmbedder()),
       Layer.succeed(StreamSource)(StreamSource.of({ read: () => Effect.succeed(pending) })),
     )
 
@@ -449,20 +473,35 @@ describe('the worked example produces the outcomes it claims', () => {
     return { before, after }
   }
 
-  it('step 1 checks CLEAN over a flat contradiction — the silence trap', async () => {
+  it('step 1 exits 0 over a flat contradiction, and only the propose tier says so', async () => {
     const { before } = await run()
     expect(before.counts.error, 'the section claims zero errors before the antonym').toBe(0)
     expect(before.counts.warn, 'the section claims zero warnings before the antonym').toBe(0)
-    // The section names the one info finding: the no-state-model reachability disclosure.
+    // The section names all three info findings: the opposition candidate and the similarity
+    // suggestion the real model raises, and the no-state-model reachability disclosure.
     expect(before.findings.map((f) => [f.code, f.severity])).toEqual([
+      ['FND_OPPOSITION_CANDIDATE', 'info'],
+      ['FND_SIMILAR_SEMANTIC', 'info'],
       ['FND_REACHABILITY_NOT_CHECKED', 'info'],
     ])
-    // Negative guard on the literal that disclosure made stale.
     const body = CRAFT_SECTIONS.find((s) => s.id === 'worked-example')?.body ?? ''
-    expect(body).toContain('FND_REACHABILITY_NOT_CHECKED')
+    for (const code of [
+      'FND_OPPOSITION_CANDIDATE',
+      'FND_SIMILAR_SEMANTIC',
+      'FND_REACHABILITY_NOT_CHECKED',
+    ]) {
+      expect(body, code).toContain(code)
+    }
+    expect(body).toContain(`cosine ${MEASURED_COSINE}`)
     expect(body).not.toMatch(/findings: \d/)
-    expect(before.verified).toBe(true)
-    // The ONLY visible tell, and the number the section points at.
+    // The open candidate demotes, so step 1 is NOT verified. NEGATIVE GUARD on the stub-era
+    // claim that step 1 "looks perfect" with `verified: true`: it was measured under the hash
+    // stub, which never raises the candidate, and no user with the model ever saw it.
+    expect(before.verified).toBe(false)
+    expect(before.progress.demotions).toBe(1)
+    expect(before.coverage.demotions.map((d) => d.reason)).toEqual(['open-opposition-candidate'])
+    expect(body).not.toContain('It is `true` in BOTH runs')
+    expect(body).not.toContain('step 1 looks\nperfect')
     expect(before.progress.atomsUncompared).toBe(2)
     expect(before.pairsChecked).toBe(1)
   }, 60_000)
@@ -478,10 +517,30 @@ describe('the worked example produces the outcomes it claims', () => {
     // The atoms unified, which is the mechanism the section explains.
     expect(after.progress.atomsUncompared).toBe(0)
     expect(after.progress.openFindings).toBe(1)
-    // `verified` stays TRUE, and the section explains why: it answers "was consistency
-    // CHECKED", not "is the document clean".
+    expect(after.progress.demotions).toBe(0)
+    // `verified` turns TRUE over a proven contradiction, and the section explains why: it
+    // answers "was consistency CHECKED", not "is the document clean".
     expect(after.verified).toBe(true)
+    expect(after.findings.map((f) => f.code)).toEqual([
+      'FND_CONTRADICTION',
+      'FND_REACHABILITY_NOT_CHECKED',
+    ])
   }, 60_000)
+})
+
+describe('the craft corpus names only commands the flat CLI accepts', () => {
+  it('never spells `glossary` or `antonym` with a nested verb', () => {
+    // The surface is FLAT: `symspec antonym start halt`, two positionals. `antonym add start
+    // halt` binds `add` to the first positional and fails with "Unexpected positional
+    // argument" (measured on the built CLI). The corpus taught that form in three places,
+    // and `publish.test.ts`'s equivalent sweep reads only the README.
+    const nested = CRAFT_SECTIONS.flatMap((s) =>
+      [
+        ...s.body.matchAll(/`(?:symspec )?(glossary|antonym|term|waive) (add|remove|list|set)\b/g),
+      ].map((m) => `${s.id}: ${m[1]} ${m[2]}`),
+    )
+    expect(nested).toEqual([])
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -740,6 +799,13 @@ describe('the state-model section`s transcript is REAL', () => {
     expect(proof?.message).toContain('declares `frame: stable`')
     expect(proof?.message).toContain('held (written by TX-A1, TX-A2)')
     expect(proof?.message).toContain('queued (written by TX-A1, TX-A3)')
+    // VERBATIM, whole: the section's quote had stopped at "no requirement establishes it."
+    // while the finding went on to say the frame-released constraint IS violable — the half
+    // that tells a reader the proof is about the model, not the system. A prefix match
+    // cannot catch a truncated quote, so the whole message is asserted inside the body.
+    const flowed = (s: string) => s.replace(/\\`/g, '`').replace(/\s+/g, ' ')
+    const body = CRAFT_SECTIONS.find((s) => s.id === 'state-model')?.body ?? ''
+    expect(flowed(body)).toContain(flowed(proof?.message ?? '<no finding>'))
   }, 60_000)
 
   it('the SAME model with the frames left volatile is UNKNOWN (frame-undeclared), as the section says', async () => {
