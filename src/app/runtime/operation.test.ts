@@ -305,7 +305,14 @@ describe('buildManifest() — projection (b)', () => {
       findingCodes: [{ code: 'FND_CONTRADICTION', description: 'a proven conflict' }],
       lintCodes: [{ code: 'GTWR_R1_PATTERN', description: 'not EARS' }],
       scope: { silence: 'silence is not a consistency certificate' },
+      runWeakening: [{ knob: 'strict', flag: '--strict', order: 'false is weaker than true.' }],
     })
+
+  it('publishes the run-weakening table it is given', () => {
+    expect(manifest().runWeakening).toEqual([
+      { knob: 'strict', flag: '--strict', order: 'false is weaker than true.' },
+    ])
+  })
 
   it('reads name, summary and type off the operation', () => {
     const row = manifest().operations[0]

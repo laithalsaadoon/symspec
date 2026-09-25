@@ -44,6 +44,7 @@
  */
 
 import { Effect, Schema } from 'effect'
+import { RUN_WEAKENING } from '../../domain/config/config.ts'
 import { FND_CODES, FndCodeMeta } from '../../domain/engine/formal/codes.ts'
 import { GTWR_CODES, GtwrCodeMeta } from '../../domain/engine/lint/codes.ts'
 import {
@@ -197,6 +198,9 @@ const manifestEnvelope = () =>
       // it — a disclosure that lives only in prose is one the agent following instructions
       // never sees.
       scope: SCOPE,
+      // The pinned-config knob table (spec 007 AC-5-10), projected from the one table `check`
+      // compares a run against.
+      runWeakening: RUN_WEAKENING,
     }),
   )
 

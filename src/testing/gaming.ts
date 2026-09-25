@@ -83,7 +83,7 @@ import {
 import { foldOps, type MutateOptions } from '../domain/requirements/mutate.ts'
 import type { AddOp, DocumentOp, OpVerb } from '../domain/requirements/ops.ts'
 import { resolveRef } from '../domain/requirements/resolve.ts'
-import { DocPath, DocStore, makeDocPath } from '../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../ports/doc-store.ts'
 import {
   EMBED_STUB_ENV,
   type Embedder,
@@ -1630,7 +1630,7 @@ const runCheck = async (
     throw new Error(`the embedding-stub move needs ${EMBED_STUB_ENV}=1 (vitest.config.ts sets it)`)
   }
   const store = Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: (path) =>
         path === 'doc.json'
           ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })

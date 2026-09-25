@@ -399,6 +399,16 @@ export interface Manifest {
    * agent may conclude from a clean run.
    */
   readonly scope: Readonly<Record<string, string>>
+  /**
+   * The run knobs a `symspec.config.json` can pin, each with the flag that sets it and which way
+   * is stronger. A `check` run below a pinned knob is demoted `run-weakened` and listed in
+   * `data.run.belowPinned`.
+   */
+  readonly runWeakening: readonly {
+    readonly knob: string
+    readonly flag: string
+    readonly order: string
+  }[]
 }
 
 /**
@@ -418,6 +428,7 @@ export const buildManifest = (args: {
   readonly findingCodes: readonly CodeRow[]
   readonly lintCodes: readonly CodeRow[]
   readonly scope: Readonly<Record<string, string>>
+  readonly runWeakening: Manifest['runWeakening']
 }): Manifest => ({
   apiVersion: args.apiVersion,
   version: args.version,
@@ -432,6 +443,7 @@ export const buildManifest = (args: {
   findingCodes: args.findingCodes,
   lintCodes: args.lintCodes,
   scope: args.scope,
+  runWeakening: args.runWeakening,
 })
 
 // ---------------------------------------------------------------------------

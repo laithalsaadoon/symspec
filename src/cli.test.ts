@@ -1515,3 +1515,149 @@ describe('spec 007 document format v4, through the real process', () => {
     expect(envelope.code).toBe('ERR_SCHEMA_VERSION')
   })
 })
+
+/**
+ * Spec 007 AC-5-10 and the AC-5-13 `init --split` half, on the SHIPPED bundle: the fixed config
+ * location, the effective-value comparators, and the write-safety of `init --split` are each
+ * observed through a real process, a real filesystem and the real exit code.
+ *
+ * The suite runs on the TEST stub embedder, which the engine already demotes `run-weakened`.
+ * So these assertions read `data.run.belowPinned` and the demotion ACTION, which name the knob,
+ * rather than the bare reason, which the stub shares.
+ */
+describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () => {
+  const roots: string[] = []
+  const workDir = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), 'symspec-pins-cli-'))
+    roots.push(dir)
+    return dir
+  }
+  afterAll(async () => {
+    const { rm } = await import('node:fs/promises')
+    await Promise.all(roots.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+  })
+
+  const CONFIG = 'symspec.config.json'
+  const REPO_MARKER = ['.', 'git'].join('')
+  const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
+
+  /** An initialized document in `dir`, with an optional config beside it. */
+  const docIn = (dir: string, gate?: Record<string, unknown>): string => {
+    const doc = join(dir, 'requirements.json')
+    expect(run('init', doc).code).toBe(0)
+    if (gate !== undefined) writeFileSync(join(dir, CONFIG), json({ configVersion: 1, gate }))
+    return doc
+  }
+
+  const checkRun = (...args: string[]) => {
+    const { envelope, code } = runJson('check', ...args)
+    const data = envelope.data as {
+      run: { belowPinned?: string[]; pinned?: Record<string, unknown>; config?: string }
+      coverage: { demotions: { reason: string; action: string }[] }
+    }
+    return { code, data, envelope }
+  }
+
+  it('--temporal-bound 1 under a pinned 10 is run-weakened; 10 is not (sabotage (a))', () => {
+    const doc = docIn(workDir(), { temporalBound: 10 })
+    const below = checkRun(doc, '--temporal-bound', '1')
+    expect(below.data.run.belowPinned).toEqual(['temporalBound'])
+    expect(below.data.run.pinned).toEqual({ temporalBound: 10 })
+    const pinDemotion = below.data.coverage.demotions.find((d) =>
+      d.action.includes('temporalBound'),
+    )
+    expect(pinDemotion?.reason).toBe('run-weakened')
+    expect(pinDemotion?.action).toContain('--temporal-bound 10')
+    expect(checkRun(doc, '--temporal-bound', '10').data.run.belowPinned).toEqual([])
+  })
+
+  it('--reachability-timeout-ms 1 under a pinned 0 (inherit) is run-weakened (sabotage (b), F10)', () => {
+    const doc = docIn(workDir(), { reachabilityTimeoutMs: 0 })
+    const below = checkRun(doc, '--reachability-timeout-ms', '1')
+    expect(below.data.run.belowPinned).toEqual(['reachabilityTimeoutMs'])
+    expect(below.data.run.pinned).toEqual({ reachabilityTimeoutMs: 2000 })
+    expect(checkRun(doc).data.run.belowPinned).toEqual([])
+  })
+
+  it('reads the config at the repository toplevel, never a weaker one beside the document (sabotage (c), F11)', () => {
+    const root = workDir()
+    mkdirSync(join(root, REPO_MARKER))
+    writeFileSync(join(root, CONFIG), json({ configVersion: 1, gate: { temporalBound: 10 } }))
+    const sub = join(root, 'specs')
+    mkdirSync(sub)
+    const doc = docIn(sub, {})
+    const { data } = checkRun(doc, '--temporal-bound', '1')
+    expect(data.run.config).toBe(join(root, CONFIG))
+    expect(data.run.belowPinned).toEqual(['temporalBound'])
+  })
+
+  it('a config that is not JSON fails closed as ERR_CONFIG_INVALID at exit 2', () => {
+    const dir = workDir()
+    const doc = docIn(dir)
+    writeFileSync(join(dir, CONFIG), '{ nope')
+    const { envelope, code } = runJson('check', doc)
+    expect(code).toBe(2)
+    expect(envelope.code).toBe('ERR_CONFIG_INVALID')
+  })
+
+  it('init --split writes the anchors and the config; check then reads them', () => {
+    const dir = workDir()
+    const doc = join(dir, 'requirements.json')
+    const { envelope, code } = runJson('init', doc, '--split')
+    expect(code).toBe(0)
+    expect((envelope.data as { split: unknown }).split).toEqual({
+      config: join(dir, CONFIG),
+      intent: join(dir, 'intent.json'),
+      policy: join(dir, 'policy.json'),
+    })
+    const config = JSON.parse(readFileSync(join(dir, CONFIG), 'utf8')) as {
+      files: Record<string, string>
+      gate: Record<string, unknown>
+    }
+    expect(config.files).toEqual({
+      document: 'requirements.json',
+      intent: 'intent.json',
+      policy: 'policy.json',
+    })
+    // Pinned at the defaults, so the only knob a suite run is below is the stub embedder.
+    const checked = checkRun(doc)
+    expect(checked.data.run.belowPinned).toEqual(['embedder'])
+    expect(
+      checked.data.coverage.demotions.some(
+        (d) =>
+          d.reason === 'run-weakened' && d.action.includes('SYMSPEC_EMBED_STUB=0 symspec check'),
+      ),
+    ).toBe(true)
+  })
+
+  it('init --split never overwrites an existing anchor, even with --force (sabotage (d))', () => {
+    const dir = workDir()
+    const doc = join(dir, 'requirements.json')
+    const owned = json({ intentVersion: 1, items: [{ id: 'I1', text: 'The owner wrote this.' }] })
+    writeFileSync(join(dir, 'intent.json'), owned)
+    for (const extra of [[], ['--force']]) {
+      const { envelope, code } = runJson('init', doc, '--split', ...extra)
+      expect(code).toBe(2)
+      expect(envelope.code).toBe('ERR_DOC_EXISTS')
+      expect(readFileSync(join(dir, 'intent.json'), 'utf8')).toBe(owned)
+      expect(existsSync(join(dir, 'policy.json'))).toBe(false)
+      expect(existsSync(join(dir, CONFIG))).toBe(false)
+      expect(existsSync(doc)).toBe(false)
+    }
+  })
+
+  it('the manifest publishes the knob table as runWeakening', () => {
+    const { envelope } = runJson('manifest')
+    const rows = (envelope.data as { runWeakening: { knob: string; flag: string }[] }).runWeakening
+    expect(rows.map((r) => r.knob)).toEqual([
+      'semantic',
+      'embedder',
+      'semanticThreshold',
+      'timeoutMs',
+      'reachabilityTimeoutMs',
+      'solverBudgetMs',
+      'temporalBound',
+      'strict',
+    ])
+  })
+})

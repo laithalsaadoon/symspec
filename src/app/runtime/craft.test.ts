@@ -33,7 +33,7 @@ import {
   type Requirement,
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
-import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/doc-store.ts'
 import { type Embedder, embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
@@ -411,7 +411,7 @@ describe('the worked example produces the outcomes it claims', () => {
 
     const layer = Layer.mergeAll(
       Layer.succeed(DocStore)(
-        DocStore.of({
+        documentOnlyStore({
           load: (path) =>
             path === 'doc.json'
               ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })
@@ -701,7 +701,7 @@ describe('the state-model section`s transcript is REAL', () => {
         Effect.provide(
           Layer.mergeAll(
             Layer.succeed(DocStore)(
-              DocStore.of({
+              documentOnlyStore({
                 load: (path) =>
                   path === 'doc.json'
                     ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })

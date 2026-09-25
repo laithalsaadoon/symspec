@@ -21,7 +21,7 @@ import {
   type LoadedDocument,
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
-import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/doc-store.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
 import { hasErrorSeverityFinding } from '../runtime/exit.ts'
@@ -57,7 +57,7 @@ interface Fs {
 const layers = (fs: Fs, stream = '') =>
   Layer.mergeAll(
     Layer.succeed(DocStore)(
-      DocStore.of({
+      documentOnlyStore({
         load: (path) =>
           path === 'doc.json'
             ? Effect.succeed({
@@ -528,7 +528,7 @@ describe('the injected fold options reach the fold', () => {
     const fs = fresh()
     const withUnknown = Layer.mergeAll(
       Layer.succeed(DocStore)(
-        DocStore.of({
+        documentOnlyStore({
           load: () =>
             Effect.succeed({
               document: fs.document,

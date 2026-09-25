@@ -361,8 +361,17 @@ const downloadModelCommand = Command.make('download-model', {}, () =>
 
 const initCommand = Command.make(
   'init',
-  { file: pathArgument(initOp, 'file'), force: booleanFlag(initOp, 'force') },
-  (config) => emit(initOp, { file: Option.getOrNull(config.file), force: config.force }),
+  {
+    file: pathArgument(initOp, 'file'),
+    force: booleanFlag(initOp, 'force'),
+    split: booleanFlag(initOp, 'split'),
+  },
+  (config) =>
+    emit(initOp, {
+      file: Option.getOrNull(config.file),
+      force: config.force,
+      split: config.split,
+    }),
 ).pipe(Command.withDescription(initOp.summary))
 
 const listCommand = Command.make('list', { file: pathArgument(listOp, 'file') }, (config) =>

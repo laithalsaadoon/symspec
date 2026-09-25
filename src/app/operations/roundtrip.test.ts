@@ -47,7 +47,7 @@ import {
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
 import { type DocumentOp, decodeOp, opLine } from '../../domain/requirements/ops.ts'
-import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/doc-store.ts'
 import { embedderLayerOf } from '../../ports/embedder.ts'
 import { StreamSource } from '../../ports/stream.ts'
 import { runOperation } from '../runtime/operation.ts'
@@ -68,7 +68,7 @@ interface World {
 const worldLayers = (world: World, stream: string) =>
   Layer.mergeAll(
     Layer.succeed(DocStore)(
-      DocStore.of({
+      documentOnlyStore({
         load: () =>
           Effect.succeed({
             document: world.document,

@@ -20,7 +20,7 @@ symspec install                            # drop this guidance into your agent 
 ```
 
 `manifest` is the machine-readable version of this document. `explain` answers for a
-single code across all 88 of them (22 `ERR_*`, 42 `FND_*`, 24 `GTWR_*`) and returns
+single code across all 89 of them (23 `ERR_*`, 42 `FND_*`, 24 `GTWR_*`) and returns
 its family, severity, tier, meaning, remedy, and a worked example where the catalog carries
 one — so a fix loop never pays for the whole contract to learn what one code means.
 
@@ -67,6 +67,28 @@ Failure:
   `--solver-budget-ms`: `{recommendedBudgetMs, reason, basis, rationale}`, extrapolated
   from the work THIS run completed and the time it took. Absent on an unbounded run and on a
   run with comfortable headroom — the absence is the all-clear.
+
+### Pinned runs
+
+A committed `symspec.config.json` pins the run settings the gate uses. It is read from ONE
+place — the document's repository toplevel, or the document's own directory outside a work
+tree — and never searched for, so a config dropped beside the document is not read.
+`symspec init --split` writes one pinning every knob at its default, beside skeleton intent
+and policy files, and never overwrites any of the three. A `check` below a pin is demoted
+`run-weakened` once per knob and listed in `data.run.belowPinned` next to
+`data.run.pinned`; every such demotion carries the one command that runs at all the pins. The
+comparison reads the value each tier actually ran at:
+
+| Knob | Set by | Order |
+|---|---|---|
+| `semantic` | `--semantic` | false is weaker than true (the semantic tier did not run). |
+| `embedder` | `SYMSPEC_EMBED_STUB` | no embedder is weaker than the TEST stub, which is weaker than the pinned model. |
+| `semanticThreshold` | `--semantic-threshold` | higher is weaker (the paraphrase pass proposes less). |
+| `timeoutMs` | `--timeout-ms` | lower is weaker; the minimum legal value is 1. |
+| `reachabilityTimeoutMs` | `--reachability-timeout-ms` | lower is weaker, compared on the resolved bound (0 inherits --timeout-ms). |
+| `solverBudgetMs` | `--solver-budget-ms` | 0 (unbounded) is strongest; otherwise lower is weaker. |
+| `temporalBound` | `--temporal-bound` | 0 (off) is weakest; otherwise lower is weaker. |
+| `strict` | `--strict` | false is weaker than true (the strict gate did not run). |
 
 ## Operations
 
@@ -755,6 +777,7 @@ one.
 | `ERR_EMBED_MODEL_MISSING` | The embedding model (core to every `check`) is not cached and remote loading is disabled — the run fails closed rather than silently skipping the semantic/opposition tier. |
 | `ERR_DUPLICATE_KEY` | A create supplied a --key that another requirement already uses; keys must be unique. |
 | `ERR_CLAUSE_UNBOUND` | The words before the modal that no stored slot holds include an unbound clause marker (Unless, Provided (that), In case, Except, Before, Until, Only if, Even if), so the requirement is refused rather than stored without its condition. |
+| `ERR_CONFIG_INVALID` | `symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, or the document carries an inline intent or policy alongside a split one. The run fails closed rather than checking without the pins. |
 
 ## Finding codes (`FND_*`)
 

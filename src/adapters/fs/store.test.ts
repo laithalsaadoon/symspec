@@ -19,7 +19,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -560,5 +560,91 @@ describe('exists', () => {
     // unreadable path is not a reason to abort with a different error.
     const dir = tempDir()
     expect(await withStore((s) => s.exists(join(dir, 'a', 'b', 'c.json')))).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The bundle: the config at its one location, and the split anchors
+// ---------------------------------------------------------------------------
+
+describe('loadBundle', () => {
+  const writeJson = (path: string, value: unknown) =>
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
+  const INTENT = {
+    intentVersion: 1 as const,
+    items: [{ id: 'I1', text: 'Doors stay shut in motion.' }],
+  }
+  const POLICY = { policyVersion: 1, levels: [{ id: 'safety' }], assign: { I1: 'safety' } }
+
+  /** A v3 document in `dir`, and a config naming split anchors beside it. */
+  const fixture = (files: Record<string, string>) => {
+    const dir = tempDir()
+    const doc = join(dir, 'requirements.json')
+    writeFileSync(doc, serializeDocument(emptyDocument()))
+    writeJson(join(dir, 'symspec.config.json'), { configVersion: 1, files, gate: {} })
+    return { dir, doc }
+  }
+
+  it('is the bare document when no config exists', async () => {
+    const dir = tempDir()
+    const doc = join(dir, 'requirements.json')
+    writeFileSync(doc, serializeDocument(emptyDocument()))
+    const bundle = await withStore((s) => s.loadBundle(doc))
+    expect(Object.keys(bundle)).toEqual(['loaded'])
+  })
+
+  it('attaches the split intent and policy the config names, with where each came from', async () => {
+    const { dir, doc } = fixture({ intent: 'anchors/intent.json', policy: 'policy.json' })
+    mkdirSync(join(dir, 'anchors'))
+    writeJson(join(dir, 'anchors', 'intent.json'), INTENT)
+    writeJson(join(dir, 'policy.json'), POLICY)
+    const bundle = await withStore((s) => s.loadBundle(doc))
+    expect(bundle.intent).toEqual({
+      value: INTENT,
+      source: { from: 'file', path: join(dir, 'anchors', 'intent.json') },
+    })
+    expect(bundle.policy?.value).toEqual(POLICY)
+    expect(bundle.config?.governsDocument).toBe(true)
+  })
+
+  it('does not attach them to a document the config does not govern, and still reads its pins', async () => {
+    const { dir } = fixture({ document: 'requirements.json', intent: 'intent.json' })
+    writeJson(join(dir, 'intent.json'), INTENT)
+    const other = join(dir, 'scratch.json')
+    writeFileSync(other, serializeDocument(emptyDocument()))
+    const bundle = await withStore((s) => s.loadBundle(other))
+    expect(bundle.config?.governsDocument).toBe(false)
+    expect(bundle.intent).toBeUndefined()
+  })
+
+  it('refuses an inline intent beside a split one as ERR_CONFIG_INVALID', async () => {
+    const { dir, doc } = fixture({ intent: 'intent.json' })
+    writeJson(join(dir, 'intent.json'), INTENT)
+    writeFileSync(
+      doc,
+      serializeDocument({ ...emptyDocument(), docVersion: DOC_VERSION_VOCAB, intent: INTENT }),
+    )
+    const r = await attemptStore((s) => s.loadBundle(doc))
+    expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
+  })
+
+  it('refuses a split file that fails its schema as ERR_CONFIG_INVALID, naming the file', async () => {
+    const { dir, doc } = fixture({ policy: 'policy.json' })
+    writeJson(join(dir, 'policy.json'), { ...POLICY, assign: { I1: 'undeclared' } })
+    const r = await attemptStore((s) => s.loadBundle(doc))
+    expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
+    if (r._tag === 'Failure') expect(r.failure.error).toContain(join(dir, 'policy.json'))
+  })
+})
+
+describe('create', () => {
+  it('writes a new file, and refuses an existing one without touching it', async () => {
+    const dir = tempDir()
+    const p = join(dir, 'intent.json')
+    await withStore((s) => s.create(p, 'first\n'))
+    expect(readFileSync(p, 'utf8')).toBe('first\n')
+    const r = await attemptStore((s) => s.create(p, 'second\n'))
+    expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_DOC_EXISTS')
+    expect(readFileSync(p, 'utf8')).toBe('first\n')
   })
 })

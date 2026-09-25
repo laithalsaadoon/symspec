@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
 import type { Embedder } from '../../domain/engine/formal/embed.ts'
 import { DOC_VERSION, type RequirementsDocument } from '../../domain/requirements/document.ts'
 import { decodeOp } from '../../domain/requirements/ops.ts'
-import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/doc-store.ts'
 import { EmbedderService, embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound, ErrEmbedModelMissing, type OperationalError } from '../../ports/errors.ts'
 import { EXIT_CLEAN } from '../../ports/exit.ts'
@@ -87,7 +87,7 @@ const run = (
   | { readonly _tag: 'Failure'; readonly failure: OperationalError | Schema.SchemaError }
 > => {
   const store = Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: () =>
         document === undefined
           ? Effect.fail(new ErrDocNotFound({ error: 'no document', suggestions: [] }))

@@ -31,7 +31,7 @@ import {
   type Requirement,
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
-import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/doc-store.ts'
 import { EmbedderService, embedderLayerOf } from '../../ports/embedder.ts'
 import { runOperation } from '../runtime/operation.ts'
 import { type CheckPayload, checkOp } from './check.ts'
@@ -97,7 +97,7 @@ const orthogonalEmbedder = (): Embedder => {
 
 const memoryStore = (document: RequirementsDocument) =>
   Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: () =>
         Effect.succeed({ document, unknownKeys: {}, diagnostics: [] } satisfies LoadedDocument),
       save: () => Effect.void,
