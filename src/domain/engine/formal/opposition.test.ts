@@ -503,15 +503,17 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
 
   it('a two-token head the table lists is read whole, so its pair demotes too: roll back', async () => {
     // The atomizer probes "roll back" before "roll" (antonymReading); the candidate tier read only
-    // the first token, so `roll` met no class, the rests ("back the batch on …" / "the batch at
-    // …") never lined up, and nothing demoted: `verified: true` over a pair the table relates.
+    // the first token, so `roll` met no class, the rests ("back the batch in …" / "the batch
+    // within …") never lined up, and nothing demoted: `verified: true` over a pair the table
+    // relates. Neither pair here is decided: `within` is not a place commit takes, and `from` /
+    // `to` are the directions commit and roll back do not govern.
     // The one-token spelling "rollback" was caught all along; only the two-token path missed.
     const orthogonal: Embedder = async (texts) =>
       texts.map((_, i) => Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1]))
     for (const [x, y] of [
-      ['commit the batch at the ledger', 'roll back the batch on the ledger'],
-      ['commits the batch at the ledger', 'rolls back the batch on the ledger'],
-      ['roll back the batch on the ledger', 'commit the batch at the ledger'],
+      ['commit the batch within the ledger', 'roll back the batch in the ledger'],
+      ['commits the batch from the ledger', 'rolls back the batch to the ledger'],
+      ['roll back the batch to the ledger', 'commit the batch from the ledger'],
     ] as const) {
       const report = await runCheck(await docOf([`${BLOCK} ${x}.`, `${BLOCK} ${y}.`]), {
         semantic: { embedder: orthogonal },

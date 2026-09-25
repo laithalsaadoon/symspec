@@ -38,8 +38,8 @@
  *          "the session authenticated" name one guard state;
  *        - when (and only when) the head is in an ANTONYM class, the atom gains an
  *          {@link Opposition} naming the class and the verbs a pair opposes to it,
- *          and a preposition the head verb governs is marked out of a second KEY
- *          ({@link governedKeyRest}), so "include X in the view" /
+ *          and each preposition the head verb governs is marked out of a further KEY
+ *          ({@link governedKeyRests}), so "include X in the view" /
  *          "exclude X from the view" share one opposition key and are contraries.
  *          The body is never touched: `approve` and `accept` are two atoms, and so
  *          are "allow calls to X" and "allow calls from X".
@@ -299,7 +299,7 @@ export interface Opposition {
   readonly opposes: readonly string[]
   /**
    * The same atom's OTHER readings, when they differ from the reading above: its LITERAL
-   * remainder when the fields above read the governed one (see `governedKeyRest`), and the
+   * remainder when the fields above read a governed one (see `governedKeyRests`), and the
    * opposition of every committed glossary phrase that names it (spec 007 I-1).
    *
    * A glossary entry says two phrases are one action, so a contrary of either is a contrary of
@@ -882,20 +882,23 @@ function stripCopula(body: string): string {
 }
 
 /**
- * The GOVERNED opposition-key remainder of an antonym-class response (A4): `rest` with the first
- * preposition the head verb ITSELF governs ({@link AntonymEntry.governs}) replaced by an empty
- * token, when one appears after at least one other token; undefined when there is none. So
- * "exclude that tile from the default gallery view" and "include that tile in the default gallery
- * view" both read `that_tile__the_default_gallery_view` and are contraries: for those verbs the
- * HEAD carries the direction (include vs exclude) and the preposition only introduces the place.
+ * The GOVERNED opposition-key remainders of an antonym-class response (A4): one per token of
+ * `rest` after the first that the head verb ITSELF governs ({@link AntonymEntry.governs}), with
+ * that token replaced by the mark of the place it introduces — an empty token for the place, two
+ * for the outside ({@link AntonymEntry.outside}). So "hide the alarm from the display" and "show
+ * the alarm on the display" both read `the_alarm__the_display` and are contraries: for those verbs
+ * the HEAD carries the direction (show vs hide) and the preposition only introduces the place.
  *
- * Marked, not dropped, and per verb. The empty token keeps the position, and `normalize` never
- * emits an empty token, so a governed key can meet only another governed key with the mark in the
- * same place — never a literal remainder that happens to lack the word. Per verb, because a
- * preposition only the CONTRARY governs carries direction after this verb: "connect calls FROM
- * the number" and "disconnect calls TO the number" are consistent, and a class-wide set made them
- * one key. Every response also keeps its LITERAL remainder as a key ({@link antonymReading}), so
- * identical remainders are contraries whatever their prepositions.
+ * Marked, not dropped, and per verb. The mark keeps the position, and `normalize` never emits an
+ * empty token, so a governed key can meet only another governed key with the same mark in the
+ * same place — never a literal remainder that happens to lack the word, and never the other
+ * place's mark. One key per governed position, because a remainder can name two places ("grant
+ * access on the server to the user" meets "revoke access on the server from the user" at the
+ * second); each key differs from the literal remainder in that one token and nowhere else. Per
+ * verb, because a preposition only the CONTRARY governs carries direction after this verb:
+ * "connect calls FROM the number" and "disconnect calls TO the number" are consistent, and a
+ * class-wide set made them one key. Every response also keeps its LITERAL remainder as a key
+ * ({@link antonymReading}), so identical remainders are contraries whatever their prepositions.
  *
  * Only in the key. "allow calls to the number" and "allow calls from the number" are different
  * acts, and the rule that dropped the first of `in into from within inside to onto at on` for
@@ -904,16 +907,19 @@ function stripCopula(body: string): string {
  * produce distinct keys, because only the preposition is marked, never the noun phrase; and the
  * atom body keeps every token, so no two remainders that differ in a word share an atom.
  */
-function governedKeyRest(rest: string, governs: readonly string[]): string | undefined {
-  if (rest === '' || governs.length === 0) return undefined
+function governedKeyRests(rest: string, entry: AntonymEntry): readonly string[] {
+  if (rest === '' || entry.governs.length === 0) return []
   const tokens = rest.split('_')
+  const keys: string[] = []
   for (let i = 1; i < tokens.length; i++) {
-    if (governs.includes(tokens[i] as string)) {
-      tokens[i] = ''
-      return tokens.join('_')
-    }
+    const token = tokens[i] as string
+    if (!entry.governs.includes(token)) continue
+    const marked = [...tokens]
+    // `_` joins to `a___b`: two empty tokens, which neither `normalize` nor the place mark emits.
+    marked[i] = entry.outside.includes(token) ? '_' : ''
+    keys.push(marked.join('_'))
   }
-  return undefined
+  return keys
 }
 
 /**
@@ -942,8 +948,8 @@ function spelling(
  * The response-head reading of a normalized body: the leading verb de-inflected (closed 3sg
  * rule) and looked up longest-prefix-first — two tokens ("roll_back") before one ("roll") — so
  * multiword opposites like commit/roll-back resolve. On a hit the result carries its
- * class-and-remainder readings: the GOVERNED one first when the head governs a preposition in the
- * remainder (see {@link governedKeyRest}), then the LITERAL one. Each must match another reading
+ * class-and-remainder readings: the GOVERNED ones first when the head governs a preposition in the
+ * remainder (see {@link governedKeyRests}), then the LITERAL one. Each must match another reading
  * byte for byte, so "grant access"/"revoke access" are contraries but "grant access"/"revoke
  * permission" are unrelated. Either way the de-inflected head replaces the surface head, so
  * "opens the valve" and "open the valve" collide.
@@ -981,10 +987,9 @@ function antonymReading(
       opposes,
     }
   }
-  const governed = governedKeyRest(rest, entry.governs)
   return {
     body: rest === '' ? head : `${head}_${rest}`,
-    readings: governed === undefined ? [reading(rest)] : [reading(governed), reading(rest)],
+    readings: [...governedKeyRests(rest, entry).map(reading), reading(rest)],
   }
 }
 

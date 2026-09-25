@@ -826,13 +826,14 @@ describe('AC-3-6: the proposed merge never aliases a phrase to its own opposite'
   })
 
   it('meets on the LITERAL key when only one side governs its preposition', async () => {
-    // `include` governs `in` and `exclude` does not, so "include ... in the box in the archive"
-    // reads two keys (its literal remainder, and one with that `in` marked out) while "exclude
-    // ... in the box in the archives" reads only its literal one. They meet there up to number,
-    // so this is an AC-3-6 variant, and the merge aligns the number on that key — never the raw
-    // include/exclude pair, which would alias a phrase to its own opposite.
-    const first = 'include the file in the box in the archive'
-    const second = 'exclude the file in the box in the archives'
+    // `include` governs `into` and `exclude` does not (a goal after a verb that removes from the
+    // place carries direction), and neither governs `for`. So "include ... into the box for the
+    // archive" reads two keys (its literal remainder, and one with that `into` marked out) while
+    // "exclude ... into the box for the archives" reads only its literal one. They meet there up
+    // to number, so this is an AC-3-6 variant, and the merge aligns the number on that key —
+    // never the raw include/exclude pair, which would alias a phrase to its own opposite.
+    const first = 'include the file into the box for the archive'
+    const second = 'exclude the file into the box for the archives'
     const report = await runCheck(pair(first, second), {
       semantic: { embedder: tableEmbedder([[first, second]]) },
     })

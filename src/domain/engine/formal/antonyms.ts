@@ -130,73 +130,168 @@ export const SEED_ANTONYM_PAIRS: ReadonlyArray<readonly [string, string]> = [
 ]
 
 /**
- * The prepositions a seed verb GOVERNS: the one that introduces its own complement, where the
- * verb, not the preposition, carries the direction. "include X in V" and "exclude X from V" name
- * one place, so each verb's governed preposition is marked out of a second opposition KEY and the
- * two are contraries (atomize.ts `governedKeyRest`). Nothing is ever dropped from the atom body.
+ * Which place a governed preposition introduces. Every row names one `place` — where the act is
+ * done, or the place it removes its object from — except `quarantine`/`release`, which name two:
+ * the `place` the object is held ("quarantine the file in the vault", "release the file from the
+ * vault") and the `outside` it is cut off from and returned to ("quarantine the host from the
+ * network", "release the host to the network"). A mark meets only a mark for the same place, so
+ * "quarantine the file in the vault" and "release the file to the vault", which both put the file
+ * there, are not contraries.
+ */
+export type GovernedPlace = 'place' | 'outside'
+
+/** The locative prepositions every row's verbs name a place with: "on the display", "at the site". */
+const LOCATIVE = ['at', 'in', 'inside', 'on'] as const
+
+/** The goal prepositions a verb that puts its object somewhere names the place with. */
+const GOAL = ['into', 'onto', 'to'] as const
+
+/**
+ * The verbs of a row whose contrary removes its object FROM the place, and deny/forbid, which take
+ * their place as grant does ("deny access to the server"): the locatives and the goals.
+ */
+const PUTTERS = [
+  'add',
+  'allow',
+  'authorize',
+  'commit',
+  'connect',
+  'deny',
+  'engage',
+  'expose',
+  'extend',
+  'forbid',
+  'grant',
+  'include',
+  'insert',
+  'permit',
+  'publish',
+  'show',
+] as const
+
+/** The verbs that remove their object FROM the place: the locatives and `from`. */
+const REMOVERS = [
+  'conceal',
+  'disconnect',
+  'disengage',
+  'exclude',
+  'hide',
+  'remove',
+  'retract',
+  'revoke',
+  'roll_back',
+  'rollback',
+  'seal',
+  'suspend',
+  'withdraw',
+] as const
+
+/** The verbs of a row whose contrary takes the place with the same prepositions: the locatives. */
+const SAME_PLACE = [
+  'accept',
+  'activate',
+  'approve',
+  'close',
+  'de_energize',
+  'deactivate',
+  'decline',
+  'disable',
+  'drain',
+  'enable',
+  'energize',
+  'flood',
+  'lock',
+  'lower',
+  'open',
+  'raise',
+  'reject',
+  'resume',
+  'start',
+  'stop',
+  'unlock',
+  'unseal',
+] as const
+
+/** `preps` as governed prepositions for one place ({@link GovernedPlace}; `place` by default). */
+const places = (
+  preps: readonly string[],
+  place: GovernedPlace = 'place',
+): ReadonlyArray<readonly [string, GovernedPlace]> => preps.map((p) => [p, place] as const)
+
+/**
+ * The prepositions a seed verb GOVERNS: the ones that introduce the place its act is done at, to
+ * or from, where the verb, not the preposition, carries the direction. "show the alarm on the
+ * display" and "hide the alarm from the display" name one place, so each verb's governed
+ * preposition is marked out of a further opposition KEY and the two are contraries (atomize.ts
+ * `governedKeyRests`). Nothing is ever dropped from the atom body.
  *
- * A closed, curated table in the same category as the seed pairs. A verb is listed only when a
- * contrary it has a ROW with takes a DIFFERENT preposition for the same place, and it is listed
- * with exactly the preposition it takes there. Two members that take the same one ("grant access
- * to the user" / "deny access to the user") already share a key without any mark, so `deny`,
- * `forbid`, `lock`, `raise` and the rest are unlisted. Applied row by row:
+ * A closed, curated table in the same category as the seed pairs. The rule: a verb lists every
+ * preposition ordinary requirements English uses to introduce that place, when a contrary it has
+ * a ROW with may name the same place with a different one. Applied row by row:
  *
- *   grant, allow, permit, authorize → to   /  revoke → from      ("… access to/from the user")
- *   show → to                               /  hide → from        ("… the report to/from the user")
- *   expose → to                             /  conceal, seal → from ("… the port to/from the network")
- *   publish, extend → to                    /  retract → from     ("… the offer to/from the customer")
- *   quarantine → in                         /  release → from     ("… the message in/from the queue")
- *   engage → with                           /  disengage → from   ("… the clutch with/from the gear")
- *   include → in, into, within              /  exclude → from
- *   add → to, into                          /  remove → from
- *   insert → into, in                       /  withdraw → from
- *   connect → to                            /  disconnect → from
+ *   - Every verb: the {@link LOCATIVE}s ("enable the feature on the device" / "disable the feature
+ *     in the device").
+ *   - A verb that puts its object in, on or to the place against a contrary that removes it FROM
+ *     there ({@link PUTTERS}: grant/revoke, show/hide, publish/retract, add/remove, commit/roll
+ *     back, …) adds the {@link GOAL}s, and deny/forbid, which take the place as grant does ("deny
+ *     access to the server" / "grant access on the server"), add them too.
+ *   - A verb that removes its object from the place ({@link REMOVERS}) adds `from`; that includes
+ *     suspend, whose contrary resumes the object IN the place ("suspend the user from the service"
+ *     / "resume the user in the service").
+ *   - include/exclude add `within` ("include the file within the set").
+ *   - connect/engage add `with` ("connect the cable with the socket" / "disconnect it from the
+ *     socket").
+ *   - quarantine/release name two places ({@link GovernedPlace}): the place the object is held
+ *     (quarantine: the locatives and goals; release: the locatives and `from`) and the outside
+ *     (quarantine: `from`; release: the goals and `on`, "release the host on the network").
  *
- * Deliberately unlisted although the row has two prepositions: `drain X of Y` / `flood X with Y`,
- * because `of` after a noun is overwhelmingly possessive ("drain the tank of the pump"), and
- * `commit X to Y` / `roll back X to Y`, whose `to` names two different things (the store written
- * to, the point restored to). An unlisted preposition keeps its place in every key: "allow calls
- * to the number" and "deny calls from the number" are two different calls, because `deny` takes
- * `to` for the place and so governs nothing, and a rule that dropped `to` and `from` for every
- * antonym head made them contraries.
+ * Deliberately NOT listed, because the preposition carries direction or names something other
+ * than the place the contrary acts on:
+ *   - `from` after any verb that does not remove its object from the place ("connect calls FROM
+ *     the number" is incoming calls, and "disconnect calls TO the number" outgoing ones; "allow
+ *     calls to" / "deny calls from"; "accept the bid from the vendor" names the sender).
+ *   - a goal after a verb that removes from the place ("withdraw the card into the tray",
+ *     "roll back the change to the checkpoint"), or after a same-place verb, where it names a
+ *     direction, a target value, or the object's own complement ("open the door to the garden",
+ *     "raise the level to 5", "enable transfers to the account").
+ *   - `within` outside include/exclude, where it reads as a deadline ("start the pump within 5
+ *     seconds" and "stop the pump in 5 seconds" are consistent), and `of` after drain, which is
+ *     overwhelmingly possessive ("drain the tank of the pump").
+ * An unlisted preposition keeps its place in every key, so it can only miss a contrary, never
+ * invent one; the opposition-candidate tier demotes `verified` over a same-class pair one
+ * preposition apart.
  *
  * The set is per VERB ({@link AntonymEntry.governs}), never the union over its class. `connect`
  * governs `to` and `disconnect` governs `from`; a class-wide union let `connect` drop `from` as
  * well, so "connect calls FROM the number" (incoming calls allowed) and "disconnect calls TO the
  * number" (outgoing calls cut) shared one key and were an error-severity FND_CONTRADICTION on a
- * consistent document. Two remainders that are identical word for word ("include the file in
- * the box" / "exclude the file in the box") need no drop at all: every response also keeps the
- * key of its literal remainder, which is how they stay contraries. A doc-committed verb governs
- * nothing, so its remainders must match word for word, which can only miss a contrary, never
- * invent one.
+ * consistent document. Two remainders that are identical word for word need no mark at all:
+ * every response also keeps the key of its literal remainder. A doc-committed verb governs
+ * nothing, so its remainders must match word for word, which can only miss a contrary.
  */
-export const GOVERNED_PREPOSITIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ['include', new Set(['in', 'into', 'within'])],
-  ['exclude', new Set(['from'])],
-  ['add', new Set(['to', 'into'])],
-  ['remove', new Set(['from'])],
-  ['insert', new Set(['into', 'in'])],
-  ['withdraw', new Set(['from'])],
-  ['connect', new Set(['to'])],
-  ['disconnect', new Set(['from'])],
-  ['grant', new Set(['to'])],
-  ['allow', new Set(['to'])],
-  ['permit', new Set(['to'])],
-  ['authorize', new Set(['to'])],
-  ['revoke', new Set(['from'])],
-  ['show', new Set(['to'])],
-  ['hide', new Set(['from'])],
-  ['expose', new Set(['to'])],
-  ['conceal', new Set(['from'])],
-  ['seal', new Set(['from'])],
-  ['publish', new Set(['to'])],
-  ['extend', new Set(['to'])],
-  ['retract', new Set(['from'])],
-  ['quarantine', new Set(['in'])],
-  ['release', new Set(['from'])],
-  ['engage', new Set(['with'])],
-  ['disengage', new Set(['from'])],
-])
+export const GOVERNED_PREPOSITIONS: ReadonlyMap<
+  string,
+  ReadonlyMap<string, GovernedPlace>
+> = (() => {
+  const table = new Map<string, Array<readonly [string, GovernedPlace]>>()
+  const add = (
+    verbs: readonly string[],
+    entries: ReadonlyArray<readonly [string, GovernedPlace]>,
+  ) => {
+    for (const verb of verbs) table.set(verb, [...(table.get(verb) ?? []), ...entries])
+  }
+  add([...PUTTERS, ...REMOVERS, ...SAME_PLACE], places(LOCATIVE))
+  add(PUTTERS, places(GOAL))
+  add(REMOVERS, places(['from']))
+  add(['include', 'exclude'], places(['within']))
+  add(['connect', 'engage'], places(['with']))
+  add(['quarantine'], [...places([...LOCATIVE, ...GOAL]), ...places(['from'], 'outside')])
+  add(
+    ['release'],
+    [...places(['at', 'in', 'inside', 'from']), ...places([...GOAL, 'on'], 'outside')],
+  )
+  return new Map([...table].map(([verb, entries]) => [verb, new Map(entries)]))
+})()
 
 /** A resolved antonym-class membership for one verb. */
 export interface AntonymEntry {
@@ -215,10 +310,17 @@ export interface AntonymEntry {
   opposes: readonly string[]
   /**
    * The prepositions THIS verb governs ({@link GOVERNED_PREPOSITIONS}), sorted: the ones that
-   * introduce its own complement, which its governed opposition key marks out. Per verb, never
-   * the class's union — a preposition only its contrary governs carries direction after it.
+   * introduce a place its act is done at, to or from, which its governed opposition keys mark
+   * out. Per verb, never the class's union — a preposition only its contrary governs carries
+   * direction after it.
    */
   governs: readonly string[]
+  /**
+   * The subset of {@link governs} that introduces the OUTSIDE rather than the place the object is
+   * held ({@link GovernedPlace}), sorted; empty for every verb but quarantine/release. Marked
+   * apart, so it meets only another verb's outside preposition.
+   */
+  outside: readonly string[]
 }
 
 /**
@@ -285,8 +387,13 @@ export function buildAntonymIndex(
     // Re-base sign relative to the canonical (which we pin to positive).
     const negated = (sign.get(verb) as boolean) !== (sign.get(canonical) as boolean)
     const opposes = [...new Set(adj.get(verb) ?? [])].sort()
-    const governs = [...(GOVERNED_PREPOSITIONS.get(verb) ?? [])].sort()
-    index.set(verb, { canonical, negated, opposes, governs })
+    const places = [...(GOVERNED_PREPOSITIONS.get(verb) ?? new Map<string, GovernedPlace>())]
+    const governs = places.map(([p]) => p).sort()
+    const outside = places
+      .filter(([, place]) => place === 'outside')
+      .map(([p]) => p)
+      .sort()
+    index.set(verb, { canonical, negated, opposes, governs, outside })
   }
   return index
 }

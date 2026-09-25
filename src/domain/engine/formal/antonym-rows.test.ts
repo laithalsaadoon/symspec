@@ -129,47 +129,86 @@ describe('every cross-side contrary the class chaining meant is a row of its own
   })
 })
 
-describe('every governed preposition is reachable: its contrary takes a different one for the same place', () => {
-  // GOVERNED_PREPOSITIONS lists a verb's preposition only when a contrary of that verb takes a
-  // DIFFERENT preposition for the same place ("grant X to Y" / "revoke X from Y"). So every
-  // listed preposition must meet, through some row, a partner's different governed preposition;
-  // one that meets none is dead, and a verb the rule covers that is missing is a proof lost.
+describe('every governed preposition is reachable: its contrary names the same place differently', () => {
+  // GOVERNED_PREPOSITIONS lists a verb's preposition when it introduces a place a contrary of that
+  // verb may name with a DIFFERENT preposition ("show X on Y" / "hide X from Y"). So every listed
+  // preposition must meet, through some row, a partner's different governed preposition for the
+  // same place; one that meets none is dead, and a verb the rule covers that is missing is a
+  // proof lost.
+  const placesOf = (verb: string) => [...(GOVERNED_PREPOSITIONS.get(verb) ?? new Map())]
   const pairings = SEED_ANTONYM_PAIRS.flatMap(([a, b]) =>
     [
       [a, b],
       [b, a],
     ].flatMap(([x, y]) =>
-      [...(GOVERNED_PREPOSITIONS.get(x as string) ?? [])].flatMap((p) =>
-        [...(GOVERNED_PREPOSITIONS.get(y as string) ?? [])]
-          .filter((q) => q !== p)
-          .map((q) => [x as string, p, y as string, q] as const),
+      placesOf(x as string).flatMap(([p, place]) =>
+        placesOf(y as string)
+          .filter(([q, other]) => q !== p && other === place)
+          .map(([q]) => [x as string, p as string, y as string, q as string] as const),
       ),
     ),
   )
 
-  it('every listed (verb, preposition) meets a contrary that governs a different one', () => {
+  it('every listed (verb, preposition) meets a contrary that names the place differently', () => {
     const reached = new Set(pairings.map(([x, p]) => `${x}|${p}`))
     for (const [verb, preps] of GOVERNED_PREPOSITIONS) {
-      for (const p of preps) expect(reached.has(`${verb}|${p}`), `${verb} ${p}`).toBe(true)
+      for (const p of preps.keys()) expect(reached.has(`${verb}|${p}`), `${verb} ${p}`).toBe(true)
     }
   })
 
-  for (const [x, p, y, q] of pairings) {
-    const [vx, vy] = [x.replace('_', ' '), y.replace('_', ' ')]
-    it(`${vx} the item ${p} the place / ${vy} the item ${q} the place`, () => {
-      expect(
-        areContrary(resp(`${vx} the item ${p} the place`), resp(`${vy} the item ${q} the place`)),
-      ).toBe(true)
+  for (const [a, b] of SEED_ANTONYM_PAIRS) {
+    const [va, vb] = [a.replace('_', ' '), b.replace('_', ' ')]
+    const rows = pairings.filter(([x, , y]) => (x === a && y === b) || (x === b && y === a))
+    if (rows.length === 0) continue
+    it(`${va} / ${vb}: every governed pairing for one place is a contrary`, () => {
+      for (const [x, p, y, q] of rows) {
+        const [vx, vy] = [x.replace('_', ' '), y.replace('_', ' ')]
+        expect(
+          areContrary(resp(`${vx} the item ${p} the place`), resp(`${vy} the item ${q} the place`)),
+          `${vx} … ${p} / ${vy} … ${q}`,
+        ).toBe(true)
+      }
     })
   }
 
+  it('the two places of quarantine / release never meet each other', () => {
+    for (const p of ['at', 'in', 'inside', 'into', 'on']) {
+      for (const q of ['to', 'into', 'onto', 'on']) {
+        if (p === q) continue
+        expect(
+          areContrary(
+            resp(`quarantine the item ${p} the place`),
+            resp(`release the item ${q} the place`),
+          ),
+          `quarantine ${p} / release ${q}`,
+        ).toBe(false)
+      }
+    }
+    for (const q of ['at', 'in', 'inside']) {
+      expect(
+        areContrary(
+          resp('quarantine the item from the place'),
+          resp(`release the item ${q} the place`),
+        ),
+        `quarantine from / release ${q}`,
+      ).toBe(false)
+    }
+  })
+
   it('a preposition neither verb governs keeps its direction: grant FROM / revoke TO', () => {
-    // `grant` governs `to` and `revoke` governs `from`; the reverse is two different places.
+    // `grant` takes its place with to/into/at/in/inside/on and `revoke` with from and the
+    // locatives; `grant … from` and `revoke … to` are two different places.
     expect(
       areContrary(resp('grant calls from the number'), resp('revoke calls to the number')),
     ).toBe(false)
     expect(
       areContrary(resp('show the report from the user'), resp('hide the report to the user')),
+    ).toBe(false)
+    expect(
+      areContrary(resp('open the item from the place'), resp('close the item to the place')),
+    ).toBe(false)
+    expect(
+      areContrary(resp('withdraw the card into the tray'), resp('insert the card from the tray')),
     ).toBe(false)
   })
 })
@@ -200,6 +239,58 @@ describe('the to/from contraries prove end to end (AC-2-1, the governed-preposit
       ])
     })
   }
+
+  // Each is a direct seed row that base 669c0e9 proved as FND_CONTRADICTION and a one-preposition-
+  // per-verb table lost (verifier H1-H7, B1, B3, C1n, C2, R1-R12): ordinary requirements English
+  // names one place with on, in, at, into or onto as readily as with to.
+  const PLACE_WORDINGS = [
+    ['show the alarm on the display', 'hide the alarm from the display'],
+    ['show the banner on the home page', 'hide the banner from the home page'],
+    ['show the warning in the dialog', 'hide the warning from the dialog'],
+    ['publish the notice on the portal', 'retract the notice from the portal'],
+    ['publish the article at the site', 'retract the article from the site'],
+    ['include the item on the invoice', 'exclude the item from the invoice'],
+    ['add the item on the list', 'remove the item from the list'],
+    ['engage the brake on the wheel', 'disengage the brake from the wheel'],
+    ['extend the probe into the chamber', 'retract the probe from the chamber'],
+    ['extend the ramp onto the platform', 'retract the ramp from the platform'],
+    ['expose the service on the network', 'conceal the service from the network'],
+    ['grant access on the server', 'revoke access from the server'],
+    ['quarantine the file into the vault', 'release the file from the vault'],
+    ['quarantine the host from the network', 'release the host to the network'],
+    ['connect the cable into the socket', 'disconnect the cable from the socket'],
+    ['connect the cable with the socket', 'disconnect the cable from the socket'],
+    ['commit the change to production', 'roll back the change from production'],
+    ['commit the batch to the ledger', 'roll back the batch from the ledger'],
+    ['commits the batch to the ledger', 'rolls back the batch from the ledger'],
+    ['commit the change to the database', 'roll back the change in the database'],
+    ['commit the batch to the ledger', 'rollback the batch from the ledger'],
+    ['enable the feature on the device', 'disable the feature in the device'],
+    ['grant access on the server', 'deny access to the server'],
+    ['remove the user in the group', 'add the user to the group'],
+    ['suspend the user from the service', 'resume the user in the service'],
+    ['grant access on the server to the user', 'revoke access on the server from the user'],
+  ] as const
+  for (const [x, y] of PLACE_WORDINGS) {
+    it(`${x} / ${y} is FND_CONTRADICTION`, async () => {
+      expect(await contradictionsOf([`${BUTTON} ${x}.`, `${BUTTON} ${y}.`])).toEqual([
+        [idOf(1), idOf(2)],
+      ])
+    })
+  }
+
+  it('two places stay two: quarantine IN the vault / release TO the vault is no error', async () => {
+    // `quarantine` and `release` each name two places: where the object is held (quarantine in,
+    // release from) and the outside it is cut off from and returned to (quarantine from, release
+    // to). Releasing a file TO the vault and quarantining it IN the vault both put it there.
+    for (const [x, y] of [
+      ['quarantine the file in the vault', 'release the file to the vault'],
+      ['quarantine the file into the vault', 'release the file onto the vault'],
+      ['quarantine the host from the lab', 'release the host in the lab'],
+    ] as const) {
+      expect(await errorsOf([`${BUTTON} ${x}.`, `${BUTTON} ${y}.`]), `${x} / ${y}`).toEqual([])
+    }
+  })
 
   it('a direction the verb does not carry is no error: allow calls TO / deny calls FROM', async () => {
     // `deny` takes `to` for the place, as `allow` does, so it governs nothing and its `from`
