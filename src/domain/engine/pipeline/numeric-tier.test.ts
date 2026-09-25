@@ -135,10 +135,12 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
   })
 
   it('still proves a conflict between two bounds in the SAME unrecognized unit', async () => {
-    // The control: raw-text keying partitions, it does not switch the tier off.
+    // The control: raw-text keying partitions, it does not switch the tier off. A holding verb
+    // on one noun: a role word (`for at least 9 months`) marks a span of the action only on a
+    // recognized time, so that shape is disclosed (`numeric-held.test.ts`, NOT_A_TIME).
     const found = await numericFindings(
-      archive('retain the logs for at least 9 months'),
-      archive('retain the logs for at most 3 months'),
+      archive('keep the retention at least 9 months'),
+      archive('keep the retention at most 3 months'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })

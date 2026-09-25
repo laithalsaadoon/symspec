@@ -921,10 +921,14 @@ function finiteVerbIn(subject: string): string | undefined {
  *   - A time bound its own role word introduces (`marker`: `for`, `in`, `within`, `every`, or a
  *     governing time preposition) right after ONE noun (`expire the session after at most 30
  *     minutes`, `retain the logs for at least 90 days`, where the noun may be a plural because
- *     nothing follows it for the bound to modify). After a second word, that word may be a
- *     postmodifier the time belongs to: `close the session idle for at least 30 minutes` and
- *     `escalate the ticket unresolved after at least 3 days` each pick out a session or a ticket,
- *     and nothing but its sense tells it from a compound (`retain audit logs for`).
+ *     nothing follows it for the bound to modify). A TIME bound: `dimension` is exactly `time`.
+ *     A role word before a unit no dimension recognizes, or before no unit, marks no span or
+ *     point of the action (`approve the loan for over 50000 dollars`, `waive the fee for at least
+ *     10 items`, `retain the log for at least 9 months`: which loan, which fee, and a calendar
+ *     word nothing converts), after any verb, a holding one included. After a second word, that
+ *     word may be a postmodifier the time belongs to: `close the session idle for at least 30
+ *     minutes` and `escalate the ticket unresolved after at least 3 days` each pick out a session
+ *     or a ticket, and nothing but its sense tells it from a compound (`retain audit logs for`).
  *
  * Every other subject has structure a bound may restrict (a finite verb, a function word, a plural,
  * a second content word) or a verb that does not hold its object to anything, and the answer names
@@ -939,7 +943,10 @@ function unheldBy(
   marker: TimeMarker | undefined,
   dimension: string,
 ): string | undefined {
-  const timeMarked = marker !== undefined
+  // A role word marks a span or a point of the action only on a recognized time. `roleOf` gives
+  // a role to a raw unit and to a bare number too (`for over 50000 dollars`, `for at least 10
+  // items`, `in over 3 currencies`, `for over 10`), where the bound picks out the object.
+  const timeMarked = marker !== undefined && dimension === 'time'
   const tokens = wordsOf(subject)
   while (tokens.length > 1 && BOUND_OWN_WORD.has(tokens[tokens.length - 1]!.toLowerCase())) {
     tokens.pop()
@@ -957,6 +964,8 @@ function unheldBy(
     .slice(1)
     .find((w, i) => PLURAL_LOOKING.test(w) && !(timeMarked && i === object.length - 1))
   if (plural !== undefined) return `the plural "${plural}"`
+  if (marker !== undefined && !timeMarked)
+    return `the verb "${verb!}", on a bound that is not a time`
   const nouns = object[0] === 'the' ? object.slice(1) : object
   const oneNoun = nouns.length <= 1
   if (HOLDING_VERB.has(verb!)) {
@@ -964,7 +973,7 @@ function unheldBy(
       ? undefined
       : `the verb "${verb!}" and the words "${nouns.join(' ')}"`
   }
-  if (marker === undefined) return `the verb "${verb!}"`
+  if (!timeMarked) return `the verb "${verb!}"`
   if (oneNoun) return undefined
   return `the verb "${verb!}" and the words "${nouns.join(' ')}"`
 }

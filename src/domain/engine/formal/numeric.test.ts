@@ -398,7 +398,18 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
       ],
       // Nor is a compound told from a noun and its postmodifier: both are disclosed.
       ['flush the write cache within 2 seconds', 'the verb "flush" and the words "write cache"'],
-      ['retain audit logs for at least 9 months', 'the verb "retain" and the words "audit logs"'],
+      ['retain audit logs for at least 90 days', 'the verb "retain" and the words "audit logs"'],
+      // A role word before a bound that is not a recognized time marks no span of the action.
+      // The plural a time's role word lets end the object is no exemption for anything else.
+      ['retain the logs for at least 9 months', 'the plural "logs"'],
+      ['retain the log for at least 9 months', 'the verb "retain", on a bound that is not a time'],
+      [
+        'approve the loan for over 50000 dollars',
+        'the verb "approve", on a bound that is not a time',
+      ],
+      ['waive the fee for at least 10 items', 'the verb "waive", on a bound that is not a time'],
+      ['discount the order for over 10', 'the verb "discount", on a bound that is not a time'],
+      ['keep the record for over 1000 dollars', 'the verb "keep", on a bound that is not a time'],
       // A holding verb's object of two content words, on a bound that is not a time: the second
       // may be the state the object is held in, and the bound when it holds.
       ['keep the pump stopped above 5 meters', 'the verb "keep" and the words "pump stopped"'],
