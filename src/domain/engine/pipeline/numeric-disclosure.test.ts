@@ -349,7 +349,13 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
           )
           const report = await runCheck(doc as never, {})
           expect(report.counts.error, tail).toBe(0)
-          expect(uncompared(report), tail).toEqual([[idAt(0), idAt(1), idAt(2)]])
+          // `45 seconds` has no comparator phrase, so no bound covers it: the performer is also
+          // disclosed on its own, as a quantity the tier never read (`unreadQuantities`).
+          expect(uncompared(report), tail).toEqual(
+            tail === 'for 45 seconds'
+              ? [[idAt(0), idAt(1), idAt(2)], [idAt(0)]]
+              : [[idAt(0), idAt(1), idAt(2)]],
+          )
           expect(report.verified, tail).toBe(false)
         }
       })
