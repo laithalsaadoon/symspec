@@ -25,21 +25,44 @@ export interface CoverageFinding {
   readonly message: string
 }
 
+/** Why no pair was evaluated, as far as the pipeline can tell, so the message names the cause. */
+export interface NoPairsCause {
+  /** Some atom is owned by two or more requirements: vocabulary is not the gap. */
+  readonly atomsShared: boolean
+  /** An `FND_EXACT_DUPLICATE` fired: that pair is reported, not compared. */
+  readonly exactDuplicates: boolean
+}
+
 /**
  * Build the `FND_NO_PAIRS_CHECKED` info finding. Names every requirement id so a
  * reader can see the whole set that went uncompared. Info severity, so it never
  * moves the exit gate — it is a disclosure, not a defect.
+ *
+ * The cause clause follows `cause`: "no two requirements shared an atom" and the vocabulary
+ * advice are said only when that is the case. Two copies of one requirement share every atom,
+ * and telling their author to align vocabulary contradicts `coverage.requirements`.
  */
-export function noPairsCheckedFinding(requirementIds: readonly string[]): CoverageFinding {
+export function noPairsCheckedFinding(
+  requirementIds: readonly string[],
+  cause: NoPairsCause = { atomsShared: false, exactDuplicates: false },
+): CoverageFinding {
+  const because = !cause.atomsShared
+    ? 'no two requirements shared an atom, so no cross-requirement contradiction/subsumption ' +
+      'analysis ran. This is NOT a consistency certificate — consider adding glossary entries ' +
+      'to align vocabulary so related requirements share atoms and can be compared.'
+    : 'the requirements do share atoms, so vocabulary is not the gap, but no pair of them was ' +
+      'compared: ' +
+      (cause.exactDuplicates
+        ? 'an exact-duplicate pair is reported as FND_EXACT_DUPLICATE rather than compared. '
+        : 'requirements whose guards no decided context group asserts together are never ' +
+          'paired. ') +
+      'This is NOT a consistency certificate — `coverage.requirements` says which requirements ' +
+      'were asserted together with a peer.'
   return {
     code: 'FND_NO_PAIRS_CHECKED',
     severity: 'info',
     requirementIds: [...requirementIds],
-    message:
-      'The formal tier evaluated 0 candidate pairs: no two requirements shared an atom, so no ' +
-      'cross-requirement contradiction/subsumption analysis ran. This is NOT a consistency ' +
-      'certificate — consider adding glossary entries to align vocabulary so related ' +
-      'requirements share atoms and can be compared.',
+    message: `The formal tier evaluated 0 candidate pairs: ${because}`,
   }
 }
 

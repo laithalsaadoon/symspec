@@ -71,12 +71,20 @@ import type {
   CheckSeverity,
   CheckTier,
   CoverageDemotion,
+  RunDisclosure,
 } from '../../domain/engine/pipeline/check.ts'
 import { filterReport, runCheck } from '../../domain/engine/pipeline/check.ts'
 import type { Exclusion } from '../../domain/engine/pipeline/gate.ts'
 import { type ReachabilityReport, runReachability } from '../../domain/reachability/reachability.ts'
-import { projectReachability } from '../../domain/reachability/reachability-report.ts'
-import type { DocumentDiagnostic } from '../../domain/requirements/document.ts'
+import {
+  projectReachability,
+  type ReachabilityFinding,
+} from '../../domain/reachability/reachability-report.ts'
+import { requirementsContentHash } from '../../domain/requirements/content-hash.ts'
+import type {
+  DocumentDiagnostic,
+  RequirementsDocument,
+} from '../../domain/requirements/document.ts'
 import { runTerminology } from '../../domain/terminology/terminology.ts'
 import { runnableInProse } from '../../ports/command-form.ts'
 import { DocPath, DocStore } from '../../ports/doc-store.ts'
@@ -268,11 +276,9 @@ export interface CheckPayload extends Omit<CheckReport, 'coverage'> {
    * The unbounded reachability tier's own summary (G4) — present ONLY when a state model
    * is committed.
    *
-   * ABSENT, not empty, on a document with no state model. That absence is what makes the
-   * tier a pure addition: such a document produces a payload with no `reachability` key at
-   * all, so an envelope pinned before this tier existed still matches byte-for-byte
-   * instead of needing the field excluded. The tier's own "I did not run" disclosure travels as a
-   * FINDING (`FND_REACHABILITY_NOT_CHECKED`) rather than as this field, because a
+   * ABSENT, not empty, on a document with no state model: the tier did not run, so it has
+   * no numbers to report. The tier's own "I did not run" disclosure travels as a FINDING
+   * (`FND_REACHABILITY_NOT_CHECKED`, info, no demotion) rather than as this field, because a
    * disclosure an agent has to know to look for is not a disclosure.
    *
    * See `../formal/reachability.ts` for what the numbers mean and
@@ -520,6 +526,9 @@ const CheckInput = Schema.Struct({
         'so every same-intent/different-wording pair was silently missed.',
         'FAVOR RECALL when tuning: this tier is propose-only, so a false suggestion costs one ignored',
         'op while a MISS hides a real paraphrased conflict behind two distinct atoms.',
+        'A value ABOVE the default is a run-weakening move: it can drop proposals and near-duplicate',
+        'demotions the default run raises, so it demotes `data.verified` with `run-weakened`. The value',
+        'the tier ran at is always disclosed as `data.run.semanticThreshold`.',
       ),
     }),
   ),
@@ -681,6 +690,33 @@ const SEVERITY_ORDER: readonly CheckSeverity[] = ['error', 'warn', 'info']
 const severityAtLeast = (severity: CheckSeverity, minimum: CheckSeverity): boolean =>
   SEVERITY_ORDER.indexOf(severity) <= SEVERITY_ORDER.indexOf(minimum)
 
+/**
+ * The reachability tier's "I did not run" disclosure for a document with NO state model.
+ *
+ * The published scope (`reachabilityModelScoped`) says the tier runs only when a state model is
+ * committed, "otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not run", and the
+ * craft guide says such a document gets the code "rather than silence". The tier itself never
+ * runs here, so this boundary emits the disclosure on its behalf.
+ *
+ * Info, and NOT a demotion. The tier is opt-in, exactly like the bounded temporal tier, whose
+ * absence does not demote either: `verified` speaks for the tiers that ran, and demoting every
+ * document that has not authored a state model would make the certificate unreachable for the
+ * input→output specifications the propositional tiers fully cover. A committed-but-incomplete
+ * model is different — the author asked the question — and the tier's own projection demotes it.
+ */
+const noStateModelDisclosure = (docPath: string): ReachabilityFinding => ({
+  code: 'FND_REACHABILITY_NOT_CHECKED',
+  severity: 'info',
+  requirementIds: [],
+  message:
+    'The unbounded reachability tier did not run: no state model is committed, so no ' +
+    'reachability question was asked. This is a coverage DISCLOSURE, not a defect, and it does ' +
+    'not demote `verified` (the tier is opt-in). To have `check` prove invariants over every ' +
+    'reachable state, declare the state variables (`symspec state <name> --type bool|int|enum ' +
+    `${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> ` +
+    `--kind constraint --expression "<predicate>" ${docPath}\`).`,
+})
+
 /** Roll a finished reachability run up into the payload's summary. */
 const summarizeReachability = (run: ReachabilityReport): ReachabilitySummary => {
   const count = (verdict: string) => run.results.filter((r) => r.verdict === verdict).length
@@ -723,13 +759,20 @@ const withRepairs = (
    * adjacent fields.
    */
   recommendedBudgetMs: number | undefined,
+  /** `data.run`, so a `run-weakened` repair undoes the weakening this run actually had. */
+  run: RunDisclosure,
+  /** The checked document, so a pair waiver op carries the hash of the text it was raised on. */
+  document: RequirementsDocument,
 ): readonly RepairableDemotion[] => {
   const exclusionsById = new Map(excluded.map((e) => [e.id, e]))
+  const contentHash = (ids: readonly string[]) => requirementsContentHash(document, ids)
   return demotions.map((demotion) => {
     const repair = repairForDemotion(demotion, {
       exclusionsById,
       findings,
       docPath: path,
+      run,
+      contentHash,
       timeoutMs: input.timeoutMs,
       ...(input.solverBudgetMs > 0 ? { solverBudgetMs: input.solverBudgetMs } : {}),
       ...(recommendedBudgetMs !== undefined ? { recommendedBudgetMs } : {}),
@@ -830,11 +873,12 @@ export const checkOp = defineOperation({
       // THE REACHABILITY TIER (G4) — runs only when a state model is committed
       // ---------------------------------------------------------------------
       //
-      // The gate is `stateModel.variables.length > 0`, and it is what keeps this a PURE
-      // ADDITION: a document with no state model takes the `undefined` branch, so its
-      // payload has no `reachability` key, no reachability findings, and no reachability
-      // demotions — byte-identical to a run from before this tier existed, so no
-      // state-model-free fixture had to be re-pinned.
+      // The gate is `stateModel.variables.length > 0`. A document with no state model takes
+      // the `undefined` branch: its payload has no `reachability` key and no reachability
+      // demotion — the tier is opt-in, like the temporal tier, so its absence does not demote
+      // `verified`. It DOES get one info `FND_REACHABILITY_NOT_CHECKED`
+      // ({@link noStateModelDisclosure}), because the published scope promises the tier's
+      // absence is disclosed, and a question never asked must not read like a pass.
       //
       // Deliberately AFTER `runCheck` and outside the `--solver-budget-ms` measurement:
       // the budget bounds the transplanted tiers, and folding a new tier into the number
@@ -918,44 +962,43 @@ export const checkOp = defineOperation({
       // The reachability findings are SPLICED into the same `findings[]` every other
       // tier writes to, and filtered by the SAME `--min-severity` rule — a second
       // findings array would make an agent read two places to learn what `check` found,
-      // and would leave the exit contract reading only one of them.
-      const reachabilityFindings: readonly CheckFinding[] = (reachabilityProjection?.findings ?? [])
-        .filter((f) => severityAtLeast(f.severity, input.minSeverity))
-        .map(
-          (f): CheckFinding => ({
-            code: f.code,
-            severity: f.severity,
-            // `'formal'` because the reachability tier IS the formal tier's unbounded half
-            // — it runs Z3 over the document's own semantics. Not `'structural'`, which
-            // the catalog reserves for facts about the graph the solver never saw.
-            tier: 'formal' satisfies CheckTier,
-            requirementIds: [...f.requirementIds],
-            message: f.message,
-            ...(f.evidence !== undefined
-              ? // The tier's `Evidence` shape is an atom table plus an unsat core, which a
-                // reachability invariant is not. Cast at this ONE boundary rather than
-                // widening a type every engine solver then has to satisfy.
-                { evidence: f.evidence as unknown as NonNullable<CheckFinding['evidence']> }
-              : {}),
-          }),
-        )
+      // and would leave the exit contract reading only one of them. Filtered only where
+      // they join `findings[]` below: `counts` is the FULL post-waiver tally, filter or not.
+      const reachabilityFindings: readonly CheckFinding[] = (
+        reachabilityProjection?.findings ?? [noStateModelDisclosure(path)]
+      ).map(
+        (f): CheckFinding => ({
+          code: f.code,
+          severity: f.severity,
+          // `'formal'` because the reachability tier IS the formal tier's unbounded half
+          // — it runs Z3 over the document's own semantics. Not `'structural'`, which
+          // the catalog reserves for facts about the graph the solver never saw.
+          tier: 'formal' satisfies CheckTier,
+          requirementIds: [...f.requirementIds],
+          message: f.message,
+          ...(f.evidence !== undefined
+            ? // The tier's `Evidence` shape is an atom table plus an unsat core, which a
+              // reachability invariant is not. Cast at this ONE boundary rather than
+              // widening a type every engine solver then has to satisfy.
+              { evidence: f.evidence as unknown as NonNullable<CheckFinding['evidence']> }
+            : {}),
+        }),
+      )
 
       // Filtered by the SAME `--min-severity` rule as every other tier, so
       // `--min-severity error` drops these exactly as it drops any other info finding.
       // Tier `'formal'` because that is what `FND_SIMILAR_SEMANTIC` reports and this is the
       // dual of it — one kind of claim, one tier.
-      const terminologyFindings: readonly CheckFinding[] = (terminology?.findings ?? [])
-        .filter((f) => severityAtLeast(f.severity, input.minSeverity))
-        .map(
-          (f): CheckFinding => ({
-            code: f.code,
-            severity: f.severity,
-            tier: 'formal' satisfies CheckTier,
-            requirementIds: [...f.requirementIds],
-            message: f.message,
-            suggestion: f.suggestion,
-          }),
-        )
+      const terminologyFindings: readonly CheckFinding[] = (terminology?.findings ?? []).map(
+        (f): CheckFinding => ({
+          code: f.code,
+          severity: f.severity,
+          tier: 'formal' satisfies CheckTier,
+          requirementIds: [...f.requirementIds],
+          message: f.message,
+          suggestion: f.suggestion,
+        }),
+      )
 
       const reachabilityDemotions: readonly RepairableDemotion[] = (
         reachabilityProjection?.demotions ?? []
@@ -971,13 +1014,16 @@ export const checkOp = defineOperation({
       // `kernel/command-form.ts`), and a human reading `--pretty` copies the command out
       // of the message, not out of `repair.commands`. Normalizing one and not the other
       // would print two spellings of one command in adjacent fields of one envelope.
-      const allFindings = [...shaped.findings, ...reachabilityFindings, ...terminologyFindings].map(
-        (f) => ({
-          ...f,
-          message: runnableInProse(f.message),
-          ...(f.suggestion !== undefined ? { suggestion: runnableInProse(f.suggestion) } : {}),
-        }),
-      )
+      const allFindings = [
+        ...shaped.findings,
+        ...[...reachabilityFindings, ...terminologyFindings].filter((f) =>
+          severityAtLeast(f.severity, input.minSeverity),
+        ),
+      ].map((f) => ({
+        ...f,
+        message: runnableInProse(f.message),
+        ...(f.suggestion !== undefined ? { suggestion: runnableInProse(f.suggestion) } : {}),
+      }))
       const allDemotions = [
         ...withRepairs(
           full.coverage.demotions,
@@ -986,6 +1032,8 @@ export const checkOp = defineOperation({
           input,
           path,
           budgetHint?.recommendedBudgetMs,
+          full.run,
+          loaded.document,
         ),
         ...reachabilityDemotions,
       ]

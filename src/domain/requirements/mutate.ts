@@ -44,6 +44,7 @@
  * already worked this way.
  */
 
+import { requirementsContentHash } from './content-hash.ts'
 import {
   type AntonymPair,
   type GlossaryEntry,
@@ -885,9 +886,40 @@ const applyUnterm = (
   return { document: { ...document, terms }, noop: false }
 }
 
-/** Two waivers match iff they suppress the same code at the same scope. */
+/** The exact-set scope as a comparable key: sorted, deduplicated, `undefined` when absent. */
+const idSetKey = (ids: readonly string[] | undefined): string | undefined =>
+  ids === undefined ? undefined : [...new Set(ids)].sort().join(',')
+
+/**
+ * Two waivers match iff they suppress the same code at the same scope. For an exact-set waiver
+ * the scope includes the bound text: re-reviewing an EDITED pair is a new waiver, not a no-op
+ * against the stale one.
+ */
 const sameWaiver = (a: Waiver, b: Waiver): boolean =>
-  a.code === b.code && a.requirementId === b.requirementId
+  a.code === b.code &&
+  a.requirementId === b.requirementId &&
+  idSetKey(a.requirementIds) === idSetKey(b.requirementIds) &&
+  a.contentHash === b.contentHash
+
+/** Resolve every ref of a `refs` scope to its UUID, sorted and deduplicated. */
+const resolveRefs = (
+  document: RequirementsDocument,
+  refs: readonly string[],
+  verb: string,
+): string[] | OpFailure => {
+  if (refs.length === 0) {
+    return fail('ERR_USAGE', `The \`${verb}\` op's "refs" must name at least one requirement.`, [
+      'Omit "refs" for an unscoped waiver, or list the requirement ids of the finding you reviewed.',
+    ])
+  }
+  const ids = new Set<string>()
+  for (const ref of refs) {
+    const scoped = requireTarget(document, ref, 'refs', verb)
+    if (isOpFailure(scoped)) return scoped
+    ids.add(scoped.id)
+  }
+  return [...ids].sort()
+}
 
 const applyWaive = (
   document: RequirementsDocument,
@@ -901,6 +933,17 @@ const applyWaive = (
     ])
   }
 
+  if (op.ref !== undefined && op.refs !== undefined) {
+    return fail('ERR_USAGE', 'A `waive` op takes "ref" or "refs", not both.', [
+      '"ref" waives every finding of the code that names one requirement; "refs" waives only the finding over exactly those requirements, as they are written now.',
+    ])
+  }
+  if (op.contentHash !== undefined && op.refs === undefined) {
+    return fail('ERR_USAGE', 'A `waive` op\'s "contentHash" binds a "refs" scope; add "refs".', [
+      "Copy the op from the finding's `repair.ops` as-is: it carries both.",
+    ])
+  }
+
   // An optional scope is resolved to the stable UUID before storing, so a waiver
   // keeps biting the right requirement regardless of any human-facing relabeling.
   let requirementId: string | undefined
@@ -910,8 +953,32 @@ const applyWaive = (
     requirementId = scoped.id
   }
 
-  const waiver: Waiver =
-    requirementId !== undefined ? { code, requirementId, reason } : { code, reason }
+  // An exact-set scope is bound to the text it names NOW. The op's own hash, when it carries
+  // one, is the text `check` raised the finding on; a mismatch means the requirements were
+  // edited since, so the reviewer read something other than what would be waived.
+  let exact: Pick<Waiver, 'requirementIds' | 'contentHash'> = {}
+  if (op.refs !== undefined) {
+    const ids = resolveRefs(document, op.refs, 'waive')
+    if (isOpFailure(ids)) return ids
+    const contentHash = requirementsContentHash(document, ids)!
+    if (op.contentHash !== undefined && op.contentHash !== contentHash) {
+      return fail(
+        'ERR_USAGE',
+        `The requirements this \`waive\` names have changed since the finding was raised (content hash ${op.contentHash}, now ${contentHash}).`,
+        [
+          `Re-run \`symspec check\`, re-read ${ids.map((id) => `\`symspec show ${id}\``).join(' and ')}, and waive from the new finding's repair only if the new text is consistent too.`,
+        ],
+      )
+    }
+    exact = { requirementIds: ids, contentHash }
+  }
+
+  const waiver: Waiver = {
+    code,
+    ...(requirementId !== undefined ? { requirementId } : {}),
+    ...exact,
+    reason,
+  }
   // IDEMPOTENT, and the STORED reason wins: the first review is authoritative, so
   // re-waiving with different prose does not quietly overwrite the original
   // justification.
@@ -930,9 +997,14 @@ const applyUnwaive = (
   // scoped to a requirement that does not exist — so this is a no-op rather than an
   // error, symmetric with removing an absent edge.
   const requirementId = op.ref !== undefined ? resolveId(document, op.ref) : undefined
-  const target: Waiver =
-    requirementId !== undefined ? { code, requirementId, reason: '' } : { code, reason: '' }
-  const waivers = document.waivers.filter((w) => !sameWaiver(w, target))
+  // `refs` removes every exact-set waiver over that set, whatever text it was bound to — the
+  // stale ones are exactly what an author clearing a pair wants gone.
+  const ids = op.refs?.map((ref) => resolveId(document, ref) ?? ref)
+  const matches = (w: Waiver): boolean =>
+    w.code === code &&
+    w.requirementId === requirementId &&
+    idSetKey(w.requirementIds) === idSetKey(ids)
+  const waivers = document.waivers.filter((w) => !matches(w))
   if (waivers.length === document.waivers.length) return { document, noop: true }
   return { document: { ...document, waivers }, noop: false }
 }

@@ -69,7 +69,7 @@
 
 import { runnable } from '../../ports/command-form.ts'
 import type { Repair } from '../../ports/repair.ts'
-import type { CheckFinding, CoverageDemotion } from '../engine/pipeline/check.ts'
+import type { CheckFinding, CoverageDemotion, RunDisclosure } from '../engine/pipeline/check.ts'
 import type { Exclusion } from '../engine/pipeline/gate.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
 
@@ -120,8 +120,21 @@ export interface RepairContext {
    * doubles again.
    */
   readonly timeoutMs?: number
+  /**
+   * What the run was made of (`data.run`), so a `run-weakened` repair names the invocation
+   * that undoes the weakening actually present. Absent for a caller with no run to report.
+   */
+  readonly run?: RunDisclosure
   /** The document path, so every command is copy-pasteable as-is. */
   readonly docPath: string
+  /**
+   * The content hash of the requirements a finding names, as a pair waiver binds it
+   * (`requirementsContentHash`). Threaded in so a waiver op carries the hash of the text `check`
+   * raised the finding on, and `apply` refuses it once that text has changed. Absent for a
+   * caller with no document (a direct library call, a test): the op then omits the hash and
+   * `apply` binds the text as it stands when the op is applied.
+   */
+  readonly contentHash?: (ids: readonly string[]) => string | undefined
 }
 
 /** A repair with nothing in it — the honest shape when no mechanical fix exists. */
@@ -233,15 +246,15 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // that attempts it. The only mechanical discharge is a reviewed waiver, which
       // is legitimate here (unlike for a coverage FACT) because the author can
       // genuinely hand-verify the aggregate. So: waive, with the reason slot left
-      // for the agent to fill from its own verification.
+      // for the agent to fill from its own verification. Scoped to this demotion's
+      // requirements ({@link scopedWaive}), never document-wide.
       return {
-        ops: [
-          {
-            op: 'waive',
-            code: 'FND_RELATIONAL_UNCHECKED',
-            reason: 'hand-verified: <the aggregate/relational constraint you checked>',
-          } satisfies DocumentOp,
-        ],
+        ops: scopedWaive(
+          demotion,
+          context,
+          'FND_RELATIONAL_UNCHECKED',
+          'hand-verified: <the aggregate/relational constraint you checked>',
+        ),
         commands: [`symspec check ${context.docPath}`],
       }
 
@@ -250,16 +263,14 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // temperature sense, unit) the sentences do not fix. No command decides it for the
       // author. The honest primary repair is to restate the bounds, which needs the
       // requirements read first; the reviewed waiver is the fallback for a pair the
-      // author has checked is consistent.
+      // author has checked is consistent — scoped to that pair ({@link scopedWaive}).
       return {
-        ops: [
-          {
-            op: 'waive',
-            code: 'FND_NUMERIC_UNCOMPARED',
-            reason: 'reviewed: <why these bounds are consistent>',
-            ...(demotion.requirementIds.length === 1 ? { ref: demotion.requirementIds[0] } : {}),
-          } satisfies DocumentOp,
-        ],
+        ops: scopedWaive(
+          demotion,
+          context,
+          'FND_NUMERIC_UNCOMPARED',
+          'reviewed: <why these bounds are consistent>',
+        ),
         commands: [
           ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
           `symspec check ${context.docPath}`,
@@ -293,12 +304,18 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       }
 
     case 'run-weakened':
-      // The semantic tier ran on the TEST stub (AC-3-5). NO OPS: the document is not at
-      // fault. The repair is the same invocation with the stub switch off for that one
-      // command (the Layer enables the stub only on exactly `1`), so it loads the pinned model.
+      // The run itself was weakened: the semantic tier ran on the TEST stub (AC-3-5), or
+      // above the default --semantic-threshold (I-1). NO OPS: the document is not at fault.
+      // The repair is the plain invocation, which carries no threshold flag, with the stub
+      // switch off for that one command when the stub ran (the Layer enables the stub only on
+      // exactly `1`), so it loads the pinned model. One command discharges both causes.
       return {
         ops: [],
-        commands: [`SYMSPEC_EMBED_STUB=0 symspec check ${context.docPath}`],
+        commands: [
+          context.run === undefined || context.run.embedder === 'stub'
+            ? `SYMSPEC_EMBED_STUB=0 symspec check ${context.docPath}`
+            : `symspec check ${context.docPath}`,
+        ],
       }
 
     case 'semantic-tier-skipped':
@@ -330,10 +347,11 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       }
 
     case 'no-decide-tier-comparison':
-      // No two requirements shared an atom. The mechanical lever is a glossary or
-      // antonym link — but WHICH terms to link is a judgment about the document's
-      // meaning that no run can make. So the command is the inspection that lets an
-      // agent decide, not a fabricated link.
+      // No pair was compared: usually no two requirements shared an atom, else the pair
+      // was an exact duplicate or its guards were never asserted together (the action
+      // says which). The levers — a glossary or antonym link, deleting a copy, a rewrite —
+      // are judgments about the document's meaning that no run can make. So the command
+      // is the inspection that lets an agent decide, not a fabricated edit.
       return { ops: [], commands: [`symspec list ${context.docPath}`] }
 
     // ---------------------------------------------------------------------
@@ -412,19 +430,70 @@ const scopeFor = (finding: CheckFinding, sameCode: readonly CheckFinding[]): str
  * That is the honest shape: mechanically applicable where the choice is safe, prose
  * where a human or agent has to decide.
  */
+/**
+ * The finding of `code` that raised `demotion`: the one naming exactly its ids, else one
+ * sharing an id. One that merely shares an id belongs to another pair, so the exact match wins.
+ */
+const raisingFinding = (
+  demotion: CoverageDemotion,
+  sameCode: readonly CheckFinding[],
+): CheckFinding | undefined => {
+  const ids = new Set(demotion.requirementIds)
+  return (
+    sameCode.find(
+      (f) => f.requirementIds.length === ids.size && f.requirementIds.every((id) => ids.has(id)),
+    ) ?? sameCode.find((f) => f.requirementIds.some((id) => ids.has(id)))
+  )
+}
+
+/**
+ * The reviewed-waiver op for a demotion whose only mechanical discharge is a waiver of `code`,
+ * scoped to EXACTLY the finding that raised it: its full requirement set (`refs`) and the
+ * content hash of their current text.
+ *
+ * A waiver is a claim that someone read these requirements, as written, and found them
+ * consistent. Every wider scope claims more than that. A code-only waiver discharges every
+ * finding of the code, so a review of "sound the siren within 2 seconds" / "for at least 30
+ * seconds" certified a later "complete the infusion within 30 minutes" / "for at least 60
+ * minutes". A one-requirement `ref` still discharges every finding that NAMES the ref: the
+ * `FND_RELATIONAL_UNCHECKED` over a cluster a third siren requirement joined, or the same pair
+ * after its partner was rewritten into a different bound. The exact set stops the first (a grown
+ * cluster is a different set), and the hash the second (an edited pair is different text).
+ * With no id to scope to, there is no op: an unscoped waiver is what this rules out.
+ */
+const scopedWaive = (
+  demotion: CoverageDemotion,
+  context: RepairContext,
+  code: string,
+  reason: string,
+): DocumentOp[] => {
+  const finding = raisingFinding(
+    demotion,
+    context.findings.filter((f) => f.code === code),
+  )
+  const refs = [...new Set(finding?.requirementIds ?? demotion.requirementIds)].sort()
+  if (refs.length === 0) return []
+  const contentHash = context.contentHash?.(refs)
+  return [
+    {
+      op: 'waive',
+      code,
+      reason,
+      refs,
+      ...(contentHash !== undefined ? { contentHash } : {}),
+    } satisfies DocumentOp,
+  ]
+}
+
 const fromFindingMessage = (
   demotion: CoverageDemotion,
   context: RepairContext,
   code: string,
 ): Repair => {
-  const ids = new Set(demotion.requirementIds)
   const sameCode = context.findings.filter((f) => f.code === code)
   // The finding that raised THIS demotion names exactly its ids; one that merely shares an
   // id belongs to another pair, and reading its message would hand out the wrong merge.
-  const finding =
-    sameCode.find(
-      (f) => f.requirementIds.length === ids.size && f.requirementIds.every((id) => ids.has(id)),
-    ) ?? sameCode.find((f) => f.requirementIds.some((id) => ids.has(id)))
+  const finding = raisingFinding(demotion, sameCode)
   if (finding === undefined) return NO_REPAIR
 
   // The always-safe discharge, as a real op, scoped to one requirement the finding names —

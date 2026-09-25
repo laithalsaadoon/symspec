@@ -17,6 +17,7 @@
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { normalize } from '../engine/formal/atomize.ts'
+import { requirementsContentHash } from './content-hash.ts'
 import {
   DOC_VERSION,
   emptyDocument,
@@ -776,6 +777,75 @@ describe('the side tables', () => {
 
     const right = ok(scoped.document, { op: 'unwaive', code: 'C', ref: id })
     expect(right.document.waivers).toEqual([])
+  })
+
+  /** Two keyed requirements, for the exact-set (`refs`) scope. */
+  const withTwo = () => {
+    const { doc, id: first } = withOne()
+    const second = ok(doc, {
+      op: 'add',
+      key: 'G2',
+      patternType: 'ubiquitous',
+      systemName: 'auth service',
+      systemResponse: 'lock the account',
+    })
+    return { doc: second.document, first, ids: [first, second.id!].sort() }
+  }
+
+  it('waive `refs` stores the exact UUID set and binds it to the current text', () => {
+    const { doc, ids } = withTwo()
+    const waived = ok(doc, { op: 'waive', code: 'C', reason: 'r', refs: ['G2', 'G1'] })
+    expect(waived.document.waivers).toEqual([
+      {
+        code: 'C',
+        requirementIds: ids,
+        contentHash: requirementsContentHash(doc, ids),
+        reason: 'r',
+      },
+    ])
+    // Idempotent over the same set and text, whatever order or spelling the refs take.
+    const again = ok(waived.document, { op: 'waive', code: 'C', reason: 'r2', refs: ids })
+    expect(again.noop).toBe(true)
+  })
+
+  it('waive accepts the offered hash while the text is unchanged, and refuses it after an edit', () => {
+    const { doc, ids } = withTwo()
+    const contentHash = requirementsContentHash(doc, ids)
+    expect(ok(doc, { op: 'waive', code: 'C', reason: 'r', refs: ids, contentHash }).noop).toBe(
+      false,
+    )
+    const edited = ok(doc, { op: 'update', ref: 'G2', attr: 'systemResponse', value: 'unlock it' })
+    const stale = applyOp(
+      edited.document,
+      op({ op: 'waive', code: 'C', reason: 'r', refs: ids, contentHash }),
+      TS,
+    )
+    expect(isOpFailure(stale) && stale.code).toBe('ERR_USAGE')
+    expect(isOpFailure(stale) && stale.error).toContain('changed since the finding was raised')
+  })
+
+  it('waive refuses `ref` with `refs`, a hash without `refs`, and an empty or unknown `refs`', () => {
+    const { doc, ids } = withTwo()
+    const fails = (raw: Record<string, unknown>) =>
+      applyOp(doc, op({ op: 'waive', code: 'C', reason: 'r', ...raw }), TS)
+    expect(isOpFailure(fails({ ref: 'G1', refs: ids }))).toBe(true)
+    expect(isOpFailure(fails({ contentHash: requirementsContentHash(doc, ids) }))).toBe(true)
+    expect(isOpFailure(fails({ refs: [] }))).toBe(true)
+    const unknown = fails({ refs: ['G1', 'NOPE'] })
+    expect(isOpFailure(unknown) && unknown.code).toBe('ERR_NOT_FOUND')
+  })
+
+  it('unwaive `refs` removes the exact-set waiver and nothing else', () => {
+    const { doc, first, ids } = withTwo()
+    const both = ok(ok(doc, { op: 'waive', code: 'C', reason: 'r', ref: 'G1' }).document, {
+      op: 'waive',
+      code: 'C',
+      reason: 'r',
+      refs: ids,
+    })
+    expect(both.document.waivers).toHaveLength(2)
+    const removed = ok(both.document, { op: 'unwaive', code: 'C', refs: ['G2', 'G1'] })
+    expect(removed.document.waivers).toEqual([{ code: 'C', requirementId: first, reason: 'r' }])
   })
 })
 

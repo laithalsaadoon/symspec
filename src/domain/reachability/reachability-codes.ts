@@ -40,10 +40,11 @@
  *   by cause in the MESSAGE (budget vs undecidable) rather than into two codes, because
  *   the code is what an agent branches on and both branches lead to the same place:
  *   read the reason, then either raise the budget or bound the model.
- * - `FND_REACHABILITY_NOT_CHECKED` — **info**, and DEMOTES. The tier did not run, or ran
- *   over less than the whole document. THE "silence made visible" code, in the
- *   `FND_NO_PAIRS_CHECKED` tradition: without it, a document with no state model looks
- *   exactly like a document that passed.
+ * - `FND_REACHABILITY_NOT_CHECKED` — **info**. The tier did not run, or ran over less than
+ *   the whole document. THE "silence made visible" code, in the `FND_NO_PAIRS_CHECKED`
+ *   tradition: without it, a document with no state model looks exactly like a document
+ *   that passed. It DEMOTES when a committed model leaves a gap; with no model at all the
+ *   tier is opt-in and the `check` boundary emits it without a demotion.
  *
  * - `FND_REACHABILITY_VACUOUS_INITIAL` — **error**, and DEMOTES every constraint. The
  *   initial-state predicate conjoined with the declared ranges is UNSATISFIABLE, so the
@@ -179,10 +180,11 @@ export const ReachabilityFndCodeMeta: Record<
   FND_REACHABILITY_NOT_CHECKED: {
     code: 'FND_REACHABILITY_NOT_CHECKED',
     description:
-      'info — the unbounded reachability tier did NOT cover part or all of this document, and ' +
-      '`verified` is DEMOTED accordingly. Emitted when no state model is committed, when no ' +
-      'requirement carries a constraint to check, when a classified requirement could not be read, ' +
-      'or when the model admits no transitions at all (in which case only the initial state exists ' +
+      'info — the unbounded reachability tier did NOT cover part or all of this document. Emitted ' +
+      'when no state model is committed (the tier is opt-in, so this one does not demote ' +
+      '`verified`), and — DEMOTING `verified` — when a committed model leaves a gap: no ' +
+      'requirement carries a constraint to check, a classified requirement could not be read, ' +
+      'or the model admits no transitions at all (in which case only the initial state exists ' +
       'and any invariant over it holds almost vacuously). This is a coverage DISCLOSURE, not a ' +
       'defect: silence over a question that was never asked reads exactly like a pass, which is the ' +
       'one thing this tool must never do. Suggestion: declare state variables with `symspec state`, ' +
