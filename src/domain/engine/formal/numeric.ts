@@ -1275,8 +1275,12 @@ export function opposedComparators(a: NumericComparator, b: NumericComparator): 
  * Folding the unit in here would also rename the `quantity` in every emitted
  * `evidence.numeric` block and every SMT-LIB2 Real const, changing observable
  * output for genuine same-unit conflicts that were always correct.
+ *
+ * Exported as the ONE quantity key: `domain/vocabulary` keys a quantity phrase with this
+ * function rather than a restatement of it, so a vocabulary can never call two labels one
+ * quantity that this tier keys apart, or the reverse.
  */
-function quantityKey(
+export function quantityKey(
   systemName: string,
   label: string,
   quantityAliases?: ReadonlyMap<string, string>,
@@ -1886,6 +1890,51 @@ export function actionOccurrences(
     out.set(quantity, qualifier === undefined ? { quantity } : { quantity, qualifier })
   }
   return [...out.values()]
+}
+
+/** An action a response performs, as the numeric tier asserts it: {@link responseOccurrences}. */
+export interface ResponseOccurrence extends ActionOccurrence {
+  /** The response as read, trimmed: the audit text a finding quotes. */
+  readonly sourceText: string
+}
+
+/**
+ * The actions a stored requirement's response performs, as the numeric tier asserts their
+ * occurrence beside its bounds. `response` is the requirement's response bounds
+ * ({@link requirementBounds} with `slot === 'resp'`), read under the same `quantityAliases`.
+ *
+ * A response that does an action asserts its occurrence, which is what two opposed
+ * prohibitions on it (`shall not keep the door unlocked above 30 seconds`, `... below 40
+ * seconds`) cannot both survive: at every place a bound could stand, keyed as that bound's
+ * subject would be, with the rest as its qualifier (`keep the door unlocked`, `... until the
+ * guard arrives`); and, with bounds, on each bound's own quantity, whatever unit it is in (`run
+ * the pump at least 80%` runs the pump, and meets `not above 30 minutes` there). A bound's
+ * quantity is not always the action: `keep the door unlocked when the level is above 5 meters`
+ * bounds `keep the door unlocked when the level`, and `... after at most 5 seconds` a delay,
+ * while both keep the door unlocked, so a bound response keys its prefixes too. Its whole text,
+ * bound included, names no action, and is not one of them. Never a prohibition's: `shall not
+ * keep the door unlocked` does not do the action.
+ *
+ * `check` asserts exactly these, and `domain/vocabulary` measures a projection against exactly
+ * these, so the two cannot disagree about what a response performs.
+ */
+export function responseOccurrences(
+  r: ReqView,
+  response: readonly NumericPredicate[],
+  quantityAliases?: ReadonlyMap<string, string>,
+): ResponseOccurrence[] {
+  const view = toEncodable(r)
+  if (view.negated === true) return []
+  const sourceText = view.systemResponse.trim()
+  const bound = response.map((p) => ({
+    quantity: p.quantity,
+    ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
+  }))
+  const keyed = new Set(bound.map((a) => a.quantity))
+  const prefixes = actionOccurrences(view.systemResponse, r.systemName, quantityAliases)
+    .filter((a) => !keyed.has(a.quantity))
+    .filter((a) => bound.length === 0 || a.qualifier !== undefined)
+  return [...bound, ...prefixes].map((a) => ({ ...a, sourceText }))
 }
 
 /**

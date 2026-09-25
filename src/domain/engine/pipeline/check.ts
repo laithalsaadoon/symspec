@@ -84,8 +84,9 @@ import { renderSentence } from '../core/render.ts'
 import type { Requirement, Waiver } from '../core/schema.ts'
 import { shellQuoted } from '../core/shell-word.ts'
 import { detectAmbiguity } from '../formal/ambiguity.ts'
-import { type AntonymEntry, buildAntonymIndexWithDoc } from '../formal/antonyms.ts'
+import type { AntonymEntry } from '../formal/antonyms.ts'
 import {
+  antonymIndexOf,
   areContrary,
   contraryPairs,
   glossaryContraries,
@@ -130,9 +131,9 @@ import {
 } from '../formal/needs-review.ts'
 import { findNumberSpellingCandidates } from '../formal/number-spelling.ts'
 import {
-  actionOccurrences,
   type NumericPredicate,
   requirementBounds,
+  responseOccurrences,
   unreadQuantities,
 } from '../formal/numeric.ts'
 import {
@@ -796,26 +797,9 @@ export interface CheckResult {
   findings: CheckFinding[]
 }
 
-/**
- * Resolve the antonym index a check run consults from the document's committed
- * pairs (#1). Normalizes both heads (so a pair authored as "Open"/"Shut" matches
- * the normalized leading verb the atomizer keys on) and folds them into the seed
- * table via the signed union-find. Defensive: if the committed pairs contain an
- * inconsistent polarity cycle (which the CLI rejects at write time, but a
- * hand-edited doc could still carry), fall back to the seed-only index rather
- * than throwing mid-check — a malformed antonym set must not take down the whole
- * linter. Returns `undefined` when there are no doc pairs so `makeAtomize` omits
- * the arg entirely and the default seed path runs unchanged.
- */
+/** The antonym index a check run consults: the document's committed pairs ({@link antonymIndexOf}). */
 function docAntonymIndex(doc: Doc): ReadonlyMap<string, AntonymEntry> | undefined {
-  const pairs = doc.antonyms ?? []
-  if (pairs.length === 0) return undefined
-  const normalized = pairs.map((p) => [normalize(p.a), normalize(p.b)] as const)
-  try {
-    return buildAntonymIndexWithDoc(normalized)
-  } catch {
-    return undefined
-  }
+  return antonymIndexOf(doc.antonyms ?? [])
 }
 
 /**
@@ -1524,31 +1508,10 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // bounds the quantity at `<= 30 s`; read without the flag it asserted `> 30 s` (spec
       // 007 AC-2-6). The R6 lint reads its bounds through the same function.
       //
-      // A response that does an action asserts its occurrence, which is what two opposed
-      // prohibitions on it (`shall not keep the door unlocked above 30 seconds`, `... below 40
-      // seconds`) cannot both survive: at every place a bound could stand, keyed as that bound's
-      // subject would be, with the rest as its qualifier (`keep the door unlocked`, `... until
-      // the guard arrives`); and, with bounds, on each bound's own quantity, whatever unit it is
-      // in (`run the pump at least 80%` runs the pump, and meets `not above 30 minutes` there).
-      // A bound's quantity is not always the action: `keep the door unlocked when the level is
-      // above 5 meters` bounds `keep the door unlocked when the level`, and `... after at most 5
-      // seconds` a delay, while both keep the door unlocked, so a bound response keys its
-      // prefixes too. Its whole text, bound included, names no action, and is not one of them.
-      // Never a prohibition's: `shall not keep the door unlocked` does not do the action.
-      const occurrencesOf = (r: (typeof reqs)[number], response: readonly NumericPredicate[]) => {
-        const view = toEncodable(r)
-        if (view.negated === true) return []
-        const sourceText = view.systemResponse.trim()
-        const bound = response.map((p) => ({
-          quantity: p.quantity,
-          ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
-        }))
-        const keyed = new Set(bound.map((a) => a.quantity))
-        const prefixes = actionOccurrences(view.systemResponse, r.systemName, quantityAliases)
-          .filter((a) => !keyed.has(a.quantity))
-          .filter((a) => bound.length === 0 || a.qualifier !== undefined)
-        return [...bound, ...prefixes].map((a) => ({ ...a, sourceText }))
-      }
+      // What a response performs beside its bounds (`responseOccurrences`, where the rule is
+      // stated): the occurrence two opposed prohibitions on one quantity cannot both survive.
+      const occurrencesOf = (r: (typeof reqs)[number], response: readonly NumericPredicate[]) =>
+        responseOccurrences(r, response, quantityAliases)
       const numericReqPreds = reqs.map((r) => {
         const predicates = requirementBounds(r, quantityAliases).map((b) => b.predicate)
         const response = predicates.filter((p) => p.slot === 'resp')
