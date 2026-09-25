@@ -139,6 +139,12 @@ export const FND_CODES = [
   // difference readings disagree, or two units no conversion relates. Info-tier,
   // DEMOTES `verified`; never a verdict.
   'FND_NUMERIC_UNCOMPARED',
+  // Number-spelling proposal (appended, spec 007 AC-2-4) — two requirements write one
+  // phrase with numbers that differ only in a digit separator (`1.5` / `1,5`, `1_500` /
+  // `1.500`), so they land on two atoms. Whether they are one number depends on the
+  // decimal convention, which no closed rule fixes. Info-tier, DEMOTES `verified`;
+  // never a verdict.
+  'FND_NUMBER_SPELLING_CANDIDATE',
 ] as const
 
 export type FndCode = (typeof FND_CODES)[number]
@@ -295,6 +301,11 @@ export const FndCodeMeta = {
     code: 'FND_RELATIONAL_UNCHECKED',
     description:
       "info — requirements under one shared guard carry numeric bounds alongside unmatched (singleton) atoms — the shape where aggregate/conservation or cross-quantity relational conflicts hide. symspec's numeric tier is pairwise same-quantity only and does NOT attempt aggregate sums or cross-quantity arithmetic, so this reasoning was not attempted. DEMOTES `verified` so it never outruns what was compared; never a verdict.",
+  },
+  FND_NUMBER_SPELLING_CANDIDATE: {
+    code: 'FND_NUMBER_SPELLING_CANDIDATE',
+    description:
+      'info — two requirements write the same phrase with numbers that differ only in a digit separator (e.g. "respond within 1.5 ms" vs "not respond within 1,5 ms", or 1_500 vs 1.500), so they landed on two atoms and were never compared. A `,` or `.` between digits is a thousands separator in one convention and a decimal point in the other, so symspec does not decide whether they are one number. Propose-only: if they are, rewrite one with `symspec update` so both spell the number identically and the solver compares them on one atom; if not, waive it for the pair. DEMOTES `verified`; never a verdict.',
   },
 } satisfies Record<FndCode, { readonly code: FndCode; readonly description: string }>
 

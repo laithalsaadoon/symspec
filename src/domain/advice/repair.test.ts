@@ -205,6 +205,7 @@ const EVERY_REASON: readonly CoverageDemotion['reason'][] = [
   'conditional-conflict-unchecked',
   'run-weakened',
   'opposite-polarity-near-duplicate',
+  'number-spelling-candidate',
 ]
 
 const CONTEXT: RepairContext = {
@@ -447,6 +448,7 @@ describe('a pair demotion repair is scoped to its own pair', () => {
     // triage of the siren pair then silenced a later, genuinely conflicting infusion pair.
     ['relational-reasoning-not-attempted', 'FND_RELATIONAL_UNCHECKED', 'relational'],
     ['numeric-bounds-uncompared', 'FND_NUMERIC_UNCOMPARED', 'uncompared'],
+    ['number-spelling-candidate', 'FND_NUMBER_SPELLING_CANDIDATE', 'spelling'],
   ]
 
   it.each(PAIRS)('%s: applying the op leaves an untriaged pair demoting', (reason, code, msg) => {
@@ -469,6 +471,7 @@ describe('a pair demotion repair is scoped to its own pair', () => {
   const REVIEWED: readonly [CoverageDemotion['reason'], string][] = [
     ['relational-reasoning-not-attempted', 'FND_RELATIONAL_UNCHECKED'],
     ['numeric-bounds-uncompared', 'FND_NUMERIC_UNCOMPARED'],
+    ['number-spelling-candidate', 'FND_NUMBER_SPELLING_CANDIDATE'],
   ]
 
   it.each(REVIEWED)('%s: the op names the exact set and its content hash', (reason, code) => {

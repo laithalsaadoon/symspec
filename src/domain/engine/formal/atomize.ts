@@ -617,6 +617,21 @@ export const SYMBOL_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
  */
 const DIGIT_SEPARATOR = String.raw`(?<=\p{N})[.,](?=\p{N})`
 
+/** Every {@link DIGIT_SEPARATOR} in a string, for {@link digitSeparatorFold}. */
+const DIGIT_SEPARATOR_ANYWHERE = new RegExp(DIGIT_SEPARATOR, 'gu')
+
+/**
+ * An atom name with every {@link DIGIT_SEPARATOR} read as a token boundary, as {@link normalize}
+ * read it before the separator stayed inside its number. PROPOSE-only: two DIFFERENT atoms with
+ * one fold spell a phrase whose numbers differ only in a separator (`1.5` / `1,5`, `1_500` /
+ * `1.500`), a pair the old deletion collapsed onto one atom and proved. Whether they spell one
+ * number is not something a closed rule settles (`1,500` is 1500 or 1.5 by convention), so the
+ * fold is never a key the decide tier compares: `number-spelling.ts` demotes the pair instead.
+ */
+export function digitSeparatorFold(name: string): string {
+  return name.replace(DIGIT_SEPARATOR_ANYWHERE, '_')
+}
+
 /**
  * The punctuation {@link normalize} deletes: the characters that carry no identity (spec 007
  * AC-2-4). Each becomes a token boundary. The set is closed:

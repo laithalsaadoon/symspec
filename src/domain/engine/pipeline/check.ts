@@ -125,6 +125,7 @@ import {
   type GroupChecker,
   SolverBudgetExceededError,
 } from '../formal/needs-review.ts'
+import { findNumberSpellingCandidates } from '../formal/number-spelling.ts'
 import { requirementBounds } from '../formal/numeric.ts'
 import { analyzeNumericBounds } from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
@@ -422,6 +423,13 @@ export interface CoverageDemotion {
     // or split an atom the document already shares, and a rewrite is the route instead) or by
     // waiving the finding (declared distinct) — the finding is the triage record.
     | 'opposite-polarity-near-duplicate'
+    // AC-2-4: two requirements write one phrase with numbers that differ only in a digit
+    // separator (`1.5` / `1,5`, `1_500` / `1.500`), so they sit on two atoms and were never
+    // compared. Whether they are one number turns on the decimal convention, which no closed
+    // rule fixes, so the pair is demoted and never proved. Discharged by spelling the number
+    // identically in both (one atom, compared by the solver) or by waiving the
+    // FND_NUMBER_SPELLING_CANDIDATE finding for the pair when they are different numbers.
+    | 'number-spelling-candidate'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
   action: string
@@ -608,6 +616,7 @@ const PROPOSE_ONLY_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
   'FND_QUANTITY_ALIAS_CANDIDATE',
   'FND_RELATIONAL_UNCHECKED',
   'FND_NUMERIC_UNCOMPARED',
+  'FND_NUMBER_SPELLING_CANDIDATE',
   // The completeness heuristic names its whole same-trigger group, so it always
   // spans ≥2 ids — but its solver answer is fixed by the encoding, not read off
   // the document: `encode` emits every `pre` row positive, and a disjunction of
@@ -643,6 +652,7 @@ const COVERAGE_GAP_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
   'FND_QUANTITY_ALIAS_CANDIDATE',
   'FND_RELATIONAL_UNCHECKED',
   'FND_NUMERIC_UNCOMPARED',
+  'FND_NUMBER_SPELLING_CANDIDATE',
   'FND_INCOMPLETE',
   'FND_NEEDS_REVIEW',
 ])
@@ -1461,6 +1471,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         })),
       )
 
+      // AC-2-4: a phrase whose numbers differ only in a digit separator is two atoms, and no
+      // closed rule says whether they are one number. Propose-only: name the pair so it is
+      // demoted, never silently covered. Read off the ENCODED rows, the atoms the solver saw.
+      const numberSpellingCandidates = findNumberSpellingCandidates(encoded)
+
       // Issue #2 (reproducer b + aggregate/relational families): detect the
       // STRUCTURAL SHAPE where aggregate/conservation or emergent-structural
       // (odd-cycle 2-coloring, pigeonhole, transitivity) conflicts hide — bounds
@@ -1635,6 +1650,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         ...graph,
         ...opposition,
         ...quantityAliasCandidates,
+        ...numberSpellingCandidates,
         ...numericUncompared,
       ]) {
         formal.push({
@@ -1922,6 +1938,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   const quantityAliasFindings = kept.filter((f) => f.code === 'FND_QUANTITY_ALIAS_CANDIDATE')
   const relationalFindings = kept.filter((f) => f.code === 'FND_RELATIONAL_UNCHECKED')
   const numericUncomparedFindings = kept.filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
+  const numberSpellingFindings = kept.filter((f) => f.code === 'FND_NUMBER_SPELLING_CANDIDATE')
 
   const demotions: CoverageDemotion[] = []
   if (requirements.length >= 2) {
@@ -2019,6 +2036,20 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           "(the finding's message says which reading splits them). Restate them in one sense and " +
           'one recognized unit so the numeric tier can decide them, or waive this finding once you ' +
           'have checked they are consistent. Then re-run `symspec check`.',
+      })
+    }
+    // AC-2-4: a number spelled with two digit separators. Off the KEPT set, so the reviewed
+    // waiver that declares the two numbers different discharges it.
+    for (const f of numberSpellingFindings) {
+      demotions.push({
+        reason: 'number-spelling-candidate',
+        requirementIds: [...f.requirementIds],
+        action:
+          `${f.requirementIds.join(' and ')} write one phrase with numbers that differ only in a ` +
+          'digit separator, on two atoms the solver never compared. If they are one number, ' +
+          'rewrite one with `symspec update` so both spell it identically, then re-run `symspec ' +
+          'check`: the shared atom makes any conflict provable. If they are different numbers, ' +
+          'waive FND_NUMBER_SPELLING_CANDIDATE for the pair.',
       })
     }
     // AC-3-6: an untriaged opposite-polarity inflection variant is a possible
