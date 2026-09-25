@@ -141,20 +141,31 @@ describe('a digit-separator split is demoted by name (C2/C3)', () => {
     ).toEqual([])
   })
 
+  // With no waiver, R6 keeps the `_` and decimal-comma spellings out of the formal tier. The
+  // exclusion names only its own requirement, so the pair demotion still has to name the
+  // partner that WAS admitted.
   it.each([
     ['(2)', '1_500', '1.500'],
     ['(3)', '30_000', '30.000'],
-  ])('%s `%s ms` / `not %s ms` with no waiver: never verified, every requirement named', async (_, x, y) => {
+    ['(4)', '1.5', '1,5'],
+  ])('%s `%s ms` / `not %s ms` with no waiver: every cross pair demoted by name', async (_, x, y) => {
     const report = await checkRendered(FOUR(x, y))
     const trace = JSON.stringify({ findings: report.findings, coverage: report.coverage })
-    expect(report.verified, trace).toBe(false)
-    const named = new Set(report.coverage.demotions.flatMap((d) => d.requirementIds))
-    for (const i of [0, 1, 2, 3]) expect(named.has(idOf(i)), trace).toBe(true)
+    for (const [a, b] of CROSS) expectDemotedPair(report, a, b)
     // No pair here is proved on an exact key: these numbers are not the same by any closed rule.
     for (const f of report.findings) {
       if (!PROOFS.has(f.code)) continue
       expect(f.severity === 'error' ? f.requirementIds : [], trace).toEqual([])
     }
+  })
+
+  it('(1) with no waiver: the excluded decimal comma is still named with its partner', async () => {
+    const report = await checkRendered([
+      'When the cache warms, the api gateway shall respond within 1.5 ms.',
+      'When the cache warms, the api gateway shall not respond within 1,5 ms.',
+    ])
+    expect(report.coverage.demotions.map((d) => d.reason)).toContain('excluded-from-formal')
+    expectDemotedPair(report, 0, 1)
   })
 
   it('one spelling on both sides is one atom and still proved, never a candidate', async () => {

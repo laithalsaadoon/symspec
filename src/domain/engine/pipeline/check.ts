@@ -1473,8 +1473,13 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
 
       // AC-2-4: a phrase whose numbers differ only in a digit separator is two atoms, and no
       // closed rule says whether they are one number. Propose-only: name the pair so it is
-      // demoted, never silently covered. Read off the ENCODED rows, the atoms the solver saw.
-      const numberSpellingCandidates = findNumberSpellingCandidates(encoded)
+      // demoted, never silently covered. Over EVERY requirement, gate-excluded ones too, encoded
+      // through the solver's own atomizer: a `1_500 ms` that R6 keeps out is still half of a
+      // pair 669c0e9 proved against `1.500 ms`, and only a pair demotion names its partner. A
+      // propose-only demotion over an untrusted slot can only withhold `verified`.
+      const numberSpellingCandidates = findNumberSpellingCandidates(
+        reqs.map((r) => encodedById.get(r.id) ?? encode(toEncodable(r), atomize)),
+      )
 
       // Issue #2 (reproducer b + aggregate/relational families): detect the
       // STRUCTURAL SHAPE where aggregate/conservation or emergent-structural

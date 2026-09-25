@@ -30,6 +30,8 @@
 "The api gateway shall respond with latency 500 and log the request."	{"unparsed":true,"r6":[["error",[43,46],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
 "The api gateway shall respond within 1 to 5."	{"r6":[["error",[37,38],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[42,43],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
 "The api gateway shall respond within 10-20 ms."	{"r6":[["error",[37,39],"Bare number \"10\" with no unit; specify unit (e.g., \"10 seconds\")"]]}
+"The api gateway shall respond within 1_500 ms."	{"r6":[["error",[37,38],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
+"The api gateway shall respond within 30_000 ms."	{"r6":[["error",[37,39],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The api gateway shall respond within 500 and log the request."	{"unparsed":true,"r6":[["error",[37,40],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
 "The api gateway shall respond within 500 once the request arrives."	{"r6":[["error",[37,40],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
 "The archive service shall store 1 record."	{"r6":[["error",[32,33],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
@@ -186,6 +188,7 @@
 "The controller shall keep zone 1 temperature above 20 °C and zone 2 temperature below 5 °C."	{"unparsed":true,"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[66,67],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall limit current 20 at startup."	{"r6":[["error",[35,37],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "The controller shall limit disk 2 usage below 5 GB."	{"r6":[]}
+"The controller shall log sensor_2 within 5 ms."	{"r6":[]}
 "The controller shall maintain pressure 5 during startup."	{"r6":[["error",[39,40],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
 "The controller shall maintain temperature 20 while idle."	{"r6":[["error",[42,44],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "The controller shall maintain temperature 30 while idle."	{"r6":[["error",[42,44],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
@@ -245,6 +248,7 @@
 "The controller shall set the fan speed to 80 net."	{"r6":[["error",[42,44],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "The controller shall set the fan speed to 80 tops."	{"r6":[["error",[42,44],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "The controller shall set the fan to 1,500."	{"r6":[["error",[36,37],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[38,41],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
+"The controller shall set the fan to 1_500."	{"r6":[["error",[36,37],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[38,41],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
 "The controller shall set the fan to 20 within 5 seconds."	{"r6":[["error",[36,38],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "The controller shall set the fan to 20, 5 seconds after the alarm."	{"r6":[["error",[36,38],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "The controller shall set the fan to 80 a day."	{"r6":[]}

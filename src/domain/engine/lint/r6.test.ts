@@ -159,6 +159,10 @@ describe('GTWR_R6 in a full check: a unitless amount keeps the requirement out',
       'keep oven 220 temperature for at least 10 minutes',
       '180',
     ],
+    // an `_` digit-group separator: `_` is a word character, so a `\b`-bounded digit run
+    // never started inside `1_500`, and the amount had no R6 finding at all
+    ['set the fan to 1_500', 'set the fan to 2_000', '1'],
+    ['set the delay to 30_000', 'set the delay to 60_000', '30'],
   ] as const
 
   for (const [a, b, amount] of pairs) {
@@ -326,8 +330,18 @@ describe('GTWR_R6: a number the numeric tier reads with a converted unit carries
     ['respond within 1,5 ms', ['1']],
     // a toleranced value, which the tier declines as a bound
     ['respond within 1,500 ms ± 5 ms', ['1']],
+    // an `_` digit-group separator, which the tier's NUMBER token does not read: each digit
+    // group is a digit run, as each `,` group is
+    ['set the fan to 1_500', ['1', '500']],
+    ['respond within 1_500 ms', ['1']],
+    ['respond within 30_000 ms', ['30']],
   ] as const)('"%s": R6 errors on %j', (response, numerals) => {
     expect(r6Numerals(ubiquitous(response))).toEqual(numerals)
+  })
+
+  it('an `_` inside a name is not a digit-group separator', () => {
+    expect(r6Numerals(ubiquitous('log sensor_2 within 5 ms'))).toEqual([])
+    expect(r6Numerals(ubiquitous('read the v2_config within 5 ms'))).toEqual([])
   })
 
   it('in a full check both sides are admitted, and a real clash on them is proved', async () => {

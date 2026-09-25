@@ -407,3 +407,7 @@ The controller shall limit disk 2 usage below 5 GB.
 The controller shall cap node 2 memory below 4 GB.
 While the controller keeps zone 1 temperature above 20 °C, the plant shall log the state.
 While the pump runs and zone 2 temperature is below 5 °C, the controller shall log the state.
+The api gateway shall respond within 1_500 ms.
+The api gateway shall respond within 30_000 ms.
+The controller shall set the fan to 1_500.
+The controller shall log sensor_2 within 5 ms.

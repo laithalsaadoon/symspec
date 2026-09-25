@@ -304,13 +304,20 @@ const R6_SYMBOL_UNITS: readonly string[] = ['%', '°C', '°F', 'dollars', 'dolla
  * a match that is immediately followed by `.<digit>` means the integer part of a
  * decimal is never flagged on its own (this also cleaned up the pre-existing
  * `"2.0 seconds"` → `"2"` false positive in the prior inline pattern).
+ *
+ * An `_` between two digits is a digit-group separator, so a digit run may also start after
+ * `<digit>_` and end before `_<digit>`. `_` is a word character, so with `\b` alone no digit run
+ * started inside `1_500` and `set the fan to 1_500` was a unitless amount with no R6 finding at
+ * all. The numeric tier's NUMBER token does not read `1_500`, so each group is a digit run, as
+ * each `,` group of `1,500 bar` is. An `_` after a letter (`sensor_2`, `v2_config`) is part of a
+ * name and still is not a boundary.
  */
 const R6_UNIT_LOOKAHEAD =
   `(?:${R6_RECOGNIZED_UNITS.join('|')})\\b` +
   `|(?:${R6_MULTIWORD_UNITS.join('|')})` +
   `|(?:${R6_SYMBOL_UNITS.join('|')})`
 const R6_BARE_NUMBER = new RegExp(
-  String.raw`\b(\d+(?:\.\d+)?)\b(?!\.\d)(?!\s*(?:${R6_UNIT_LOOKAHEAD}))`,
+  String.raw`(?:\b|(?<=\d_))(\d+(?:\.\d+)?)(?:\b|(?=_\d))(?!\.\d)(?!\s*(?:${R6_UNIT_LOOKAHEAD}))`,
   'gi',
 )
 
