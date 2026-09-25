@@ -262,16 +262,15 @@ describe('a cross-slot bridge is a fabrication surface still open', () => {
 
   it('blames the two requirements that do not conflict', async () => {
     const report = await check(crossSlotBridgeDoc())
-    // TWO error-severity findings on a document whose only defect is that req 72 can never
-    // fire. Both tiers reach the same wrong conclusion through the same bridge group.
+    // An error-severity finding on a document whose only defect is that req 72 can never fire.
+    // The propositional tier reaches it through the bridge group. The numeric tier's half is
+    // fenced: a core whose requirements' guard bounds cannot hold at once is not a conflict
+    // (`numeric-contradiction.ts` `canCoApply`), so it no longer blames A and B.
     expect(
       report.findings
         .filter((f) => f.severity === 'error')
         .map((f) => [f.code, f.requirementIds] as const),
-    ).toEqual([
-      ['FND_CONTRADICTION', [A, B]],
-      ['FND_NUMERIC_CONTRADICTION', [A, B]],
-    ])
+    ).toEqual([['FND_CONTRADICTION', [A, B]]])
     // And the honest reading of the document is present on the same run, at warn severity:
     // the bridge requirement's guard is unreachable. That finding is the whole story; the two
     // above are the fabrication.

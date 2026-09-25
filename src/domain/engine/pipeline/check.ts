@@ -125,7 +125,7 @@ import {
   type GroupChecker,
   SolverBudgetExceededError,
 } from '../formal/needs-review.ts'
-import { extractNumericPredicates } from '../formal/numeric.ts'
+import { actionOccurrences, extractNumericPredicates } from '../formal/numeric.ts'
 import { analyzeNumericBounds } from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
 import { findRelationalUnchecked } from '../formal/relational.ts'
@@ -1519,19 +1519,56 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           negated,
         )
       }
-      const numericReqPreds = reqs.map((r) => ({
-        id: r.id,
-        contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
-        predicates: [
-          ...responseBounds(r),
-          ...(r.trigger !== undefined
-            ? extractNumericPredicates(r.trigger, r.systemName, 'trig', quantityAliases)
-            : []),
-          ...(r.preCondition !== undefined
-            ? extractNumericPredicates(r.preCondition, r.systemName, 'pre', quantityAliases)
-            : []),
-        ],
-      }))
+      // A response that does an action asserts its occurrence, which is what two opposed
+      // prohibitions on it (`shall not keep the door unlocked above 30 seconds`, `... below 40
+      // seconds`) cannot both survive: at every place a bound could stand, keyed as that bound's
+      // subject would be, with the rest as its qualifier (`keep the door unlocked`, `... until
+      // the guard arrives`); and, with bounds, on each bound's own quantity, whatever unit it is
+      // in (`run the pump at least 80%` runs the pump, and meets `not above 30 minutes` there).
+      // A bound's quantity is not always the action: `keep the door unlocked when the level is
+      // above 5 meters` bounds `keep the door unlocked when the level`, and `... after at most 5
+      // seconds` a delay, while both keep the door unlocked, so a bound response keys its
+      // prefixes too. Its whole text, bound included, names no action, and is not one of them.
+      // Never a prohibition's: `shall not keep the door unlocked` does not do the action.
+      const occurrencesOf = (
+        r: (typeof reqs)[number],
+        response: ReturnType<typeof extractNumericPredicates>,
+      ) => {
+        const view = toEncodable(r)
+        if (view.negated === true) return []
+        const sourceText = view.systemResponse.trim()
+        const bound = response.map((p) => ({
+          quantity: p.quantity,
+          ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
+        }))
+        const keyed = new Set(bound.map((a) => a.quantity))
+        const prefixes = actionOccurrences(view.systemResponse, r.systemName, quantityAliases)
+          .filter((a) => !keyed.has(a.quantity))
+          .filter((a) => bound.length === 0 || a.qualifier !== undefined)
+        return [...bound, ...prefixes].map((a) => ({ ...a, sourceText }))
+      }
+      const numericReqPreds = reqs.map((r) => {
+        const response = responseBounds(r)
+        return {
+          id: r.id,
+          contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
+          occurrences: occurrencesOf(r, response),
+          ...(toEncodable(r).negated === true
+            ? {}
+            : {
+                response: { systemName: r.systemName, text: toEncodable(r).systemResponse.trim() },
+              }),
+          predicates: [
+            ...response,
+            ...(r.trigger !== undefined
+              ? extractNumericPredicates(r.trigger, r.systemName, 'trig', quantityAliases)
+              : []),
+            ...(r.preCondition !== undefined
+              ? extractNumericPredicates(r.preCondition, r.systemName, 'pre', quantityAliases)
+              : []),
+          ],
+        }
+      })
       // The decide half (`contradictions`) and what it declined to decide (`uncompared`,
       // demotion-only): a proof must hold under every reading of a role or a temperature,
       // and a pair the readings split is disclosed rather than dropped.

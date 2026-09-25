@@ -557,8 +557,10 @@ export const fabricationCases = (): readonly FabricationCase[] => [
  * as a recorded gap instead — the shape is pinned, so a fence for it announces itself by
  * turning that test red, and the fix is then to move the document up into the corpus.
  *
- * Fencing it needs a per-group FEASIBILITY check: a group whose own guard bounds are jointly
- * unsatisfiable is not a reachable context and must host no cell. No code path performs one.
+ * Fencing it needs a FEASIBILITY check: requirements whose guard bounds are jointly
+ * unsatisfiable never apply at once, and a conflict among them is not one. The numeric tier
+ * performs it on every core it would report (`numeric-contradiction.ts` `canCoApply`); the
+ * propositional tier does not, and its FND_CONTRADICTION is the gap this document still pins.
  */
 export const crossSlotBridgeDoc = (): RequirementsDocument =>
   docOf([

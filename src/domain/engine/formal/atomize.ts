@@ -690,6 +690,16 @@ export const SYMBOL_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
 ]
 
 /**
+ * A `,` or `.` BETWEEN two digits: part of the number, not punctuation (spec 007 AC-2-4). It
+ * decides which number it is: the numeric tier's NUMBER reader takes `1,500` as 1500 and `1.500`
+ * as 1.5, so a key that deletes it merges two numbers. Keeping it can only SPLIT a key: `1,500`,
+ * `1.500` and `1500` are three spellings, and one spelling is still one. The numeric tier's
+ * quantity key keeps it inside its number (`numeric.ts` `quantityKey`). One definition, as a
+ * regex source string, so each consumer composes it into its own pattern.
+ */
+export const DIGIT_SEPARATOR = String.raw`(?<=\p{N})[.,](?=\p{N})`
+
+/**
  * The punctuation {@link normalize} deletes: the characters that carry no identity (spec 007
  * AC-2-4). Each becomes a token boundary. The set is closed:
  *   - connectors, dashes, brackets and quotes (`\p{Pc}` `\p{Pd}` `\p{Ps}` `\p{Pe}` `\p{Pi}`

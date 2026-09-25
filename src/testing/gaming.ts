@@ -22,7 +22,7 @@
  *   from a fixture to an op stream, a re-parse, or a run-setting change — the same three
  *   channels an agent has. Each carries its I-1 direction as DATA.
  * - {@link NOT_APPLICABLE_YET}: the AC-8-2 moves whose target does not exist yet (intent,
- *   policy, `refine` certificates, environment assumptions, `derived`). Enumerated in code so
+ *   policy, `narrow` certificates, environment assumptions, `derived`). Enumerated in code so
  *   AC-8-2's list is complete here and a later story has a row to promote.
  * - {@link KNOWN_ESCAPES}: every (fixture, move) pair that reaches a clean verdict today, with
  *   the AC that closes it. The gate is that this table is EXACT, in both directions.
@@ -214,11 +214,11 @@ const contraryOps = (r2Response: string): readonly DocumentOp[] => [
 const numericOps = (r2Bound: string): readonly DocumentOp[] => [
   add('NUM-R1', {
     systemName: 'session service',
-    systemResponse: 'expire the idle session after at most 30 minutes',
+    systemResponse: 'expire the session after at most 30 minutes',
   }),
   add('NUM-R2', {
     systemName: 'session service',
-    systemResponse: `expire the idle session after at least ${r2Bound} minutes`,
+    systemResponse: `expire the session after at least ${r2Bound} minutes`,
   }),
 ]
 
@@ -348,8 +348,7 @@ export const FIXTURES: readonly Fixture[] = [
   },
   {
     id: 'numeric-conflict',
-    seeded:
-      'R1 expires an idle session within 30 minutes; R2 not before 45. No duration satisfies both.',
+    seeded: 'R1 expires a session within 30 minutes; R2 not before 45. No duration satisfies both.',
     ops: numericOps('45'),
     culprits: ['NUM-R1', 'NUM-R2'],
     signal: { code: 'FND_NUMERIC_CONTRADICTION', names: ['NUM-R1', 'NUM-R2'] },
@@ -1069,7 +1068,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     'rebind-effect',
     'AC-5-9',
     ['state-invariant'],
-    'Rewriting the effect so it never writes the forbidden value discharges the violation while the sentence still says "open the valve". The binding changed and removed a finding with no `refine` certificate (`FND_SEMANTIC_DRIFT`); AC-6-6 separately flags the effect as no longer the rendering of its sentence.',
+    'Rewriting the effect so it never writes the forbidden value discharges the violation while the sentence still says "open the valve". The binding changed and removed a finding with no `narrow` certificate (`FND_SEMANTIC_DRIFT`); AC-6-6 separately flags the effect as no longer the rendering of its sentence.',
   ),
 ]
 
