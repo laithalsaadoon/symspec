@@ -351,7 +351,7 @@ export const GTWR_SEVERITY_NOTE =
 // Building the three families
 // ---------------------------------------------------------------------------
 
-/** The 21 `ERR_*` rows. Severity is `null`: an operational failure has an EXIT
+/** The `ERR_*` rows. Severity is `null`: an operational failure has an EXIT
  * CODE (always 2), not a finding severity. */
 const errRows = (): readonly CodeEntry[] =>
   ERR_CLASSES.map((cls) => {

@@ -40,9 +40,11 @@ export type Negator = (typeof NEGATORS)[number]
  * response atom. Alternation is ordered longest-first so `not be able to` wins
  * over bare `not`. `\b` after the negator keeps "notify"/"nevertheless"/
  * "notable" from being read as negation. A trailing `(?:\s+…)?$` requires the
- * negator to be a standalone token, not a prefix.
+ * negator to be a standalone token, not a prefix. `not only` is excluded: it
+ * opens "not only X but also Y", which obliges both halves (spec 007 AC-2-3).
  */
-const LEADING_NEGATOR = /^(?<neg>not\s+be\s+able\s+to|never|not)\b(?:\s+(?<rest>.+))?$/i
+const LEADING_NEGATOR =
+  /^(?<neg>not\s+be\s+able\s+to|never|not(?!\s+only\b))\b(?:\s+(?<rest>.+))?$/i
 
 /** Result of {@link extractNegation}. */
 export interface NegationResult {

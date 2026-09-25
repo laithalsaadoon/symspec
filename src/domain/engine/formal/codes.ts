@@ -102,7 +102,7 @@ export const FND_CODES = [
   // Bounded temporal tier (AC-33-2) — sound-for-UNSAT verdict over a trace bound
   'FND_TEMPORAL_CONTRADICTION',
   // Formal-coverage disclosure (appended) — the formal tier evaluated ZERO
-  // pairs (no two requirements shared an atom), so `check` performed no
+  // pairs (usually because no two requirements shared an atom), so `check` performed no
   // cross-requirement conflict analysis. An info finding so silence that looks
   // like a pass is loud instead.
   'FND_NO_PAIRS_CHECKED',
@@ -269,7 +269,7 @@ export const FndCodeMeta = {
   FND_NO_PAIRS_CHECKED: {
     code: 'FND_NO_PAIRS_CHECKED',
     description:
-      'info — the formal tier evaluated 0 candidate pairs (no two requirements shared an atom), so no cross-requirement conflict/subsumption analysis actually ran. Silence here is not a consistency certificate; consider glossary entries to align vocabulary so related requirements share atoms.',
+      'info — the formal tier evaluated 0 candidate pairs, so no pairwise cross-requirement comparison was recorded: usually no two requirements shared an atom, and otherwise the pairs that did were exact duplicates (reported as FND_EXACT_DUPLICATE instead) or under guards no decided context group asserts together; the message names which. Silence here is not a consistency certificate; where vocabulary is the gap, consider glossary entries to align it so related requirements share atoms.',
   },
   FND_OPPOSITION_CANDIDATE: {
     code: 'FND_OPPOSITION_CANDIDATE',

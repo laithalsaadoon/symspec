@@ -213,6 +213,102 @@ describe('AC-1-2 — an effect that writes outside its target`s declared range i
   })
 })
 
+describe('AC-1-2 — an out-of-range value PERSISTS through a step that does not write it', () => {
+  /**
+   * `x` and `y` are both 0..2 and start at 2. A writes `x := 3`, D writes `y := 3`, and C
+   * says they are never both 3. The unpinned (`none`) run used to REDRAW an unwritten
+   * variable inside its declared range, so after `init -> A` the 3 in `x` could not survive
+   * D's step: C came back PROVED "with nothing assumed beyond what the document states"
+   * beside the tool's own two FND_RANGE_VIOLATION errors reaching x = 3 and y = 3.
+   *
+   * By hand: init (2, 2) -> A (3, 2) -> D (3, 3), and D writes only y, so x stays 3 under
+   * every frame. The only correct verdict is VIOLATED, two steps deep, in either order.
+   */
+  const OVERFLOWS = (frame: StateVariable['frame']): RequirementsDocument =>
+    docOf(
+      [
+        { name: 'x', type: 'int', frame, domain: { min: 0, max: 2 }, initial: 'x = 2' },
+        { name: 'y', type: 'int', frame, domain: { min: 0, max: 2 }, initial: 'y = 2' },
+      ],
+      [
+        effect(1, 'A', 'when x = 2: x := x + 1'),
+        effect(2, 'D', 'when y = 2: y := y + 1'),
+        constraint(3, 'C', 'not (x = 3 and y = 3)'),
+      ],
+    )
+
+  for (const frame of ['stable', 'volatile'] as const) {
+    it(`${frame}: C is VIOLATED two steps deep, ending at x = 3, y = 3`, async () => {
+      const report = await run(OVERFLOWS(frame))
+      const result = resultFor(report, 'C')
+      expect(result.verdict).toBe('VIOLATED')
+      expect([
+        ['init', 'A', 'D', 'C'],
+        ['init', 'D', 'A', 'C'],
+      ]).toContainEqual(traceOf(report, 'C'))
+      expect(result.trace?.states.at(-1)).toEqual({ x: '3', y: '3' })
+    })
+
+    it(`${frame}: no proof is reported beside the range violations that reach it`, async () => {
+      const projection = projectReachability(await run(OVERFLOWS(frame)), 'doc.json')
+      const codes = projection.findings.map((f) => f.code)
+      expect(codes).not.toContain('FND_REACHABILITY_PROVED')
+      expect(codes).not.toContain('FND_REACHABILITY_UNDER_HYPOTHESES')
+      expect(codes).toContain('FND_REACHABILITY_VIOLATED')
+      expect(codes.filter((c) => c === 'FND_RANGE_VIOLATION')).toHaveLength(2)
+    })
+  }
+
+  /**
+   * The MIXED-frame shape: the `declared` run pins the stable `y` but leaves the volatile
+   * `x` free, so it is the one run where a FREE variable must keep an out-of-range value
+   * while a PINNED one changes. All-stable docs pin everything under `declared`, and
+   * all-volatile docs skip the `declared` run, so neither case above exercises it.
+   *
+   * `x` (volatile) is 0..2 and starts at 2; `y` (stable) starts at 0. A writes `x := 3`
+   * while y = 0; D writes `y := 1` once x = 3. By hand: init (2, 0) -> A (3, 0) -> D (3, 1),
+   * and D writes only y, so x stays 3 under every frame. The only correct verdict is
+   * VIOLATED via init -> A -> D. The unbounded volatile `z` exists only to push the
+   * explicit-state cross-check past its cap, so the Horn tier's answer stands alone: a
+   * `declared` step that redraws x back into 0..2 comes back PROVED_UNDER_HYPOTHESES.
+   */
+  const MIXED = (withUnbounded: boolean): RequirementsDocument =>
+    docOf(
+      [
+        { name: 'x', type: 'int', frame: 'volatile', domain: { min: 0, max: 2 }, initial: 'x = 2' },
+        { name: 'y', type: 'int', frame: 'stable', domain: { min: 0, max: 2 }, initial: 'y = 0' },
+        ...(withUnbounded
+          ? [{ name: 'z', type: 'int', frame: 'volatile', initial: 'z = 0' } as const]
+          : []),
+      ],
+      [
+        effect(1, 'A', 'when y = 0: x := x + 1'),
+        effect(2, 'D', 'when x = 3: y := 1'),
+        constraint(3, 'C', 'not (x = 3 and y = 1)'),
+      ],
+    )
+
+  for (const withUnbounded of [true, false]) {
+    const label = withUnbounded ? 'mixed frames, search capped' : 'mixed frames'
+    it(`${label}: C is VIOLATED via init -> A -> D, ending at x = 3, y = 1`, async () => {
+      const report = await run(MIXED(withUnbounded))
+      const result = resultFor(report, 'C')
+      expect(result.verdict).toBe('VIOLATED')
+      expect(traceOf(report, 'C')).toEqual(['init', 'A', 'D', 'C'])
+      expect(result.trace?.states.at(-1)).toMatchObject({ x: '3', y: '1' })
+    })
+
+    it(`${label}: no proof and no certificate disagreement is reported`, async () => {
+      const projection = projectReachability(await run(MIXED(withUnbounded)), 'doc.json')
+      const codes = projection.findings.map((f) => f.code)
+      expect(codes).not.toContain('FND_REACHABILITY_PROVED')
+      expect(codes).not.toContain('FND_REACHABILITY_UNDER_HYPOTHESES')
+      expect(codes).not.toContain('FND_CERTIFICATE_DISAGREES')
+      expect(codes).toContain('FND_REACHABILITY_VIOLATED')
+    })
+  }
+})
+
 // ---------------------------------------------------------------------------
 // AC-1-3 — a trace is read off the solver's STATE sequence, and names real steps
 // ---------------------------------------------------------------------------

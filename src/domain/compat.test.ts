@@ -48,6 +48,7 @@ import { toEngineDoc, toEngineRequirement } from './compat.ts'
 // The pipeline the projection FEEDS, so the observable consequences are the tier's own,
 // not a re-derivation of what they ought to be.
 import { runCheck } from './engine/pipeline/check.ts'
+import { requirementsContentHash } from './requirements/content-hash.ts'
 import type { Requirement, RequirementsDocument } from './requirements/document.ts'
 import { emptyDocument } from './requirements/document.ts'
 import { renderSentence } from './requirements/render.ts'
@@ -259,6 +260,35 @@ describe('compat — every projected field the tier reads', () => {
       waivers: [{ code: 'GTWR_R5_INDEFINITE_ARTICLE', requirementId: A, reason: 'reviewed' }],
     }
     expect(toEngineDoc(doc).waivers[0]?.requirementId).toBe(A)
+  })
+
+  it('carries an exact-set waiver while its reviewed text is unchanged, and drops it after', () => {
+    // The content hash is the half of a pair waiver's binding the tier cannot check: it never
+    // sees the v3 fields. So the boundary drops a waiver whose requirements were edited, and the
+    // finding it covered comes back for the new text to be reviewed.
+    const doc = docOf(req({ id: A }), req({ id: B, systemResponse: 'revoke the session token' }))
+    const bound = (document: RequirementsDocument, hash: string | undefined) => ({
+      ...document,
+      waivers: [
+        {
+          code: 'FND_NUMERIC_UNCOMPARED',
+          requirementIds: [A, B],
+          ...(hash !== undefined ? { contentHash: hash } : {}),
+          reason: 'reviewed',
+        },
+      ],
+    })
+    const hash = requirementsContentHash(doc, [A, B])
+    expect(toEngineDoc(bound(doc, hash)).waivers).toEqual([
+      { code: 'FND_NUMERIC_UNCOMPARED', requirementIds: [A, B], reason: 'reviewed' },
+    ])
+
+    const edited = docOf(req({ id: A }), req({ id: B, systemResponse: 'extend the session token' }))
+    expect(toEngineDoc(bound(edited, hash)).waivers).toEqual([])
+    const deleted = docOf(req({ id: A }))
+    expect(toEngineDoc(bound(deleted, hash)).waivers).toEqual([])
+    // An exact-set waiver a hand-written document carries WITHOUT a hash is still id-scoped.
+    expect(toEngineDoc(bound(edited, undefined)).waivers).toHaveLength(1)
   })
 
   it('preserves edge arrays by VALUE, and does not share them with the v3 document', () => {

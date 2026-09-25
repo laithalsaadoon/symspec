@@ -71,7 +71,8 @@ import type { Confidence, Tier1Ok, Tier1Slots } from './tier1.ts'
 import type { ProposedSplit, Tier2Loader, Tier2Ok, Tier2Options, Tier2Outcome } from './tier2.ts'
 import { defaultTier2Loader, runTier2 } from './tier2.ts'
 import type { ParseErrorCode, Tier3Envelope } from './tier3.ts'
-import { makeTier3Envelope } from './tier3.ts'
+import { makeClauseUnboundEnvelope, makeTier3Envelope } from './tier3.ts'
+import { droppedUnboundClause } from './unbound.ts'
 
 export type { ParseErrorCode } from './tier3.ts'
 export { PARSE_ERROR_CODES } from './tier3.ts'
@@ -235,12 +236,23 @@ export const fromTier3 = (
  *   2. otherwise prefer the Tier-2 repair when it succeeded, then a usable Tier-1
  *      parse (soft triggers ride on it as downgraded confidence);
  *   3. otherwise Tier 3, split into `skipped` (no-modal) or `error`.
+ *
+ * One post-condition sits on step 2 (spec 007 AC-2-2): a successful parse whose slots leave an
+ * unbound clause marker (`Unless`, `Before`, …) out of every slot is not stored. It becomes
+ * `ERR_CLAUSE_UNBOUND` naming the dropped span, because the requirement it would store holds in
+ * states the author excluded. See `./unbound.ts` for exactly what counts as dropped.
  */
 export const resolveParseResult = (text: string, outcome: Tier2Outcome): ParseResult => {
   const compound = outcome.triggers.includes('compound-conjunction')
   if (!compound) {
-    if (outcome.tier2?.ok) return fromTierOk(outcome.tier2)
-    if (outcome.tier1.ok) return fromTierOk(outcome.tier1)
+    const ok = outcome.tier2?.ok ? outcome.tier2 : outcome.tier1.ok ? outcome.tier1 : undefined
+    if (ok !== undefined) {
+      const dropped = droppedUnboundClause(text, ok.slots, ok.pivot)
+      if (dropped !== undefined) {
+        return fromTier3(makeClauseUnboundEnvelope(text, dropped.span, dropped.marker), text)
+      }
+      return fromTierOk(ok)
+    }
   }
   return fromTier3(makeTier3Envelope(text, outcome), text)
 }
