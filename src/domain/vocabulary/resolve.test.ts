@@ -852,9 +852,16 @@ describe('V-NUM over every spelling a class resolves, not only the declared ones
   })
 
   it('admits the merge when every spelling it rewrites keeps its signature (the control)', () => {
+    // No bound and no declared quantity is on `keep the level` here. With one (R2, or
+    // qty_keep_the_level), the bare response's occurrence of that quantity is a signature too,
+    // and the merge is refused: `V-NUM reads the action occurrences…` below.
     const unbounded = req({ systemName: 'pump', systemResponse: 'keep the level at-most 5 m' })
-    const doc = withVocabulary(docOf([unbounded, r2]), level, [merge])
+    const actions = level.filter((s) => s.kind !== 'quantity' && s.id !== 'act_c')
+    const doc = withVocabulary(docOf([unbounded]), actions, [merge])
     expect(brief(doc)).toEqual([])
+    expect(brief(withVocabulary(docOf([unbounded, r2]), level, [merge]))).toEqual([
+      ['V-NUM', 'merge', 'act_a+act_b'],
+    ])
     expect(buildProjection(doc)?.rewrites.get(unbounded.id)).toEqual({
       systemResponse: 'maintain the reservoir',
     })
@@ -924,5 +931,311 @@ describe('V1 — a rewritten quantity alias names no guard or action slot', () =
     ])
     // Control: with no slot spelled that way, the alias is admitted.
     expect(brief(withVocabulary(docOf([]), symbols))).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The quantity rows, the action occurrences and the polarity the projection hands the engine
+// ---------------------------------------------------------------------------
+
+const quantity = (
+  id: string,
+  canonical: string,
+  aliases: readonly string[] = [],
+  dimension: 'distance' | 'time' = 'distance',
+  unit = 'm',
+): VocabSymbol => ({
+  id,
+  kind: 'quantity',
+  canonical,
+  aliases: [...aliases],
+  dimension,
+  unit,
+  numberType: 'int',
+})
+const action = (id: string, canonical: string, aliases: readonly string[] = []): VocabSymbol => ({
+  id,
+  kind: 'action',
+  canonical,
+  aliases: [...aliases],
+})
+
+/** Each requirement's bound quantity keys, as the numeric tier keys them under the doc's glossary. */
+const quantityKeysOf = (doc: RequirementsDocument) =>
+  Object.values(doc.requirements).map((r) =>
+    requirementBounds(r, tablesOf(doc).glossary).map(({ predicate }) => predicate.quantity),
+  )
+
+describe('a quantity class rewrites every label the engine keys into it, and no other', () => {
+  // `keep the level` and `keep the level%` are one quantity key (the tier folds `%` away), but
+  // the glossary a row is synthesized into is looked up on `normalize`, which keeps `%`.
+  const r1 = req({ systemName: 'pump', systemResponse: 'keep the level at most 5 m' })
+  const r2 = req({ systemName: 'pump', systemResponse: 'keep the level% at least 10 m' })
+  const base: readonly VocabSymbol[] = [
+    { id: 'sys_pump', kind: 'system', canonical: 'pump', aliases: [] },
+    action('act_b', 'keep the level at most 5 m'),
+    action('act_c', 'keep the level% at least 10 m'),
+  ]
+
+  it('synthesizes a row for a document label a merge resolves into the class, so the class is not split', async () => {
+    const doc = withVocabulary(
+      docOf([r1, r2]),
+      [...base, quantity('qty_a', 'hold the depth'), quantity('qty_b', 'keep the level')],
+      [{ a: 'qty_a', b: 'qty_b' }],
+    )
+    expect(brief(doc)).toEqual([])
+    expect(buildProjection(doc)?.quantityAliases).toEqual([
+      { canonical: 'hold the depth', aliases: ['keep the level', 'keep the level%'] },
+    ])
+    expect(quantityKeysOf(projected(doc))).toEqual([
+      ['sys__pump__qty__hold_the_depth'],
+      ['sys__pump__qty__hold_the_depth'],
+    ])
+    expect(await codesOf(doc)).toContain('FND_NUMERIC_CONTRADICTION')
+    expect(await codesOf(projected(doc))).toContain('FND_NUMERIC_CONTRADICTION')
+  })
+
+  it('does the same for a document label that resolves through a declared alias', async () => {
+    const doc = withVocabulary(docOf([r1, r2]), [
+      ...base,
+      quantity('qty_a', 'hold the depth', ['keep the level']),
+    ])
+    expect(brief(doc)).toEqual([])
+    expect(quantityKeysOf(projected(doc))).toEqual([
+      ['sys__pump__qty__hold_the_depth'],
+      ['sys__pump__qty__hold_the_depth'],
+    ])
+    expect(await codesOf(projected(doc))).toContain('FND_NUMERIC_CONTRADICTION')
+  })
+
+  it('drops an alias whose row would capture the labels of another quantity symbol', async () => {
+    // `a keep the level` keeps its article as a quantity key, so V1 alone sees two quantities;
+    // `normalize` strips it, so its row is looked up on `keep_the_level`, qty_y's labels.
+    const depth = req({ systemName: 'pump', systemResponse: 'keep the depth at least 10 m' })
+    const doc = withVocabulary(docOf([r1, depth]), [
+      { id: 'sys_pump', kind: 'system', canonical: 'pump', aliases: [] },
+      action('act_b', 'keep the level at most 5 m'),
+      action('act_c', 'keep the depth at least 10 m'),
+      quantity('qty_x', 'keep the depth', ['a keep the level']),
+      quantity('qty_y', 'keep the level'),
+    ])
+    expect(brief(doc)).toEqual([['V1', 'alias', 'a keep the level']])
+    expect(buildProjection(doc)?.quantityAliases).toEqual([])
+    expect(await codesOf(doc)).not.toContain('FND_NUMERIC_CONTRADICTION')
+    expect(await codesOf(projected(doc))).not.toContain('FND_NUMERIC_CONTRADICTION')
+    // With qty_y only declared, no response's occurrences move either: the row captures the
+    // declared label alone, and that is enough, so the refusal is stable as requirements are added.
+    expect(
+      brief(
+        withVocabulary(docOf([depth]), [
+          { id: 'sys_pump', kind: 'system', canonical: 'pump', aliases: [] },
+          action('act_c', 'keep the depth at least 10 m'),
+          quantity('qty_x', 'keep the depth', ['a keep the level']),
+          quantity('qty_y', 'keep the level'),
+        ]),
+      ),
+    ).toEqual([['V1', 'alias', 'a keep the level']])
+    // Control: with no other quantity spelled `keep the level`, the alias is admitted.
+    expect(
+      brief(
+        withVocabulary(docOf([depth]), [
+          { id: 'sys_pump', kind: 'system', canonical: 'pump', aliases: [] },
+          action('act_c', 'keep the depth at least 10 m'),
+          quantity('qty_x', 'keep the depth', ['a keep the level']),
+        ]),
+      ),
+    ).toEqual([])
+  })
+
+  it('refuses a merge whose rows would capture another quantity`s labels', () => {
+    const depth = req({ systemName: 'pump', systemResponse: 'keep the depth at least 10 m' })
+    const doc = withVocabulary(
+      docOf([r1, depth]),
+      [
+        { id: 'sys_pump', kind: 'system', canonical: 'pump', aliases: [] },
+        action('act_b', 'keep the level at most 5 m'),
+        action('act_c', 'keep the depth at least 10 m'),
+        quantity('qty_w', 'keep the depth'),
+        quantity('qty_x', 'a keep the level'),
+        quantity('qty_y', 'keep the level'),
+      ],
+      [{ a: 'qty_w', b: 'qty_x' }],
+    )
+    expect(brief(doc)).toEqual([['V1', 'merge', 'qty_w+qty_x']])
+    expect(buildProjection(doc)?.quantityAliases).toEqual([])
+    // The same with no requirement at all: the declared label is what the row captures.
+    const declared = withVocabulary(
+      docOf([]),
+      [
+        quantity('qty_w', 'keep the depth'),
+        quantity('qty_x', 'a keep the level'),
+        quantity('qty_y', 'keep the level'),
+      ],
+      [{ a: 'qty_w', b: 'qty_x' }],
+    )
+    expect(brief(declared)).toEqual([['V1', 'merge', 'qty_w+qty_x']])
+  })
+
+  it('drops an alias whose row lands its labels on a key other than the canonical`s', async () => {
+    // The engine lands a row's labels on `normalize` of its canonical, and `normalize` strips
+    // the article `a level` keeps as a quantity key: the row would move `the depth` onto
+    // `level`, another quantity's key, and fabricate a conflict nobody declared.
+    const deep = req({ systemName: 'pump', systemResponse: 'the depth at most 5 m' })
+    const level = req({ systemName: 'pump', systemResponse: 'level at least 10 m' })
+    const doc = withVocabulary(docOf([deep, level]), [
+      { id: 'sys_pump', kind: 'system', canonical: 'pump', aliases: [] },
+      action('act_b', 'the depth at most 5 m'),
+      action('act_c', 'level at least 10 m'),
+      quantity('qty_a', 'a level', ['the depth']),
+      quantity('qty_b', 'level'),
+    ])
+    expect(brief(doc)).toEqual([['V1', 'alias', 'the depth']])
+    expect(await codesOf(doc)).not.toContain('FND_NUMERIC_CONTRADICTION')
+    expect(await codesOf(projected(doc))).not.toContain('FND_NUMERIC_CONTRADICTION')
+    // With no requirement, no occurrence or other label moves; the landing key alone refuses it.
+    expect(
+      brief(
+        withVocabulary(docOf([]), [
+          quantity('qty_a', 'a level', ['the depth']),
+          quantity('qty_b', 'level'),
+        ]),
+      ),
+    ).toEqual([['V1', 'alias', 'the depth']])
+  })
+
+  it('refuses a row a bound-free response`s occurrence would be split from', async () => {
+    // The bounds are read on `keep the door unlocked`, which the row covers. The bare response
+    // `keep the door unlocked%` does the same action on the same quantity key (the tier folds
+    // `%` away), but it is looked up on `normalize`, which keeps `%`, so no row covers it.
+    // Rewriting the bounds alone would part them from the occurrence the prohibitions conflict on.
+    const p1 = req({
+      systemName: 'door controller',
+      systemResponse: 'keep the door unlocked above 30 seconds',
+      negated: true,
+    })
+    const p2 = req({
+      systemName: 'door controller',
+      systemResponse: 'keep the door unlocked below 40 seconds',
+      negated: true,
+    })
+    const bare = req({ systemName: 'door controller', systemResponse: 'keep the door unlocked%' })
+    const doc = withVocabulary(docOf([p1, p2, bare]), [
+      { id: 'sys_dc', kind: 'system', canonical: 'door controller', aliases: [] },
+      action('act_a', 'keep the door unlocked%'),
+      action('act_b', 'keep the door unlocked above 30 seconds'),
+      action('act_c', 'keep the door unlocked below 40 seconds'),
+      quantity('qty_k', 'hold time', ['keep the door unlocked'], 'time', 's'),
+    ])
+    expect(await codesOf(doc)).toContain('FND_NUMERIC_CONTRADICTION')
+    expect(brief(doc)).toEqual([['V1', 'alias', 'keep the door unlocked']])
+    expect(await codesOf(projected(doc))).toContain('FND_NUMERIC_CONTRADICTION')
+  })
+})
+
+describe('V-NUM reads the action occurrences a bound-free response hands the numeric tier', () => {
+  const p1 = req({
+    systemName: 'door controller',
+    systemResponse: 'keep the door unlocked above 30 seconds',
+    negated: true,
+  })
+  const p2 = req({
+    systemName: 'door controller',
+    systemResponse: 'keep the door unlocked below 40 seconds',
+    negated: true,
+  })
+  const bare = req({ systemName: 'door controller', systemResponse: 'keep the door unlocked' })
+  const base: readonly VocabSymbol[] = [
+    { id: 'sys_dc', kind: 'system', canonical: 'door controller', aliases: [] },
+    action('act_b', 'keep the door unlocked above 30 seconds'),
+    action('act_c', 'keep the door unlocked below 40 seconds'),
+    quantity('qty_k', 'keep the door unlocked', [], 'time', 'ms'),
+  ]
+
+  it('drops an alias that would rewrite the response off the occurrence two prohibitions share', async () => {
+    const doc = withVocabulary(docOf([p1, p2, bare]), [
+      ...base,
+      action('act_a', 'hold the door open', ['keep the door unlocked']),
+    ])
+    expect(await codesOf(doc)).toContain('FND_NUMERIC_CONTRADICTION')
+    expect(brief(doc)).toEqual([['V-NUM', 'alias', 'keep the door unlocked']])
+    expect(buildProjection(doc)?.rewrites.has(bare.id)).toBe(false)
+    expect(await codesOf(projected(doc))).toContain('FND_NUMERIC_CONTRADICTION')
+  })
+
+  it('refuses the merge form', () => {
+    const doc = withVocabulary(
+      docOf([p1, p2, bare]),
+      [...base, action('act_a', 'hold the door open'), action('act_d', 'keep the door unlocked')],
+      [{ a: 'act_a', b: 'act_d' }],
+    )
+    expect(brief(doc)).toEqual([['V-NUM', 'merge', 'act_a+act_d']])
+  })
+
+  it('admits the alias when no bound or quantity names an occurrence it moves (the control)', () => {
+    const doc = withVocabulary(docOf([bare]), [
+      { id: 'sys_dc', kind: 'system', canonical: 'door controller', aliases: [] },
+      action('act_a', 'hold the door open', ['keep the door unlocked']),
+    ])
+    expect(brief(doc)).toEqual([])
+    expect(buildProjection(doc)?.rewrites.get(bare.id)).toEqual({
+      systemResponse: 'hold the door open',
+    })
+  })
+})
+
+describe('V-OPP refuses an action phrase the encoder reads as negated', () => {
+  const ev = (negated: boolean) => {
+    const r = req({
+      patternType: 'event-driven',
+      systemName: 'controller',
+      trigger: 'the door opens',
+      systemResponse: 'log the event',
+      negated,
+    })
+    return { ...r, sentence: renderSentence(r) }
+  }
+  const r1 = ev(false)
+  const r2 = ev(true)
+  const base: readonly VocabSymbol[] = [
+    { id: 'sys_ctl', kind: 'system', canonical: 'controller', aliases: [] },
+    { id: 'ev_0', kind: 'event', canonical: 'the door opens', aliases: [] },
+  ]
+
+  it('drops an alias rewritten onto a canonical with a leading negator, so no rewrite flips a polarity', async () => {
+    const doc = withVocabulary(docOf([r1, r2]), [
+      ...base,
+      action('act_log', 'never log the event', ['log the event']),
+    ])
+    expect(brief(doc)).toEqual([['V-OPP', 'alias', 'log the event']])
+    expect(buildProjection(doc)?.rewrites.size).toBe(0)
+    expect(await codesOf(doc)).toContain('FND_CONTRADICTION')
+    expect(await codesOf(projected(doc))).toContain('FND_CONTRADICTION')
+  })
+
+  it('refuses the merge form', () => {
+    const doc = withVocabulary(
+      docOf([r1, r2]),
+      [...base, action('act_a', 'never log the event'), action('act_b', 'log the event')],
+      [{ a: 'act_a', b: 'act_b' }],
+    )
+    expect(brief(doc)).toEqual([['V-OPP', 'merge', 'act_a+act_b']])
+    expect(buildProjection(doc)?.rewrites.size).toBe(0)
+  })
+
+  it('keeps a negator canonical nothing is rewritten to: it only names its own spelling', () => {
+    const doc = withVocabulary(docOf([r1]), [
+      ...base,
+      action('act_log', 'log the event'),
+      action('act_never', 'never log the event'),
+    ])
+    expect(brief(doc)).toEqual([])
+  })
+
+  it('drops a rewritten alias with a leading negator', () => {
+    const doc = withVocabulary(docOf([r1]), [
+      ...base,
+      action('act_log', 'log the event', ['does not log the event']),
+    ])
+    expect(brief(doc)).toEqual([['V-OPP', 'alias', 'does not log the event']])
   })
 })

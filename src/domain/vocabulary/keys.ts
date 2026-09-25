@@ -43,6 +43,7 @@ import {
 import type { NumericComparator } from '../engine/formal/encode.ts'
 import { toEncodable } from '../engine/formal/encode.ts'
 import {
+  actionOccurrences,
   extractNumericPredicates,
   type NumericPredicate,
   type PredicateSlot,
@@ -316,6 +317,104 @@ export const numericSignature = (
     .sort()
     .join('\n')
 }
+
+/** The prefix every numeric-tier quantity key carries under {@link KEY_SCOPE}. */
+const QUANTITY_PREFIX = `sys__${normalizeScope(KEY_SCOPE)}__qty__`
+
+/**
+ * An action phrase's occurrence signature (invariant V-NUM, its other half): the quantity keys a
+ * response of this text hands the numeric tier as ACTIONS it performs, beside its bounds, with
+ * each one's qualifier, restricted to `live`, sorted. The tier reads them with the same filter
+ * `check.ts` applies (`occurrencesOf`): a key a bound of the text already names is not repeated,
+ * and a text with a bound keeps only the qualified ones.
+ *
+ * A bound-free response is what makes two opposed prohibitions on one quantity a numeric
+ * contradiction (`keep the door unlocked` against `shall not keep the door unlocked above 30
+ * seconds` and `... below 40 seconds`), and it has no bound for {@link numericSignature} to see.
+ * Rewriting it to a canonical whose occurrences differ moves it off that key and deletes the
+ * contradiction. Only the keys some bound or declared quantity names (`live`) can meet a bound,
+ * so only those are compared: otherwise every action alias with other words would differ.
+ */
+export const occurrenceSignature = (
+  text: string,
+  tables: PhraseTables,
+  live: ReadonlySet<string>,
+): string => {
+  const bound = extractNumericPredicates(text, KEY_SCOPE, 'resp', tables.glossary)
+  const keyed = new Set(bound.map((p) => p.quantity))
+  return actionOccurrences(text, KEY_SCOPE, tables.glossary)
+    .filter((a) => !keyed.has(a.quantity))
+    .filter((a) => bound.length === 0 || a.qualifier !== undefined)
+    .map((a) => ({ label: a.quantity.slice(QUANTITY_PREFIX.length), qualifier: a.qualifier }))
+    .filter((a) => live.has(a.label))
+    .map((a) => JSON.stringify([a.label, a.qualifier ?? '']))
+    .sort()
+    .join('\n')
+}
+
+/**
+ * The actions a response of `text` performs as the numeric tier keys them, in its order, each as
+ * its label key (no `sys__<scope>__qty__` prefix) and qualifier: {@link occurrenceSignature}'s
+ * occurrences, keyed under `glossary` rather than the committed table and unfiltered. Used to
+ * measure a synthesized glossary row against what the tier would read with it.
+ */
+export const occurrenceKeys = (
+  text: string,
+  glossary: ReadonlyMap<string, string>,
+): readonly { readonly label: string; readonly qualifier: string }[] =>
+  actionOccurrences(text, KEY_SCOPE, glossary).map((a) => ({
+    label: a.quantity.slice(QUANTITY_PREFIX.length),
+    qualifier: a.qualifier ?? '',
+  }))
+
+/**
+ * Whether the encoder reads `text`, stored as a response with no negation flag, as NEGATED: it
+ * opens with a negator the encoder strips (`never`, `not`, `does not`). The projection writes a
+ * class canonical after a requirement's own stored negator, so a canonical that carries one
+ * would flip the polarity of every positive spelling it replaced.
+ */
+export const readsNegated = (text: string): boolean =>
+  toEncodable({
+    id: '',
+    patternType: 'ubiquitous',
+    systemName: KEY_SCOPE,
+    systemResponse: text,
+    negated: false,
+    sentence: '',
+    priority: 'medium',
+    status: 'draft',
+  }).negated === true
+
+/** One synthesized quantity-alias row: every phrase that keys differently from the canonical. */
+export interface QuantityAliasRow {
+  readonly canonical: string
+  readonly aliases: readonly string[]
+}
+
+/**
+ * The glossary row a quantity class is synthesized into: its canonical, and every spelling of
+ * the class (declared, or a label the document reads a bound on) whose label key differs from
+ * the canonical's, sorted. `undefined` when no spelling differs, so nothing is rewritten. The
+ * projection and the validator both call this, so the row the validator measures is the row
+ * the engine is handed.
+ */
+export const quantityRowOf = (
+  canonical: string,
+  spellings: readonly string[],
+  tables: PhraseTables,
+): QuantityAliasRow | undefined => {
+  const key = phraseKey('quantity', canonical, tables)
+  const aliases = [...new Set(spellings)]
+    .filter((p) => phraseKey('quantity', p, tables) !== key)
+    .sort()
+  return aliases.length === 0 ? undefined : { canonical, aliases }
+}
+
+/** The committed glossary with synthesized rows appended, as the engine indexes the two. */
+export const glossaryWithRows = (
+  glossary: ReadonlyMap<string, string>,
+  rows: readonly QuantityAliasRow[],
+): ReadonlyMap<string, string> => new Map([...glossary, ...glossaryIndex(rows)])
 
 /** An action phrase's atom under {@link KEY_SCOPE}, in the shape `areContrary` reads. */
 export const actionAtom = (text: string, tables: PhraseTables) => {

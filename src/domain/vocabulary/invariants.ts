@@ -10,10 +10,10 @@
  *
  * | id | invariant |
  * |---|---|
- * | V1 | each phrase key has one owning symbol per collision domain; and a phrase the projection would rewrite shares no atom, and no glossary key, with another domain, declared or used |
+ * | V1 | each phrase key has one owning symbol per collision domain; a phrase the projection would rewrite shares no atom, and no glossary key, with another domain, declared or used; and a quantity class's glossary row re-keys exactly the class's own labels and occurrences |
  * | V2 | aliases are one hop: an alias is never another symbol's canonical |
- * | V-OPP | every phrase of a class the rewrite changes has its canonical's opposition, and every contrary pair of phrases survives the rewrite |
- * | V-NUM | every phrase of a class the rewrite changes hands the numeric tier its canonical's bounds |
+ * | V-OPP | every phrase of a class the rewrite changes has its canonical's opposition, neither reads as negated, and every contrary pair of phrases survives the rewrite |
+ * | V-NUM | every phrase of a class the rewrite changes hands the numeric tier its canonical's bounds, and its canonical's occurrences on every quantity a bound or symbol names |
  * | V-KIND | a class is one kind; a distinct record names two symbols of one kind |
  * | V-STATE | the states of one class name one variable value |
  * | V-PARENT | parents exist, are systems, and form no cycle; merged systems do not have different parents |
@@ -47,6 +47,26 @@
  *   V-OPP read every slot text the document resolves into a class, not only the declared
  *   canonical and aliases. A phrase whose key is its class canonical's is never rewritten, and
  *   is exempt; that exemption is what keeps the implicit vocabulary valid by construction.
+ * - **A quantity row is measured, not inferred.** The row a class is synthesized into is looked up
+ *   on `normalize` of each label, and a quantity phrase key is not `normalize`: `keep the level%`
+ *   and `keep the level` are one key but two lookups, and `a keep the level` is its own key but
+ *   `keep the level`'s lookup. So the row (`quantityRowOf`, the one the projection builds) holds
+ *   every document label that resolves into the class, and the validator re-keys every other
+ *   quantity label, declared or read, and every action occurrence of every positive response,
+ *   under the committed glossary plus that row. A label of another quantity that moves, or an
+ *   occurrence that does not land where the class's bounds do, drops the aliases the row is built
+ *   through (a merge is refused).
+ * - **V-NUM reads occurrences as well as bounds.** A response with no bound still hands the
+ *   numeric tier the actions it performs (`keep the door unlocked`), and two opposed prohibitions
+ *   on that quantity are a contradiction only with it. Its bounds are equal to any canonical's
+ *   (none), so the bound signature alone admits the rewrite that deletes the contradiction. Only
+ *   occurrences on a quantity some bound or declared symbol names can meet a bound, so only those
+ *   are compared; comparing all would refuse every action alias with other words.
+ * - **V-OPP reads polarity.** The projection writes a class canonical after a requirement's own
+ *   stored negator, so a canonical that opens with `never` or `not` flips every positive spelling
+ *   it replaces, and an alias that does so is rewritten to a positive one. Opposition keys do not
+ *   see it (`log` has no antonym), so a phrase or canonical the encoder reads as negated is never
+ *   rewritten. One that nothing is rewritten to is kept: it only names its own spelling.
  * - **V-REF and V-DISTINCT** are the reference-integrity checks the schema cannot state.
  */
 
@@ -64,10 +84,18 @@ import {
   type CollisionDomain,
   DOMAIN_OF_KIND,
   glossaryKey,
+  glossaryWithRows,
+  negatedOf,
   numericSignature,
+  occurrenceKeys,
+  occurrenceSignature,
   oppositionSignature,
   type PhraseTables,
   phraseKey,
+  quantityLabelKey,
+  quantityRowOf,
+  readsNegated,
+  responseOf,
   slotUses,
   tablesOf,
 } from './keys.ts'
@@ -309,23 +337,118 @@ export const validateVocabulary = (
     }
   }
 
+  // The quantity keys an action occurrence can meet a bound on: every label the document reads
+  // a bound on, and every declared quantity phrase, so the set is stable as requirements are added.
+  const liveQuantities = new Set([
+    ...(used.texts.get('quantity') ?? []).map((text) => key('quantity', text)),
+    ...[...live.values()]
+      .filter((w) => w.domain === 'quantity')
+      .flatMap((w) => [w.symbol.canonical, ...w.aliases].map((text) => key('quantity', text))),
+  ])
+
   // V-OPP (literal half) and V-NUM, every phrase the rewrite changes against its own canonical.
   for (const w of live.values()) {
     for (const text of spellingsOf(w)) {
       const k = key(w.domain, text)
       if (k === w.canonicalKey) continue
-      const refusal = classRefusal(w.domain, w.symbol.canonical, text, tables)
+      const refusal = classRefusal(w.domain, w.symbol.canonical, text, tables, liveQuantities)
       if (refusal !== undefined)
         dropAliasesKeyed(w, k, text, { ...refusal, symbols: [w.symbol.id] })
     }
   }
 
-  // V1 (cross-domain half), alias against its own canonical.
+  // V1 (cross-domain half), every spelling the rewrite changes against its own canonical.
   const phrasesIn = crossDomainKeys(live, used, tables)
   for (const w of live.values()) {
-    for (const alias of [...w.aliases]) {
-      const hazard = rewriteHazard(w, alias, w.symbol.canonical, phrasesIn, tables)
-      if (hazard !== undefined) dropAlias(w, alias, { ...hazard, symbols: [w.symbol.id] })
+    for (const text of spellingsOf(w)) {
+      const hazard = rewriteHazard(w, text, w.symbol.canonical, phrasesIn, tables)
+      if (hazard !== undefined)
+        dropAliasesKeyed(w, key(w.domain, text), text, { ...hazard, symbols: [w.symbol.id] })
+    }
+  }
+
+  // V1 (quantity rows), each quantity symbol its own class: drop the aliases a row is built
+  // through until the row moves only this class's labels, and all of them.
+  const occurrenceTexts = [
+    ...new Set(
+      Object.values(doc.requirements)
+        .filter((r) => !negatedOf(r))
+        .map((r) => responseOf(r).text),
+    ),
+  ]
+  const quantityUniverse = (): string[] => [
+    ...[...live.values()]
+      .filter((w) => w.domain === 'quantity')
+      .flatMap((w) => [w.symbol.canonical, ...w.aliases]),
+    ...(used.texts.get('quantity') ?? []),
+  ]
+  /**
+   * Whether the glossary row a quantity class would be synthesized into re-keys anything but
+   * this class's labels onto the canonical, or leaves one of them behind: the row is looked up on
+   * `normalize` of each label and each action-occurrence prefix, and a quantity phrase key is
+   * not `normalize`. `culprits` are the row spellings to drop.
+   */
+  const quantityRowHazard = (
+    members: readonly Working[],
+    canonical: string,
+  ): { detail: string; culprits: readonly string[] } | undefined => {
+    const row = quantityRowOf(canonical, members.flatMap(spellingsOf), tables)
+    if (row === undefined) return undefined
+    const glossary = glossaryWithRows(tables.glossary, [row])
+    const target = key('quantity', canonical)
+    const landed = quantityLabelKey(row.aliases[0] ?? canonical, glossary)
+    if (landed !== target) {
+      return {
+        detail: `a glossary row onto "${canonical}" lands a label on the quantity key ${landed}, not on ${target}, the one "${canonical}" itself keys as; the class would be split`,
+        culprits: row.aliases,
+      }
+    }
+    const classKeys = new Set(
+      members.flatMap((w) => [w.symbol.canonical, ...w.aliases].map((t) => key('quantity', t))),
+    )
+    for (const other of quantityUniverse()) {
+      const was = key('quantity', other)
+      if (classKeys.has(was) || quantityLabelKey(other, glossary) === was) continue
+      return {
+        detail: `the glossary row onto "${canonical}" is looked up on "${glossaryKey(other)}", which also re-keys "${other}", a label of another quantity; one row would merge two quantities no merge joined`,
+        culprits: row.aliases.filter((a) => glossaryKey(a) === glossaryKey(other)),
+      }
+    }
+    for (const text of occurrenceTexts) {
+      // What the tier should read with the row: each occurrence on a class key moved to the
+      // canonical's, the first kept per key, as the tier dedupes. Anything else split or merged.
+      const moved = new Map<string, string>()
+      for (const { label, qualifier } of occurrenceKeys(text, tables.glossary)) {
+        const at = classKeys.has(label) ? target : label
+        if (!moved.has(at)) moved.set(at, qualifier)
+      }
+      const expected = [...moved].map(([label, qualifier]) => ({ label, qualifier }))
+      const actual = occurrenceKeys(text, glossary)
+      if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+        return {
+          detail: `the glossary row onto "${canonical}" would re-key the actions "${text}" performs apart from the bounds on the same quantity, or onto one it does not perform; the numeric tier compares the two`,
+          culprits: row.aliases,
+        }
+      }
+    }
+    return undefined
+  }
+  for (const w of live.values()) {
+    if (w.domain !== 'quantity') continue
+    for (
+      let hazard = quantityRowHazard([w], w.symbol.canonical);
+      hazard !== undefined;
+      hazard = quantityRowHazard([w], w.symbol.canonical)
+    ) {
+      const before = w.aliases.length
+      for (const culprit of hazard.culprits) {
+        dropAliasesKeyed(w, key('quantity', culprit), culprit, {
+          invariant: 'V1',
+          detail: hazard.detail,
+          symbols: [w.symbol.id],
+        })
+      }
+      if (w.aliases.length === before) break
     }
   }
 
@@ -448,7 +571,7 @@ export const validateVocabulary = (
     )
     const refusal = phrases
       .filter(({ w, text }) => key(w.domain, text) !== canonicalKey)
-      .map(({ text }) => classRefusal(a.domain, canonical, text, tables))
+      .map(({ text }) => classRefusal(a.domain, canonical, text, tables, liveQuantities))
       .find((r) => r !== undefined)
     if (refusal !== undefined) {
       refuse(refusal.invariant, refusal.detail)
@@ -459,6 +582,14 @@ export const validateVocabulary = (
       .find((h) => h !== undefined)
     if (hazard !== undefined) {
       refuse(hazard.invariant, hazard.detail)
+      continue
+    }
+    const rowHazard =
+      a.domain === 'quantity'
+        ? quantityRowHazard([...members(ra), ...members(rb)], canonical)
+        : undefined
+    if (rowHazard !== undefined) {
+      refuse('V1', rowHazard.detail)
       continue
     }
     const tentative = new Map(rep)
@@ -494,16 +625,26 @@ export const validateVocabulary = (
 }
 
 /**
- * Whether `phrase` may join a class whose canonical is `canonical`: V-OPP's literal half (one
- * opposition key and side, or none on both) for an action, and V-NUM for any phrase the numeric
- * tier reads bounds in.
+ * Whether `phrase` may be rewritten to `canonical`: for an action, V-OPP's polarity (neither
+ * reads as negated) and literal half (one opposition key and side, or none on both), and V-NUM's
+ * occurrences; and V-NUM's bounds for any phrase the numeric tier reads bounds in.
  */
 const classRefusal = (
   domain: CollisionDomain,
   canonical: string,
   phrase: string,
   tables: PhraseTables,
+  liveQuantities: ReadonlySet<string>,
 ): { invariant: InvariantId; detail: string } | undefined => {
+  if (domain === 'action') {
+    const negated = [canonical, phrase].find(readsNegated)
+    if (negated !== undefined) {
+      return {
+        invariant: 'V-OPP',
+        detail: `"${negated}" opens with a negator the encoder reads as the response's polarity, so rewriting "${phrase}" to "${canonical}" would flip or drop it`,
+      }
+    }
+  }
   if (
     domain === 'action' &&
     oppositionSignature(phrase, tables) !== oppositionSignature(canonical, tables)
@@ -519,6 +660,16 @@ const classRefusal = (
       detail: `"${phrase}" and "${canonical}" carry different numeric bounds, so rewriting one to the other would change what the numeric tier compares`,
     }
   }
+  if (
+    domain === 'action' &&
+    occurrenceSignature(phrase, tables, liveQuantities) !==
+      occurrenceSignature(canonical, tables, liveQuantities)
+  ) {
+    return {
+      invariant: 'V-NUM',
+      detail: `"${phrase}" and "${canonical}" perform different bounded actions as the numeric tier reads them, so rewriting one to the other would move a response off the quantity its bounds are on`,
+    }
+  }
   return undefined
 }
 
@@ -528,7 +679,7 @@ type SlotDomain = (typeof SLOT_DOMAINS)[number]
 const isSlotDomain = (d: CollisionDomain): d is SlotDomain =>
   (SLOT_DOMAINS as readonly CollisionDomain[]).includes(d)
 
-/** Every guard, feature and action slot text the document uses, per domain, deduplicated. */
+/** Every guard, feature and action slot text and every bound label the document uses, per domain, deduplicated. */
 interface DocumentSpellings {
   readonly texts: ReadonlyMap<CollisionDomain, readonly string[]>
 }
@@ -539,11 +690,13 @@ interface DocumentSpellings {
  * phrase off its key would split that requirement's atom from the one the rewrite made.
  */
 const documentSpellings = (doc: RequirementsDocument, tables: PhraseTables): DocumentSpellings => {
-  const texts = new Map<CollisionDomain, string[]>(SLOT_DOMAINS.map((d) => [d, []]))
+  const texts = new Map<CollisionDomain, string[]>(
+    [...SLOT_DOMAINS, 'quantity' as const].map((d) => [d, []]),
+  )
   const seen = new Set<string>()
   for (const r of Object.values(doc.requirements)) {
     for (const use of slotUses(r, tables)) {
-      if (!isSlotDomain(use.domain)) continue
+      if (use.domain === 'system') continue
       const at = `${use.domain}\u0000${use.text}`
       if (seen.has(at)) continue
       seen.add(at)
