@@ -135,7 +135,7 @@ describe('manifest', () => {
     }
   })
 
-  it('publishes all 21 error codes, single-sourced from the catalog', () => {
+  it('publishes every error code, single-sourced from the catalog', () => {
     expect(currentManifest().errorCodes).toEqual([...errCodeCatalog()])
     expect(currentManifest().errorCodes.map((e) => e.code)).toEqual([...ERR_CODES])
   })
@@ -214,7 +214,7 @@ describe('explain — AC-A-3: every code through the operation', () => {
     const published = [...manifest.errorCodes, ...manifest.findingCodes, ...manifest.lintCodes].map(
       (row) => row.code,
     )
-    expect(published).toHaveLength(86)
+    expect(published).toHaveLength(87)
 
     for (const code of published) {
       const env = await Effect.runPromise(runOperation(explainOp, { code }))

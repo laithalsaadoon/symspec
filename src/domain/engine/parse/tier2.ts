@@ -87,6 +87,8 @@ export interface Tier2Ok {
   slots: Tier1Slots
   /** True when the modal carried explicit negation; `systemResponse` is the positive atom. */
   negated: boolean
+  /** Where the modal token this repair pivoted on starts in the preprocessed line (as `Tier1Ok.pivot`). */
+  pivot: number
   confidence: Confidence
   tier: 2
   /** Provenance notes: escalation triggers plus repair notes (e.g. `subject-repaired`). */
@@ -343,6 +345,95 @@ const LEADING_DETERMINER_POS: ReadonlySet<string> = new Set(['DET', 'PRON'])
 const isModal = (t: WinkToken): boolean =>
   MODAL_LEMMAS.has(t.value.toLowerCase()) || MODAL_LEMMAS.has(t.lemma.toLowerCase())
 
+/**
+ * The negation wink splits off a contracted modal: `n't` (`shan't` → `sha` + `n't`, `won't` →
+ * `wo` + `n't`), or `nt` for the same contraction written without its apostrophe (`shant`,
+ * `wont`, `mustnt`), which wink tokenizes the same way.
+ */
+const CONTRACTED_NEGATORS: ReadonlySet<string> = new Set(["n't", 'nt'])
+const isContractedNegator = (t: WinkToken | undefined): boolean =>
+  t !== undefined && CONTRACTED_NEGATORS.has(t.value.toLowerCase())
+
+/**
+ * The negators wink's flags in the response were keyed on, as token indices: for each run of
+ * flagged tokens that reaches the response, the token just before the run. wink flags the tokens
+ * AFTER a negator, up to the next punctuation, and never the negator itself, so that token is the
+ * negator the run came from ("No" in "No request shall be dropped", "not" in "requests that are
+ * not cached"). A run that starts the line has no negator token and yields -1.
+ */
+function responseScopeNegators(tokens: readonly WinkToken[], modalIdx: number): number[] {
+  const negators: number[] = []
+  for (let i = modalIdx + 1; i < tokens.length; i++) {
+    const runStartsHere =
+      tokens[i]!.negationFlag && (i === modalIdx + 1 || !tokens[i - 1]!.negationFlag)
+    if (!runStartsHere) continue
+    let start = i
+    while (start > 0 && tokens[start - 1]!.negationFlag) start--
+    // The negator is the nearest WORD before the run: wink splits `no-reply` into no / - / reply,
+    // so the token just before the flagged `reply` is the hyphen, not the negator it was keyed on.
+    let negator = start - 1
+    while (negator > modalIdx && tokens[negator]!.pos === 'PUNCT') negator--
+    negators.push(negator)
+  }
+  return negators
+}
+
+/** True when `word` occurs verbatim in `text` as a whole token. */
+function occursVerbatim(text: string, word: string): boolean {
+  const escaped = word.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&')
+  return new RegExp(`(?<![\\p{L}\\p{N}'])${escaped}(?![\\p{L}\\p{N}])`, 'u').test(text)
+}
+
+/**
+ * The `negated` flag, as the spec 007 AC-2-3 post-condition over the flag the parse computed.
+ *
+ * `baseNegated` unions two sources: the modal-adjacent negator {@link extractNegation} strips
+ * (`shall not`, `shall never`), and wink's negation scope reaching the response. The defect is
+ * the second source when the negator it was keyed on sits INSIDE the response: "shall forward
+ * requests that are not cached" keeps its `not` in `systemResponse` AND flipped the flag, so the
+ * line was stored as the prohibition of a phrase that is itself negative.
+ *
+ * So the flag is cleared ONLY when every negator the response's flags were keyed on is a response
+ * token present verbatim in the stored `systemResponse`. Otherwise it is kept exactly: a negator
+ * left of the modal ("No request", "Requests from none of the hosts", "Users who are not
+ * admins") is in no slot, and clearing the flag would store the positive obligation it denies.
+ * A contracted modal (`shan't`, `mustn't`, `won't`, or `shant`, `mustnt`, `wont`) negates the
+ * modal itself, so it always sets the flag, including where a comma after it stops wink's scope
+ * — even though its `n't`/`nt` stays in the stored response text.
+ */
+function governingNegation(
+  tokens: readonly WinkToken[],
+  modalIdx: number,
+  baseNegated: boolean,
+  modalNegatorStripped: boolean,
+  systemResponse: string,
+): boolean {
+  if (isContractedNegator(tokens[modalIdx + 1])) return true
+  if (!baseNegated || modalNegatorStripped) return baseNegated
+  const keyed = responseScopeNegators(tokens, modalIdx)
+  const negationStaysInText =
+    keyed.length > 0 &&
+    keyed.every((k) => k > modalIdx && occursVerbatim(systemResponse, tokens[k]!.value))
+  return !negationStaysInText
+}
+
+/**
+ * The character offset of `tokens[idx]` in `text`, the line the tokens were analyzed from. wink's
+ * token values are slices of that line in order, so each is found at or after the end of the
+ * one before. A value not found (only a fake analyzer does that) leaves the cursor where it was.
+ */
+function tokenOffset(text: string, tokens: readonly WinkToken[], idx: number): number {
+  let at = 0
+  for (let i = 0; i <= idx; i++) {
+    const value = tokens[i]!.value
+    const found = text.indexOf(value, at)
+    if (found < 0) continue
+    if (i === idx) return found
+    at = found + value.length
+  }
+  return at
+}
+
 /** Join token surface forms into slot text, collapsing the whitespace the join introduces. */
 function joinTokens(tokens: WinkToken[]): string {
   return (
@@ -475,9 +566,16 @@ export function repairWithWink(
   }
   const rawResponse = joinTokens(responseTokens)
   const neg = extractNegation(rawResponse)
-  // Union of the modal-window negator and any wink negation flag in the response span.
-  const negated = neg.negated || responseTokens.some((t) => t.negationFlag)
   const systemResponse = neg.response
+  // Union of the modal-window negator and any wink negation flag in the response span, then
+  // the spec 007 AC-2-3 post-condition over it (see `governingNegation`).
+  const negated = governingNegation(
+    tokens,
+    modalIdx,
+    neg.negated || responseTokens.some((t) => t.negationFlag),
+    neg.negated,
+    systemResponse,
+  )
 
   const notes = [...baseNotes]
   const repairNotes: string[] = []
@@ -509,6 +607,7 @@ export function repairWithWink(
     pattern: slots.patternType,
     slots,
     negated,
+    pivot: tokenOffset(text, tokens, modalIdx),
     confidence,
     tier: 2,
     notes,
