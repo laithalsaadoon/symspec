@@ -411,7 +411,7 @@ function rational(numerator: bigint, denominator: bigint): Rational {
 }
 
 /**
- * Parse an exact rational literal: a decimal (`"12345.67"`, `"-5"`) or a
+ * Parse an exact rational literal: a decimal (`"12345.67"`, `"-5"`, `"1.5e-3"`) or a
  * fraction of two integers (`"1609344/1000"`, `"-160/9"`). Throws on anything
  * else, because every caller passes a literal this module owns or a number the
  * NUMBER pattern already matched.
@@ -419,11 +419,14 @@ function rational(numerator: bigint, denominator: bigint): Rational {
 export function parseRational(text: string): Rational {
   const frac = /^(-?\d+)\/(\d+)$/.exec(text)
   if (frac !== null) return rational(BigInt(frac[1]!), BigInt(frac[2]!))
-  const dec = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text)
+  const dec = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(text)
   if (dec === null) throw new RangeError(`numeric: not a rational literal: ${text}`)
   const fraction = dec[3] ?? ''
   const digits = BigInt(`${dec[2]!}${fraction}`)
-  return rational(dec[1] === '-' ? -digits : digits, 10n ** BigInt(fraction.length))
+  // `m × 10^e` with `f` fraction digits is `m_digits × 10^(e − f)`, exactly.
+  const shift = BigInt(dec[4] ?? '0') - BigInt(fraction.length)
+  const signed = dec[1] === '-' ? -digits : digits
+  return shift >= 0n ? rational(signed * 10n ** shift, 1n) : rational(signed, 10n ** -shift)
 }
 
 const mulR = (a: Rational, b: Rational): Rational =>
@@ -485,8 +488,13 @@ const COMPARATOR_LEXICON: ReadonlyArray<{ phrase: string; comparator: NumericCom
  * `1.2.3` match NOTHING rather than a prefix of themselves. Stripping every comma
  * read `at least 1,5 seconds` as fifteen seconds. Declining is a miss; any reading
  * of `1,5` is a guess about the author's locale.
+ *
+ * Scientific notation is read with its exponent (`1e3 ms` is 1000 ms, `1.5E-3 s` is 1.5
+ * ms). Without it, `1e3 ms` was the number `1` in the unit `e`, and `at most 1e3 ms`
+ * against `at least 5e2 ms` was `<= 1 ∧ >= 5`. An exponent of more than three digits is
+ * refused whole by the same lookahead, never read as a prefix of itself.
  */
-const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?!\d|[.,]\d)`
+const NUMBER = String.raw`((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d{1,3})?)(?!\d|[.,]\d|[eE][+-]?\d)`
 
 /** A tolerance after the number (`200 ± 5`): the bound is a range, not the point. */
 const TOLERANCE = /^\s*(?:±|\+\/-|\+-)/

@@ -143,6 +143,19 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
 
+  it('reads scientific notation with its exponent: 5e2 ms and 1e3 ms do not conflict', async () => {
+    const server = (systemResponse: string): ReqSpec => ({ systemName: 'server', systemResponse })
+    expect(
+      await errorCodes(server('respond in at most 1e3 ms'), server('respond in at least 5e2 ms')),
+    ).toEqual([])
+    // The control: the exponent is read, so 2e3 ms is above the 1e3 ms ceiling.
+    const found = await numericFindings(
+      server('respond in at most 1e3 ms'),
+      server('respond in at least 2e3 ms'),
+    )
+    expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
   it('converts 1.1 hours to exactly 66 minutes, so the two bounds meet at one point', async () => {
     // In binary floating point `1.1 * 3_600_000` is 3960000.0000000005, a hair above
     // `66 * 60_000`, and `>= 3960000.0000000005 ∧ <= 3960000` is UNSAT.

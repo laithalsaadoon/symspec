@@ -91,6 +91,26 @@ describe('a bound carries its dimension, its unit, and an exact value (spec 007 
     expect(one('keep the firmware image at least 64 Mb').baseUnit).toBe('Mb')
   })
 
+  it('reads scientific notation exactly, never as a mantissa with the unit `e`', () => {
+    // `1e3 ms` was read as `1` in the unit `e`, and `at most 1e3 ms` against `at least 5e2
+    // ms` was `<= 1 ∧ >= 5`, an error on a satisfiable pair.
+    expect(one('respond in at most 1e3 ms')).toEqual({
+      exact: '1000/1',
+      dimension: 'time',
+      baseUnit: 'ms',
+    })
+    expect(one('respond in at least 1.5E-3 s')).toEqual({
+      exact: '3/2',
+      dimension: 'time',
+      baseUnit: 'ms',
+    })
+    expect(one('keep latency below 2e+2')).toEqual({ exact: '200/1', dimension: '', baseUnit: '' })
+  })
+
+  it('declines an exponent too long to be one, rather than reading a prefix of it', () => {
+    expect(extractNumericPredicates('respond in at most 1e1234 ms', 'svc', 'resp')).toEqual([])
+  })
+
   it('leaves a bare number unitless, and a function word after it is not a unit', () => {
     expect(one('keep latency below 100')).toEqual({ exact: '100/1', dimension: '', baseUnit: '' })
     expect(one('keep latency below 100 and log it')).toEqual({
