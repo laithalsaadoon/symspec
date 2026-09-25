@@ -24,6 +24,7 @@ fabrication/symbolic-threshold-split	exit=3	verified=false	findings=FND_REACHABI
 gaming-control/contrary-pair	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming-control/glossary-bridged	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[] FND_REDUNDANCY/warn[GLO-R1,GLO-R2]	demotions=-
 gaming-control/one-trigger-contradiction	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
+gaming-control/registered-contrary	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming-control/state-invariant	exit=0	verified=true	findings=FND_REACHABILITY_PROVED/info[VALVE-SHUT]	demotions=-
 gaming-control/temporal-conflict	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming-control/term-bridged	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[] FND_REDUNDANCY/warn[TRM-R1,TRM-R2]	demotions=-
@@ -32,6 +33,7 @@ gaming/feature-interaction	exit=3	verified=false	findings=FND_NO_PAIRS_CHECKED/i
 gaming/glossary-bridged	exit=1	verified=true	findings=FND_CONTRADICTION/error[GLO-R1,GLO-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[GLO-R2]	demotions=-
 gaming/numeric-conflict	exit=1	verified=true	findings=FND_NUMERIC_CONTRADICTION/error[NUM-R1,NUM-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R33_MISSING_TOLERANCE/warn[NUM-R1] GTWR_R33_MISSING_TOLERANCE/warn[NUM-R2] GTWR_R35_TEMPORAL/info[NUM-R1] GTWR_R35_TEMPORAL/info[NUM-R2]	demotions=-
 gaming/one-trigger-contradiction	exit=1	verified=true	findings=FND_CONTRADICTION/error[ORD-R1,ORD-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[ORD-R2]	demotions=-
+gaming/registered-contrary	exit=1	verified=true	findings=FND_CONTRADICTION/error[REG-R1,REG-R2] FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming/state-invariant	exit=1	verified=true	findings=FND_REACHABILITY_VIOLATED/error[VALVE-SHUT]	demotions=-
 gaming/temporal-conflict	exit=1	verified=true	findings=FND_CONTRADICTION/error[AUD-R1,AUD-R2] FND_REACHABILITY_NOT_CHECKED/info[] FND_TEMPORAL_CONTRADICTION/error[AUD-R1,AUD-R2] FND_VACUITY/warn[AUD-R3] GTWR_R16_NEGATION/warn[AUD-R1]	demotions=-
 gaming/term-bridged	exit=1	verified=true	findings=FND_CONTRADICTION/error[TRM-R1,TRM-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[TRM-R2]	demotions=-

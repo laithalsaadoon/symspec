@@ -22,6 +22,7 @@ import { Effect } from 'effect'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { solverServiceLayer } from '../adapters/z3/solver-service.ts'
 import { checkOp } from '../app/operations/check.ts'
+import { MUTATE_OPTIONS } from '../app/operations/mutate-options.ts'
 import { exitCodeForEnvelope } from '../app/runtime/exit.ts'
 import { runOperation } from '../app/runtime/operation.ts'
 import { evalRoundCases } from './eval-rounds.ts'
@@ -38,6 +39,7 @@ describe('the report corpus', () => {
           Effect.map((envelope) => ({ exit: exitCodeForEnvelope(envelope), data: envelope.data })),
         ),
       solver: solverServiceLayer,
+      mutateOptions: MUTATE_OPTIONS,
     })
   }, 300_000)
 
@@ -50,7 +52,7 @@ describe('the report corpus', () => {
     const labels = rows.map((r) => r.split('\t')[0] ?? '')
     // DERIVED, not typed: the sources own the number. A dropped or merged row is a document the
     // gate stopped checking, and a literal here would be a second count to keep in step.
-    expect(rows.length).toBe(reportSources().length)
+    expect(rows.length).toBe(reportSources(MUTATE_OPTIONS).length)
     expect(new Set(labels).size, 'two documents share a label').toBe(labels.length)
     const count = (corpus: string) => labels.filter((l) => l.startsWith(`${corpus}/`)).length
     expect(count('eval-rounds')).toBe(evalRoundCases().length)
