@@ -526,19 +526,42 @@ function resolveUnit(unit: string): { dimension: string; base: string; scale: Un
 
 /**
  * Comparator lexicon. Each phrasing maps to the comparator it asserts on the
- * quantity. "within/under/at most/no more than/below" are upper bounds; "at
- * least/over/above/no less than" are lower bounds; "exactly" is equality.
- * Longer phrases are matched first (see COMPARATOR_PATTERNS ordering).
+ * quantity. "within/under/at most/no more than/below/up to/a maximum of" are upper
+ * bounds; "at least/over/above/more than/no less than/a minimum of" are lower bounds;
+ * "exactly" is equality.
+ *
+ * The order is the MATCH order: {@link readBounds} claims each phrase's span in this
+ * order, and a later phrase never matches inside a claimed one. So a phrase precedes
+ * every phrase it contains (`no more than` before `more than`, `no greater than` and
+ * `greater than or equal to` before `greater than`); otherwise the shorter phrase claims
+ * the number and reads the opposite bound.
+ *
+ * A `not` before a phrase is not an entry: {@link readBounds} negates the one comparison
+ * it governs ({@link NEGATE}), so `not more than` is `<=` through `more than` and `not
+ * less than` is `>=` through `less than`. Listing either would read the phrase twice.
+ *
+ * `numeric.test.ts` pins every entry, alone, to its comparator.
  */
-const COMPARATOR_LEXICON: ReadonlyArray<{ phrase: string; comparator: NumericComparator }> = [
+export const COMPARATOR_LEXICON: ReadonlyArray<{
+  readonly phrase: string
+  readonly comparator: NumericComparator
+}> = [
   { phrase: 'no more than', comparator: '<=' },
   { phrase: 'no less than', comparator: '>=' },
+  { phrase: 'no fewer than', comparator: '>=' },
+  { phrase: 'no greater than', comparator: '<=' },
+  { phrase: 'no lower than', comparator: '>=' },
   { phrase: 'at most', comparator: '<=' },
   { phrase: 'at least', comparator: '>=' },
+  { phrase: 'a maximum of', comparator: '<=' },
+  { phrase: 'a minimum of', comparator: '>=' },
+  { phrase: 'up to', comparator: '<=' },
   { phrase: 'less than or equal to', comparator: '<=' },
   { phrase: 'greater than or equal to', comparator: '>=' },
   { phrase: 'less than', comparator: '<' },
+  { phrase: 'fewer than', comparator: '<' },
   { phrase: 'greater than', comparator: '>' },
+  { phrase: 'more than', comparator: '>' },
   { phrase: 'not exceeding', comparator: '<=' },
   { phrase: 'not exceed', comparator: '<=' },
   { phrase: 'exceeding', comparator: '>' },

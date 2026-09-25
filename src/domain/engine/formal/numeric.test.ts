@@ -8,7 +8,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import type { NumericComparator } from './encode.ts'
 import {
+  COMPARATOR_LEXICON,
   extractNumericPredicates,
   mayPerform,
   type PredicateSlot,
@@ -604,5 +606,68 @@ describe('a response that holds an action behind other words may perform it (spe
     expect(may('log the entry')).toBe(false)
     expect(may('unlocked the door keep')).toBe(false)
     expect(may('immediately keep the door unlocked', 'gate controller')).toBe(false)
+  })
+})
+
+describe('every comparator phrase, alone, yields exactly its comparator', () => {
+  // One row per COMPARATOR_LEXICON entry, plus the phrases the `not` path reads through an
+  // entry (`not more than` through `more than`), which are deliberately NOT entries. A lexicon
+  // entry with no row is a red test below, so no entry ships without its own fixture
+  // (`.erpaval/solutions/conventions/lexicon-entries-need-per-entry-reachability-tests.md`).
+  const EXPECTED: ReadonlyArray<readonly [string, NumericComparator]> = [
+    ['no more than', '<='],
+    ['no less than', '>='],
+    ['no fewer than', '>='],
+    ['no greater than', '<='],
+    ['no lower than', '>='],
+    ['at most', '<='],
+    ['at least', '>='],
+    ['a maximum of', '<='],
+    ['a minimum of', '>='],
+    ['up to', '<='],
+    ['less than or equal to', '<='],
+    ['greater than or equal to', '>='],
+    ['less than', '<'],
+    ['fewer than', '<'],
+    ['greater than', '>'],
+    ['more than', '>'],
+    ['not exceeding', '<='],
+    ['not exceed', '<='],
+    ['exceeding', '>'],
+    ['exceed', '>'],
+    ['within', '<='],
+    ['under', '<'],
+    ['below', '<'],
+    ['over', '>'],
+    ['above', '>'],
+    ['exactly', '='],
+    ['equal to', '='],
+    // Through the negation of the one comparison a `not` governs.
+    ['not more than', '<='],
+    ['not less than', '>='],
+  ]
+
+  it.each(EXPECTED)('"%s" reads as %s', (phrase, comparator) => {
+    const preds = extractNumericPredicates(`keep the latency ${phrase} 200 ms`, 'svc', 'resp')
+    expect(preds.map((p) => [p.label, p.comparator, p.value])).toEqual([
+      ['keep the latency', comparator, 200],
+    ])
+  })
+
+  it('has a row for every lexicon entry, and no `not` phrase is an entry', () => {
+    const phrases = COMPARATOR_LEXICON.map((e) => e.phrase)
+    const rows = new Set(EXPECTED.map(([phrase]) => phrase))
+    expect(phrases.filter((p) => !rows.has(p))).toEqual([])
+    expect(phrases.filter((p) => p.startsWith('not ') && !p.startsWith('not exceed'))).toEqual([])
+  })
+
+  it('lists every phrase before any phrase it contains', () => {
+    const phrases = COMPARATOR_LEXICON.map((e) => e.phrase)
+    for (const [i, shorter] of phrases.entries()) {
+      for (const longer of phrases.slice(i + 1)) {
+        const contained = new RegExp(`(?:^| )${shorter}(?: |$)`).test(longer)
+        expect(contained, `"${longer}" is listed after "${shorter}"`).toBe(false)
+      }
+    }
   })
 })
