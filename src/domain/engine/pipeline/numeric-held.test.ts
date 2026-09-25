@@ -379,3 +379,50 @@ describe('spec 007 C3: a guard-vs-response pair split by its text is disclosed, 
     expect(out.uncompared).toEqual([])
   })
 })
+
+describe('spec 007 C3: a numeric core proves a conflict only among requirements that can apply at once', () => {
+  // A cross-slot bridge (`While A, when B`) puts two single-guard requirements in one context
+  // group though A and B exclude each other: the bridge requirement can never fire.
+  const bridge = (a: string, b: string, c: string) => [
+    { preCondition: 'the temperature is above 5 degrees celsius', systemResponse: a },
+    { trigger: 'the temperature is below 3 degrees celsius', systemResponse: b },
+    {
+      preCondition: 'the temperature is above 5 degrees celsius',
+      trigger: 'the temperature is below 3 degrees celsius',
+      systemResponse: c,
+    },
+  ]
+
+  it('proves nothing from guards that exclude each other, on their own quantity or another', async () => {
+    for (const specs of [
+      bridge('open the vent', 'log the event', 'sound the alarm'),
+      bridge('keep the pressure above 5 bar', 'log the event', 'keep the pressure below 3 bar'),
+    ]) {
+      const out = await check('vent controller', specs)
+      expect(out.proved, specs[0]!.systemResponse).toEqual([])
+    }
+    // Obligations under the bridge are disclosed, as they are with no bridge at all: the tier
+    // did not decide whether the guards meet, only that their bounds cannot.
+    const out = await check(
+      'vent controller',
+      bridge('keep the pressure above 5 bar', 'log the event', 'keep the pressure below 3 bar'),
+    )
+    expect(out.uncompared).toContainEqual([out.ids[0]!, out.ids[2]!].sort())
+    expect(out.verified).toBe(false)
+  })
+
+  it('PROVES the same obligations under guards that can hold at once', async () => {
+    const out = await check('vent controller', [
+      {
+        preCondition: 'the temperature is above 5 degrees celsius',
+        systemResponse: 'keep the pressure above 5 bar',
+      },
+      {
+        preCondition: 'the temperature is above 5 degrees celsius',
+        trigger: 'the temperature is below 30 degrees celsius',
+        systemResponse: 'keep the pressure below 3 bar',
+      },
+    ])
+    expect(out.proved).toContainEqual([...out.ids].sort())
+  })
+})

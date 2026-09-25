@@ -517,19 +517,18 @@ export function planComparisonCells(reqPreds: readonly RequirementPredicates[]):
       // in `trigger` mints a group containing BOTH atoms, and the two single-guard
       // requirements are then co-live there.
       //
-      // That bridge is an OPEN fabrication surface this tier does not fence.
-      // Measured through `runCheck`: `While the temperature is above 5 degrees
-      // celsius, the vent controller shall open the vent.` + `When the temperature
-      // is below 3 degrees celsius, the vent controller shall close the vent.` +
-      // `While the temperature is above 5 degrees celsius, when the temperature is
-      // below 3 degrees celsius, the vent controller shall log the fault.` reports
-      // FND_NUMERIC_CONTRADICTION at error severity naming the first two, which do
-      // not conflict. The bridging requirement's guard is arithmetically
-      // unsatisfiable — it is vacuous, and `FND_VACUITY` says so on the same run —
-      // so the document contains no requirement conflict at all. Fencing it needs a
-      // per-group feasibility check on the guard bounds, which no code path here
-      // performs; `src/testing/fabrication.ts` carries the document as a
-      // known-open case so the gap has a name and a reproducer.
+      // That bridge is a fabrication surface the plan does not fence, and the
+      // proof does. Measured through `runCheck`: `While the temperature is above 5
+      // degrees celsius, the vent controller shall open the vent.` + `When the
+      // temperature is below 3 degrees celsius, the vent controller shall close the
+      // vent.` + `While the temperature is above 5 degrees celsius, when the
+      // temperature is below 3 degrees celsius, the vent controller shall log the
+      // fault.` put the first two in one cell, which do not conflict. The bridging
+      // requirement's guard is arithmetically unsatisfiable — it is vacuous, and
+      // `FND_VACUITY` says so on the same run. {@link canCoApply} drops a core whose
+      // requirements' guard bounds cannot hold at once, so the numeric tier reports
+      // nothing here; `src/testing/fabrication.ts` still carries the document as a
+      // known-open case for the propositional tier, which reaches the same group.
       if (!liveIn(group, rp.contextAtoms)) continue
       for (const pred of rp.predicates) {
         const key = comparisonKey(pred)
@@ -563,23 +562,14 @@ export function planComparisonCells(reqPreds: readonly RequirementPredicates[]):
       // the temperature`, a different key from the guard's `temperature`, so those
       // two bounds never meet in one cell.)
       //
-      // Such a requirement IS reported. `minimizeNumericCore` refuses to SHRINK a
-      // core below two ids, but it does not constrain the core it is handed: a core
-      // that already names one id passes through, and `culprits` keeps it. Measured
-      // through `runCheck`, the two-requirement document above plus `While the
-      // temperature is above 5 degrees celsius, the vent controller shall open the
-      // vent.` emits FND_NUMERIC_CONTRADICTION at error severity with a
-      // SINGLE-id `requirementIds` and a message reading `Requirements <one id>
-      // place jointly unsatisfiable …`.
-      //
-      // So this skip only hides the case where the self-conflicting requirement is
-      // the cell's ONLY contributor. What that leaves genuinely open is a different
-      // gap: a self-inconsistent guard is a VACUOUS requirement, and reporting it as
-      // an error-severity numeric contradiction (rather than as the `FND_VACUITY`
-      // the same run also emits) overstates it. A one-id finding cannot CERTIFY a
-      // run — check.ts's `decideTierCrossReqFired` requires ≥2 ids — but it does
-      // suppress the `FND_NO_PAIRS_CHECKED` disclaimer, through this code's
-      // membership in `CROSS_REQUIREMENT_FND_CODES` rather than through the id count.
+      // Such a requirement is not reported as a conflict. Its guard bounds cannot hold at
+      // once, so any core it is in fails {@link canCoApply} (one that names only it, or it and
+      // a requirement live beside it). Measured through `runCheck`: the bridge requirement
+      // above plus `While the temperature is above 5 degrees celsius, the vent controller shall
+      // open the vent.` reported FND_NUMERIC_CONTRADICTION at error severity on the two ids
+      // before that fence, and reports none now; the requirement is VACUOUS, and the
+      // `FND_VACUITY` the same run emits is the honest finding. This skip is only the cheap
+      // case, where the self-conflicting requirement is the cell's ONLY contributor.
       if (distinctIds.size < 2) continue
       const cellKey = JSON.stringify([
         key,
@@ -599,6 +589,48 @@ export function planComparisonCells(reqPreds: readonly RequirementPredicates[]):
     }
   }
   return cells
+}
+
+/**
+ * Whether the requirements `ids` can apply at once: their GUARD bounds, on every quantity, are
+ * jointly satisfiable under some proof reading. A context group is one requirement's guard-atom
+ * set and `liveIn` a subset test, so a cross-slot bridge (`While the temperature is above 5
+ * degrees celsius, when the temperature is below 3 degrees celsius, ...`) makes the two
+ * single-guard requirements it bridges co-live though their guards exclude each other, and a
+ * cell there proved them contradictory: on the guards' own quantity, and on any other quantity
+ * the bridge itself bounds. A core of requirements that cannot apply together is not a conflict
+ * among them (the bridge is vacuous, and `FND_VACUITY` says so), so it is not reported.
+ *
+ * Only a proof is fenced, and only on positive evidence: guard bounds that are infeasible under
+ * every proof reading. Guard bounds split by their text are separate variables here, as in a
+ * cell, so text this tier does not read can only leave a proof standing, never remove one.
+ */
+async function canCoApply(
+  ctx: Z3Context,
+  reqPreds: readonly RequirementPredicates[],
+  ids: readonly string[],
+  bounds: SolverBounds,
+): Promise<boolean> {
+  const live = new Set(ids)
+  const byKey = new Map<string, Entry[]>()
+  for (const rp of reqPreds) {
+    if (!live.has(rp.id)) continue
+    for (const pred of rp.predicates) {
+      if (pred.slot === 'resp') continue
+      const key = comparisonKey(pred)
+      byKey.set(key, [...(byKey.get(key) ?? []), { id: rp.id, pred }])
+    }
+  }
+  for (const entries of byKey.values()) {
+    const readings = entries.some((e) => e.pred.difference !== undefined)
+      ? [SPLIT_ABSOLUTE, SPLIT_DIFFERENCE]
+      : [SPLIT_ABSOLUTE]
+    const own = [...new Set(entries.map((e) => e.id))].sort()
+    if ((await unsatUnderAll(ctx, entries, own, readings, markedRoles(entries), bounds)).unsat) {
+      return false
+    }
+  }
+  return true
 }
 
 /**
@@ -776,8 +808,30 @@ export async function analyzeNumericBounds(
     const blamed = [...culprits].sort()
     const findingKey = JSON.stringify([key, blamed])
     if (findings.has(findingKey)) continue
-
     const contributing = entries.filter((e) => culprits.includes(e.id))
+    // Requirements that never apply at once do not conflict, whatever their bounds say there.
+    // Their obligations are disclosed as a pair under guards no group asserts together is,
+    // because this one asserted them together only through a bridge that can never fire.
+    if (!(await canCoApply(ctx, reqPreds, blamed, bounds))) {
+      const obligations = contributing.filter((e) => e.pred.slot === 'resp')
+      if (obligations.length > 0 && !uncompared.has(findingKey)) {
+        const sources = contributing.map((e) => `${e.pred.sourceText}`).join(' vs ')
+        uncompared.set(findingKey, {
+          code: 'FND_NUMERIC_UNCOMPARED',
+          severity: 'info',
+          requirementIds: blamed,
+          message:
+            `Requirements ${blamed.join(', ')} place numeric bounds on "${label}" (${sources}) ` +
+            'that conflict if they apply at once, under guards whose own bounds cannot hold ' +
+            'together, so the numeric tier did not report a conflict. If the guards can in fact ' +
+            'hold at once, change one requirement so it no longer contradicts the other there; ' +
+            'if they cannot, waive this finding. Then re-run `symspec check`. This is a ' +
+            'disclosure, not a verdict.',
+        })
+      }
+      continue
+    }
+
     // A culprit with no bound performs the action the others' prohibitions bound, and the
     // evidence's predicate list, which holds bounds, cannot show it: the message does.
     const performers = occurrences.filter((o) => culprits.includes(o.id))
