@@ -118,15 +118,17 @@ export interface NumericPredicate {
    */
   readonly negated?: true
   /**
-   * The condition clause that follows the bound in its slot (`when the mode is heating`,
-   * `after the tank fills`), lowercased and whitespace-collapsed; absent when nothing that
-   * reads as one follows. The bound holds only under it, and this tier reads no condition
-   * out of it, so it is part of the comparison class: two bounds meet only under the same
-   * qualifier text, and a pair split by one is disclosed rather than compared (spec 007
-   * AC-2-6). `parse` leaves such a clause inside the response, and read without it `keep the
-   * temperature above 30 °C when the mode is heating` against `... below 20 °C when the mode
-   * is cooling` was a conflict everywhere; `run the pump at most 2 minutes after the tank
-   * fills` is a delay from an event, not a bound on how long the pump runs.
+   * The text that follows the bound in its slot (`when the mode is heating`, `in heating
+   * mode`, `after the tank fills`, `of logs`), lowercased, whitespace-collapsed, and stripped
+   * of edge punctuation; absent when only punctuation follows. It may be a condition the bound
+   * holds under or the referent it counts, and this tier reads neither out of it, so it is
+   * part of the comparison class: two bounds meet only under the same qualifier text, and a
+   * pair split by one is disclosed rather than compared (spec 007 AC-2-6). `parse` leaves such
+   * a clause inside the response, and read without it `keep the temperature above 30 °C when
+   * the mode is heating` against `... below 20 °C when the mode is cooling` was a conflict
+   * everywhere; `run the pump at most 2 minutes after the tank fills` is a delay from an
+   * event, not a bound on how long the pump runs; `30 days of logs` and `2 hours of video`
+   * bound two things.
    */
   readonly qualifier?: string
   /** The original slot substring the predicate came from (evidence). */
@@ -154,7 +156,7 @@ export interface NumericPredicate {
  * (`FND_NUMERIC_UNCOMPARED`), because "complete the infusion within 30 minutes" and
  * "... for at least 60 minutes" is that shape too, and it is a real conflict.
  *
- * An unmarked bound followed by a condition clause is not a magnitude of the whole
+ * An unmarked bound followed by other text is not known to be a magnitude of the whole
  * response: `run the pump at most 2 minutes after the tank fills` is a delay from an event.
  * Its {@link NumericPredicate.qualifier} keeps it apart from every bound without that same
  * clause, so it never meets `run the pump for at least 10 minutes` on one variable, and the
@@ -549,24 +551,23 @@ const COMPARATOR_LEXICON: ReadonlyArray<{ phrase: string; comparator: NumericCom
 const NUMBER = String.raw`((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d{1,3})?)(?!\d|[.,]\d|[eE][+-]?\d)`
 
 /**
- * A condition clause after a bound: a subordinating or temporal word, as a whole word,
- * anywhere in what follows the bound's unit, and everything after it. Searched rather than
- * anchored, because `respond within 30 ms to a request while idle` conditions the bound as
- * much as `respond within 30 ms while idle` does. A clause that is really about some later
- * part of the slot only SPLITS the bound's comparison class, the prover's safe direction,
- * and the split is disclosed.
+ * The normalized {@link NumericPredicate.qualifier} of the text after a bound: ALL of it,
+ * whatever its words, when it carries a letter or a digit.
+ *
+ * Not a list of condition words. Any list leaves a phrasing out, and every phrasing it left
+ * out was read as unconditional: `in heating mode`, `as long as the mode is heating`,
+ * `provided that`, `in case of frost`, `following the door opening`, `from the moment the
+ * tank fills`, `since the alarm cleared`, and the referent of `30 days of logs` against `2
+ * hours of video`. Text this tier does not read only SPLITS the bound's comparison class, the
+ * prover's safe direction, and the split is disclosed (`numeric-contradiction.ts`
+ * `uncomparedPairs`). `negateResponse` reads trailing text the same way, and declines.
  */
-const QUALIFIER =
-  /(?:^|[\s,;(])((?:when|whenever|while|whilst|if|unless|until|after|before|once|during|upon)(?![\p{L}\p{N}])[\s\S]*)$/iu
-
-/** The normalized {@link NumericPredicate.qualifier} of the text after a bound, if any. */
 function qualifierOf(after: string): string | undefined {
-  const m = QUALIFIER.exec(after)
-  if (m === null) return undefined
-  const clause = m[1]!
+  if (!/[\p{L}\p{N}]/u.test(after)) return undefined
+  const clause = after
     .toLowerCase()
     .replace(/\s+/g, ' ')
-    .replace(/[\s.,;:!?)]+$/u, '')
+    .replace(/^[\s.,;:!?(]+|[\s.,;:!?)]+$/gu, '')
     .trim()
   return clause === '' ? undefined : clause
 }

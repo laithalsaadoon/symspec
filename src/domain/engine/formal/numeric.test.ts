@@ -224,9 +224,15 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
       ['run the pump', 'after the tank fills'],
     ])
     expect(qualifier('respond within 30 ms to a request,  While   Idle')).toEqual([
-      ['respond', 'while idle'],
+      ['respond', 'to a request, while idle'],
     ])
+    // Whatever the words: no list of condition words decides what the bound holds under.
+    expect(qualifier('keep the temperature above 30 degrees celsius in case of frost')).toEqual([
+      ['keep the temperature', 'in case of frost'],
+    ])
+    expect(qualifier('store at least 30 days of logs')).toEqual([['store', 'of logs']])
     expect(qualifier('respond within 30 ms')).toEqual([['respond', undefined]])
+    expect(qualifier('respond within 30 ms.')).toEqual([['respond', undefined]])
   })
 
   it('does not read a comparator inside a longer word', () => {
