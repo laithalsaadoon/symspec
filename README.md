@@ -76,9 +76,10 @@ cd symspec && pnpm install && pnpm build && npm install -g .
 
 ### See it prove a conflict
 
-This is one session from start to finish. Every command runs as written, and every output block
-is that command's real output on this build. Exit codes are included, because that is what an
-agent branches on.
+This is one session from start to finish, in an empty directory. Every command runs as written,
+and every output block is that command's real output on this build, trimmed only where the text
+says so. Requirement ids are random UUIDs, shown to their first eight characters. Exit codes are
+included, because that is what an agent branches on.
 
 **1. Create a document and parse a sentence.** `parse` turns English into slots. It returns both
 the structured requirement and the op that writes it.
@@ -109,7 +110,7 @@ $ symspec apply <<'OP'
 {"op":"add","patternType":"event-driven","systemName":"auth service","systemResponse":"grant access","trigger":"the user submits valid credentials"}
 OP
 {"apiVersion":1,"type":"apply","data":{"path":"./requirements.json","written":true,
- "requirements":1,"results":[{"index":0,"op":"add","ok":true,"id":"99c274ba…"}],
+ "requirements":1,"results":[{"index":0,"op":"add","ok":true,"id":"3a2bd98c…"}],
  "summary":{"total":1,"ok":1,"failed":0,"noop":0},"write":true,"problems":[]}}   # exit 0
 ```
 
@@ -134,21 +135,27 @@ makes the contradiction invisible to the solver.
 $ symspec add --pattern-type event-driven \
     --trigger "the user submits valid credentials" \
     --system-name "auth service" --system-response "grant access" --negated
-$ symspec check --pretty
+{"apiVersion":1,"type":"add","data":{"path":"./requirements.json","written":true,
+ "requirements":2,"results":[{"index":0,"op":"add","ok":true,"id":"193bb82d…"}],
+ "summary":{"total":1,"ok":1,"failed":0,"noop":0},"write":true}}              # exit 0
+$ symspec check --pretty                                                        # exit 1
 ```
+
+The first finding, trimmed to the atom and polarity of each row (the full output also prints
+each row's `kind`, its `slotText`, and, for a verb in the antonym table, its `opposition` entry):
 
 ```
 code: FND_CONTRADICTION
 severity: error
 tier: formal
-message: Requirements 778c1db4…, 99c274ba… cannot all hold: under a reachable context their
+message: Requirements 193bb82d…, 3a2bd98c… cannot all hold: under a reachable context their
          responses demand one atom at opposite polarity, or two contrary actions.
 evidence:
   atomTable:
     - atom: sys__auth_service__guard__user_submits_valid_credentials  negated: false
     - atom: sys__auth_service__resp__grant_access                     negated: true
     - atom: sys__auth_service__resp__grant_access                     negated: false
-  core: [778c1db4…, 99c274ba…]
+  core: [193bb82d…, 3a2bd98c…]
 ```
 
 The exit code is 1. Both culprits are named, and the `atomTable` shows what was compared: one
@@ -157,10 +164,15 @@ wrote: the antonym table relates verbs only by the pairs it lists, so it never r
 `allow` or any other member of its class. You can audit that against the English instead of
 taking the tool's word for it. No language model is involved in this verdict. If you rewrite the
 second requirement as *shall deny access*, the contradiction still holds: `grant` and `deny` are a
-seed antonym pair, so their atoms are contraries that cannot both hold, and the row for `deny`
-carries the `opposition` key that relates them. *Shall not grant* plus *shall not deny* is not a
-contradiction, because doing neither is consistent. If you change the trigger, the contradiction
-disappears, because the two requirements no longer apply at the same time.
+seed antonym pair, so their atoms are contraries that cannot both hold, and each row's
+`opposition` entry names the verbs its head opposes. *Shall not grant* plus *shall not deny* is
+not a contradiction, because doing neither is consistent. If you change the trigger, the
+contradiction disappears, because the two requirements no longer apply at the same time.
+
+The same run also carries a `GTWR_R16_NEGATION` warning on the *shall not* requirement and an
+info-severity `FND_REACHABILITY_NOT_CHECKED`. The second is a disclosure rather than a defect:
+no state model is committed, so the reachability tier did not run, and the finding says so
+instead of leaving the question unasked and unmentioned.
 
 ---
 
@@ -338,18 +350,28 @@ envelope down to dotted paths. Neither flag changes the exit code.
 
 The contradiction in the quick start was easy to catch, because both requirements used the same
 words at opposite polarity. The harder case is when the words differ. Here are two requirements
-about one infusion. Both are plausible, and both passed review.
+about one infusion, of the kind that arrive from two sources: a general cap on how long the pump
+runs an infusion, and a drug protocol that must not be infused faster than over an hour. Both
+are plausible, and both passed review.
 
-> **R1** — When the clinician starts an infusion, the infusion pump shall complete the
-> infusion within 30 minutes.
+> **R1** — When the clinician starts an infusion, the infusion pump shall administer the
+> infusion for at most 30 minutes.
 >
 > **R2** — When the clinician starts an infusion, the infusion pump shall run the infusion for
 > at least 60 minutes.
 
-A human reader sees the problem, because 30 minutes cannot also be 60 minutes. A literal checker
-does not, because *complete the infusion* and *run the infusion* are two different quantities.
-The words do not match, so a naive tool compares nothing and reports all-clear. Every number
-below is measured on this build.
+A human reader sees the problem, because an infusion cannot last at most 30 minutes and at
+least 60. A literal checker does not, because *administer the infusion* and *run the infusion*
+are two different quantities. The words do not match, so a naive tool compares nothing and
+reports all-clear. Every number below is measured on this build, in an empty directory:
+
+```bash
+symspec init ./requirements.json
+symspec add --pattern-type event-driven --trigger "the clinician starts an infusion" \
+  --system-name "infusion pump" --system-response "administer the infusion for at most 30 minutes"
+symspec add --pattern-type event-driven --trigger "the clinician starts an infusion" \
+  --system-name "infusion pump" --system-response "run the infusion for at least 60 minutes"
+```
 
 ```console
 $ symspec check --strict --field data.verified,data.progress
@@ -365,32 +387,38 @@ holds the reason along with the command that resolves it.
 $ symspec check --strict --field data.coverage.demotions.0.repair
 {"data":{"coverage":{"demotions":{"0":{"repair":{
   "ops":[{"op":"waive","code":"FND_QUANTITY_ALIAS_CANDIDATE",
-          "reason":"triaged: <why this candidate is not a conflict>"}],
-  "commands":["symspec glossary \"complete the infusion\" \"run the infusion\"",
-              "symspec check","symspec check ./requirements.json"]}}}}}}
+          "reason":"triaged: <why this candidate is not a conflict>",
+          "refs":["2daa564c…","304db074…"],"contentHash":"sha256:a83189f0…"}],
+  "commands":["symspec glossary \"administer the infusion\" \"run the infusion\"",
+              "symspec check","symspec check ./requirements.json"]}}}}}}      # exit 3
 ```
 
 `FND_QUANTITY_ALIAS_CANDIDATE` is info severity and propose-only. Two opposed bounds under one
 system and trigger landed on different quantity keys that share the noun *infusion*, so they
 were never compared. symspec does not decide that they are one quantity, because that is a
 judgment about your domain. It reports that it did not check, and returns the command that would
-let it check. This is the propose/decide split. Commit the decision:
+let it check. The waiver it offers instead is bound to exactly these two requirements and their
+current text, through `refs` and `contentHash`, so it cannot discharge a pair nobody triaged.
+This is the propose/decide split. Commit the decision:
 
 ```console
-$ symspec glossary "complete the infusion" "run the infusion"
+$ symspec glossary "administer the infusion" "run the infusion"
 {"apiVersion":1,"type":"glossary","data":{"path":"./requirements.json","written":true,
- "requirements":2,"summary":{"total":1,"ok":1,"failed":0,"noop":0},"write":true}}  # exit 0
+ "requirements":2,"results":[{"index":0,"op":"glossary","ok":true}],
+ "summary":{"total":1,"ok":1,"failed":0,"noop":0},"write":true}}              # exit 0
 
 $ symspec check --field data.verified,data.progress,data.counts
 {"data":{"verified":false,"progress":{"demotions":1,"openFindings":1,"atomsUncompared":2},
- "counts":{"error":1,"warn":4,"info":2}}}                                         # exit 1
+ "counts":{"error":1,"warn":4,"info":3}}}                                       # exit 1
 ```
+
+The first finding of `symspec check --pretty`, trimmed to three fields:
 
 ```
 code: FND_NUMERIC_CONTRADICTION
 severity: error
-message: Requirements 1329e420…, aff4d931… place jointly unsatisfiable numeric constraints
-         on "complete the infusion".
+message: Requirements 2daa564c…, 304db074… place jointly unsatisfiable numeric constraints
+         on "administer the infusion".
 ```
 
 The exit code is now 1, and the conflict is proven over linear arithmetic, since ≤30min and
@@ -404,6 +432,16 @@ committed is what made the comparison possible. `verified` stayed false in both 
 demotion remains: the aggregate reasoning that this document's shape could hide was never
 attempted.
 
+**The commit proves a conflict only between bounds of one kind.** Both bounds above are
+durations, *for* a length of time. Had R1 said *complete the infusion within 30 minutes*, it
+would be a deadline, and the numeric tier keeps a deadline and a duration on two variables: a
+60-minute run cannot complete within 30 minutes, but a siren sounded within 2 seconds can sound
+for 30. The candidate says so before you commit (*after the alias it DISCLOSES the pair
+(FND_NUMERIC_UNCOMPARED) rather than proving it*), and after the same `glossary` commit that
+document reports `FND_NUMERIC_UNCOMPARED` at info severity, demotes, and exits 0 rather than
+claiming a proof it does not have. Restate the pair so both bounds measure the same thing, or
+waive the disclosure once you have checked it.
+
 ---
 
 ## The state model, and a worked example
@@ -411,8 +449,9 @@ attempted.
 You can declare state variables, classify which responses change state and which restrict it,
 and `check` will run an unbounded reachability tier over the result using Z3 Spacer.
 
-The example below is the real `TX-C1` from a production symspec document, and every number in it
-is measured on this build.
+The example below is built on the real `TX-C1` from a production symspec document, and every
+number in it is measured on this build, in an empty directory. `elapsedMs` is wall-clock time
+on the machine that measured it, so yours will differ.
 
 > **TX-C1** — The run service shall assign runs that share a conversation the Procrastinate
 > lock keyed on the conversation id so they execute sequentially.
@@ -423,47 +462,72 @@ the lock count and the waiting flag change only when a requirement changes them,
 a hypothesis the verdict will name.
 
 ```bash
+symspec init ./requirements.json
 cat > plan.jsonl <<'OPS'
 {"op":"state","name":"held","type":"int","min":0,"max":3,"initial":"held = 0","frame":"stable"}
 {"op":"state","name":"queued","type":"bool","initial":"queued = false","frame":"stable"}
+{"op":"add","key":"TX-A1","patternType":"event-driven","trigger":"an agent worker claims a run","systemName":"run service","systemResponse":"acquire the conversation lock"}
+{"op":"add","key":"TX-A2","patternType":"event-driven","trigger":"a run reaches a terminal state","systemName":"run service","systemResponse":"release the conversation lock"}
+{"op":"add","key":"TX-A3","patternType":"event-driven","trigger":"a run for a locked conversation is queued","systemName":"run service","systemResponse":"mark the run waiting"}
+{"op":"add","key":"TX-C1","patternType":"ubiquitous","systemName":"run service","systemResponse":"hold at most one conversation lock at a time"}
 {"op":"classify","ref":"TX-A1","kind":"effect","expression":"when held = 0: held := held + 1, queued := false"}
 {"op":"classify","ref":"TX-A2","kind":"effect","expression":"when held = 1: held := held - 1"}
 {"op":"classify","ref":"TX-A3","kind":"effect","expression":"when held = 1: queued := true"}
 {"op":"classify","ref":"TX-C1","kind":"constraint","expression":"held <= 1"}
 OPS
 symspec apply --ops plan.jsonl
-symspec check --field data.reachability
 ```
 
-```json
-{"variables":2,"effects":3,"constraints":1,"proved":0,
- "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":148,"timeoutMs":2000}
+```console
+$ symspec check --field data.reachability
+{"data":{"reachability":{"variables":2,"effects":3,"constraints":1,"proved":0,
+ "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":148,"timeoutMs":2000}}}
+                                                                                # exit 0
 ```
 
 TX-C1 holds. Now add a second invariant that sounds obviously true.
 
 ```bash
+symspec add --key TX-C2 --pattern-type ubiquitous --system-name "run service" \
+  --system-response "hold the waiting flag only while the conversation lock is held"
 symspec classify TX-C2 --kind constraint --expression "not (queued and held = 0)"
-symspec check --field data.reachability
 ```
 
-```json
-{"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":324,"timeoutMs":2000}
+```console
+$ symspec check --field data.reachability
+{"data":{"reachability":{"variables":2,"effects":3,"constraints":2,"proved":0,
+ "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":344,"timeoutMs":2000}}}
+                                                                                # exit 1
 ```
 
-The exit code is 1, and the response includes the path that reaches the violation.
+The exit code is 1, and the `FND_REACHABILITY_VIOLATED` finding carries the path that reaches
+the violation.
 
 ```
 TX-C2: a reachable state VIOLATES this constraint. The solver reached it by firing:
 init -> TX-A1 -> TX-A3 -> TX-A2 -> TX-C2. Proven over all reachable states with no bound.
+Every step of that trace is a change some requirement makes — the run that produced it pins
+every variable no effect writes — so this is a genuine defect in the described system rather
+than an artifact of assuming nothing.
 ```
 
 Read that trace as a sentence about the document. A run acquires the lock. A second run queues
 behind it. The first run finishes and releases the lock. Now a run is waiting on a free lock, so
 "nothing waits for a free lock" is false of the system as specified. No single requirement
 contains that ordering error. The trace blames TX-A2, which releases the lock without clearing
-the flag. Fixing that requirement discharges the violation, and both invariants then hold.
+the flag. Fixing that requirement discharges the violation, and both invariants then hold:
+
+```bash
+symspec classify TX-A2 --kind effect \
+  --expression "when held = 1: held := held - 1, queued := false"
+```
+
+```console
+$ symspec check --field data.reachability
+{"data":{"reachability":{"variables":2,"effects":3,"constraints":2,"proved":0,
+ "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":179,"timeoutMs":2000}}}
+                                                                                # exit 0
+```
 
 ### Read `PROVED_UNDER_HYPOTHESES` correctly
 
@@ -505,7 +569,22 @@ and the triggers and preconditions that decide which requirements get compared a
 returns a plan and writes nothing.
 
 Every number below is measured on this build, over five requirements across two systems, each
-with its own trigger.
+with its own trigger, written into an empty directory like this:
+
+```bash
+symspec init ./requirements.json
+cat > reqs.jsonl <<'OPS'
+{"op":"add","patternType":"event-driven","trigger":"the user authenticates","systemName":"auth service","systemResponse":"issue a login credential"}
+{"op":"add","patternType":"event-driven","trigger":"the user signs in","systemName":"auth service","systemResponse":"issue a session token"}
+{"op":"add","patternType":"event-driven","trigger":"the shift ends","systemName":"vault service","systemResponse":"close the vault"}
+{"op":"add","patternType":"event-driven","trigger":"the alarm sounds","systemName":"vault service","systemResponse":"seal the vault"}
+{"op":"add","patternType":"event-driven","trigger":"the shift begins","systemName":"vault service","systemResponse":"lock the door"}
+OPS
+symspec apply --ops reqs.jsonl
+```
+
+The plan entries are large, so the blocks after the first are trimmed to the fields the text
+discusses, with `…` marking each cut.
 
 ```console
 $ symspec propose-glossary --field data.corpus
@@ -523,19 +602,22 @@ Here is what it proposes, as ops that `apply` consumes directly.
 
 ```console
 $ symspec propose-glossary --field data.classes.0
-{"canonical":"issue a login credential","aliases":["issue a session token"],
- "minCosine":0.75,"transitive":false}
+{"data":{"classes":{"0":{…,"canonical":"issue a login credential",…,
+ "aliases":["issue a session token"],…,
+ "ops":[{"op":"glossary","canonical":"issue a login credential","alias":"issue a session token"}],
+ "minCosine":0.735,…,"transitive":false}}}}
 ```
 
 Here is what it declines to propose.
 
 ```console
 $ symspec propose-glossary --field data.unresolved.0
-{"reason":"opposition-candidate","pairs":[{"signal":"same-object-different-verb",
- "verbs":["close","seal"],"cosine":0.811}]}
+{"data":{"unresolved":{"0":{"reason":"opposition-candidate",…,
+ "pairs":[{…,"signal":"same-object-different-verb","verbs":["close","seal"],"cosine":0.806,
+           "remedies":[{"kind":"as-synonyms",…},{"kind":"as-antonyms",…}]}],…}}}}
 ```
 
-`close the vault` and `seal the vault` sit at cosine 0.811, which is above the 0.72 threshold, so
+`close the vault` and `seal the vault` sit at cosine 0.806, which is above the 0.72 threshold, so
 similarity alone would have merged them. The class is withheld anyway, because similarity cannot
 distinguish a paraphrase from an opposite. Antonyms embed close together. Merging these two would
 convert a provable contradiction into a claim of consistency, which is worse than missing the
@@ -559,8 +641,9 @@ are paraphrases are never live together, so their responses are never checked ag
 
 ```console
 $ symspec propose-glossary --field data.guardClasses.0
-{"canonical":"the user authenticates","aliases":["the user signs in"],
- "minCosine":0.873,"unlocks":["22222222-...-0001","22222222-...-0002"],"withheldBy":[]}
+{"data":{"guardClasses":{"0":{…,"canonical":"the user authenticates",
+ "aliases":["the user signs in"],…,"minCosine":0.872,…,
+ "unlocks":["097781c8…","e78dd989…"],"withheldBy":[],…}}}}
 ```
 
 `unlocks` is the payoff stated outright: committing this makes those two requirements comparable
@@ -575,10 +658,11 @@ When the two guards look like different conditions, the plan says so and puts do
 first:
 
 ```console
-$ symspec propose-glossary --field data.guardClasses
-{"withheldBy":[{"signal":"single-token-difference",
-                "phrases":["the shift begins","the shift ends"]}],
- "remedies":[{"kind":"leave-distinct"},{"kind":"realign-guards"},{"kind":"as-synonyms"}]}
+$ symspec propose-glossary --field data.guardClasses.1
+{"data":{"guardClasses":{"1":{…,"canonical":"the shift begins","aliases":["the shift ends"],…,
+ "unlocks":[],"withheldBy":[{"signal":"single-token-difference",
+                             "phrases":["the shift begins","the shift ends"],"cosine":0.823}],
+ "remedies":[{"kind":"leave-distinct",…},{"kind":"realign-guards",…},{"kind":"as-synonyms",…}]}}}}
 ```
 
 `the shift ends` and `the shift begins` differ by one token, and one token is usually the point.
@@ -596,24 +680,25 @@ would touch:
 
 ```console
 $ symspec propose-glossary --field data.termCandidates.0
-{"canonical":"login credential","aliases":["session token"],"sharedPrefix":"issue a",
- "blastRadius":["sys__auth_service__resp__issue_a_session_token"],"withheldBy":[],
- "commands":["symspec term \"login credential\" \"session token\""]}
+{"data":{"termCandidates":{"0":{…,"canonical":"login credential","aliases":["session token"],
+ "sharedPrefix":"issue a","blastRadius":["sys__auth_service__resp__issue_a_session_token"],
+ "withheldBy":[],"commands":["symspec term \"login credential\" \"session token\""],…}}}}
 ```
 
 `blastRadius` is the point. One record reaching many atoms is why a term is worth committing
 and also the only reason to be careful with one, so the plan lists every atom the entry would
 rewrite rather than counting them. Term candidates never appear in `ops`, so piping
 `data.opsJsonl` into `apply` will not commit one — you run the command after reading the
-radius. Committing it moves the same gradient a phrase merge does:
+radius. Committing it instead of the phrase merge moves the gradient below by the same amount:
 
 ```console
 $ symspec check --field data.progress.atomsUncompared
-{"data":{"progress":{"atomsUncompared":2}}}
+{"data":{"progress":{"atomsUncompared":10}}}                                   # exit 0
 
-$ symspec term "login credential" "session token"
+$ symspec term "login credential" "session token" --field data.summary
+{"data":{"summary":{"total":1,"ok":1,"failed":0,"noop":0}}}                    # exit 0
 $ symspec check --field data.progress.atomsUncompared
-{"data":{"progress":{"atomsUncompared":0}}}
+{"data":{"progress":{"atomsUncompared":8}}}                                    # exit 0
 ```
 
 **Terms are for nouns, and that is enforced rather than advised.** A term containing a verb
@@ -621,9 +706,9 @@ the solver reads is refused at write time:
 
 ```console
 $ symspec term "revoke access" "grant access"
-{"apiVersion":1,"type":"error","code":"ERR_USAGE",
- "error":"The term \"revoke access\" / \"grant access\" is not committable: \"revoke\" is a
- verb the formal tier reads …"}                                                  # exit 2
+{"apiVersion":1,"type":"error","error":"The term \"revoke access\" / \"grant access\" is not
+ committable: \"revoke\" is a verb the formal tier reads — the antonym table or the
+ state-bridge lexicon — …","code":"ERR_USAGE","suggestions":[…]}                 # exit 2
 ```
 
 The reason is specific. A response like "mark the session as verified" is recognised as
@@ -635,86 +720,126 @@ accepts. Use `symspec glossary` for a phrasing that contains a verb.
 
 ### The gradient
 
-Apply the confident half and the gradient moves. Align a guard and it moves again, by as much.
+Back on the five requirements as written, with no term committed: apply the confident half
+and the gradient moves. Align a guard and it moves again, by as much. `jq` pulls the op lines
+out of the envelope, since `opsJsonl` is a string field.
 
 ```console
 $ symspec check --field data.progress.atomsUncompared
-{"data":{"progress":{"atomsUncompared":10}}}
+{"data":{"progress":{"atomsUncompared":10}}}                                   # exit 0
 
-$ symspec propose-glossary --field data.opsJsonl > plan.jsonl   # then edit the JSON out
+$ symspec propose-glossary | jq -r .data.opsJsonl > plan.jsonl
 $ symspec apply --ops plan.jsonl --field data.summary
-{"data":{"summary":{"total":1,"ok":1,"failed":0,"noop":0}}}                      # exit 0
+{"data":{"summary":{"total":1,"ok":1,"failed":0,"noop":0}}}                    # exit 0
 
 $ symspec check --field data.progress.atomsUncompared
-{"data":{"progress":{"atomsUncompared":8}}}
+{"data":{"progress":{"atomsUncompared":8}}}                                    # exit 0
 
-$ symspec glossary "the user authenticates" "the user signs in"  # the guard, by hand
+$ symspec glossary "the user authenticates" "the user signs in" --field data.summary
+{"data":{"summary":{"total":1,"ok":1,"failed":0,"noop":0}}}                    # exit 0
 $ symspec check --field data.progress.atomsUncompared
-{"data":{"progress":{"atomsUncompared":6}}}
+{"data":{"progress":{"atomsUncompared":6}}}                                    # exit 0
 ```
 
-Running it again proposes nothing further, because the committed table folds those phrasings onto
-one atom and they are no longer candidates. The vault class persists, since it is still waiting
-on a decision only you can make.
+Running it again proposes nothing further: `opsJsonl` comes back empty, because the committed
+table folds those phrasings onto one atom and they are no longer candidates. The vault class
+persists, since it is still waiting on a decision only you can make, and so does the withheld
+`shift` guard class.
 
 ---
 
 ## Honest scope — read this before trusting a verdict
 
 Every tier that reaches a verdict states its own boundary. The claims below are the tool's own
-words. They are published verbatim in `symspec manifest` under `scope`, quoted in the guide
-`symspec install` writes, and asserted byte-identical by the test suite, so they cannot drift
-between surfaces. The second claim is the one to read if you read only one.
+words, verbatim. `symspec manifest` publishes them under `scope`, the generated `AGENTS.md`
+quotes every one, and the guide `symspec install` writes quotes the first two. The test suite
+asserts each of those surfaces, and this section, against the one corpus they come from, so they
+cannot drift apart. The second claim is the one to read if you read only one.
 
-> The formal (SMT) tier is **sound modulo atomization**, given the conservative near-exact
+> The formal (SMT) tier is sound modulo atomization, given the conservative near-exact
 > normalization of the atom table: every reported conflict is a genuine logical conflict of the
 > requirements as atomized, and the atom table attached to each finding shows exactly what the
 > solver compared.
 
-> Because paraphrases become distinct atoms, a real conflict can be **missed** (a false
-> negative): **silence is not a consistency certificate**, so the formal tier reporting no
-> conflict does not prove the spec consistent.
+> Because paraphrases become distinct atoms, a real conflict can be missed (a false negative):
+> silence is not a consistency certificate, so the formal tier reporting no conflict does not
+> prove the spec consistent.
 
-> The one false-positive risk is **over-unification** (too-aggressive normalization collapsing
-> two distinct conditions into one atom); it is mitigated by conservative normalization and the
-> info-severity `FND_SIMILAR_UNUNIFIED` reporter.
+> The one false-positive risk is over-unification: too-aggressive normalization collapsing two
+> distinct conditions into one atom, or a committed vocabulary entry relating two things the
+> domain keeps apart (a glossary or term alias naming two different things as one, or an antonym
+> pair naming two compatible actions as contraries). It is mitigated by conservative
+> normalization (no stemming or stopword-stripping beyond a leading article, a single copula in
+> a trigger or precondition, and a closed third-person -s rule on the leading response verb), by
+> the refusal of any term that rewrites a verb the solver reads, and by the info-severity
+> FND_SIMILAR_UNUNIFIED reporter.
 
-> Deterministic ambiguity detectors run and report; but whether a phrase is vague **in its
-> domain context** is surfaced for review (`FND_AMBIGUITY_NEEDS_JUDGMENT`), **not decided** by
-> symspec, and any LLM ambiguity judgment is propose-only, never a verdict.
+> Deterministic ambiguity detectors (vague terms, quantifier/coordination scope, and referential
+> ambiguity) run and report; but whether a phrase is vague in its domain context —
+> pragmatic/contextual ambiguity — is surfaced for review (FND_AMBIGUITY_NEEDS_JUDGMENT), not
+> decided by symspec, and any LLM ambiguity judgment is propose-only, never a verdict.
 
-> Semantic similarity is a **propose-only** assist: the embedding tier suggests glossary merges
-> and opposition candidates but **never emits a conflict verdict**, so `check` remains
-> reproducible given the document, its glossary, and the pinned model.
+> Semantic similarity is a propose-only assist: the always-on embedding tier suggests glossary
+> merges and opposition candidates for paraphrased or polar-opposite responses but never emits a
+> conflict verdict, so `check` remains reproducible given the document, its glossary, and the
+> pinned embedding model. A missing model fails the run closed (ERR_EMBED_MODEL_MISSING) rather
+> than silently skipping the tier; pre-warm with `symspec download-model`.
 
-> Numeric conflicts are checked over **linear** integer/real arithmetic (LIA/LRA).
-> **Nonlinear-integer arithmetic remains out of scope** (undecidable).
+> Numeric conflicts are checked over linear integer/real arithmetic (LIA/LRA): requirements
+> placing jointly unsatisfiable bounds on the same per-system quantity, in one role and one
+> dimension, are reported as FND_NUMERIC_CONTRADICTION. A deadline (`within`), a duration
+> (`for`), and a period (`every`) are three roles, an unmarked bound meets every role, and units
+> convert exactly within a dimension. A pair the tier cannot decide as written (a deadline
+> against a duration, two units no conversion relates, or guards the solver never asserted
+> together) is disclosed as FND_NUMERIC_UNCOMPARED, which demotes verified and is never a
+> verdict. Nonlinear-integer arithmetic remains out of scope (undecidable).
 
-> The unbounded reachability tier proves a declared constraint over **every reachable state**
-> with no bound on path length, and every proof is **independently re-verified** so a claim
-> never rests on trusting the solver. But the claim is about **the state model you declared**,
-> not about the requirement text: the `classify` expressions *are* the model, so a mis-declared
-> effect yields a sound proof of the wrong thing. Its common success is
-> `FND_REACHABILITY_UNDER_HYPOTHESES`, which **demotes `verified`**, and an unsatisfiable
-> initial state makes every constraint hold vacuously — reported at error severity because it
-> **masks** violations rather than merely failing to prove one.
+> The unbounded reachability tier proves a declared constraint over EVERY reachable state with
+> no bound on path length (Z3 Spacer), every proof is independently re-verified by three
+> plain-SMT obligations so a claim never rests on trusting the solver, and a violation carries
+> the counterexample trace naming which requirements fired, in order. But the claim is about the
+> STATE MODEL you declared, not about the requirement text: the `classify` expressions ARE the
+> model, so a mis-declared effect yields a sound proof of the wrong thing. It runs only when a
+> state model is committed (otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not
+> run), every proof over a small model is ALSO re-decided by an independent explicit-state
+> search (a disagreement is FND_CERTIFICATE_DISAGREES and withdraws the proof, and a search that
+> stops without showing the model is too large to cover withholds the proof as
+> FND_REACHABILITY_UNKNOWN), a proof that needs variables held fixed is
+> FND_REACHABILITY_UNDER_HYPOTHESES only when the document DECLARES them `frame: stable` — and
+> demotes verified — while one that needs undeclared frames is FND_REACHABILITY_UNKNOWN naming
+> them, a write outside a declared range is FND_RANGE_VIOLATION rather than a silently disabled
+> step, and an unsatisfiable initial state makes every constraint hold vacuously, reported at
+> error severity because it MASKS violations rather than merely failing to prove one.
 
-> `data.verified` is a **coverage** claim about the whole document, not a verdict on it: true
-> only when every requirement that *could* be cross-compared was, every opposition candidate
-> has been triaged, and a decide-tier comparison actually ran. It therefore does **not**
-> account for proven findings — a document with a proven contradiction reports
-> `verified: true` and exits 1, because "I compared enough to certify" and "the spec is
-> correct" are different claims and the exit codes keep them apart. A document with fewer than
-> two requirements is **vacuously verified**, disclosed through `coverage.pairsCheckedNote`
-> rather than as a demotion nothing could discharge. Propose-only findings and coverage
-> statistics can only **demote** `verified`, never promote it.
+> `data.verified` is a COVERAGE claim about the whole document, not a verdict on it: it is true
+> only when every requirement that COULD be cross-compared was (each was asserted together with
+> a peer it shares vocabulary with, in a context group the solver decided — sharing a word is
+> not a comparison), no two requirements demand opposite things of one response (an action and
+> its negation, or two contrary actions such as open and close) under guards the solver never
+> asserted together, every opposition candidate has been triaged (committed via `symspec
+> antonym` / `symspec glossary`, or waived), no committed glossary entry names two contraries as
+> one action, no solver call returned unknown, a decide-tier comparison actually ran, and the
+> run itself was not weakened (the TEST stub embedder demotes, disclosed as `data.run.embedder`,
+> and so does a `--semantic-threshold` above its default, disclosed as
+> `data.run.semanticThreshold`). Two things it therefore does NOT mean. It does not account for
+> proven findings: a document with a proven FND_CONTRADICTION reports `verified: true` and exits
+> 1, because "I compared enough to certify" and "the spec is correct" are different claims and
+> the exit codes are what keep them apart. And a document with fewer than two requirements is
+> vacuously verified — there is no peer to share vocabulary with, so the absence of any
+> cross-comparison is disclosed in `data.coverage.pairsCheckedNote` and `data.residualRisk`
+> rather than as a demotion that could never be discharged. Propose-only findings and coverage
+> statistics can only demote verified, never promote it. Each demotion is listed in
+> `data.coverage.demotions` with the concrete command that discharges it, or the reads that
+> inform the rewrite it needs, so an agent can iterate: `check --strict` (exit 3 on demotion) ->
+> apply the listed ops or rewrite the named requirements -> re-check -> exit 0.
 
 The practical consequence is that a clean check means "no conflict was proven" rather than "this
 spec is consistent". Two fields tell you how much went uncompared:
 `data.residualRisk.unmatchedAtoms` and `data.progress.atomsUncompared`. `FND_NO_PAIRS_CHECKED`
 fires when nothing was cross-compared at all. To close that gap, align vocabulary so that the
-conflicts you care about become provable. `symspec install` teaches vocabulary alignment as its
-first section for that reason.
+conflicts you care about become provable. For that reason the guide `symspec install` writes
+teaches vocabulary alignment immediately after choosing an EARS pattern, before any requirement
+is written.
 
 There are three things symspec does not do: it does not certify specs, it does not score them,
 and it does not produce a machine-checkable proof artifact for an external checker. Findings
@@ -777,7 +902,7 @@ above is enforced by a test, so you can read the gate instead of the sentence.
 | `manifest` and `--help` cannot disagree | [`src/cli.test.ts`](https://github.com/theagenticguy/symspec/blob/main/src/cli.test.ts) — *drift — manifest summaries vs root `--help`* spawns the built binary and diffs both directions. *Every flag description reaches BOTH surfaces* covers the flags. Both tests carry negative controls that corrupt a summary and assert the guard fires. |
 | This README cannot outrun the tool | [`src/publish.test.ts`](https://github.com/theagenticguy/symspec/blob/main/src/publish.test.ts) — *the README agrees with the tool about its own surface* checks the operation count, the code count, the presence of every operation in the table above, and that no command is named which the tool does not have. The last check was verified by sabotage, because its first version passed against a deliberately broken table. |
 | `AGENTS.md` is generated, never hand-edited | [`src/app/runtime/agents-doc.test.ts`](https://github.com/theagenticguy/symspec/blob/main/src/app/runtime/agents-doc.test.ts) — *the committed AGENTS.md matches the generator*, byte for byte. The `check:agents` script re-renders and diffs it, so editing the committed file fails the build. |
-| The honest-scope claims are the tool's own words | `src/publish.test.ts` asserts the sentences above verbatim against `src/app/runtime/scope.ts`, which is the same corpus `symspec manifest` publishes. Softening them here fails a corpus test. |
+| The honest-scope claims are the tool's own words | `src/publish.test.ts` — *quotes EVERY scope claim verbatim* parses the blockquotes in that section and asserts them equal, as a list, to `src/app/runtime/scope.ts`, which is the same corpus `symspec manifest` publishes. `src/app/runtime/scope.test.ts` pins the corpus itself against a frozen copy. Softening a claim here, or leaving a stale copy beside the new one, fails a test. |
 | Every command it tells you to run, runs | [`src/domain/advice/repair.test.ts`](https://github.com/theagenticguy/symspec/blob/main/src/domain/advice/repair.test.ts) sweeps every `symspec …` literal in the tree, and `src/app/operations/check.test.ts` sweeps a whole serialized `check` envelope. Both assert that no command names a subcommand the flat CLI surface cannot parse. |
 | `--version`, this README, `AGENTS.md` and the source agree | `src/publish.test.ts` — *the release config bumps every place the version appears*, checked in both directions. |
 

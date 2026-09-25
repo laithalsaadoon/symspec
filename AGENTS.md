@@ -175,18 +175,18 @@ when NOTHING was cross-compared at all.
    only those. Paraphrase is the enemy here, not repetition — a spec that reads
    repetitively is a spec whose conflicts are provable.
 4. **Commit oppositions you rely on.** If the conflict you care about is
-   "start" vs "halt", run `symspec antonym add start halt` so the solver treats them
+   "start" vs "halt", run `symspec antonym start halt` so the solver treats them
    as contraries — two actions that cannot both hold. Until you do, the solver sees two
    unrelated facts and proves nothing.
 5. **Commit synonyms you could not avoid.** Where two teams genuinely use different
-   words for one thing, `symspec glossary add "<canonical>" "<alias>"` unifies them.
+   words for one thing, `symspec glossary "<canonical>" "<alias>"` unifies them.
 6. **Only then `check`.** The propose-only tier will suggest what you missed
    (`FND_SIMILAR_SEMANTIC`, `FND_OPPOSITION_CANDIDATE`,
    `FND_QUANTITY_ALIAS_CANDIDATE`) — treat each as a gap in step 3, not as a chore.
 
 **The one thing never to do mechanically.** An `FND_OPPOSITION_CANDIDATE` offers TWO
-mutually exclusive remedies: `antonym add` if the verbs are opposites,
-`glossary add` if they are synonyms. Committing the wrong one MANUFACTURES a false
+mutually exclusive remedies: `symspec antonym` if the verbs are opposites,
+`symspec glossary` if they are synonyms. Committing the wrong one MANUFACTURES a false
 contradiction, and embeddings cannot tell which is right because antonyms embed close
 together. Read the pair and decide; the always-safe third option is the reviewed waiver
 in the demotion's `repair.ops`, which records "I triaged this pair, as written, and it is
@@ -371,8 +371,8 @@ field rather than assuming a code's severity from its name.
 
 ## A worked example: the silent contradiction, and the loop that finds it
 
-Measured on this build. The point of the example is that **step 1 looks
-perfect and is wrong.**
+Measured on this build, with the pinned embedding model. The point of the example
+is that **step 1 exits 0 and is wrong.**
 
 **Step 1 — author two requirements that contradict each other.**
 
@@ -389,18 +389,31 @@ symspec check
 Result:
 
 ```
-verified: true    counts.error: 0    counts.warn: 0    exit 0
-pairsChecked: 1   progress.atomsUncompared: 2
+counts.error: 0    counts.warn: 0    counts.info: 3    exit 0
+verified: false    progress.demotions: 1    progress.atomsUncompared: 2
+pairsChecked: 1
 ```
 
-(The one info finding is `FND_REACHABILITY_NOT_CHECKED`: no state model is committed, so the
-reachability tier did not run. It says nothing about these two sentences.)
-
 The document says the scheduler shall both start and halt the same run on the same
-trigger, and `check` is **clean**. Nothing is broken — this is the soundness boundary
-working as designed. "start" and "halt" are two unrelated atoms, so the solver had
-nothing to contradict. The only signal is `atomsUncompared: 2`: two atoms had no
-cross-requirement partner.
+trigger, and `check` exits **0** with no error. Nothing is broken — this is the soundness
+boundary working as designed. "start" and "halt" are two unrelated atoms, so the solver had
+nothing to contradict, and `atomsUncompared: 2` says two atoms had no cross-requirement
+partner.
+
+What keeps it from being silent is the propose tier, and all three info findings are worth
+reading:
+
+- `FND_OPPOSITION_CANDIDATE` — the two responses share an object and differ in their
+  leading verb, so they may be opposites. The open candidate is the one demotion, which is why
+  `verified` is false and `check --strict` exits 3.
+- `FND_SIMILAR_SEMANTIC` — the model scores the responses at cosine 0.813, above the
+  0.72 threshold. Similarity alone cannot tell a paraphrase from an opposite, which is the point.
+- `FND_REACHABILITY_NOT_CHECKED` — no state model is committed, so the reachability tier
+  did not run. It says nothing about these two sentences.
+
+The demotion's `repair.commands` hand back BOTH readings, `symspec antonym start halt` and
+`symspec glossary "start the nightly run" "halt the nightly run"`, and do not choose. An agent
+that branches only on the exit code stops here and ships the contradiction.
 
 **Step 2 — commit the opposition, so the solver can SEE it.**
 
@@ -412,19 +425,21 @@ symspec check
 Result:
 
 ```
-verified: true    counts.error: 1    exit 1
+counts.error: 1    counts.info: 1    exit 1
+verified: true    progress.demotions: 0    progress.atomsUncompared: 0    progress.openFindings: 1
 FND_CONTRADICTION (error) — names BOTH requirement ids, with the unsat core as evidence
-progress.atomsUncompared: 0    progress.openFindings: 1
 ```
 
 **What changed, and what did not.** The document is byte-identical apart from one
 antonym entry. No requirement was edited. The conflict was always there; committing the
 vocabulary is what made it PROVABLE. `atomsUncompared` fell from 2 to 0 because the
-two responses are now contraries, so the solver compares them.
+two responses are now contraries, so the solver compares them, and the opposition candidate
+is gone because the pair is decided.
 
-**Read `verified` correctly.** It is `true` in BOTH runs, and that is not a bug —
-`verified` answers "was consistency actually CHECKED", not "is the document clean". A
-proven contradiction is the strongest evidence the decide tier ran. What says the
+**Read `verified` correctly.** It went from `false` to `true` while the document went
+from exit 0 to exit 1, and that is not a bug — `verified` answers "was consistency actually
+CHECKED", not "is the document clean". It was false while an opposition candidate was open,
+and a proven contradiction is the strongest evidence the decide tier ran. What says the
 document is bad is `counts.error` and the exit code, which went 0 → 1.
 
 **The loop, generalized.**
@@ -605,6 +620,9 @@ symspec check --field data.reachability
  "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":148,"timeoutMs":2000}
 ```
 
+(`elapsedMs` is wall-clock time on the machine that measured it, so yours will differ.
+Every other number is the model's.)
+
 TX-C1 holds — and the verdict is `PROVED_UNDER_HYPOTHESES`, not `PROVED`, exactly as
 the frame section predicts. The finding says so and names the hypothesis:
 
@@ -612,7 +630,10 @@ the frame section predicts. The finding says so and names the hypothesis:
 TX-C1: PROVED_UNDER_HYPOTHESES — no reachable state violates this constraint, ASSUMING
 these variables, which the document declares `frame: stable`, change only when a
 requirement changes them: held (written by TX-A1, TX-A2); queued (written by TX-A1, TX-A3).
-That is a HYPOTHESIS: no requirement establishes it.
+That is a HYPOTHESIS: no requirement establishes it, and with the frame released the
+constraint IS violable, so this is a proof about the declared model and not about the
+system as specified — `verified` is demoted accordingly. A variable written by NO
+requirement is the sharpest case: nothing in the document keeps it from changing.
 ```
 
 **Step 2 — add a second invariant that sounds obviously true, and watch it FAIL.**
@@ -626,7 +647,7 @@ symspec check --field data.reachability
 
 ```json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":324,"timeoutMs":2000}
+ "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":344,"timeoutMs":2000}
 ```
 
 Exit **1**, through the existing contract — the error-severity finding lands in
@@ -657,7 +678,7 @@ symspec check --field data.reachability
 
 ```json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":228,"timeoutMs":2000}
+ "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":179,"timeoutMs":2000}
 ```
 
 Exit **0**. Both invariants now hold, and the change was to the requirement the trace
@@ -692,13 +713,13 @@ All 8 claims, verbatim:
 >
 > Because paraphrases become distinct atoms, a real conflict can be missed (a false negative): silence is not a consistency certificate, so the formal tier reporting no conflict does not prove the spec consistent.
 >
-> The one false-positive risk is over-unification (too-aggressive normalization collapsing two distinct conditions into one atom); it is mitigated by conservative normalization (no stemming or stopword-stripping beyond leading articles) and the info-severity FND_SIMILAR_UNUNIFIED reporter.
+> The one false-positive risk is over-unification: too-aggressive normalization collapsing two distinct conditions into one atom, or a committed vocabulary entry relating two things the domain keeps apart (a glossary or term alias naming two different things as one, or an antonym pair naming two compatible actions as contraries). It is mitigated by conservative normalization (no stemming or stopword-stripping beyond a leading article, a single copula in a trigger or precondition, and a closed third-person -s rule on the leading response verb), by the refusal of any term that rewrites a verb the solver reads, and by the info-severity FND_SIMILAR_UNUNIFIED reporter.
 >
 > Deterministic ambiguity detectors (vague terms, quantifier/coordination scope, and referential ambiguity) run and report; but whether a phrase is vague in its domain context — pragmatic/contextual ambiguity — is surfaced for review (FND_AMBIGUITY_NEEDS_JUDGMENT), not decided by symspec, and any LLM ambiguity judgment is propose-only, never a verdict.
 >
 > Semantic similarity is a propose-only assist: the always-on embedding tier suggests glossary merges and opposition candidates for paraphrased or polar-opposite responses but never emits a conflict verdict, so `check` remains reproducible given the document, its glossary, and the pinned embedding model. A missing model fails the run closed (ERR_EMBED_MODEL_MISSING) rather than silently skipping the tier; pre-warm with `symspec download-model`.
 >
-> Numeric conflicts are checked over linear integer/real arithmetic (LIA/LRA): requirements placing jointly unsatisfiable bounds on the same per-system quantity (unit-normalized) are reported as FND_NUMERIC_CONTRADICTION. Nonlinear-integer arithmetic remains out of scope (undecidable).
+> Numeric conflicts are checked over linear integer/real arithmetic (LIA/LRA): requirements placing jointly unsatisfiable bounds on the same per-system quantity, in one role and one dimension, are reported as FND_NUMERIC_CONTRADICTION. A deadline (`within`), a duration (`for`), and a period (`every`) are three roles, an unmarked bound meets every role, and units convert exactly within a dimension. A pair the tier cannot decide as written (a deadline against a duration, two units no conversion relates, or guards the solver never asserted together) is disclosed as FND_NUMERIC_UNCOMPARED, which demotes verified and is never a verdict. Nonlinear-integer arithmetic remains out of scope (undecidable).
 >
 > The unbounded reachability tier proves a declared constraint over EVERY reachable state with no bound on path length (Z3 Spacer), every proof is independently re-verified by three plain-SMT obligations so a claim never rests on trusting the solver, and a violation carries the counterexample trace naming which requirements fired, in order. But the claim is about the STATE MODEL you declared, not about the requirement text: the `classify` expressions ARE the model, so a mis-declared effect yields a sound proof of the wrong thing. It runs only when a state model is committed (otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not run), every proof over a small model is ALSO re-decided by an independent explicit-state search (a disagreement is FND_CERTIFICATE_DISAGREES and withdraws the proof, and a search that stops without showing the model is too large to cover withholds the proof as FND_REACHABILITY_UNKNOWN), a proof that needs variables held fixed is FND_REACHABILITY_UNDER_HYPOTHESES only when the document DECLARES them `frame: stable` — and demotes verified — while one that needs undeclared frames is FND_REACHABILITY_UNKNOWN naming them, a write outside a declared range is FND_RANGE_VIOLATION rather than a silently disabled step, and an unsatisfiable initial state makes every constraint hold vacuously, reported at error severity because it MASKS violations rather than merely failing to prove one.
 >
