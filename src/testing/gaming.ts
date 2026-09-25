@@ -1039,15 +1039,6 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `refine` certificate.",
     ),
   ),
-  ...(['alias-contraries-glossary@forward', 'alias-contraries-glossary@reverse'] as const).flatMap(
-    (move) =>
-      escapes(
-        move,
-        'AC-4-6',
-        ['contrary-pair'],
-        'The fold accepts an alias between two responses whose verbs are committed contraries, in either direction. Canonicalization rewrites one of `accept the claim` / `reject the claim` to the other before the antonym axiom applies, so the conflict disappears. That is a STRENGTHENING move that escapes: the string-atom encoding is not monotone under aliasing, contrary to I-1.',
-      ),
-  ),
   ...(['alias-contraries-term@forward', 'alias-contraries-term@reverse'] as const).flatMap((move) =>
     escapes(
       move,
