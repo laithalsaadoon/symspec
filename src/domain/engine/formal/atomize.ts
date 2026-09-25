@@ -26,11 +26,13 @@
  *        {@link Opposition} and nothing else — the head stays the author's verb,
  *        and the polarity stays the parse's).
  *      It MUST NOT stem, lemmatize, or strip stopwords from the REMAINDER of a
- *      slot. Three closed, deterministic head/token rules are the whole
- *      exception surface (each below, each tested):
+ *      slot. The closed, deterministic head/token rules below are the whole
+ *      exception surface (each tested):
  *        - the LEADING RESPONSE VERB is de-inflected by a closed third-person
  *          -s rule ({@link deInflectHead}), so "shall opens the valve" and
- *          "shall open the valve" collide on one atom;
+ *          "shall open the valve" collide on one atom, and an antonym-table verb
+ *          spelled as one word is read as the table's multiword spelling of it
+ *          ({@link spelling}: "rollback" is "roll back");
  *        - GUARD slots ({@link GUARD_KINDS}: pre/trig/feat) drop a single copula
  *          token ({@link stripCopula}), so "the session is authenticated" and
  *          "the session authenticated" name one guard state;
@@ -874,6 +876,28 @@ function canonicalizeAntonymRest(rest: string, governs: readonly string[]): stri
 }
 
 /**
+ * One verb spelled two ways is one verb: a one-token head the table also lists as a multiword
+ * member once its underscores are removed (`rollback` / `roll_back`) is read as the multiword
+ * spelling, and opposes what either spelling does. Orthography, closed and deterministic like
+ * the 3sg rule — NOT a synonymy read off the table, which relates the two spellings only by
+ * listing both against `commit`. Only within one class and one side, so no doc pair that put
+ * the spellings on opposite sides is ever collapsed; otherwise the head stays as written.
+ */
+function spelling(
+  head: string,
+  entry: AntonymEntry,
+  index: ReadonlyMap<string, AntonymEntry>,
+): readonly [string, readonly string[]] {
+  if (head.includes('_')) return [head, entry.opposes]
+  for (const [member, other] of index) {
+    if (!member.includes('_') || member.replace(/_/g, '') !== head) continue
+    if (other.canonical !== entry.canonical || other.negated !== entry.negated) continue
+    return [member, [...new Set([...entry.opposes, ...other.opposes])].sort()]
+  }
+  return [head, entry.opposes]
+}
+
+/**
  * The response-head reading of a normalized body: the leading verb de-inflected (closed 3sg
  * rule) and looked up longest-prefix-first — two tokens ("roll_back") before one ("roll") — so
  * multiword opposites like commit/roll-back resolve. On a hit the result carries its
@@ -899,7 +923,7 @@ function antonymReading(
     tokens[0] = tok1
     return { body: tokens.join('_') }
   }
-  const head = twoEntry !== undefined ? (twoTok as string) : tok1
+  const [head, opposes] = spelling(twoEntry !== undefined ? (twoTok as string) : tok1, entry, index)
   const rest = tokens.slice(twoEntry !== undefined ? 2 : 1).join('_')
   const keyRest = canonicalizeAntonymRest(rest, entry.governs)
   // The atom's head is the author's own verb, so `reject the order` is its own atom rather
@@ -915,7 +939,7 @@ function antonymReading(
       body: classBody,
       negative: entry.negated,
       head,
-      opposes: entry.opposes,
+      opposes,
     },
   }
 }

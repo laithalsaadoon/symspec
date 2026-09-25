@@ -1369,9 +1369,11 @@ export const buildGlossaryPlan = async (
 
   // ---- Document-scale oppositions -----------------------------------------
   //
-  // Every signalled pair the sweep saw, gated exactly the way `findOppositionCandidates`
-  // gates: a morphological pair is admitted regardless of cosine, everything else must clear
-  // the topical floor. Cosine is disclosed on the record and decides nothing.
+  // Every signalled pair the sweep saw, gated the way `findOppositionCandidates` gates a
+  // morphological pair: admitted regardless of cosine, while everything else must clear the
+  // topical floor. (`check`'s candidate tier also admits two heads of one antonym class
+  // regardless of cosine, because it demotes on them; this report does not.) Cosine is
+  // disclosed on the record and decides nothing.
   const oppositions: OppositionPair[] = []
   for (const [pairKey, hit] of signals) {
     const [left, right] = pairKey.split('|')

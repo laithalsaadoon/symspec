@@ -215,15 +215,16 @@ describe('a document pair that touches a seed class', () => {
 
   it('keeps a doc member that joins a seed side its OWN atom — a class is not a synonym table', () => {
     // `abort` joins `roll_back`/`rollback` on the side opposite `commit`. The pair says only
-    // `¬(abort ∧ commit)`; it says nothing about `roll back`, so the three stay three atoms, and
-    // `abort` is a contrary of `commit` alone (spec 007 AC-2-1).
+    // `¬(abort ∧ commit)`; it says nothing about `roll back`, so `abort` and `roll back` stay two
+    // atoms, and `abort` is a contrary of `commit` alone (spec 007 AC-2-1). `rollback` is
+    // `roll back` spelled as one word — an orthographic identity, not a table inference.
     const antonyms = buildAntonymIndexWithDoc([['abort', 'commit']])
     const at = (text: string) => atomize({ kind: 'resp', text, systemName: 'ledger', antonyms })
     expect(at('roll back the transaction').name).toBe(
       'sys__ledger__resp__roll_back_the_transaction',
     )
     expect(at('abort the transaction').name).toBe('sys__ledger__resp__abort_the_transaction')
-    expect(at('rollback the transaction').name).not.toBe(at('roll back the transaction').name)
+    expect(at('rollback the transaction').name).toBe(at('roll back the transaction').name)
     const lits = ['abort', 'roll back', 'rollback', 'commit'].map((verb) => {
       const a = at(`${verb} the transaction`)
       return { atom: a.name, ...(a.opposition !== undefined ? { opposition: a.opposition } : {}) }
@@ -231,7 +232,6 @@ describe('a document pair that touches a seed class', () => {
     expect(contraryPairs(lits)).toEqual([
       ['sys__ledger__resp__abort_the_transaction', 'sys__ledger__resp__commit_the_transaction'],
       ['sys__ledger__resp__commit_the_transaction', 'sys__ledger__resp__roll_back_the_transaction'],
-      ['sys__ledger__resp__commit_the_transaction', 'sys__ledger__resp__rollback_the_transaction'],
     ])
   })
 

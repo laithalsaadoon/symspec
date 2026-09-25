@@ -613,6 +613,43 @@ function isNegatingPrefixPair(a: string, b: string): boolean {
 }
 
 /**
+ * The prepositions the antonym-remainder rule used to drop after ANY antonym head. A propose
+ * signal only (see {@link onePrepositionApart}): the decide key now drops a preposition only
+ * where the head's class governs it (`GOVERNED_PREPOSITIONS` in antonyms.ts).
+ */
+const PREPOSITIONS: ReadonlySet<string> = new Set([
+  'in',
+  'into',
+  'from',
+  'within',
+  'inside',
+  'to',
+  'onto',
+  'at',
+  'on',
+])
+
+/**
+ * True when two object remainders are one token apart and both of those tokens are
+ * prepositions ("access to the user" / "access from the user"): the shape the old
+ * antonym-remainder rule read as one object. The decide key no longer does, because the
+ * preposition may carry direction, so a same-class pair of this shape is PROPOSED instead —
+ * lenient on purpose, since it only ever selects a pair to demote on and names no atom.
+ */
+function onePrepositionApart(x: string, y: string): boolean {
+  const tx = x.split('_')
+  const ty = y.split('_')
+  if (tx.length !== ty.length) return false
+  let apart = 0
+  for (let i = 0; i < tx.length; i++) {
+    if (tx[i] === ty[i]) continue
+    if (!PREPOSITIONS.has(tx[i] as string) || !PREPOSITIONS.has(ty[i] as string)) return false
+    apart += 1
+  }
+  return apart === 1
+}
+
+/**
  * Propose opposition candidates (#6): same-system response pairs that share an
  * object remainder but differ on the leading verb and are NOT already unified as
  * antonyms. Propose-only (info-tier) — it suggests `symspec antonym add`, which
@@ -665,20 +702,32 @@ export async function findOppositionCandidates(
       // as one head against their base form.
       const [headA, restA] = fuseNegatingPrefix(normalize(a.systemResponse))
       const [headB, restB] = fuseNegatingPrefix(normalize(b.systemResponse))
-      if (restA === '' || restA !== restB) continue
-      if (headA === headB) continue
+      if (restA === '' || headA === headB) continue
 
-      // Skip pairs the antonym tables ALREADY relate — a seeded or committed pair is a
-      // contrary axiom the solver decides, not a candidate to propose. ONLY a pair: two verbs
-      // that merely share a class (`grant`/`allow` on one side, `conceal`/`unseal` two pairs
-      // apart) are two unrelated atoms to the solver (AC-2-1), so the table's own evidence
-      // that they are related — synonyms or opposites — is proposed like a negating prefix,
-      // regardless of cosine, and demotes until the author commits one or waives it.
+      // Skip pairs the antonym tables ALREADY relate — a seeded or committed pair whose atoms
+      // the solver relates by a contrary axiom, not a candidate to propose. ONLY those: two
+      // verbs that merely share a class (`grant`/`allow` on one side, `conceal`/`unseal` two
+      // pairs apart) are two unrelated atoms to the solver (AC-2-1), and so are two objects a
+      // direction-carrying preposition apart ("grant access to the user" / "revoke access from
+      // the user"), which the key keeps. The table's own evidence that such a pair is related is
+      // proposed like a negating prefix, regardless of cosine, and demotes until the author
+      // commits a glossary entry or an antonym, rewrites one, or waives it.
       const entryA = antonyms.get(headA)
       const entryB = antonyms.get(headB)
-      if (entryA?.opposes.includes(headB) === true) continue
       const sameClass =
         entryA !== undefined && entryB !== undefined && entryA.canonical === entryB.canonical
+      if (restA !== restB && !(sameClass && onePrepositionApart(restA, restB))) continue
+      if (entryA?.opposes.includes(headB) === true) {
+        const decided = (r: SemanticRequirement) =>
+          atomize({
+            kind: 'resp',
+            text: r.systemResponse,
+            systemName: r.systemName,
+            antonyms,
+            ...(options.glossary !== undefined ? { glossary: options.glossary } : {}),
+          })
+        if (areContrary(decided(a), decided(b))) continue
+      }
 
       const key = pairKey(a.id, b.id)
       if (seen.has(key)) continue
@@ -703,17 +752,39 @@ export async function findOppositionCandidates(
         verbs: [headA, headB],
         cosine: round3(score),
         message:
-          `${lo} and ${hi} respond under the same system with the same object but different ` +
-          `leading verbs ("${headA}" vs "${headB}"). These verbs differ, but embeddings CANNOT ` +
-          'tell opposites (open/shut) from synonyms (delete/remove) — decide which these are: ' +
-          `if they are polar OPPOSITES, run \`symspec antonym add ${headA} ${headB}\` (the formal ` +
-          'tier will then treat them as contraries — they cannot both hold — and can prove a conflict); ' +
-          `if they are SYNONYMS, run \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\` ` +
-          'instead. Committing the WRONG one manufactures a false contradiction, so confirm the ' +
-          'direction before applying. This is a suggestion, not a verdict.',
+          restA !== restB
+            ? `${lo} and ${hi} respond under the same system with verbs one antonym class ` +
+              `relates ("${headA}" vs "${headB}") over objects that differ only by a preposition ` +
+              `("${phraseOf(restA)}" vs "${phraseOf(restB)}"). The formal tier does not read ` +
+              'those as one object, because a preposition such as to/from can carry direction, ' +
+              'so it compared nothing between them. If they ARE one object, rewrite one ' +
+              "requirement in the other's words and re-check; if they are different objects, " +
+              'waive this finding. This is a suggestion, not a verdict.'
+            : oppositionMessage(lo, hi, headA, headB, a, b),
       })
     }
   }
 
   return findings
+}
+
+/** The message for a same-object, different-verb opposition candidate. */
+function oppositionMessage(
+  lo: string,
+  hi: string,
+  headA: string,
+  headB: string,
+  a: SemanticRequirement,
+  b: SemanticRequirement,
+): string {
+  return (
+    `${lo} and ${hi} respond under the same system with the same object but different ` +
+    `leading verbs ("${headA}" vs "${headB}"). These verbs differ, but embeddings CANNOT ` +
+    'tell opposites (open/shut) from synonyms (delete/remove) — decide which these are: ' +
+    `if they are polar OPPOSITES, run \`symspec antonym add ${headA} ${headB}\` (the formal ` +
+    'tier will then treat them as contraries — they cannot both hold — and can prove a conflict); ' +
+    `if they are SYNONYMS, run \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\` ` +
+    'instead. Committing the WRONG one manufactures a false contradiction, so confirm the ' +
+    'direction before applying. This is a suggestion, not a verdict.'
+  )
 }

@@ -230,8 +230,24 @@ describe('AC-2-1 — the table relates PAIRS, never the members of one side', ()
     expect(name('allow access')).toBe('sys__vault__resp__allow_access')
     expect(name('publish the article')).toBe('sys__vault__resp__publish_the_article')
     expect(name('rolls back the batch')).toBe('sys__vault__resp__roll_back_the_batch')
-    expect(name('rollback the batch')).toBe('sys__vault__resp__rollback_the_batch')
+    // One verb spelled two ways is one verb — an orthographic rule, not a synonymy.
+    expect(name('rollback the batch')).toBe('sys__vault__resp__roll_back_the_batch')
   })
+
+  // Splitting one side into its own verbs must not also split ONE verb spelled two ways: the
+  // opposition-candidate tier cannot see `roll back X` / `rollback X` (their remainders differ by
+  // the head's own second token), so split, each pair below certified `verified: true` over a
+  // real conflict.
+  for (const [name, a, b] of [
+    ['roll back / not rollback', 'roll back the deployment', 'not rollback the deployment'],
+    ['rollback / not roll back', 'rollback the deployment', 'not roll back the deployment'],
+  ] as const) {
+    it(`${name} under one context is FND_CONTRADICTION naming both`, async () => {
+      const report = await runCheck(await docOf([`${CONVEYOR} ${a}.`, `${CONVEYOR} ${b}.`]))
+      const found = report.findings.filter((f) => f.code === 'FND_CONTRADICTION')
+      expect(found.map((f) => f.requirementIds)).toEqual([[idOf(1), idOf(2)]])
+    })
+  }
 
   it('a same-class pair the table cannot decide DEMOTES instead: grant / not allow', async () => {
     // Split, "shall grant X" plus "shall not allow X" is two unrelated atoms, and the table's
@@ -433,6 +449,50 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
         `${x} / ${y}`,
       ).toEqual([[idOf(1), idOf(2)]])
     }
+  })
+
+  it('a pair the old drop related and the solver no longer does DEMOTES instead', async () => {
+    // "grant access to the user" / "revoke access from the user" are two keys now, because
+    // `to`/`from` may carry direction for the authorization class. They may still be one
+    // object, so the opposition-candidate tier proposes the pair regardless of cosine and
+    // `verified` cannot come back true over it. The same holds for one side of a class a
+    // preposition apart (grant / not allow), which the old side rename made one atom.
+    const orthogonal: Embedder = async (texts) =>
+      texts.map((_, i) => Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1]))
+    for (const [x, y] of [
+      ['grant access to the user', 'revoke access from the user'],
+      ['grant access to the user', 'not allow access from the user'],
+    ] as const) {
+      const report = await runCheck(await docOf([`${BLOCK} ${x}.`, `${BLOCK} ${y}.`]), {
+        semantic: { embedder: orthogonal },
+      })
+      expect(
+        report.findings.filter((f) => f.severity === 'error'),
+        `${x} / ${y}`,
+      ).toEqual([])
+      expect(
+        report.findings.map((f) => f.code),
+        `${x} / ${y}`,
+      ).toContain('FND_OPPOSITION_CANDIDATE')
+      expect(report.verified, `${x} / ${y}`).toBe(false)
+      // The pair is already in the table, so the message must not tell the author to commit it.
+      const message = report.findings.find((f) => f.code === 'FND_OPPOSITION_CANDIDATE')?.message
+      expect(message).toContain('differ only by a preposition')
+      expect(message).not.toContain('symspec antonym add')
+    }
+  })
+
+  it('a pair the solver DOES relate is not proposed: include IN / exclude FROM', async () => {
+    const orthogonal: Embedder = async (texts) =>
+      texts.map((_, i) => Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1]))
+    const report = await runCheck(
+      await docOf([
+        `${BLOCK} include the tile in the view.`,
+        `${BLOCK} exclude the tile from the view.`,
+      ]),
+      { semantic: { embedder: orthogonal } },
+    )
+    expect(report.findings.map((f) => f.code)).not.toContain('FND_OPPOSITION_CANDIDATE')
   })
 
   it('keeps every preposition in the atom body', () => {
