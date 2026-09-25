@@ -165,10 +165,12 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
       const report = await runCheck(pairDoc(pump(a), pump(b)) as never, {})
       expect(uncompared(report), a).toEqual([[ID_A, ID_B]])
     }
-    // The control: two delays after the SAME event are one quantity, and conflict.
+    // The control: two delays after the SAME event are one quantity, and conflict. The verb
+    // alone, so the bound is its obligation: `run the pump at least 10 minutes` is not read so,
+    // because a bound on an object may pick out which (`numeric-held.test.ts`).
     const found = await numericFindings(
-      pump('run the pump at least 10 minutes after the tank fills'),
-      pump('run the pump at most 2 minutes after the tank fills'),
+      pump('run at least 10 minutes after the tank fills'),
+      pump('run at most 2 minutes after the tank fills'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
@@ -510,20 +512,20 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
           .map((f) => f.requirementIds)
 
       it('PROVES time prohibitions against an obligation bounded in percent', async () => {
-        // `run the pump at least 80%` runs the pump, so `not above 30 minutes` and `not below 40
+        // `keep the pump running at least 80%` runs the pump, so `not above 30 minutes` and `not below 40
         // minutes` cannot both hold. Only a bare obligation forced the action across unit
         // classes, and 669c0e9's error on this document was gone.
         const doc = manyDoc(
-          pump('run the pump above 30 minutes', undefined, true),
-          pump('run the pump below 40 minutes', undefined, true),
-          pump('run the pump at least 80%', 'the tank is low'),
+          pump('keep the pump running above 30 minutes', undefined, true),
+          pump('keep the pump running below 40 minutes', undefined, true),
+          pump('keep the pump running at least 80%', 'the tank is low'),
           pump('log the level', 'the tank is low'),
         )
         const report = await runCheck(doc as never, {})
         expect(contradictions(report)).toEqual([[idAt(0), idAt(1), idAt(2)]])
         const [finding] = report.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
         expect(finding?.message).toContain(
-          `Requirement ${idAt(2)} does "run the pump at least 80%"`,
+          `Requirement ${idAt(2)} does "keep the pump running at least 80%"`,
         )
         expect(report.verified).toBe(false)
       })
@@ -532,8 +534,8 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
         // An obligation bounded in minutes is in the cell through its bound, and the evidence
         // lists it; it is not also a bare performer.
         const doc = manyDoc(
-          pump('run the pump above 30 minutes', 'the tank is low', true),
-          pump('run the pump for at least 40 minutes', 'the tank is low'),
+          pump('keep the pump running above 30 minutes', 'the tank is low', true),
+          pump('keep the pump running for at least 40 minutes', 'the tank is low'),
         )
         const report = await runCheck(doc as never, {})
         expect(contradictions(report)).toEqual([[idAt(0), idAt(1)]])
@@ -543,13 +545,13 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
 
       it('DISCLOSES them under three triggers, or behind the obligation’s trailing text', async () => {
         for (const performer of [
-          'run the pump at least 80%',
-          'run the pump at least 80% after the tank fills',
+          'keep the pump running at least 80%',
+          'keep the pump running at least 80% after the tank fills',
         ]) {
           const doc = manyDoc(
-            pump('run the pump above 30 minutes', 'the tank is full', true),
+            pump('keep the pump running above 30 minutes', 'the tank is full', true),
             pump('log the level', 'the tank is full'),
-            pump('run the pump below 40 minutes', 'the tank is empty', true),
+            pump('keep the pump running below 40 minutes', 'the tank is empty', true),
             pump('log the level', 'the tank is empty'),
             pump(performer, 'the tank is low'),
             pump('log the level', 'the tank is low'),
@@ -563,11 +565,11 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
 
       it('DISCLOSES them against a performer in another dimension behind other words', async () => {
         const doc = manyDoc(
-          pump('run the pump above 30 minutes', undefined, true),
-          pump('run the pump above 30 minutes', 'the tank is full', true),
-          pump('run the pump below 40 minutes', undefined, true),
-          pump('run the pump below 40 minutes', 'the tank is empty', true),
-          pump('immediately run the pump at least 80%', 'the tank is low'),
+          pump('keep the pump running above 30 minutes', undefined, true),
+          pump('keep the pump running above 30 minutes', 'the tank is full', true),
+          pump('keep the pump running below 40 minutes', undefined, true),
+          pump('keep the pump running below 40 minutes', 'the tank is empty', true),
+          pump('immediately keep the pump running at least 80%', 'the tank is low'),
           pump('log the level', 'the tank is low'),
         )
         const report = await runCheck(doc as never, {})
@@ -578,12 +580,12 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
 
       it('does not read another action, or a room to meet, as a conflict', async () => {
         for (const [performer, low] of [
-          ['run the fan at least 80%', '40'],
-          ['run the pump at least 80%', '10'],
+          ['keep the fan running at least 80%', '40'],
+          ['keep the pump running at least 80%', '10'],
         ] as const) {
           const doc = manyDoc(
-            pump('run the pump above 30 minutes', undefined, true),
-            pump(`run the pump below ${low} minutes`, undefined, true),
+            pump('keep the pump running above 30 minutes', undefined, true),
+            pump(`keep the pump running below ${low} minutes`, undefined, true),
             pump(performer, 'the tank is low'),
             pump('log the level', 'the tank is low'),
           )

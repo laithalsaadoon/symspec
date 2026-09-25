@@ -225,8 +225,8 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
     expect(
       qualifier('keep the temperature above 30 degrees celsius when the mode is heating'),
     ).toEqual([['keep the temperature', 'when the mode is heating']])
-    expect(qualifier('run the pump at most 2 minutes after the tank fills.')).toEqual([
-      ['run the pump', 'after the tank fills'],
+    expect(qualifier('run at most 2 minutes after the tank fills.')).toEqual([
+      ['run', 'after the tank fills'],
     ])
     expect(qualifier('respond within 30 ms to a request,  While   Idle')).toEqual([
       ['respond', 'to a request, while idle'],
@@ -349,12 +349,63 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
       expect(qualifier(text), verb).toEqual([text])
     }
     // The controls: a subject with neither is the obligation's own, with no qualifier.
-    expect(qualifier('keep the temperature of the tank below 5 degrees celsius')).toEqual([
-      undefined,
-    ])
+    expect(qualifier('keep the tank temperature below 5 degrees celsius')).toEqual([undefined])
     expect(qualifier('be open for at most 5 seconds')).toEqual([undefined])
     // And a guard's subject is predicated by its own `is`: that is the guard, not a clause in it.
     const [guard] = extractNumericPredicates('the level is above 5 meters', 'svc', 'trig')
+    expect(guard?.qualifier).toBeUndefined()
+  })
+
+  it('reads a response bound as the obligation only in a shape that says so', () => {
+    // Spec 007 C1/C2. The subject key is exact, but that the subject NAMES the quantity the
+    // response holds to the bound is a reading: in `log every request above 200 milliseconds` the
+    // bound picks out requests. Outside the shapes below, a response bound carries its whole slot
+    // as its qualifier, so it meets no bound spelled differently and the pair is disclosed.
+    const read = (text: string) =>
+      extractNumericPredicates(text, 'svc', 'resp').map((p) => [p.qualifier, p.clause])
+    for (const [text, clause] of [
+      ['log every request above 200 milliseconds', 'the word "every"'],
+      ['sound the alarm for readings above 90 degrees celsius', 'the word "for"'],
+      ['keep the height of the drone that flew above 100 meters', 'the word "of"'],
+      ['stop the pump the float slid below 3 meters', 'the word "the"'],
+      ['have a latency below 200 milliseconds', 'the word "a"'],
+      ['reject payments exceeding 1000 dollars', 'the plural "payments"'],
+      ['keep the readings above 90 degrees celsius', 'the plural "readings"'],
+      ['flag the sessions idle for at least 30 minutes', 'the plural "sessions"'],
+      ['log the request above 200 milliseconds', 'the verb "log"'],
+      ['sound the siren above 5 seconds', 'the verb "sound"'],
+      ['charge the battery to exactly 80 percent', 'the verb "charge"'],
+    ] as const) {
+      expect(read(text), text).toEqual([[text, clause]])
+    }
+    // The shapes that are proved: the verb alone; a state verb on a quantity named by content
+    // words; a time bound its own role word introduces. None splits the bound off.
+    for (const text of [
+      'respond within 200 milliseconds',
+      'respond in at least 500 milliseconds',
+      'be below 5 meters',
+      'keep the response time below 200 milliseconds',
+      'maintain the latency at most 200 milliseconds',
+      'hold zone 1 temperature above 20 degrees celsius',
+      'have the level below 3 meters',
+      'limit the latency to at most 200 milliseconds',
+      'keep the door unlocked for at least 30 seconds',
+      "keep the tank's level below 3 meters",
+      'keep the ISIS latency below 200 milliseconds',
+      'run the pump for at least 10 minutes',
+      'sound the siren within 2 seconds',
+      'retain the logs for at least 90 days',
+      'run the backup once-daily for at most 2 hours',
+      'poll the sensor at least once every 5 seconds',
+    ]) {
+      expect(read(text), text).toEqual([[undefined, undefined]])
+    }
+    // A guard's subject is predicated by its own copula, and is never read so.
+    const [guard] = extractNumericPredicates(
+      'every reading is above 90 degrees celsius',
+      'svc',
+      'trig',
+    )
     expect(guard?.qualifier).toBeUndefined()
   })
 

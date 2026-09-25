@@ -689,11 +689,13 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
   it('asserts an unmarked bound on EVERY role beside it, so the verdict stays monotone', async () => {
     // With a deadline and a duration on one key, `below 1 second` carries no role of its own.
     // Read against the duration it conflicts with `for at least 30 seconds`; asserting it on
-    // one role only would let adding the deadline requirement DELETE that proof.
+    // one role only would let adding the deadline requirement DELETE that proof. The verb
+    // alone, so every bound is its obligation (`sound the siren below 1 second` is not read so:
+    // `numeric-held.test.ts`).
     const doc = manyDoc(
-      siren('sound the siren within 2 seconds'),
-      siren('sound the siren for at least 30 seconds'),
-      siren('sound the siren below 1 second'),
+      siren('sound within 2 seconds'),
+      siren('sound for at least 30 seconds'),
+      siren('sound below 1 second'),
     )
     const report = await runCheck(doc as never, {})
     const proven = report.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')

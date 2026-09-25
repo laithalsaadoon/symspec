@@ -265,13 +265,14 @@ describe('AC-2-6: an unmarked time bound before other text is its own role', () 
 
   it('still proves two unmarked bounds after one event, and an unmarked bound on its own', async () => {
     // The controls: two delays after one event are one variable, and without trailing text an
-    // unmarked bound still meets a marked one.
+    // unmarked bound still meets a marked one. The verb alone, so each bound is its obligation
+    // (an unmarked bound on an object is not read so: `numeric-held.test.ts`).
     for (const [a, b] of [
       [
-        'sound the siren at least 5 seconds after the door opens',
-        'sound the siren at most 3 seconds after the door opens',
+        'sound at least 5 seconds after the door opens',
+        'sound at most 3 seconds after the door opens',
       ],
-      ['sound the siren above 5 seconds', 'sound the siren for at most 3 seconds'],
+      ['sound above 5 seconds', 'sound for at most 3 seconds'],
     ] as const) {
       expect((await verdict('alarm', a, b)).errors, a).toEqual(['FND_NUMERIC_CONTRADICTION'])
     }

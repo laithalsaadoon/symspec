@@ -135,6 +135,7 @@ import type { Z3Bool } from './encode.ts'
 import type { Evidence } from './finding.ts'
 import {
   type BoundRole,
+  HOLDING_VERBS,
   mayPerform,
   type NumericPredicate,
   opposedComparators,
@@ -843,14 +844,18 @@ export async function analyzeNumericBounds(
  *     `conditional-conflict-unchecked`. The pair is disclosed only when asserting the two
  *     together is unsatisfiable under some reading, so a guarded pair that co-holds anyway
  *     (`<= 30 ms`, `>= 10 ms`) costs nothing. A GUARD bound is a condition on where its
- *     requirement applies, not an obligation, so two guards are never such a pair.
- *   - QUALIFIERS. Two co-live RESPONSE bounds in one unit class whose trailing text differs
- *     ({@link NumericPredicate.qualifier}): `keep the temperature above 30 °C when the mode is
- *     heating` and `... below 20 °C when the mode is cooling`, `run the pump at most 2 minutes
- *     after the tank fills` and `run the pump for at least 10 minutes`, or `store at least 30
- *     days of logs` and `store at most 2 hours of video`. The cells keep them apart because
- *     the tier cannot tell where, or to what, each applies;
- *     the same `conflictTogether` test decides whether the split hid anything.
+ *     requirement applies, not an obligation, so a guard is never half of such a pair.
+ *   - QUALIFIERS. Two co-live bounds in one unit class, at least one a RESPONSE's, whose text
+ *     differs ({@link NumericPredicate.qualifier}): `keep the temperature above 30 °C when the
+ *     mode is heating` and `... below 20 °C when the mode is cooling`, `run the pump at most 2
+ *     minutes after the tank fills` and `run the pump for at least 10 minutes`, `store at least
+ *     30 days of logs` and `store at most 2 hours of video`, a response bound the tier does not
+ *     read as the obligation (`numeric.ts` `unheldBy`: `reject payments exceeding 1000 dollars`),
+ *     or a guard against a response bound split so (`When the level in the can is above 5
+ *     meters` against `have the level in the can below 3 meters`, where `can` is a modal
+ *     spelling). The cells keep them apart because the tier cannot tell where, or to what,
+ *     each applies; the same `conflictTogether` test decides whether the split hid anything.
+ *     Two guards are never such a pair: each is where its own requirement applies.
  *
  * Two prohibitions are never reported: not doing the action satisfies both. Whether an
  * obligation elsewhere makes them conflict is {@link uncomparedProhibitionSets}'s question.
@@ -896,8 +901,14 @@ async function uncomparedPairs(
           const sameQualifier = (pa.qualifier ?? '') === (pb.qualifier ?? '')
           // Co-live in one comparison class: a cell asserted the two together and decided them.
           if (together && sameQualifier) continue
+          // Two guards are where their requirements apply, never an obligation to reconcile.
+          if (pa.slot !== 'resp' && pb.slot !== 'resp') continue
+          if (together) {
+            candidates.push({ a, b, shape: 'qualifiers' })
+            continue
+          }
           if (pa.slot !== 'resp' || pb.slot !== 'resp') continue
-          candidates.push({ a, b, shape: together ? 'qualifiers' : 'contexts' })
+          candidates.push({ a, b, shape: 'contexts' })
         }
       }
     }
@@ -936,16 +947,22 @@ async function uncomparedPairs(
             'consistent. This is a disclosure, not a verdict.'
           : shape === 'qualifiers' && clauses.length > 0
             ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
-              'that conflict if both apply at once to one thing, but the numeric tier reads a bound ' +
-              `inside a clause (${clauses.join('; ')}), where it may be a condition's rather than ` +
-              'the obligation, and it does not guess where such a clause ends, so it never compared ' +
-              'them. To have any conflict proved, restate each so its bound directly follows what ' +
-              'it bounds, with no connective or finite verb before it: move a condition into the ' +
-              'trigger or precondition ("While <condition>, the <system> shall keep <quantity> ' +
-              'below <N>"), or state the bound itself as the obligation ("keep <quantity> below ' +
-              '<N>" for "ensure that <quantity> is below <N>"); or waive this finding once you have ' +
-              'checked they cannot apply together. Then re-run `symspec check`. This is a ' +
-              'disclosure, not a verdict.'
+              'that conflict if each is the obligation on one quantity, but the numeric tier does ' +
+              `not read every one of them so (${clauses.join('; ')}): a bound after a connective, ` +
+              "a finite verb, or another bound may be a condition's, and one after a function word " +
+              `or a plural, or on the object of a verb other than ${HOLDING_VERBS.join(', ')}, ` +
+              'may pick out what the response acts on rather than bound what it holds. It does ' +
+              'not guess which, so it never compared them. To have any conflict proved, restate ' +
+              'each in a shape the tier proves: the bound as the obligation of a holding verb, ' +
+              '"keep <quantity> below <N>" for "ensure that <quantity> is below <N>" (or ' +
+              `${HOLDING_VERBS.filter((v) => v !== 'keep').join(', ')} for keep), with the quantity ` +
+              'named by content words alone ("the endpoint response time", not "the response time ' +
+              'of the endpoint"); a time bound its own role word (for, in, within, every) ' +
+              'introduces right after the action ("run the pump for at least <N> ' +
+              'minutes"), or the verb alone ("respond within <N> milliseconds"); move a condition ' +
+              'into the trigger or precondition ("While <condition>, the <system> shall keep ' +
+              '<quantity> below <N>"). Or waive this finding once you have checked they cannot ' +
+              'apply together. Then re-run `symspec check`. This is a disclosure, not a verdict.'
             : shape === 'qualifiers'
               ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
                 'that conflict if both apply at once to one thing, under different trailing text ' +

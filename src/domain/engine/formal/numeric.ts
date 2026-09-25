@@ -129,14 +129,17 @@ export interface NumericPredicate {
    * everywhere; `run the pump at most 2 minutes after the tank fills` is a delay from an
    * event, not a bound on how long the pump runs; `30 days of logs` and `2 hours of video`
    * bound two things. A bound that is itself inside such a clause, or after another bound in
-   * the slot, carries the whole clause, itself included ({@link qualifierAt}).
+   * the slot, carries the whole clause, itself included, and a response bound not read as its
+   * obligation ({@link unheldBy}) carries the whole slot ({@link qualifierAt}).
    */
   readonly qualifier?: string
   /**
    * What put the bound INSIDE its own {@link NumericPredicate.qualifier}, when something did: `the
-   * connective "during"`, `the finite verb "is"`, or `an earlier bound`. Evidence for the
-   * disclosure only, never part of a key: it names the word the author can move out of the
-   * response to have the bound compared (`numeric-contradiction.ts` `uncomparedPairs`).
+   * connective "during"`, `the finite verb "is"`, `an earlier bound`, or the first word of a
+   * response's subject that keeps the bound from being read as its obligation (`the word
+   * "every"`, `the plural "payments"`, `the verb "log"`: {@link unheldBy}). Evidence for the
+   * disclosure only, never part of a key: it names the word the author can restate to have the
+   * bound compared (`numeric-contradiction.ts` `uncomparedPairs`).
    */
   readonly clause?: string
   /** The original slot substring the predicate came from (evidence). */
@@ -593,7 +596,8 @@ function qualifierOf(after: string): string | undefined {
  * ones included (`as soon as`, `in the event that`, `each time`, `the moment`), and the
  * prepositions that open one on a noun (`during`, `upon`, `following`). Unlike
  * {@link qualifierOf}, the text before a bound is its subject, so no rule can take ALL of it;
- * but a connective is not the only mark of a clause: see {@link FINITE_VERB}.
+ * but a connective is not the only mark of a clause, and a response's other subjects are read
+ * by {@link unheldBy}.
  *
  * A match is a SPELLING, and nothing reads the words around it to excuse one (spec 007, the
  * demote-not-prove contract): a bound after a connective carries its whole clause, itself
@@ -626,25 +630,315 @@ const CONDITION_WORD =
 const TIME_PREPOSITION = /^(?:after|before|until|till|upon|following|since|during)$/i
 
 /**
- * A finite verb or modal SPELLING in a RESPONSE's text before a bound: `open the drain the moment
- * the level is above 5 meters`, `... whose level can rise above 5 meters`. A response's own verb
- * follows `shall` in its base form (`keep`, `open`, `be`), so a finite form of `be`, `have`, or
- * `do`, or a modal, may be some nested clause's verb, and the bound may be in that clause whatever
- * connective, or none, opened it. The paradigm is closed, where connectives run on (`as soon as`,
- * `in the event that`, `any time`, `so long as`, each once an error). Not a guard's: `the level is
- * above 5 meters` predicates the guard's own subject.
- *
- * Matched as a spelling, like {@link CONDITION_WORD}, with nothing read around it: `fill the can
- * with at most 2 liters`, `retain logs from May ...`, and the complement's copula in `ensure that
- * the response time is below 200 milliseconds` each hold one, and each such bound is disclosed
- * rather than proved. Whether a spelling is a noun, a complement's copula, or a relative clause's
- * verb is where this tier's grammar guesses lived, and one that guessed wrong proved a consistent
- * pair (`the latency, which the client observes, is` and `the pressure in that tank is` were
- * each misread the other way, as a clause that never closed); the restatement the disclosure names
- * (`keep the response time below 200 milliseconds`) is proved.
+ * The finite forms of `be`, `have`, and `do`, and the modals. A response's own verb follows
+ * `shall` in its base form (`keep`, `open`, `be`), so one of these in the text before a bound is
+ * some nested clause's verb: `open the drain the moment the level is above 5 meters`, `... whose
+ * level can rise above 5 meters`, the complement's copula in `ensure that the response time is
+ * below 200 milliseconds`. Named first when a subject holds one ({@link unheldBy}), because the
+ * restatement it calls for is the plainest: state the bound as the obligation.
  */
-const FINITE_VERB =
-  /(?:^|[\s,;(])(is|are|was|were|has|had|does|did|can|cannot|could|will|won['’]t|would|may|might|must|should|shall)(?![\p{L}\p{N}-])/iu
+const FINITE_VERB: ReadonlySet<string> = new Set([
+  'is',
+  'are',
+  'was',
+  'were',
+  'has',
+  'had',
+  'does',
+  'did',
+  'can',
+  'cannot',
+  'could',
+  'will',
+  "won't",
+  'won’t',
+  'would',
+  'may',
+  'might',
+  'must',
+  'should',
+  'shall',
+])
+
+/**
+ * The closed classes of English function words, less the finite verbs ({@link FINITE_VERB}):
+ * determiners, quantifiers, pronouns (relative ones included), prepositions and particles,
+ * conjunctions and subordinators, and the non-finite forms of `be`/`have`/`do`. Closed classes
+ * need no upkeep: no word joins one. A response's object that holds one has STRUCTURE (a
+ * prepositional phrase, a clause, a quantifier, a second noun phrase), and structure is where a
+ * bound may pick out what the response acts on instead of bounding what it holds: `sound the
+ * alarm for readings above 90 degrees celsius`, `log every request above 200 milliseconds`, `keep
+ * the height of the drone that flew above 100 meters`, and, with no pronoun at all, `stop the
+ * pump the float slid below 3 meters`. The object's own leading `the` is its article.
+ */
+const FUNCTION_WORD: ReadonlySet<string> = new Set([
+  // Determiners and quantifiers.
+  'the',
+  'a',
+  'an',
+  'this',
+  'that',
+  'these',
+  'those',
+  'my',
+  'your',
+  'his',
+  'her',
+  'its',
+  'our',
+  'their',
+  'whose',
+  'every',
+  'each',
+  'all',
+  'any',
+  'some',
+  'no',
+  'none',
+  'both',
+  'either',
+  'neither',
+  'few',
+  'many',
+  'much',
+  'more',
+  'most',
+  'less',
+  'least',
+  'several',
+  'other',
+  'another',
+  'such',
+  'only',
+  // Pronouns, relative and interrogative ones included.
+  'i',
+  'me',
+  'we',
+  'us',
+  'you',
+  'he',
+  'him',
+  'she',
+  'it',
+  'they',
+  'them',
+  'one',
+  'ones',
+  'who',
+  'whom',
+  'which',
+  'what',
+  'whatever',
+  'whichever',
+  'whoever',
+  'itself',
+  'themselves',
+  // Prepositions and particles.
+  'of',
+  'in',
+  'on',
+  'at',
+  'for',
+  'with',
+  'from',
+  'to',
+  'by',
+  'into',
+  'onto',
+  'over',
+  'under',
+  'above',
+  'below',
+  'during',
+  'after',
+  'before',
+  'until',
+  'till',
+  'near',
+  'inside',
+  'outside',
+  'across',
+  'through',
+  'throughout',
+  'between',
+  'among',
+  'about',
+  'around',
+  'behind',
+  'beyond',
+  'beneath',
+  'beside',
+  'besides',
+  'per',
+  'via',
+  'within',
+  'without',
+  'against',
+  'along',
+  'toward',
+  'towards',
+  'upon',
+  'off',
+  'up',
+  'down',
+  'out',
+  'since',
+  'like',
+  'than',
+  'except',
+  'past',
+  'as',
+  'following',
+  'regarding',
+  'concerning',
+  'versus',
+  'vs',
+  // Conjunctions and subordinators.
+  'and',
+  'or',
+  'but',
+  'nor',
+  'so',
+  'yet',
+  'if',
+  'unless',
+  'because',
+  'although',
+  'though',
+  'while',
+  'whilst',
+  'whether',
+  'when',
+  'whenever',
+  'where',
+  'wherever',
+  'whereas',
+  'once',
+  'then',
+  'how',
+  'why',
+  'not',
+  'never',
+  // Non-finite `be`, `have`, `do`.
+  'be',
+  'been',
+  'being',
+  'have',
+  'having',
+  'do',
+  'doing',
+  'done',
+])
+
+/**
+ * The verbs whose object a bound after it is held to: `keep the latency below 200
+ * milliseconds` obliges the latency to be below 200 milliseconds. Any other verb's object is a
+ * thing the response acts on, and a bound after it may pick out WHICH (`reject the payment
+ * exceeding 1000 dollars`, `stop the pump running above 3000 rpm`); the pair is disclosed. Closed
+ * on purpose: a verb left out only demotes, and the disclosure names this list as the repair
+ * ({@link HOLDING_VERBS}).
+ */
+const HOLDING_VERB: ReadonlySet<string> = new Set(['keep', 'maintain', 'hold', 'have', 'limit'])
+
+/** The {@link HOLDING_VERB}s, in the order a disclosure names them as the repair. */
+export const HOLDING_VERBS: readonly string[] = [...HOLDING_VERB]
+
+/**
+ * A lowercase word ending in `s` after any letter but `s`, `i`, or `u`: it may be a plural, a set of
+ * things a bound picks members out of (`reject payments exceeding 1000 dollars`, `keep the readings
+ * above 90 degrees celsius`, where `keep` means retain). `-ss`, `-is`, and `-us` end singulars
+ * (`pass`, `axis`, `radius`, `bus`), whose plurals end in `-es`. A spelling, and it only ever
+ * demotes: `the gas pressure` and `the lens temperature` are disclosed for it, and an irregular
+ * plural it misses (`fish`) is left to the other rules. An acronym (`ISIS`) and a possessive
+ * (`tank's`) are not lowercase words.
+ */
+const PLURAL_LOOKING = /^[a-z]*[a-hj-rtv-z]s$/
+
+/**
+ * The words at the end of a bound's subject that belong to the bound, not the subject: the label's
+ * trailing filler (`respond in`, `fill the can with`), `within` before another comparator, and a
+ * {@link TIME_PREPOSITION} right before its time bound ({@link governsBound}).
+ */
+const BOUND_OWN_WORD: ReadonlySet<string> = new Set([
+  'in',
+  'of',
+  'to',
+  'for',
+  'by',
+  'at',
+  'a',
+  'an',
+  'the',
+  'no',
+  'with',
+  'be',
+  'is',
+  'are',
+  'within',
+  'after',
+  'before',
+  'until',
+  'till',
+  'upon',
+  'following',
+  'since',
+  'during',
+])
+
+/** The words of `text`, edge punctuation stripped: `unlocked,` is `unlocked`, `is-alive` one word. */
+function wordsOf(text: string): string[] {
+  return text
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''))
+    .filter((w) => w !== '')
+}
+
+/** The first {@link FINITE_VERB} in `subject`, as a {@link NumericPredicate.clause}. */
+function finiteVerbIn(subject: string): string | undefined {
+  const verb = wordsOf(subject).find((w) => FINITE_VERB.has(w.toLowerCase()))
+  return verb === undefined ? undefined : `the finite verb "${verb.toLowerCase()}"`
+}
+
+/**
+ * Why a RESPONSE's bound, whose subject is `subject`, is NOT read as the obligation on what the
+ * response holds to it, or `undefined` when it is. Spec 007 C1/C2: the subject key is exact, but
+ * that the subject names one quantity with a bound is a reading of the sentence, and this tier
+ * proves a bound only in the three shapes where the reading is fixed by closed-class words:
+ *
+ *   - the response's verb alone (`respond within 200 milliseconds`, `be below 5 meters`): there is
+ *     no object for the bound to pick anything out of;
+ *   - a {@link HOLDING_VERB} and a quantity named by content words alone (`keep the response time
+ *     below 200 milliseconds`, `keep the door unlocked for at least 30 seconds`);
+ *   - a time bound its own role word introduces (`timeMarked`: `for`, `in`, `within`, `every`, or
+ *     a governing time preposition) right after an action named by content words alone (`run the
+ *     pump for at least 10 minutes`), where a plural may stand last (`retain the logs for at least
+ *     90 days`) because nothing follows it for the bound to modify.
+ *
+ * Every other subject has structure a bound may restrict (a finite verb, a function word, a plural)
+ * or a verb that does not hold its object to anything, and the answer names the first such word.
+ * The caller then gives the bound its whole slot as qualifier, so it is compared with no bound not
+ * spelled identically, and `numeric-contradiction.ts` discloses the pair. What this cannot see is a
+ * postmodifier made of content words inside an otherwise plain object (`close the session idle for
+ * more than 30 minutes`); the object is then read as the quantity, as it is written.
+ */
+function unheldBy(subject: string, timeMarked: boolean): string | undefined {
+  const tokens = wordsOf(subject)
+  while (tokens.length > 1 && BOUND_OWN_WORD.has(tokens[tokens.length - 1]!.toLowerCase())) {
+    tokens.pop()
+  }
+  if (tokens.length <= 1) return undefined
+  const finite = finiteVerbIn(subject)
+  if (finite !== undefined) return finite
+  const [verb, ...object] = tokens.map((w) => w.toLowerCase())
+  const word = object.find((w, i) => FUNCTION_WORD.has(w) && !(i === 0 && w === 'the'))
+  if (word !== undefined) return `the word "${word}"`
+  const plural = tokens
+    .slice(1)
+    .find((w, i) => PLURAL_LOOKING.test(w) && !(timeMarked && i === object.length - 1))
+  if (plural !== undefined) return `the plural "${plural}"`
+  if (timeMarked || HOLDING_VERB.has(verb!)) return undefined
+  return `the verb "${verb!}"`
+}
 
 /**
  * The {@link NumericPredicate.qualifier} of a bound at `[start, end)` in `text`, where
@@ -664,8 +958,9 @@ const FINITE_VERB =
  *   - After a {@link CONDITION_WORD} in its subject, it is that clause from the word on, this
  *     bound included, for the same reason. A {@link TIME_PREPOSITION} right before a time bound
  *     ({@link governsBound}) opens no clause and is skipped.
- *   - After a {@link FINITE_VERB} in a response's subject, it is the whole slot: the clause's
- *     start is not marked, and the slot contains it.
+ *   - When `unheld` names why a response's bound is not its obligation ({@link unheldBy}; for an
+ *     action's occurrence, the {@link FINITE_VERB} in its subject), it is the whole slot: where a
+ *     clause or a restriction starts is not marked, and the slot contains it.
  *   - Otherwise, the text after the bound's unit ({@link qualifierOf}).
  *
  * In the first three the qualifier holds the bound's own comparator and number, so it is equal
@@ -678,8 +973,8 @@ function qualifierAt(
   start: number,
   end: number,
   firstEnd: number | undefined,
-  slot: PredicateSlot,
   dimension: string | undefined,
+  unheld: string | undefined,
 ): { readonly qualifier?: string; readonly clause?: string } {
   const within = (at: number, clause: string) => {
     const qualifier = qualifierOf(text.slice(at))
@@ -697,8 +992,7 @@ function qualifierAt(
       .replace(/\s+/g, ' ')
     return within(condition.index, `the connective "${word}"`)
   }
-  const verb = slot === 'resp' ? FINITE_VERB.exec(subject) : null
-  if (verb !== null) return within(0, `the finite verb "${verb[1]!.toLowerCase()}"`)
+  if (unheld !== undefined) return within(0, unheld)
   const qualifier = qualifierOf(text.slice(end))
   return qualifier === undefined ? {} : { qualifier }
 }
@@ -935,6 +1229,13 @@ function quantityKey(
  * — but the monotonicity argument above cannot be used to wave a label-width
  * change through while a glossary is in play. Both directions are pinned as
  * observed behavior in `app/operations/check.test.ts`.
+ *
+ * An identical label is an exact key, but that the label NAMES ONE QUANTITY THE BOUND HOLDS is a
+ * second claim, about the sentence: `sound the alarm for readings above 90 degrees celsius` and
+ * `... below 5 degrees celsius` share this label and hold together, because the bound picks out
+ * readings. A response's bound enters a proof on its label only in the shapes {@link unheldBy}
+ * reads off closed-class words; any other carries its whole slot as its qualifier, and its pairs
+ * are disclosed (spec 007 C1/C2).
  */
 function labelBefore(text: string, comparatorStart: number): string | null {
   const before = text.slice(0, comparatorStart).trim()
@@ -1175,7 +1476,12 @@ export function extractNumericPredicates(
   }
   // Each bound with the span it was read from, so its qualifier can be settled once every
   // bound in the slot is claimed (`qualifierAt`).
-  const out: Array<{ pred: Omit<NumericPredicate, 'qualifier'>; start: number; end: number }> = []
+  const out: Array<{
+    pred: Omit<NumericPredicate, 'qualifier'>
+    start: number
+    end: number
+    unheld: string | undefined
+  }> = []
   const lower = text.toLowerCase()
   // Comparator phrases that introduced a bound this function then declined to read.
   // A negated response is read only when it carries exactly one bound and nothing
@@ -1282,6 +1588,17 @@ export function extractNumericPredicates(
         },
         start: idx,
         end,
+        // A guard's subject is predicated by its own copula: the guard, not an obligation.
+        unheld:
+          slot === 'resp'
+            ? unheldBy(
+                text.slice(0, labelEnd),
+                reading.role !== '' ||
+                  (timeLike(dimension) &&
+                    prev !== null &&
+                    (prev.word === 'within' || TIME_PREPOSITION.test(prev.word))),
+              )
+            : undefined,
       })
     }
   }
@@ -1293,14 +1610,14 @@ export function extractNumericPredicates(
     undefined,
   )
   const preds = dedupe(
-    out.map(({ pred, start, end }) => {
+    out.map(({ pred, start, end, unheld }) => {
       const { qualifier, clause } = qualifierAt(
         text,
         start,
         end,
         first?.[0] === start ? undefined : first?.[1],
-        slot,
         pred.dimension,
+        unheld,
       )
       if (qualifier === undefined) return pred
       // An unmarked time bound before other text may be a delay from its event, not a
@@ -1389,7 +1706,8 @@ export function actionOccurrences(
     if (label === null) continue
     const quantity = quantityKey(systemName, label, quantityAliases)
     if (out.has(quantity)) continue
-    const { qualifier } = qualifierAt(text, at, at, undefined, 'resp', undefined)
+    const subject = text.slice(0, at)
+    const { qualifier } = qualifierAt(text, at, at, undefined, undefined, finiteVerbIn(subject))
     out.set(quantity, qualifier === undefined ? { quantity } : { quantity, qualifier })
   }
   return [...out.values()]
