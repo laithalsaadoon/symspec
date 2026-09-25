@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Embedder } from '../formal/embed.ts'
-import { differsOnlyByInflection } from '../formal/semantic.ts'
+import { DEFAULT_SEMANTIC_THRESHOLD, differsOnlyByInflection } from '../formal/semantic.ts'
 import { type CheckOptions, runCheck } from './check.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -963,6 +963,52 @@ describe('differsOnlyByInflection', () => {
     ['open the gas valve', 'open the gap valve', false],
   ] as const)('%s / %s -> %s', (a, b, expected) => {
     expect(differsOnlyByInflection(a, b)).toBe(expected)
+  })
+})
+
+/**
+ * Invariant I-1's run-weakening row, for the semantic threshold. The paraphrase pass (and with
+ * it the AC-3-6 near-duplicate demotion) only sees pairs at or above the threshold, so a run with
+ * the threshold RAISED above the measured default can drop a demotion the pinned run would keep.
+ * It is a statement about the run, exactly like the stub embedder: disclosed in `run`, and a
+ * `run-weakened` demotion. Lowering it only proposes more, which weakens nothing.
+ */
+describe('I-1: a --semantic-threshold above the default is a run-weakening move', () => {
+  // Cosine 1 for the pair, so the proposal survives any threshold and the only thing under
+  // test is whether the raised threshold is disclosed and demotes.
+  const embedder = () => tableEmbedder([['open the door', 'open the doors']])
+  const run = (threshold?: number) =>
+    runCheck(paraDoc({ negated: false }), {
+      semantic: { embedder: embedder(), ...(threshold !== undefined ? { threshold } : {}) },
+    })
+
+  it('control: the default threshold neither demotes nor weakens, and is disclosed', async () => {
+    const report = await run()
+    expect(reasons(report)).toEqual([])
+    expect(report.run).toEqual({ embedder: 'model', semanticThreshold: DEFAULT_SEMANTIC_THRESHOLD })
+  })
+
+  it('a threshold ABOVE the default demotes with run-weakened, naming the flag', async () => {
+    const report = await run(0.99)
+    expect(reasons(report)).toEqual(['run-weakened'])
+    const [d] = report.coverage.demotions
+    expect(d?.action).toContain('--semantic-threshold')
+    expect(d?.action).toContain(String(DEFAULT_SEMANTIC_THRESHOLD))
+    expect(report.run.semanticThreshold).toBe(0.99)
+    expect(report.verified).toBe(false)
+  })
+
+  it('control: a threshold AT or BELOW the default does not weaken the run', async () => {
+    for (const threshold of [DEFAULT_SEMANTIC_THRESHOLD, 0.5]) {
+      const report = await run(threshold)
+      expect(reasons(report)).not.toContain('run-weakened')
+      expect(report.run.semanticThreshold).toBe(threshold)
+    }
+  })
+
+  it('discloses no threshold when the semantic tier did not run', async () => {
+    const report = await runCheck(paraDoc({ negated: false }))
+    expect(report.run).toEqual({ embedder: 'off' })
   })
 })
 

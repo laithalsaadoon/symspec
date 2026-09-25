@@ -125,6 +125,7 @@ import { analyzeNumericBounds } from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
 import { findRelationalUnchecked } from '../formal/relational.ts'
 import {
+  DEFAULT_SEMANTIC_THRESHOLD,
   findOppositionCandidates,
   findSimilarSemantic,
   type GlossaryMerge,
@@ -400,10 +401,11 @@ export interface CoverageDemotion {
     // detect-and-demote bridge for a conflict whose reachability (can the two guards
     // co-occur?) this tier cannot decide. Not waivable: there is no finding behind it.
     | 'conditional-conflict-unchecked'
-    // AC-3-5 / invariant I-1: the run itself was weakened — today, the semantic tier ran on
-    // the deterministic TEST stub embedder, whose cosines are meaningless, so the opposition
-    // detector could not find what the pinned model would. A statement about the RUN, not
-    // the document: discharged by re-running without the stub, never by waiving.
+    // AC-3-5 / invariant I-1: the run itself was weakened — the semantic tier ran on the
+    // deterministic TEST stub embedder, whose cosines are meaningless, so the opposition
+    // detector could not find what the pinned model would; or it ran with a
+    // `--semantic-threshold` above the default, so it proposed less. A statement about the
+    // RUN, not the document: discharged by re-running without the weakening, never by waiving.
     | 'run-weakened'
     // AC-3-6: a kept FND_SIMILAR_SEMANTIC pair whose responses differ only in inflection or
     // number and would conflict as one thing: OPPOSITE polarity ("open the door" / "shall not
@@ -540,7 +542,9 @@ export interface CheckReport {
    * `embedder` is `'model'` when the semantic tier ran on a caller-supplied embedder,
    * `'stub'` when it ran on the deterministic TEST stub (which demotes with
    * `run-weakened`), and `'off'` when it did not run (which demotes with
-   * `semantic-tier-skipped`).
+   * `semantic-tier-skipped`). `semanticThreshold` is the cosine threshold the semantic tier
+   * ran at, present exactly when it ran; above `DEFAULT_SEMANTIC_THRESHOLD` it demotes with
+   * `run-weakened`.
    */
   run: RunDisclosure
 }
@@ -548,6 +552,7 @@ export interface CheckReport {
 /** See {@link CheckReport.run}. */
 export interface RunDisclosure {
   readonly embedder: 'model' | 'stub' | 'off'
+  readonly semanticThreshold?: number
 }
 
 /**
@@ -2109,6 +2114,23 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           'host with `symspec download-model`). Waiving cannot discharge this: nothing was compared.',
       })
     }
+    // Invariant I-1: a semantic threshold RAISED above the measured default is a
+    // run-weakening move too. The paraphrase pass only proposes pairs at or above it, and the
+    // AC-3-6 near-duplicate demotion rides on those proposals, so one run with a high
+    // threshold drops a demotion the pinned run keeps. Lowering it only proposes more.
+    const threshold = options.semantic?.threshold
+    if (threshold !== undefined && threshold > DEFAULT_SEMANTIC_THRESHOLD) {
+      demotions.push({
+        reason: 'run-weakened',
+        requirementIds: [],
+        action:
+          `The semantic tier ran with --semantic-threshold ${threshold}, above the measured ` +
+          `default of ${DEFAULT_SEMANTIC_THRESHOLD}, so paraphrase merges and near-duplicate ` +
+          'demotions the default run would raise may be missing — this run cannot certify. ' +
+          'Re-run `symspec check` without --semantic-threshold (or with a value at or below ' +
+          'the default). Waiving cannot discharge this: nothing was compared.',
+      })
+    }
     if (options.semantic === undefined) {
       demotions.push({
         reason: 'semantic-tier-skipped',
@@ -2275,6 +2297,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
     run: {
       embedder:
         options.semantic === undefined ? 'off' : options.semantic.stub === true ? 'stub' : 'model',
+      ...(options.semantic !== undefined
+        ? { semanticThreshold: options.semantic.threshold ?? DEFAULT_SEMANTIC_THRESHOLD }
+        : {}),
     },
   }
 }

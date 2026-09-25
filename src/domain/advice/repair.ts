@@ -69,7 +69,7 @@
 
 import { runnable } from '../../ports/command-form.ts'
 import type { Repair } from '../../ports/repair.ts'
-import type { CheckFinding, CoverageDemotion } from '../engine/pipeline/check.ts'
+import type { CheckFinding, CoverageDemotion, RunDisclosure } from '../engine/pipeline/check.ts'
 import type { Exclusion } from '../engine/pipeline/gate.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
 
@@ -120,6 +120,11 @@ export interface RepairContext {
    * doubles again.
    */
   readonly timeoutMs?: number
+  /**
+   * What the run was made of (`data.run`), so a `run-weakened` repair names the invocation
+   * that undoes the weakening actually present. Absent for a caller with no run to report.
+   */
+  readonly run?: RunDisclosure
   /** The document path, so every command is copy-pasteable as-is. */
   readonly docPath: string
 }
@@ -291,12 +296,18 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       }
 
     case 'run-weakened':
-      // The semantic tier ran on the TEST stub (AC-3-5). NO OPS: the document is not at
-      // fault. The repair is the same invocation with the stub switch off for that one
-      // command (the Layer enables the stub only on exactly `1`), so it loads the pinned model.
+      // The run itself was weakened: the semantic tier ran on the TEST stub (AC-3-5), or
+      // above the default --semantic-threshold (I-1). NO OPS: the document is not at fault.
+      // The repair is the plain invocation, which carries no threshold flag, with the stub
+      // switch off for that one command when the stub ran (the Layer enables the stub only on
+      // exactly `1`), so it loads the pinned model. One command discharges both causes.
       return {
         ops: [],
-        commands: [`SYMSPEC_EMBED_STUB=0 symspec check ${context.docPath}`],
+        commands: [
+          context.run === undefined || context.run.embedder === 'stub'
+            ? `SYMSPEC_EMBED_STUB=0 symspec check ${context.docPath}`
+            : `symspec check ${context.docPath}`,
+        ],
       }
 
     case 'semantic-tier-skipped':

@@ -71,6 +71,7 @@ import type {
   CheckSeverity,
   CheckTier,
   CoverageDemotion,
+  RunDisclosure,
 } from '../../domain/engine/pipeline/check.ts'
 import { filterReport, runCheck } from '../../domain/engine/pipeline/check.ts'
 import type { Exclusion } from '../../domain/engine/pipeline/gate.ts'
@@ -520,6 +521,9 @@ const CheckInput = Schema.Struct({
         'so every same-intent/different-wording pair was silently missed.',
         'FAVOR RECALL when tuning: this tier is propose-only, so a false suggestion costs one ignored',
         'op while a MISS hides a real paraphrased conflict behind two distinct atoms.',
+        'A value ABOVE the default is a run-weakening move: it can drop proposals and near-duplicate',
+        'demotions the default run raises, so it demotes `data.verified` with `run-weakened`. The value',
+        'the tier ran at is always disclosed as `data.run.semanticThreshold`.',
       ),
     }),
   ),
@@ -723,6 +727,8 @@ const withRepairs = (
    * adjacent fields.
    */
   recommendedBudgetMs: number | undefined,
+  /** `data.run`, so a `run-weakened` repair undoes the weakening this run actually had. */
+  run: RunDisclosure,
 ): readonly RepairableDemotion[] => {
   const exclusionsById = new Map(excluded.map((e) => [e.id, e]))
   return demotions.map((demotion) => {
@@ -730,6 +736,7 @@ const withRepairs = (
       exclusionsById,
       findings,
       docPath: path,
+      run,
       timeoutMs: input.timeoutMs,
       ...(input.solverBudgetMs > 0 ? { solverBudgetMs: input.solverBudgetMs } : {}),
       ...(recommendedBudgetMs !== undefined ? { recommendedBudgetMs } : {}),
@@ -986,6 +993,7 @@ export const checkOp = defineOperation({
           input,
           path,
           budgetHint?.recommendedBudgetMs,
+          full.run,
         ),
         ...reachabilityDemotions,
       ]
