@@ -10,10 +10,10 @@
  *
  * | id | invariant |
  * |---|---|
- * | V1 | each phrase key has one owning symbol per collision domain; and a phrase the projection would rewrite shares no atom, and no glossary key, with another domain |
+ * | V1 | each phrase key has one owning symbol per collision domain; and a phrase the projection would rewrite shares no atom, and no glossary key, with another domain, declared or used |
  * | V2 | aliases are one hop: an alias is never another symbol's canonical |
- * | V-OPP | every phrase of a class has its canonical's opposition, and every contrary pair of phrases survives the rewrite |
- * | V-NUM | every phrase of a class hands the numeric tier its canonical's bounds |
+ * | V-OPP | every phrase of a class the rewrite changes has its canonical's opposition, and every contrary pair of phrases survives the rewrite |
+ * | V-NUM | every phrase of a class the rewrite changes hands the numeric tier its canonical's bounds |
  * | V-KIND | a class is one kind; a distinct record names two symbols of one kind |
  * | V-STATE | the states of one class name one variable value |
  * | V-PARENT | parents exist, are systems, and form no cycle; merged systems do not have different parents |
@@ -35,6 +35,18 @@
  *   namespace, and the glossary a quantity alias would be synthesized into is looked up on every
  *   slot. A rewrite in one domain must not move a phrase off a key another domain's phrase still
  *   holds, or it splits an atom, or re-keys a slot nobody aliased.
+ *   The quantity half is checked two ways, because the glossary a row is synthesized into is
+ *   looked up on `normalize` of each SLOT, not on any key. The plan's literal rule refuses a
+ *   rewritten quantity alias whose quantity key is a guard, feature or action key; that alone
+ *   misses `pressure was high`, which keeps its copula as a quantity key but resolves to the
+ *   state `pressure high` as a trigger. So the alias is also refused when its glossary key is
+ *   the `normalize` of any guard, feature or action slot the document uses.
+ * - **A class's phrases include the document's spellings.** A slot resolves by phrase key, and
+ *   phrase-key equality does not imply the same signature: `keep the level at-most 5 m` and
+ *   `keep the level at most 5 m` are one action key, but only the second is a bound. So V-NUM and
+ *   V-OPP read every slot text the document resolves into a class, not only the declared
+ *   canonical and aliases. A phrase whose key is its class canonical's is never rewritten, and
+ *   is exempt; that exemption is what keeps the implicit vocabulary valid by construction.
  * - **V-REF and V-DISTINCT** are the reference-integrity checks the schema cannot state.
  */
 
@@ -56,6 +68,7 @@ import {
   oppositionSignature,
   type PhraseTables,
   phraseKey,
+  slotUses,
   tablesOf,
 } from './keys.ts'
 
@@ -148,7 +161,16 @@ export const validateVocabulary = (
   tables: PhraseTables = tablesOf(doc),
 ): ValidatedVocabulary => {
   const early: VocabularyViolation[] = []
-  const key = (domain: CollisionDomain, text: string) => phraseKey(domain, text, tables)
+  const keyCache = new Map<string, string>()
+  const key = (domain: CollisionDomain, text: string): string => {
+    const at = `${domain}\u0000${text}`
+    const hit = keyCache.get(at)
+    if (hit !== undefined) return hit
+    const k = phraseKey(domain, text, tables)
+    keyCache.set(at, k)
+    return k
+  }
+  const used = documentSpellings(doc, tables)
 
   // V-FROZEN: nothing to drop, only to disclose; the legacy tables still apply as written.
   if (mode === 'explicit' && vocabulary.symbols.length > 0) {
@@ -249,19 +271,57 @@ export const validateVocabulary = (
     }
   }
 
-  // V-OPP (literal half) and V-NUM, alias against its own canonical.
+  // The document's slot texts by the key they resolve on.
+  const usedByKey = new Map<string, string[]>()
+  for (const [domain, texts] of used.texts) {
+    for (const text of texts) {
+      const at = `${domain}\u0000${key(domain, text)}`
+      usedByKey.set(at, [...(usedByKey.get(at) ?? []), text])
+    }
+  }
+  /**
+   * Every phrase that resolves to `w`: its canonical and aliases, then each slot text the
+   * document uses whose key one of them owns, key by key in that order.
+   */
+  const spellingsOf = (w: Working): string[] => {
+    const declared = [w.symbol.canonical, ...w.aliases]
+    const keys = [...new Set(declared.map((text) => key(w.domain, text)))]
+    const spelled = keys
+      .flatMap((k) => usedByKey.get(`${w.domain}\u0000${k}`) ?? [])
+      .filter((text) => !declared.includes(text))
+    return [...declared, ...spelled]
+  }
+  /** Drop every alias of `w` through which a phrase keyed `k` resolves. */
+  const dropAliasesKeyed = (
+    w: Working,
+    k: string,
+    text: string,
+    v: Omit<VocabularyViolation, 'dropped' | 'phrase'>,
+  ) => {
+    for (const alias of w.aliases.filter((a) => key(w.domain, a) === k)) {
+      dropAlias(w, alias, {
+        ...v,
+        detail:
+          alias === text
+            ? v.detail
+            : `the document spells "${text}", which resolves through the alias "${alias}"; ${v.detail}`,
+      })
+    }
+  }
+
+  // V-OPP (literal half) and V-NUM, every phrase the rewrite changes against its own canonical.
   for (const w of live.values()) {
-    for (const alias of [...w.aliases]) {
-      if (key(w.domain, alias) === w.canonicalKey) continue
-      const refusal = classRefusal(w.domain, w.symbol.canonical, alias, tables)
-      if (refusal !== undefined) {
-        dropAlias(w, alias, { ...refusal, symbols: [w.symbol.id] })
-      }
+    for (const text of spellingsOf(w)) {
+      const k = key(w.domain, text)
+      if (k === w.canonicalKey) continue
+      const refusal = classRefusal(w.domain, w.symbol.canonical, text, tables)
+      if (refusal !== undefined)
+        dropAliasesKeyed(w, k, text, { ...refusal, symbols: [w.symbol.id] })
     }
   }
 
   // V1 (cross-domain half), alias against its own canonical.
-  const phrasesIn = crossDomainKeys(live, tables)
+  const phrasesIn = crossDomainKeys(live, used, tables)
   for (const w of live.values()) {
     for (const alias of [...w.aliases]) {
       const hazard = rewriteHazard(w, alias, w.symbol.canonical, phrasesIn, tables)
@@ -272,13 +332,13 @@ export const validateVocabulary = (
   // V-OPP (claim half), with each symbol its own class: drop every alias on a contrary pair the
   // canonicals do not keep.
   const rep = new Map<SymbolId, SymbolId>([...live.keys()].map((id) => [id, id]))
-  for (const loss of contraryLosses(live, rep, tables)) {
+  for (const loss of contraryLosses(live, rep, spellingsOf, tables)) {
     for (const end of [loss.p, loss.q]) {
       const w = live.get(end.id)
-      if (w === undefined || end.text === w.symbol.canonical || !w.aliases.includes(end.text)) {
-        continue
-      }
-      dropAlias(w, end.text, {
+      if (w === undefined) continue
+      const k = key(w.domain, end.text)
+      if (k === w.canonicalKey) continue
+      dropAliasesKeyed(w, k, end.text, {
         invariant: 'V-OPP',
         detail: loss.detail,
         symbols: sorted(loss.p.id, loss.q.id),
@@ -379,16 +439,22 @@ export const validateVocabulary = (
     }
     const root = ra < rb ? ra : rb
     const canonical = live.get(root)?.symbol.canonical ?? ''
-    const other = live.get(root === ra ? rb : ra)?.symbol.canonical ?? ''
-    // Each class already agrees with its own canonical, so the merged class agrees with the new
-    // canonical exactly when the two canonicals agree.
-    const refusal = classRefusal(a.domain, canonical, other, tables)
+    // Every phrase of the merged class, declared or spelled by the document, that the rewrite
+    // would change. Agreeing with its own canonical is not enough: a phrase that shares its old
+    // canonical's key was never rewritten, so nothing ever compared its signature with anything.
+    const canonicalKey = key(a.domain, canonical)
+    const phrases = [...members(ra), ...members(rb)].flatMap((w) =>
+      spellingsOf(w).map((text) => ({ w, text })),
+    )
+    const refusal = phrases
+      .filter(({ w, text }) => key(w.domain, text) !== canonicalKey)
+      .map(({ text }) => classRefusal(a.domain, canonical, text, tables))
+      .find((r) => r !== undefined)
     if (refusal !== undefined) {
       refuse(refusal.invariant, refusal.detail)
       continue
     }
-    const hazard = [...members(ra), ...members(rb)]
-      .flatMap((w) => [w.symbol.canonical, ...w.aliases].map((text) => ({ w, text })))
+    const hazard = phrases
       .map(({ w, text }) => rewriteHazard(w, text, canonical, phrasesIn, tables))
       .find((h) => h !== undefined)
     if (hazard !== undefined) {
@@ -397,7 +463,7 @@ export const validateVocabulary = (
     }
     const tentative = new Map(rep)
     tentative.set(ra === root ? rb : ra, root)
-    const [loss] = contraryLosses(live, tentative, tables)
+    const [loss] = contraryLosses(live, tentative, spellingsOf, tables)
     if (loss !== undefined) {
       refuse('V-OPP', loss.detail)
       continue
@@ -456,38 +522,83 @@ const classRefusal = (
   return undefined
 }
 
+/** The domains whose slot texts the numeric tier and the kind-blind glossary both read. */
+const SLOT_DOMAINS = ['guard', 'feature', 'action'] as const satisfies readonly CollisionDomain[]
+type SlotDomain = (typeof SLOT_DOMAINS)[number]
+const isSlotDomain = (d: CollisionDomain): d is SlotDomain =>
+  (SLOT_DOMAINS as readonly CollisionDomain[]).includes(d)
+
+/** Every guard, feature and action slot text the document uses, per domain, deduplicated. */
+interface DocumentSpellings {
+  readonly texts: ReadonlyMap<CollisionDomain, readonly string[]>
+}
+
+/**
+ * The document's own slot texts, resolved or not. Unresolved ones are read too: a requirement
+ * the fold has not yet refused still reaches the engine verbatim, and a rewrite that moved a
+ * phrase off its key would split that requirement's atom from the one the rewrite made.
+ */
+const documentSpellings = (doc: RequirementsDocument, tables: PhraseTables): DocumentSpellings => {
+  const texts = new Map<CollisionDomain, string[]>(SLOT_DOMAINS.map((d) => [d, []]))
+  const seen = new Set<string>()
+  for (const r of Object.values(doc.requirements)) {
+    for (const use of slotUses(r, tables)) {
+      if (!isSlotDomain(use.domain)) continue
+      const at = `${use.domain}\u0000${use.text}`
+      if (seen.has(at)) continue
+      seen.add(at)
+      texts.get(use.domain)?.push(use.text)
+    }
+  }
+  return { texts }
+}
+
 /** The keys other domains hold that a rewrite in one domain must not move a phrase off. */
 interface CrossDomainKeys {
   /** Every guard and every feature phrase key (the propositional `guard` namespace). */
   readonly guard: ReadonlySet<string>
   readonly feature: ReadonlySet<string>
+  /** Every guard, feature and action phrase key: V1's literal rule for a quantity. */
+  readonly slot: ReadonlySet<string>
   /** The glossary key of every guard, feature and action phrase. */
   readonly slotGlossary: ReadonlySet<string>
 }
 
+/** The keys of every declared phrase, and of every slot text the document uses. */
 const crossDomainKeys = (
   live: ReadonlyMap<SymbolId, Working>,
+  used: DocumentSpellings,
   tables: PhraseTables,
 ): CrossDomainKeys => {
   const guard = new Set<string>()
   const feature = new Set<string>()
+  const slot = new Set<string>()
   const slotGlossary = new Set<string>()
-  for (const w of live.values()) {
-    for (const text of [w.symbol.canonical, ...w.aliases]) {
-      if (w.domain === 'guard') guard.add(phraseKey('guard', text, tables))
-      if (w.domain === 'feature') feature.add(phraseKey('feature', text, tables))
-      if (w.domain === 'guard' || w.domain === 'feature' || w.domain === 'action') {
-        slotGlossary.add(glossaryKey(text))
-      }
-    }
+  const add = (domain: CollisionDomain, text: string) => {
+    if (!isSlotDomain(domain)) return
+    const k = phraseKey(domain, text, tables)
+    if (domain === 'guard') guard.add(k)
+    if (domain === 'feature') feature.add(k)
+    slot.add(k)
+    slotGlossary.add(glossaryKey(text))
   }
-  return { guard, feature, slotGlossary }
+  for (const w of live.values()) {
+    for (const text of [w.symbol.canonical, ...w.aliases]) add(w.domain, text)
+  }
+  for (const [domain, texts] of used.texts) for (const text of texts) add(domain, text)
+  return { guard, feature, slot, slotGlossary }
 }
 
 /**
  * V1's cross-domain half: whether rewriting `phrase` (of symbol `w`) to `canonical` would move it
  * off a key another domain's phrase holds. A phrase whose key already equals the canonical's is
  * never rewritten, and is never a hazard.
+ *
+ * A rewritten quantity phrase becomes a glossary row, `canonical` <- `phrase`, and the glossary
+ * rewrites any slot whose `normalize` is the row's alias, and links a response whose `normalize`
+ * is its canonical to the row's entry. So the phrase is refused on its quantity key matching a
+ * slot key (the plan's rule, stable as requirements are added), or on either end of the row
+ * matching a slot's glossary key (the exact lookup the engine does).
  */
 const rewriteHazard = (
   w: Working,
@@ -503,7 +614,10 @@ const rewriteHazard = (
       ? 'a state or event'
       : w.domain === 'guard' && keys.feature.has(k)
         ? 'a feature'
-        : w.domain === 'quantity' && keys.slotGlossary.has(glossaryKey(phrase))
+        : w.domain === 'quantity' &&
+            (keys.slot.has(k) ||
+              keys.slotGlossary.has(glossaryKey(phrase)) ||
+              keys.slotGlossary.has(glossaryKey(canonical)))
           ? 'a guard, feature or action'
           : undefined
   return across === undefined
@@ -524,11 +638,13 @@ interface ContraryLoss {
 /**
  * V-OPP's claim half: every two action phrases the engine reads as contraries whose class
  * canonicals are not contraries, or which sit in one class. `rep` maps each symbol to its class
- * representative.
+ * representative; `spellingsOf` gives every phrase that resolves to a symbol, the document's
+ * included.
  */
 const contraryLosses = (
   live: ReadonlyMap<SymbolId, Working>,
   rep: ReadonlyMap<SymbolId, SymbolId>,
+  spellingsOf: (w: Working) => readonly string[],
   tables: PhraseTables,
 ): ContraryLoss[] => {
   const root = (id: SymbolId): SymbolId => {
@@ -538,7 +654,7 @@ const contraryLosses = (
   }
   const phrases = [...live.values()]
     .filter((w) => w.domain === 'action')
-    .flatMap((w) => [w.symbol.canonical, ...w.aliases].map((text) => ({ id: w.symbol.id, text })))
+    .flatMap((w) => spellingsOf(w).map((text) => ({ id: w.symbol.id, text })))
   const atoms = new Map(phrases.map((p) => [p.text, actionAtom(p.text, tables)]))
   const atomOf = (text: string) => atoms.get(text) ?? actionAtom(text, tables)
   const losses: ContraryLoss[] = []

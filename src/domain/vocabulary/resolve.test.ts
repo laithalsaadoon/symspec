@@ -15,15 +15,18 @@
  * inflection, article and case variants, unit case, a committed glossary.
  */
 
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
+import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import { MUTATE_OPTIONS } from '../../app/operations/mutate-options.ts'
+import { SolverService } from '../../ports/solver.ts'
 import { asRequirementsDocument } from '../../testing/eval-rounds.ts'
 import { generateCases } from '../../testing/generate.ts'
 import { reportSources } from '../../testing/report-corpus.ts'
 import { toEngineDoc } from '../compat.ts'
 import { normalizeScope } from '../engine/formal/atomize.ts'
 import { requirementBounds } from '../engine/formal/numeric.ts'
-import { encodeIncluded } from '../engine/pipeline/check.ts'
+import { encodeIncluded, runCheck } from '../engine/pipeline/check.ts'
 import {
   DOC_VERSION_VOCAB,
   emptyDocument,
@@ -33,6 +36,7 @@ import {
   type SymbolKind,
   type VocabSymbol,
 } from '../requirements/document.ts'
+import { renderSentence } from '../requirements/render.ts'
 import { KIND_PREFIX, mintSymbolIds } from './ids.ts'
 import { implicitVocabulary, renderVocabularyOps, type VocabDeclaration } from './implicit.ts'
 import { frozenTablesDigest } from './invariants.ts'
@@ -726,5 +730,199 @@ describe('phraseKey', () => {
     expect(phraseKey('guard', 'the train is moving', t)).toBe('train_moving')
     expect(phraseKey('system', 'The Door Controller', t)).toBe('the_door_controller')
     expect(phraseKey('system', 'door-controller', t)).toBe('door_controller')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The projection preserves what the engine reads, over every spelling a class resolves
+// ---------------------------------------------------------------------------
+
+/**
+ * The document the projection hands the engine, assembled here only so these tests can run the
+ * engine on it (slice S8 owns the real threading): each rewritten slot replaced, and each
+ * quantity-alias row appended to the glossary the numeric tier reads its aliases from.
+ */
+const projected = (doc: RequirementsDocument): RequirementsDocument => {
+  const p = buildProjection(doc)
+  if (p === undefined) return doc
+  return {
+    ...doc,
+    glossary: [
+      ...doc.glossary,
+      ...p.quantityAliases.map((row) => ({ canonical: row.canonical, aliases: [...row.aliases] })),
+    ],
+    requirements: Object.fromEntries(
+      Object.values(doc.requirements).map((r) => [r.id, { ...r, ...(p.rewrites.get(r.id) ?? {}) }]),
+    ),
+  }
+}
+
+const codesOf = (doc: RequirementsDocument): Promise<ReadonlySet<string>> =>
+  Effect.runPromise(
+    Effect.flatMap(SolverService, (solver) =>
+      Effect.flatMap(solver.boot, () =>
+        Effect.promise(() => runCheck(toEngineDoc(doc), { strict: true })),
+      ),
+    ).pipe(Effect.provide(solverServiceLayer)),
+  ).then((report) => new Set(report.findings.map((f) => f.code)))
+
+const boundsOf = (doc: RequirementsDocument) =>
+  Object.values(doc.requirements).map((r) =>
+    requirementBounds(
+      {
+        id: r.id,
+        patternType: r.patternType,
+        systemName: r.systemName,
+        systemResponse: r.systemResponse,
+        negated: r.negated,
+        sentence: r.sentence,
+        priority: r.priority,
+        status: r.status,
+      },
+      new Map(),
+    ).map(({ predicate }) => [predicate.label, predicate.comparator, predicate.value]),
+  )
+
+const brief = (doc: RequirementsDocument) =>
+  (buildVocabularyIndex(doc).invalid ?? []).map((v) => [
+    v.invariant,
+    v.dropped,
+    v.phrase ?? v.symbols.join('+'),
+  ])
+
+describe('V-NUM over every spelling a class resolves, not only the declared ones', () => {
+  // `at-most` and `at most` are one action key, but only the second is a bound: phrase-key
+  // equality does not imply numeric-signature equality. A merge of `keep the level at-most 5 m`
+  // into `maintain the reservoir` would rewrite R1 and delete the bound its conflict with R2 rests on.
+  const level: readonly VocabSymbol[] = [
+    { id: 'sys_pump', kind: 'system', canonical: 'pump', aliases: [] },
+    { id: 'act_a', kind: 'action', canonical: 'maintain the reservoir', aliases: [] },
+    { id: 'act_b', kind: 'action', canonical: 'keep the level at-most 5 m', aliases: [] },
+    { id: 'act_c', kind: 'action', canonical: 'keep the level at least 10 m', aliases: [] },
+    {
+      id: 'qty_keep_the_level',
+      kind: 'quantity',
+      canonical: 'keep the level',
+      aliases: [],
+      dimension: 'distance',
+      unit: 'm',
+      numberType: 'int',
+    },
+  ]
+  const r1 = req({ systemName: 'pump', systemResponse: 'keep the level at most 5 m' })
+  const r2 = req({ systemName: 'pump', systemResponse: 'keep the level at least 10 m' })
+  const merge = { a: 'act_a', b: 'act_b' }
+
+  it('refuses a merge that would rewrite a document spelling onto another numeric signature', async () => {
+    const doc = withVocabulary(docOf([r1, r2]), level, [merge])
+    expect(brief(doc)).toEqual([['V-NUM', 'merge', 'act_a+act_b']])
+    const p = buildProjection(doc)
+    expect(p?.unresolved.size).toBe(0)
+    expect(p?.rewrites.has(r1.id)).toBe(false)
+    expect(boundsOf(projected(doc))).toEqual(boundsOf(doc))
+    expect(await codesOf(doc)).toContain('FND_NUMERIC_CONTRADICTION')
+    expect(await codesOf(projected(doc))).toContain('FND_NUMERIC_CONTRADICTION')
+  })
+
+  it('refuses it too when the same-key spelling is a declared alias, with no requirement using it', () => {
+    const aliased = level.map((s) =>
+      s.id === 'act_b' ? { ...s, aliases: ['keep the level at most 5 m'] } : s,
+    )
+    expect(brief(withVocabulary(docOf([]), aliased, [merge]))).toEqual([
+      ['V-NUM', 'merge', 'act_a+act_b'],
+    ])
+  })
+
+  it('drops an alias through which a document spelling of another signature would be rewritten', () => {
+    // The alias itself carries no bound, like its canonical; the spelling R1 resolves through it does.
+    const symbols: readonly VocabSymbol[] = [
+      { id: 'sys_pump', kind: 'system', canonical: 'pump', aliases: [] },
+      {
+        id: 'act_a',
+        kind: 'action',
+        canonical: 'maintain the reservoir',
+        aliases: ['keep the level at-most 5 m'],
+      },
+    ]
+    const doc = withVocabulary(docOf([r1]), symbols)
+    expect(brief(doc)).toEqual([['V-NUM', 'alias', 'keep the level at-most 5 m']])
+    expect(buildProjection(doc)?.rewrites.has(r1.id)).toBe(false)
+    // Control: with no requirement spelling it as a bound, the alias is admitted.
+    expect(brief(withVocabulary(docOf([]), symbols))).toEqual([])
+  })
+
+  it('admits the merge when every spelling it rewrites keeps its signature (the control)', () => {
+    const unbounded = req({ systemName: 'pump', systemResponse: 'keep the level at-most 5 m' })
+    const doc = withVocabulary(docOf([unbounded, r2]), level, [merge])
+    expect(brief(doc)).toEqual([])
+    expect(buildProjection(doc)?.rewrites.get(unbounded.id)).toEqual({
+      systemResponse: 'maintain the reservoir',
+    })
+  })
+})
+
+describe('V1 — a rewritten quantity alias names no guard or action slot', () => {
+  const trig = (trigger: string, negated = false) => {
+    const r = req({
+      patternType: 'event-driven',
+      systemName: 'pump controller',
+      trigger,
+      systemResponse: 'open the valve',
+      negated,
+    })
+    return { ...r, sentence: renderSentence(r) }
+  }
+  const base: readonly VocabSymbol[] = [
+    { id: 'sys_pump', kind: 'system', canonical: 'pump controller', aliases: [] },
+    { id: 'act_open', kind: 'action', canonical: 'open the valve', aliases: [] },
+  ]
+  const qty = (canonical: string, aliases: readonly string[]): VocabSymbol => ({
+    id: 'qty_psi',
+    kind: 'quantity',
+    canonical,
+    aliases: [...aliases],
+    dimension: 'none',
+    unit: '',
+    numberType: 'int',
+  })
+
+  it('refuses the alias a document trigger normalizes to, and keeps the contradiction it carried', async () => {
+    const r1 = trig('pressure high')
+    const r2 = trig('the pressure is high', true)
+    const symbols = [
+      ...base,
+      { id: 'st_pressure_high', kind: 'state', canonical: 'the pressure is high', aliases: [] },
+      qty('psi', ['pressure high']),
+    ] as const satisfies readonly VocabSymbol[]
+    const doc = withVocabulary(docOf([r1, r2]), symbols)
+    expect(brief(doc)).toEqual([['V1', 'alias', 'pressure high']])
+    expect(buildProjection(doc)?.quantityAliases).toEqual([])
+    expect(await codesOf(doc)).toContain('FND_CONTRADICTION')
+    expect(await codesOf(projected(doc))).toContain('FND_CONTRADICTION')
+  })
+
+  it('refuses a quantity key equal to a guard key, with no document slot spelling it (the literal rule)', () => {
+    const symbols = [
+      ...base,
+      { id: 'st_pressure_high', kind: 'state', canonical: 'the pressure is high', aliases: [] },
+      qty('psi', ['pressure high']),
+    ] as const satisfies readonly VocabSymbol[]
+    expect(brief(withVocabulary(docOf([]), symbols))).toEqual([['V1', 'alias', 'pressure high']])
+  })
+
+  it('refuses a glossary key a document slot has, when no declared phrase and no guard key has it', () => {
+    // `pressure was high` resolves to the state by its guard key (the copula is stripped), but
+    // its quantity key keeps `was`, and no declared phrase normalizes to it. Only the document
+    // slot the kind-blind glossary would re-key says the alias is a hazard.
+    const symbols = [
+      ...base,
+      { id: 'st_pressure_high', kind: 'state', canonical: 'pressure high', aliases: [] },
+      qty('supply pressure', ['pressure was high']),
+    ] as const satisfies readonly VocabSymbol[]
+    expect(brief(withVocabulary(docOf([trig('pressure was high')]), symbols))).toEqual([
+      ['V1', 'alias', 'pressure was high'],
+    ])
+    // Control: with no slot spelled that way, the alias is admitted.
+    expect(brief(withVocabulary(docOf([]), symbols))).toEqual([])
   })
 })
