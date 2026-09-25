@@ -693,6 +693,10 @@ export async function analyzeNumericBounds(
     const findingKey = JSON.stringify(['pairs', f.requirementIds])
     if (!uncompared.has(findingKey)) uncompared.set(findingKey, f)
   }
+  for (const f of await uncomparedProhibitionSets(ctx, reqPreds, bounds)) {
+    const findingKey = JSON.stringify(['sets', f.requirementIds])
+    if (!uncompared.has(findingKey)) uncompared.set(findingKey, f)
+  }
 
   return { contradictions: [...findings.values()], uncompared: [...uncompared.values()] }
 }
@@ -727,7 +731,8 @@ export async function analyzeNumericBounds(
  *     the tier cannot tell where, or to what, each applies;
  *     the same `conflictTogether` test decides whether the split hid anything.
  *
- * Two prohibitions are never reported: not doing the action satisfies both.
+ * Two prohibitions are never reported: not doing the action satisfies both. Whether an
+ * obligation elsewhere makes them conflict is {@link uncomparedProhibitionSets}'s question.
  *
  * Each solver call is checked against the whole-run budget before it starts, like a cell;
  * a truncated sweep records itself, and the pipeline demotes for it.
@@ -820,6 +825,126 @@ async function uncomparedPairs(
               'can hold at once, change one requirement so it no longer contradicts the other ' +
               'there; if they cannot, waive this finding. Then re-run `symspec check`. This is ' +
               'a disclosure, not a verdict.',
+    })
+  }
+  return [...out.values()]
+}
+
+/**
+ * Sets of three or four RESPONSE bounds on one quantity and unit class that no cell asserted
+ * together, that conflict together, and whose every smaller subset holds: the conflicts
+ * {@link uncomparedPairs} cannot see, disclosed as `FND_NUMERIC_UNCOMPARED`.
+ *
+ * Pairs are enough only while every bound is an interval on its variable, because intervals
+ * that meet two at a time meet all together. A prohibition breaks that in two ways
+ * ({@link NumericPredicate.negated}):
+ *
+ *   - It bounds the action only IF it happens. Two opposed prohibitions are met together by
+ *     never doing the action, and each meets an obligation on its own, so no pair conflicts;
+ *     but the obligation makes the action happen, and then all three do. `shall not keep the
+ *     door unlocked above 30 seconds`, `... below 40 seconds`, and `keep the door unlocked
+ *     for at least 1 second`, under three triggers that can co-occur, certified.
+ *   - `shall not ... exactly 30 seconds` is `!= 30 s`, not an interval: `for at least 30
+ *     seconds` and `for at most 30 seconds` meet only at the point it removes.
+ *
+ * So the candidates are exactly those two shapes: two prohibitions and an obligation; a
+ * `!=` prohibition and two other bounds, one an obligation; and a `!=` prohibition, two other
+ * prohibitions, and an obligation. With intervals and `!=` on one variable, and the
+ * obligation that forces the action, a minimal conflict needs no more members than that, so
+ * no larger set is searched. A set whose members one cell asserted together (one qualifier,
+ * one context group that makes them all live) was decided there, and is skipped.
+ *
+ * Each solver call is checked against the whole-run budget before it starts, like a cell.
+ */
+async function uncomparedProhibitionSets(
+  ctx: Z3Context,
+  reqPreds: readonly RequirementPredicates[],
+  bounds: SolverBounds,
+): Promise<NumericUncomparedFinding[]> {
+  const groups = planGroups(reqPreds.map((rp) => rp.contextAtoms))
+  const contextOf = new Map(reqPreds.map((rp) => [rp.id, rp.contextAtoms]))
+  // One quantity and unit class: the variable the set would be asserted on together.
+  const byClass = new Map<string, Entry[]>()
+  for (const rp of reqPreds) {
+    for (const pred of rp.predicates) {
+      if (pred.slot !== 'resp') continue
+      const key = JSON.stringify([pred.quantity, unitClassOf(pred)])
+      const list = byClass.get(key) ?? []
+      list.push({ id: rp.id, pred })
+      byClass.set(key, list)
+    }
+  }
+
+  const sets: Entry[][] = []
+  for (const entries of byClass.values()) {
+    const prohibitions = entries.filter((e) => e.pred.negated === true)
+    const obligations = entries.filter((e) => e.pred.negated !== true)
+    if (prohibitions.length === 0 || obligations.length === 0) continue
+    for (let i = 0; i < prohibitions.length; i += 1) {
+      for (let j = i + 1; j < prohibitions.length; j += 1) {
+        for (const o of obligations) sets.push([prohibitions[i]!, prohibitions[j]!, o])
+      }
+    }
+    for (const point of prohibitions.filter((e) => e.pred.comparator === '!=')) {
+      const others = entries.filter((e) => e !== point)
+      for (let i = 0; i < others.length; i += 1) {
+        for (let j = i + 1; j < others.length; j += 1) {
+          const x = others[i]!
+          const y = others[j]!
+          if (x.pred.negated !== true || y.pred.negated !== true) {
+            sets.push([x, y, point])
+            continue
+          }
+          for (const o of obligations) sets.push([x, y, point, o])
+        }
+      }
+    }
+  }
+
+  const out = new Map<string, NumericUncomparedFinding>()
+  for (let index = 0; index < sets.length; index += 1) {
+    const set = sets[index]!
+    const ids = [...new Set(set.map((e) => e.id))].sort()
+    // Two bounds of one requirement and one of another is a pair of requirements, and a
+    // single requirement conflicting with itself is not this tier's disclosure.
+    if (ids.length < 2) continue
+    const key = JSON.stringify([set[0]!.pred.quantity, ids])
+    if (out.has(key)) continue
+    const qualifier = set[0]!.pred.qualifier ?? ''
+    const oneCell =
+      set.every((e) => (e.pred.qualifier ?? '') === qualifier) &&
+      groups.some((g) => ids.every((id) => liveIn(g, contextOf.get(id) ?? [])))
+    if (oneCell) continue
+    if (bounds.budget?.expired() === true) {
+      bounds.budget.truncate('numeric-contradiction', sets.length - index)
+      break
+    }
+    if (!(await conflictTogether(ctx, set, bounds))) continue
+    // Minimal: a smaller subset that already conflicts is a pair's or a cell's to report.
+    let smaller = false
+    for (const drop of set) {
+      const rest = set.filter((e) => e !== drop)
+      if (new Set(rest.map((e) => e.id)).size < 2) continue
+      if (await conflictTogether(ctx, rest, bounds)) {
+        smaller = true
+        break
+      }
+    }
+    if (smaller) continue
+    const sources = set.map((e) => e.pred.sourceText).join(' vs ')
+    out.set(key, {
+      code: 'FND_NUMERIC_UNCOMPARED',
+      severity: 'info',
+      requirementIds: ids,
+      message:
+        `Requirements ${ids.join(', ')} place numeric bounds on "${set[0]!.pred.label}" ` +
+        `(${sources}) that conflict if all apply at once, though every smaller subset of them ` +
+        'holds: a prohibition bounds the action only where it happens, and an obligation makes ' +
+        'it happen. No solver call the numeric tier made asserted them together, because ' +
+        'their guards are never live in one context group or the text after their bounds ' +
+        'differs. If they can all apply at once, change one so it no longer contradicts the ' +
+        'others there; if they cannot, waive this finding. Then re-run `symspec check`. This ' +
+        'is a disclosure, not a verdict.',
     })
   }
   return [...out.values()]

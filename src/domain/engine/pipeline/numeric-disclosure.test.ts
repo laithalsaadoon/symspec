@@ -23,6 +23,7 @@ interface ReqSpec {
   readonly systemName: string
   readonly systemResponse: string
   readonly trigger?: string
+  readonly negated?: boolean
 }
 
 const reqOf = (id: string, s: ReqSpec) => ({
@@ -31,10 +32,10 @@ const reqOf = (id: string, s: ReqSpec) => ({
   systemName: s.systemName,
   ...(s.trigger !== undefined ? { trigger: s.trigger } : {}),
   systemResponse: s.systemResponse,
-  negated: false,
+  negated: s.negated ?? false,
   sentence:
     `${s.trigger !== undefined ? `When ${s.trigger}, the` : 'The'} ${s.systemName} shall ` +
-    `${s.systemResponse}.`,
+    `${s.negated === true ? 'not ' : ''}${s.systemResponse}.`,
   priority: 'medium' as const,
   status: 'draft' as const,
   createdAt: TS,
@@ -170,5 +171,98 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
       pump('run the pump at most 2 minutes after the tank fills'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
+  describe('a prohibition bounds an action only where it happens, so pairs are not enough', () => {
+    const door = (trigger: string, systemResponse: string, negated = false): ReqSpec => ({
+      systemName: 'door controller',
+      trigger,
+      systemResponse,
+      negated,
+    })
+    const log = (trigger: string) => door(trigger, 'log the entry')
+
+    it('DISCLOSES two prohibitions and the obligation that forces the action', async () => {
+      // If the fire alarm sounds while a badge is accepted and the door is forced, the door
+      // stays unlocked at least 1 s, at most 30 s, and at least 40 s. Each PAIR is consistent
+      // (two prohibitions are met by never doing the action; one prohibition and the
+      // obligation meet), so a pairwise discloser certified the document.
+      const doc = manyDoc(
+        door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+        log('the badge is accepted'),
+        door('the door is forced', 'keep the door unlocked below 40 seconds', true),
+        log('the door is forced'),
+        door('the fire alarm sounds', 'keep the door unlocked for at least 1 second'),
+        log('the fire alarm sounds'),
+      )
+      const report = await runCheck(doc as never, {})
+      expect(report.counts.error).toBe(0)
+      expect(uncompared(report)).toEqual([[idAt(0), idAt(2), idAt(4)]])
+      expect(report.coverage.demotions.map((d) => d.reason)).toContain('numeric-bounds-uncompared')
+      expect(report.verified).toBe(false)
+    })
+
+    it('DISCLOSES them when the obligation is split off by its trailing text instead', async () => {
+      const doc = manyDoc(
+        door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+        log('the badge is accepted'),
+        door('the door is forced', 'keep the door unlocked below 40 seconds', true),
+        log('the door is forced'),
+        {
+          systemName: 'door controller',
+          systemResponse: 'keep the door unlocked for at least 1 second during a fire drill',
+        },
+      )
+      const report = await runCheck(doc as never, {})
+      expect(report.counts.error).toBe(0)
+      expect(uncompared(report)).toEqual([[idAt(0), idAt(2), idAt(4)]])
+    })
+
+    it('DISCLOSES a prohibited point between two obligations that meet only there', async () => {
+      // `>= 30 s`, `<= 30 s`, and `not exactly 30 s`: every pair holds, and all three do not.
+      const doc = manyDoc(
+        door('the badge is accepted', 'keep the door unlocked for at least 30 seconds'),
+        log('the badge is accepted'),
+        door('the door is forced', 'keep the door unlocked for at most 30 seconds'),
+        log('the door is forced'),
+        door('the fire alarm sounds', 'keep the door unlocked for exactly 30 seconds', true),
+        log('the fire alarm sounds'),
+      )
+      const report = await runCheck(doc as never, {})
+      expect(report.counts.error).toBe(0)
+      expect(uncompared(report)).toEqual([[idAt(0), idAt(2), idAt(4)]])
+    })
+
+    it('does not disclose prohibitions an obligation can meet, or with no obligation at all', async () => {
+      // The controls: `<= 30 s` and `>= 10 s` leave room for the obligation, and two opposed
+      // prohibitions alone are met by never keeping the door unlocked.
+      const room = manyDoc(
+        door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+        log('the badge is accepted'),
+        door('the door is forced', 'keep the door unlocked below 10 seconds', true),
+        log('the door is forced'),
+        door('the fire alarm sounds', 'keep the door unlocked for at least 1 second'),
+        log('the fire alarm sounds'),
+      )
+      expect(uncompared(await runCheck(room as never, {}))).toEqual([])
+      const never = manyDoc(
+        door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+        log('the badge is accepted'),
+        door('the door is forced', 'keep the door unlocked below 40 seconds', true),
+        log('the door is forced'),
+      )
+      expect(uncompared(await runCheck(never as never, {}))).toEqual([])
+      // A set is disclosed only when it is the smallest conflict: here the obligation already
+      // conflicts with the first prohibition alone, and that PAIR is the one disclosure.
+      const pair = manyDoc(
+        door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+        log('the badge is accepted'),
+        door('the door is forced', 'keep the door unlocked below 10 seconds', true),
+        log('the door is forced'),
+        door('the fire alarm sounds', 'keep the door unlocked for at least 40 seconds'),
+        log('the fire alarm sounds'),
+      )
+      expect(uncompared(await runCheck(pair as never, {}))).toEqual([[idAt(0), idAt(4)]])
+    })
   })
 })
