@@ -49,8 +49,10 @@
  * under the same `MUTATE_OPTIONS` (`./mutate-options.ts`). So a record `apply` would refuse —
  * an antonym pair closing an odd polarity cycle, a glossary alias that is a contrary of its
  * canonical — is refused here too, reported in `problems[]` with its line, and the rest of the
- * stream still imports. The tables land exactly as `apply` would store them, normalization
- * included. A private fold would be a second write path with fewer fences, and a document it
+ * stream still imports. The refusal is ALSO an error-severity entry in `findings`, so the run
+ * exits 1: the contract `apply` has had since AC-1-6, where a record the caller asked for that
+ * did not land is never an exit 0. The tables land exactly as `apply` would store them,
+ * normalization included. A private fold would be a second write path with fewer fences, and a document it
  * produced would carry records no op could have committed.
  *
  * ## Forward references by key, and why order still does not matter
@@ -210,6 +212,20 @@ type ParsedLine =
 interface StreamProblem {
   readonly line: number
   readonly detail: string
+}
+
+/**
+ * A record a write-time fence REFUSED. Every one is also a {@link StreamProblem} on the same
+ * line; this is the subset that met a check `apply` runs, which is what drives the exit code.
+ * An unreadable line is a problem but never met a fence, so it is not one of these.
+ */
+export interface RefusedRecord {
+  readonly line: number
+  readonly op: string
+  /** The fold's own failure code (`ERR_USAGE`, …). */
+  readonly code: string
+  readonly detail: string
+  readonly suggestions: readonly string[]
 }
 
 /**
@@ -417,6 +433,7 @@ interface FoldState {
   readonly unresolved: { readonly op: string; readonly ref: string; readonly detail: string }[]
   readonly duplicates: string[]
   readonly problems: StreamProblem[]
+  readonly refused: RefusedRecord[]
 }
 
 /** Add one requirement, or report a duplicate id/key rather than overwriting. */
@@ -535,9 +552,14 @@ const applySideTable = (
 ): void => {
   const result = applyOp(snapshotOf(state), op, timestamp, MUTATE_OPTIONS)
   if (isOpFailure(result)) {
-    state.problems.push({
+    const detail = `The \`${op.op}\` record was refused by the write-time check \`apply\` runs (${result.code}), so it was NOT imported: ${result.error}`
+    state.problems.push({ line, detail })
+    state.refused.push({
       line,
-      detail: `The \`${op.op}\` record was refused by the write-time check \`apply\` runs (${result.code}), so it was NOT imported: ${result.error}`,
+      op: op.op,
+      code: result.code,
+      detail,
+      suggestions: result.suggestions,
     })
     return
   }
@@ -601,6 +623,8 @@ export interface ImportResult {
   }[]
   readonly duplicates: readonly string[]
   readonly problems: readonly StreamProblem[]
+  /** The records a write fence refused, in stream order — each is also in {@link problems}. */
+  readonly refused: readonly RefusedRecord[]
 }
 
 /**
@@ -672,6 +696,7 @@ export const foldImportStream = (
       unresolved: [],
       duplicates: [],
       problems,
+      refused: [],
     }
 
     // PASS 1 — every requirement, so pass 2 resolves against the complete set.
@@ -727,8 +752,29 @@ export const foldImportStream = (
       unresolved: state.unresolved,
       duplicates: state.duplicates,
       problems: [...problems].sort((x, y) => x.line - y.line),
+      refused: [...state.refused].sort((x, y) => x.line - y.line),
     }
   })
+
+/** A refused record, projected as an error-severity finding — `apply`'s `RefusedOpFinding`
+ * with the stream LINE where `apply` has the batch index. */
+export interface RefusedRecordFinding {
+  readonly code: string
+  readonly severity: 'error'
+  readonly line: number
+  readonly op: string
+  readonly message: string
+  readonly suggestions: readonly string[]
+}
+
+const refusedFinding = (r: RefusedRecord): RefusedRecordFinding => ({
+  code: r.code,
+  severity: 'error',
+  line: r.line,
+  op: r.op,
+  message: `line ${r.line}: ${r.detail}`,
+  suggestions: r.suggestions,
+})
 
 // ---------------------------------------------------------------------------
 // The operation
@@ -743,20 +789,25 @@ export const foldImportStream = (
  * reason: an import that silently replaced a hand-authored document would be
  * unrecoverable, and an agent must be able to try one speculatively.
  *
- * ## It reports, it does not judge
+ * ## It reports; a fence refusal is the one thing it fails on
  *
  * The payload carries what was imported AND everything that was not: `gaps[]`
  * passed through from v4 verbatim, `unresolved[]` for edges dropped and
  * waiver scopes widened, `duplicates[]` for records that would have overwritten,
  * and `problems[]` for lines it could not read or records `apply`'s write-time checks
- * refused. Every one of those is a fact the
- * caller needs and none of them is a failure — an import that got 82 of 82
+ * refused. A disclosure is not a failure — an import that got 82 of 82
  * requirements and disclosed one un-reproducible timestamp gap SUCCEEDED, and
  * saying otherwise would train an agent to ignore the exit code.
+ *
+ * A record a write fence REFUSED is different: the caller asked for it, `apply` would have
+ * refused it too, and it is not in the document. Each one is an error-severity entry in
+ * `findings`, so the run exits 1 while still writing every record that passed — the contract
+ * `apply` has had since AC-1-6.
  */
 export const importOp = defineOperation({
   name: 'import',
-  summary: 'Import a reproduce-op stream (JSONL on stdin or --file) into a new v3 document',
+  summary:
+    'Import a reproduce-op stream (JSONL on stdin or --file) into a new v3 document; exits 1 when a write fence refuses a record, still writing the rest',
   type: 'import',
   input: Schema.Struct({
     file: Schema.withDecodingDefaultKey<Schema.optionalKey<Schema.NullOr<Schema.String>>>(
@@ -869,6 +920,9 @@ export const importOp = defineOperation({
         unresolved: result.unresolved,
         duplicates: result.duplicates,
         problems: result.problems,
+        // One error-severity finding per fence refusal, so the exit code is 1 exactly when a
+        // record the caller asked for is not in the written document.
+        ...(result.refused.length > 0 ? { findings: result.refused.map(refusedFinding) } : {}),
       })
     }),
 })

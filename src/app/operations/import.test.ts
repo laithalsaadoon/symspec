@@ -567,6 +567,11 @@ describe('side-table records pass the fences `apply` runs', () => {
     expect(result.problems).toHaveLength(1)
     expect(result.problems[0]?.line).toBe(3)
     expect(result.problems[0]?.detail).toContain('inconsistent')
+    // The refusal is ALSO a fence refusal the operation turns into an error-severity finding
+    // (exit 1, the contract `apply` has since AC-1-6), with the same line.
+    expect(result.refused).toEqual([
+      expect.objectContaining({ line: 3, op: 'antonym', code: 'ERR_USAGE' }),
+    ])
   })
 
   it('REFUSES a glossary alias that is a contrary of its canonical', () => {
@@ -592,6 +597,21 @@ describe('side-table records pass the fences `apply` runs', () => {
     expect(result.document.antonyms).toEqual([{ a: 'heat', b: 'cool' }])
     expect(result.document.glossary).toEqual([])
     expect(result.problems.map((p) => p.line)).toEqual([2])
+  })
+
+  it('counts only FENCE refusals as refused: an unreadable line is a problem, not a refusal', () => {
+    // Exit 1 means "a record you wrote was refused by a check `apply` runs". A line the reader
+    // could not parse is disclosed in problems[] too, but it never met a fence, so it is not one.
+    const result = fold(
+      [
+        '{"op":"glossary","canonical":"open the door","alias":"close the door"}',
+        '{not json',
+        'symspec frobnicate add x y',
+      ].join('\n'),
+    )
+    expect(result.problems.map((p) => p.line)).toEqual([1, 2, 3])
+    expect(result.refused.map((r) => r.line)).toEqual([1])
+    expect(fold('{not json\n').refused).toEqual([])
   })
 
   it('writes the side tables EXACTLY as `apply` folds the same records', () => {

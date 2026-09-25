@@ -706,6 +706,40 @@ describe('the document lifecycle end to end', () => {
     expect(existsSync(doc)).toBe(false)
   })
 
+  it('import exits 1 when a write fence refuses a record, and still writes the rest', () => {
+    // The contract `apply` has since AC-1-6: a record the caller asked for that did not land is
+    // an error-severity finding, so an agent reading only the exit code sees it. The records
+    // that pass are written, and the refusal is in problems[] with its line.
+    const dir = work()
+    const doc = join(dir, 'refused.json')
+    const ops = join(dir, 'ops.jsonl')
+    writeFileSync(
+      ops,
+      [
+        'symspec antonym add zork blip',
+        'symspec antonym add blip frob',
+        'symspec antonym add frob zork',
+      ].join('\n'),
+    )
+    const { envelope, code } = runJson('import', '--file', ops, '--doc', doc)
+    expect(code).toBe(1)
+    const data = envelope.data as {
+      written: boolean
+      imported: Record<string, number>
+      problems: { line: number; detail: string }[]
+      findings: { severity: string; line: number; op: string; code: string; message: string }[]
+    }
+    expect(data.written).toBe(true)
+    expect(data.imported.antonyms).toBe(2)
+    expect(data.problems.map((p) => p.line)).toEqual([3])
+    expect(data.findings).toEqual([
+      expect.objectContaining({ severity: 'error', line: 3, op: 'antonym', code: 'ERR_USAGE' }),
+    ])
+    expect(data.findings[0]?.message).toContain('line 3')
+    const written = JSON.parse(readFileSync(doc, 'utf8')) as { antonyms: unknown[] }
+    expect(written.antonyms).toHaveLength(2)
+  })
+
   it('import refuses to clobber an existing document', () => {
     const dir = work()
     const doc = join(dir, 'requirements.json')
