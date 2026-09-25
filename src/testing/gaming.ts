@@ -211,6 +211,27 @@ const contraryOps = (r2Response: string): readonly DocumentOp[] => [
   { op: 'antonym', a: 'accept', b: 'reject' },
 ]
 
+/**
+ * The contrary exists ONLY as a document antonym: ratify/veto is no seed pair, and neither head
+ * is in the seed antonym table or the state-bridge lexicon. So every write-time fence that reads
+ * the seeds per token (`validateTerms`) is blind to it, and only a fence that reads the
+ * document's own antonyms sees it. `contrary-pair` cannot measure that difference, because
+ * accept/reject are seed heads and its committed antonym only restates a seed pair.
+ */
+const registeredContraryOps = (r2Response: string): readonly DocumentOp[] => [
+  add('REG-R1', {
+    trigger: 'the clerk reviews the claim',
+    systemName: 'claims service',
+    systemResponse: 'ratify the claim',
+  }),
+  add('REG-R2', {
+    trigger: 'the clerk reviews the claim',
+    systemName: 'claims service',
+    systemResponse: r2Response,
+  }),
+  { op: 'antonym', a: 'ratify', b: 'veto' },
+]
+
 const numericOps = (r2Bound: string): readonly DocumentOp[] => [
   add('NUM-R1', {
     systemName: 'session service',
@@ -345,6 +366,15 @@ export const FIXTURES: readonly Fixture[] = [
     culprits: ['CTR-R1', 'CTR-R2'],
     signal: { code: 'FND_CONTRADICTION', names: ['CTR-R1', 'CTR-R2'] },
     control: { ops: contraryOps('file the claim') },
+  },
+  {
+    id: 'registered-contrary',
+    seeded:
+      'Under one trigger, R1 ratifies the claim and R2 vetoes it; ratify/veto are contraries only through the committed antonym.',
+    ops: registeredContraryOps('veto the claim'),
+    culprits: ['REG-R1', 'REG-R2'],
+    signal: { code: 'FND_CONTRADICTION', names: ['REG-R1', 'REG-R2'] },
+    control: { ops: registeredContraryOps('file the claim') },
   },
   {
     id: 'numeric-conflict',
@@ -997,6 +1027,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'feature-interaction',
       'one-trigger-contradiction',
       'contrary-pair',
+      'registered-contrary',
       'numeric-conflict',
       'temporal-conflict',
       'glossary-bridged',
@@ -1011,6 +1042,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'feature-interaction',
       'one-trigger-contradiction',
       'contrary-pair',
+      'registered-contrary',
       'numeric-conflict',
       'glossary-bridged',
       'term-bridged',
@@ -1023,6 +1055,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     [
       'one-trigger-contradiction',
       'contrary-pair',
+      'registered-contrary',
       'numeric-conflict',
       'temporal-conflict',
       'glossary-bridged',
@@ -1034,8 +1067,22 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     escapes(
       move,
       'AC-5-9',
-      ['contrary-pair', 'temporal-conflict', 'glossary-bridged', 'term-bridged'],
+      [
+        'contrary-pair',
+        'registered-contrary',
+        'temporal-conflict',
+        'glossary-bridged',
+        'term-bridged',
+      ],
       "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `narrow` certificate.",
+    ),
+  ),
+  ...(['alias-contraries-term@forward', 'alias-contraries-term@reverse'] as const).flatMap((move) =>
+    escapes(
+      move,
+      'AC-4-6',
+      ['registered-contrary'],
+      "The term table merges two phrases that are contraries only through the document's own antonym table, in either direction, and the contradiction disappears. `validateTerms` reads the SEED antonym heads and the state-bridge lexicon per token and never the document's committed antonyms, so ratify/veto pass it; on `contrary-pair` the same move is refused only because accept/reject are seed heads. The glossary twin is refused here, because `validateGlossary` reads the committed antonyms. AC-4-6 refuses a merge of registered contraries, directly or transitively, whichever table it is written to.",
     ),
   ),
   ...escapes(
@@ -1049,6 +1096,12 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     'AC-5-7',
     ['term-bridged'],
     'The term-table twin of `unglossary`: splitting the noun phrase removes the finding it carried.',
+  ),
+  ...escapes(
+    'unantonym',
+    'AC-5-9',
+    ['registered-contrary'],
+    'Dropping the committed antonym the conflict rests on removes the finding while both sentences still say ratify and veto. Nothing compares the vocabulary to a baseline, so the change is invisible; `unantonym` is a weakening vocabulary change unit, and `FND_SEMANTIC_DRIFT` reports one that removed a finding. On `contrary-pair` the same drop is caught, because accept/reject stay contraries through the seeds.',
   ),
   ...escapes(
     'rebind-effect',
@@ -1601,6 +1654,7 @@ export const SHARDS: Readonly<Record<string, readonly string[]>> = {
   b: ['one-trigger-contradiction', 'contrary-pair'],
   c: ['numeric-conflict', 'temporal-conflict'],
   d: ['glossary-bridged', 'term-bridged'],
+  e: ['registered-contrary'],
 }
 
 /**

@@ -1,0 +1,34 @@
+registered-contrary	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+registered-contrary	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+registered-contrary	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+registered-contrary	alias-contraries-glossary@forward	refused glossary:ERR_USAGE
+registered-contrary	alias-contraries-glossary@reverse	refused glossary:ERR_USAGE
+registered-contrary	alias-contraries-term@forward	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	alias-contraries-term@reverse	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	flip-negated@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+registered-contrary	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+registered-contrary	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	unglossary	inapplicable
+registered-contrary	unantonym	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	unterm	inapplicable
+registered-contrary	declassify-constraint	inapplicable
+registered-contrary	rebind-effect	inapplicable
+registered-contrary	vacuous-initial	inapplicable
+registered-contrary	release-frame	inapplicable
+registered-contrary	unstate	inapplicable
+registered-contrary	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
+registered-contrary	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+registered-contrary	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+registered-contrary	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+registered-contrary	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
