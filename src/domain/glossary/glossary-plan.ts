@@ -624,8 +624,10 @@ interface Node {
    *
    * Deliberately NOT the atom name's body. The atom body is post-canonicalization — the
    * glossary, terms and head de-inflection have all run — so reading a head off the atom
-   * could name a verb or phrase that appears nowhere in the author's document. `findOppositionCandidates` reads the raw response for the same
-   * reason.
+   * could name a verb or phrase that appears nowhere in the author's document. `check`'s
+   * `findOppositionCandidates` reads the raw response FIRST for the same reason; it also reads
+   * the atom body, but only to demote, and its message then says the words are the committed
+   * vocabulary's. This report proposes and does not demote, so it reads the author's words only.
    */
   readonly body: string
   /**

@@ -23,6 +23,7 @@ import {
   areContrary,
   atomize,
   deInflectHead,
+  makeAtomize,
   normalize,
   type Opposition,
 } from './atomize.ts'
@@ -672,6 +673,46 @@ function onePrepositionApart(x: string, y: string): boolean {
   return apart === 1
 }
 
+/** The structural opposition shape of one response pair ({@link oppositionShapesOf}). */
+interface OppositionShape {
+  readonly headA: string
+  readonly restA: string
+  readonly headB: string
+  readonly restB: string
+  /** Both heads sit in one antonym class (either side). */
+  readonly sameClass: boolean
+  /** The shape was read off the committed-vocabulary bodies, not the raw wording. */
+  readonly committed: boolean
+}
+
+/**
+ * The readings of a response pair that have the opposition shape — a shared object remainder
+ * (or, for two heads of one antonym class, remainders one preposition apart) under two different
+ * heads: the RAW normalized wording first, then the atom bodies after the committed glossary and
+ * terms. Empty when neither reading has it.
+ */
+function oppositionShapesOf(
+  raw: readonly [string, string],
+  committed: readonly [string, string] | undefined,
+  antonyms: ReadonlyMap<string, AntonymEntry>,
+): OppositionShape[] {
+  const readings: Array<readonly [string, string, boolean]> = [[raw[0], raw[1], false]]
+  if (committed !== undefined) readings.push([committed[0], committed[1], true])
+  const shapes: OppositionShape[] = []
+  for (const [x, y, fromCommitted] of readings) {
+    const [headA, restA] = fuseNegatingPrefix(x)
+    const [headB, restB] = fuseNegatingPrefix(y)
+    if (restA === '' || headA === headB) continue
+    const entryA = antonyms.get(headA)
+    const entryB = antonyms.get(headB)
+    const sameClass =
+      entryA !== undefined && entryB !== undefined && entryA.canonical === entryB.canonical
+    if (restA !== restB && !(sameClass && onePrepositionApart(restA, restB))) continue
+    shapes.push({ headA, restA, headB, restB, sameClass, committed: fromCommitted })
+  }
+  return shapes
+}
+
 /**
  * Propose opposition candidates (#6): same-system response pairs that share an
  * object remainder but differ on the leading verb and are NOT already unified as
@@ -683,6 +724,13 @@ function onePrepositionApart(x: string, y: string): boolean {
  * The `antonyms` index (default {@link ANTONYM_INDEX}, or a doc-augmented one) is
  * consulted so a pair the antonym tables ALREADY unify is skipped — that pair is
  * a proven-or-provable conflict, not a candidate needing confirmation.
+ *
+ * The shape is read twice: off the author's RAW wording, and off the atom body the solver
+ * reads — after the committed glossary and terms (`atomize`, the pipeline's own atomizer when
+ * the caller supplies it). Either one proposes. Committed vocabulary is a strengthening move
+ * (spec 007 I-1), and a term ("access" ≡ "entry") or an alias is exactly what lines up two
+ * objects the raw text keeps apart: read off the raw text alone, committing the term lifted the
+ * demotion the same words earn without it, and `verified: true` came back over the pair.
  */
 export async function findOppositionCandidates(
   reqs: readonly SemanticRequirement[],
@@ -691,6 +739,8 @@ export async function findOppositionCandidates(
     cosineFloor?: number
     glossary?: ReadonlyMap<string, string>
     antonyms?: ReadonlyMap<string, AntonymEntry>
+    /** The document's atomizer (glossary, terms and antonyms), as every solver tier reads it. */
+    atomize?: Atomize
   } = {},
 ): Promise<OppositionCandidateFinding[]> {
   const floor = options.cosineFloor ?? DEFAULT_OPPOSITION_COSINE_FLOOR
@@ -699,6 +749,8 @@ export async function findOppositionCandidates(
 
   const { cosine } = await import('./embed.ts')
   const vectors = await embedder(reqs.map((r) => r.systemResponse))
+  const atomizer = options.atomize ?? makeAtomize(options.glossary, antonyms)
+  const atoms = reqs.map((r) => responseAtom(r, { atomize: atomizer }))
 
   const findings: OppositionCandidateFinding[] = []
   const seen = new Set<string>()
@@ -709,65 +761,56 @@ export async function findOppositionCandidates(
       const b = reqs[j] as SemanticRequirement
       if (a.systemName !== b.systemName) continue
 
-      // Already unified (glossary/antonym/identical) ⇒ not a candidate.
-      const atomA = responseAtom(a, {
-        ...(options.glossary !== undefined ? { glossary: options.glossary } : {}),
-      })
-      const atomB = responseAtom(b, {
-        ...(options.glossary !== undefined ? { glossary: options.glossary } : {}),
-      })
-      if (atomA.name === atomB.name) continue
+      // Already one atom (glossary, terms, identical) ⇒ the solver compares them at polarity; a
+      // pair the antonym tables ALREADY relate ⇒ the solver relates them by a contrary axiom.
+      // Neither is a candidate. ONLY those: two verbs that merely share a class (`grant`/`allow`
+      // on one side, `conceal`/`unseal` two pairs apart) are two unrelated atoms to the solver
+      // (AC-2-1), and so are two objects a direction-carrying preposition apart ("grant access
+      // to the user" / "revoke access from the user"), which the key keeps. The table's own
+      // evidence that such a pair is related is proposed like a negating prefix, regardless of
+      // cosine, and demotes until the author commits a glossary entry or an antonym, rewrites
+      // one, or waives it.
+      const atomA = atoms[i] as ResponseAtom
+      const atomB = atoms[j] as ResponseAtom
+      if (atomA.name === atomB.name || areContrary(atomA, atomB)) continue
 
       // Structural opposition shape: same object remainder, different verb head.
       // Heads are de-inflected (opens/open) and a negating prefix token
       // (de-/un-/dis-, split off by punctuation normalization: "de-energize" →
       // `de_energize`) is fused back onto the verb so prefix opposites compare
       // as one head against their base form.
-      const [headA, restA] = fuseNegatingPrefix(normalize(a.systemResponse))
-      const [headB, restB] = fuseNegatingPrefix(normalize(b.systemResponse))
-      if (restA === '' || headA === headB) continue
-
-      // Skip pairs the antonym tables ALREADY relate — a seeded or committed pair whose atoms
-      // the solver relates by a contrary axiom, not a candidate to propose. ONLY those: two
-      // verbs that merely share a class (`grant`/`allow` on one side, `conceal`/`unseal` two
-      // pairs apart) are two unrelated atoms to the solver (AC-2-1), and so are two objects a
-      // direction-carrying preposition apart ("grant access to the user" / "revoke access from
-      // the user"), which the key keeps. The table's own evidence that such a pair is related is
-      // proposed like a negating prefix, regardless of cosine, and demotes until the author
-      // commits a glossary entry or an antonym, rewrites one, or waives it.
-      const entryA = antonyms.get(headA)
-      const entryB = antonyms.get(headB)
-      const sameClass =
-        entryA !== undefined && entryB !== undefined && entryA.canonical === entryB.canonical
-      if (restA !== restB && !(sameClass && onePrepositionApart(restA, restB))) continue
-      if (entryA?.opposes.includes(headB) === true) {
-        const decided = (r: SemanticRequirement) =>
-          atomize({
-            kind: 'resp',
-            text: r.systemResponse,
-            systemName: r.systemName,
-            antonyms,
-            ...(options.glossary !== undefined ? { glossary: options.glossary } : {}),
-          })
-        if (areContrary(decided(a), decided(b))) continue
-      }
+      const shapes = oppositionShapesOf(
+        [normalize(a.systemResponse), normalize(b.systemResponse)],
+        atomA.body !== undefined && atomB.body !== undefined ? [atomA.body, atomB.body] : undefined,
+        antonyms,
+      )
+      if (shapes.length === 0) continue
 
       const key = pairKey(a.id, b.id)
       if (seen.has(key)) continue
 
       // A negating-prefix pair (seal/unseal, energize/de-energize) is opposition
       // by MORPHOLOGY — deterministic structure, no embedding needed — so it is
-      // proposed regardless of the topical cosine floor.
-      const prefixPair = isNegatingPrefixPair(headA, headB)
+      // proposed regardless of the topical cosine floor, as is a pair of one class.
+      // Cosine is a topical-relatedness FLOOR only (antonyms embed close), not
+      // the opposition signal — the shared-object/different-verb structure is.
       const va = vectors[i]
       const vb = vectors[j]
       const score = va !== undefined && vb !== undefined ? cosine(va, vb) : 0
-      // Cosine is a topical-relatedness FLOOR only (antonyms embed close), not
-      // the opposition signal — the shared-object/different-verb structure is.
-      if (!prefixPair && !sameClass && score < floor) continue
+      const shape = shapes.find(
+        (s) => s.sameClass || isNegatingPrefixPair(s.headA, s.headB) || score >= floor,
+      )
+      if (shape === undefined) continue
+      const { headA, restA, headB, restB } = shape
 
       seen.add(key)
       const [lo, hi] = a.id < b.id ? [a.id, b.id] : [b.id, a.id]
+      // Read through the committed vocabulary, the verbs and objects above need not be the
+      // author's own words for either requirement, so the message says where they came from.
+      const through = shape.committed
+        ? ' (Read through the committed glossary and terms, which the formal tier applies: ' +
+          `"${phraseOf(`${headA}_${restA}`)}" vs "${phraseOf(`${headB}_${restB}`)}".)`
+        : ''
       findings.push({
         code: 'FND_OPPOSITION_CANDIDATE',
         severity: 'info',
@@ -782,8 +825,8 @@ export async function findOppositionCandidates(
               'those as one object, because a preposition such as to/from can carry direction, ' +
               'so it compared nothing between them. If they ARE one object, rewrite one ' +
               "requirement in the other's words and re-check; if they are different objects, " +
-              'waive this finding. This is a suggestion, not a verdict.'
-            : oppositionMessage(lo, hi, headA, headB, a, b),
+              `waive this finding.${through} This is a suggestion, not a verdict.`
+            : oppositionMessage(lo, hi, headA, headB, a, b, through),
       })
     }
   }
@@ -799,6 +842,7 @@ function oppositionMessage(
   headB: string,
   a: SemanticRequirement,
   b: SemanticRequirement,
+  through: string,
 ): string {
   return (
     `${lo} and ${hi} respond under the same system with the same object but different ` +
@@ -808,6 +852,6 @@ function oppositionMessage(
     'tier will then treat them as contraries — they cannot both hold — and can prove a conflict); ' +
     `if they are SYNONYMS, run \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\` ` +
     'instead. Committing the WRONG one manufactures a false contradiction, so confirm the ' +
-    'direction before applying. This is a suggestion, not a verdict.'
+    `direction before applying.${through} This is a suggestion, not a verdict.`
   )
 }

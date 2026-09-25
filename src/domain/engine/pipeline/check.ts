@@ -1583,8 +1583,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // topical-relatedness floor; the structure is the signal. Never a verdict.
       const opposition =
         options.semantic !== undefined
-          ? await findOppositionCandidates(included, options.semantic.embedder, {
+          ? // The ENCODABLE rows through the pipeline's own atomizer, so the shape is also read
+            // off the body every solver tier reads: after the committed glossary and terms.
+            await findOppositionCandidates(encodable, options.semantic.embedder, {
               glossary: glossaryIndex(doc.glossary),
+              atomize: pipelineAtomize(doc),
               ...(docAntonymIndex(doc) !== undefined
                 ? { antonyms: docAntonymIndex(doc) as ReadonlyMap<string, AntonymEntry> }
                 : {}),
