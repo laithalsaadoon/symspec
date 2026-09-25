@@ -1378,3 +1378,106 @@ describe('spec 007 AC-1-6 — `apply` and the frame repair, through the real pro
     expect(codesFor(check())).toEqual(['FND_REACHABILITY_UNDER_HYPOTHESES'])
   }, 60_000)
 })
+
+describe('spec 007 document format v4, through the real process', () => {
+  const dirs: string[] = []
+  afterAll(async () => {
+    const { rm } = await import('node:fs/promises')
+    await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+  })
+
+  const ID = '55555555-5555-4555-8555-555555555555'
+  const TS = '2026-01-01T00:00:00.000Z'
+
+  /** A document carrying a vocabulary, both anchors and an intentRef, written to disk. */
+  const v4File = (docVersion = 4): { dir: string; doc: string } => {
+    const dir = mkdtempSync(join(tmpdir(), 'symspec-v4-'))
+    dirs.push(dir)
+    const doc = join(dir, 'requirements.json')
+    writeFileSync(
+      doc,
+      JSON.stringify({
+        docVersion,
+        requirements: {
+          [ID]: {
+            id: ID,
+            key: 'R1',
+            patternType: 'ubiquitous',
+            systemName: 'auth service',
+            systemResponse: 'log every authentication attempt',
+            sentence: 'The auth service shall log every authentication attempt.',
+            intentRef: 'I1',
+            createdAt: TS,
+            updatedAt: TS,
+          },
+        },
+        vocabulary: {
+          symbols: [{ id: 'sys_auth_service', kind: 'system', canonical: 'auth service' }],
+        },
+        intent: { intentVersion: 1, items: [{ id: 'I1', text: 'Every login attempt is logged.' }] },
+        policy: { policyVersion: 1, levels: [{ id: 'audit' }], assign: { I1: 'audit' } },
+      }),
+    )
+    return { dir, doc }
+  }
+
+  it('reads a v4 document, and a mutation keeps every v4 key it did not touch', () => {
+    const { dir, doc } = v4File()
+    expect((runJson('list', doc).envelope.data as { docVersion: number }).docVersion).toBe(4)
+
+    const plan = join(dir, 'plan.jsonl')
+    const add = {
+      op: 'add',
+      key: 'R2',
+      patternType: 'ubiquitous',
+      systemName: 'auth service',
+      systemResponse: 'lock the account',
+    }
+    writeFileSync(plan, `${JSON.stringify(add)}\n`)
+    expect(runJson('apply', '--file', doc, '--ops', plan).code).toBe(0)
+
+    const written = JSON.parse(readFileSync(doc, 'utf8')) as {
+      docVersion: number
+      requirements: Record<string, { key?: string; intentRef?: string }>
+      vocabulary: { symbols: unknown[] }
+      intent: unknown
+      policy: unknown
+    }
+    expect(written.docVersion).toBe(4)
+    expect(
+      Object.values(written.requirements)
+        .map((r) => r.key)
+        .sort(),
+    ).toEqual(['R1', 'R2'])
+    expect(written.requirements[ID]?.intentRef).toBe('I1')
+    expect(written.vocabulary.symbols).toEqual([
+      { id: 'sys_auth_service', kind: 'system', canonical: 'auth service', aliases: [] },
+    ])
+    expect(written.intent).toEqual({
+      intentVersion: 1,
+      items: [{ id: 'I1', text: 'Every login attempt is logged.' }],
+    })
+    expect(written.policy).toEqual({
+      policyVersion: 1,
+      levels: [{ id: 'audit' }],
+      assign: { I1: 'audit' },
+    })
+
+    expect(runJson('check', doc).envelope.type).toBe('check')
+  }, 60_000)
+
+  it('refuses a v4 key under docVersion 3 as ERR_DOC_PARSE naming the upgrade, at exit 2', () => {
+    const { doc } = v4File(3)
+    const { envelope, code } = runJson('list', doc)
+    expect(code).toBe(2)
+    expect(envelope.code).toBe('ERR_DOC_PARSE')
+    expect(String(envelope.error)).toContain('docVersion 4')
+  })
+
+  it('refuses docVersion 5 as ERR_SCHEMA_VERSION, at exit 2', () => {
+    const { doc } = v4File(5)
+    const { envelope, code } = runJson('list', doc)
+    expect(code).toBe(2)
+    expect(envelope.code).toBe('ERR_SCHEMA_VERSION')
+  })
+})

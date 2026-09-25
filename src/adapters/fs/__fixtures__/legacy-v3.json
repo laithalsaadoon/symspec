@@ -1,0 +1,113 @@
+{
+  "antonyms": [
+    {
+      "a": "open",
+      "b": "shut"
+    }
+  ],
+  "docVersion": 3,
+  "futureTable": [
+    {
+      "kept": true
+    }
+  ],
+  "glossary": [
+    {
+      "aliases": [
+        "unlatch the door"
+      ],
+      "canonical": "open the door"
+    }
+  ],
+  "requirements": {
+    "550e8400-e29b-41d4-a716-446655440000": {
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "derives": [],
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "key": "DOOR-1",
+      "negated": true,
+      "patternType": "state-driven",
+      "preCondition": "the train is moving",
+      "priority": "critical",
+      "refines": [],
+      "responseKind": "constraint",
+      "satisfies": [
+        "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+      ],
+      "sentence": "While the train is moving, the door controller shall not open the door.",
+      "stateConstraint": "not (moving and door_open)",
+      "status": "approved",
+      "systemName": "door controller",
+      "systemResponse": "open the door",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "verificationMethod": "test",
+      "verificationNote": "hil rig 3",
+      "verifies": []
+    },
+    "6ba7b810-9dad-11d1-80b4-00c04fd430c8": {
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "derives": [],
+      "id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+      "negated": false,
+      "patternType": "event-driven",
+      "priority": "medium",
+      "refines": [],
+      "satisfies": [],
+      "sentence": "When the door button is pressed, the door controller shall open the door within 2 s.",
+      "status": "draft",
+      "systemName": "door controller",
+      "systemResponse": "open the door within 2 s",
+      "trigger": "the door button is pressed",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "verifies": []
+    }
+  },
+  "stateModel": {
+    "variables": [
+      {
+        "frame": "volatile",
+        "initial": "moving = false",
+        "name": "moving",
+        "type": "bool"
+      },
+      {
+        "frame": "stable",
+        "name": "door_open",
+        "type": "bool"
+      },
+      {
+        "domain": {
+          "max": 3,
+          "min": 0
+        },
+        "frame": "volatile",
+        "name": "retries",
+        "type": "int"
+      }
+    ]
+  },
+  "terms": [
+    {
+      "aliases": [
+        "portal"
+      ],
+      "canonical": "door"
+    }
+  ],
+  "waivers": [
+    {
+      "code": "GTWR_R6_MISSING_UNITS",
+      "reason": "unit is stated",
+      "requirementId": "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+    },
+    {
+      "code": "FND_SIMILAR_SEMANTIC",
+      "contentHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "reason": "reviewed",
+      "requirementIds": [
+        "550e8400-e29b-41d4-a716-446655440000",
+        "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+      ]
+    }
+  ]
+}

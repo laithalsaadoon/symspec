@@ -18,14 +18,18 @@
  *    path, since that is the one failure a real user will actually hit.
  */
 
+import { createHash } from 'node:crypto'
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { NodeServices } from '@effect/platform-node'
 import { Effect, Layer } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  ACCEPTED_DOC_VERSIONS,
   DOC_VERSION,
+  DOC_VERSION_VOCAB,
   emptyDocument,
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
@@ -202,6 +206,114 @@ describe('serialization is byte-stable and git-diffable', () => {
     expect(serializeDocument(emptyDocument())).not.toBe(
       serializeDocument(emptyDocument(), { extra: 1 }),
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Document format v4 at the store
+// ---------------------------------------------------------------------------
+
+describe('a v3 document is untouched by the v4 format', () => {
+  /**
+   * The bytes a v3 build wrote, captured from the build before v4 existed. It carries
+   * every v3 table, every optional requirement field, both waiver scopes and an unknown
+   * top-level key, so a v4 default materialized on ANY of them changes the bytes.
+   */
+  const LEGACY_V3 = readFileSync(
+    fileURLToPath(new URL('./__fixtures__/legacy-v3.json', import.meta.url)),
+    'utf8',
+  )
+  const LEGACY_V3_SHA256 = '49bea7e3de549442c6e69611e16924a04180b0f67fb0eb13d461a28aeef0c89d'
+  const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
+
+  it('the fixture is the pinned one — the comparison below is against fixed bytes', () => {
+    expect(sha256(LEGACY_V3)).toBe(LEGACY_V3_SHA256)
+  })
+
+  it('hashes byte-identically after a load and a save', () => {
+    const loaded = Effect.runSync(parseDocumentText(LEGACY_V3, 'legacy-v3.json'))
+    expect(loaded.document.docVersion).toBe(DOC_VERSION)
+    expect(sha256(serializeDocument(loaded.document, loaded.unknownKeys))).toBe(LEGACY_V3_SHA256)
+  })
+})
+
+describe('a v4 document round-trips through the store', () => {
+  const ID = '550e8400-e29b-41d4-a716-446655440000'
+  const v4 = (): Record<string, unknown> => ({
+    docVersion: DOC_VERSION_VOCAB,
+    requirements: { [ID]: requirement(ID, { intentRef: 'I1' }) },
+    vocabulary: {
+      symbols: [
+        { id: 'sys_auth_service', kind: 'system', canonical: 'auth service', aliases: [] },
+        {
+          id: 'qty_latency',
+          kind: 'quantity',
+          canonical: 'latency',
+          aliases: ['response time'],
+          dimension: 'time',
+          unit: 'ms',
+          numberType: 'real',
+        },
+      ],
+      merges: [],
+      distinct: [],
+      frozenTables: { sha256: 'd'.repeat(64) },
+    },
+    intent: { intentVersion: 1, items: [{ id: 'I1', text: 'Every login attempt is logged.' }] },
+    policy: { policyVersion: 1, levels: [{ id: 'audit' }], assign: { I1: 'audit' } },
+  })
+
+  it('keeps the vocabulary, the intent, the policy and the intentRef on a save', () => {
+    const text = serializeDocument(
+      Effect.runSync(parseDocumentText(JSON.stringify(v4()), 'v4.json')).document,
+    )
+    const written = JSON.parse(text) as Record<string, unknown>
+    for (const key of ['vocabulary', 'intent', 'policy']) {
+      expect(written[key], key).toEqual(v4()[key])
+    }
+    expect((written.requirements as Record<string, { intentRef?: string }>)[ID]?.intentRef).toBe(
+      'I1',
+    )
+    expect(written.docVersion).toBe(DOC_VERSION_VOCAB)
+  })
+
+  it('is a fixed point: load, save, load, save writes the same bytes', () => {
+    const once = serializeDocument(
+      Effect.runSync(parseDocumentText(JSON.stringify(v4()), 'v4.json')).document,
+    )
+    const twice = serializeDocument(Effect.runSync(parseDocumentText(once, 'v4.json')).document)
+    expect(twice).toBe(once)
+  })
+
+  it('loads docVersion 4 through the version check, which names both readable versions', async () => {
+    const dir = tempDir()
+    const p = join(dir, 'v4.json')
+    writeFileSync(p, JSON.stringify(v4()))
+    const r = await attemptStore((s) => s.load(p))
+    expect(r._tag).toBe('Success')
+
+    const q = join(dir, 'v5.json')
+    writeFileSync(q, JSON.stringify({ ...v4(), docVersion: 5 }))
+    const s = await attemptStore((store) => store.load(q))
+    expect(s._tag).toBe('Failure')
+    if (s._tag === 'Failure') {
+      expect(s.failure._tag).toBe('ERR_SCHEMA_VERSION')
+      for (const v of ACCEPTED_DOC_VERSIONS) expect(s.failure.error).toContain(String(v))
+    }
+  })
+
+  it('refuses a v4 key on a docVersion 3 file as ERR_DOC_PARSE naming the upgrade', async () => {
+    const dir = tempDir()
+    const p = join(dir, 'v3-with-vocabulary.json')
+    writeFileSync(p, JSON.stringify({ ...v4(), docVersion: DOC_VERSION }))
+    const r = await attemptStore((s) => s.load(p))
+    expect(r._tag).toBe('Failure')
+    if (r._tag === 'Failure') {
+      expect(r.failure._tag).toBe('ERR_DOC_PARSE')
+      expect(r.failure.error).toContain('`vocabulary`')
+      expect(r.failure.error).toContain('docVersion 4')
+      expect(r.failure.error).not.toContain('\n')
+    }
   })
 })
 
