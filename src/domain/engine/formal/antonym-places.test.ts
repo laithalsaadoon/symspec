@@ -2,10 +2,11 @@
  * Which preposition is a verb's own place, end to end (AC-2-1, the governed-preposition rule).
  *
  * The antonym-remainder rule once dropped the first place preposition after any antonym head
- * (669c0e9). The governed key reads that same one position, and marks it only when the head
- * governs it (`GOVERNED_PREPOSITIONS`); a verb only a document pairs governs
- * {@link COMMITTED_GOVERNS}. Each document below is one base proved as FND_CONTRADICTION between
- * genuine contraries, or one a later rule fabricated an error on.
+ * (669c0e9). The governed key reads that same one position, and marks it only when the head's
+ * own row governs it (`GOVERNED_PREPOSITIONS`); a verb only a document pairs governs nothing. Each
+ * document below is one base proved as FND_CONTRADICTION between genuine contraries, or one a
+ * later rule fabricated an error on. A pair base proved through a preposition no row governs —
+ * left out, moved, or after a committed verb — is DEMOTED instead (preposition-variant.test.ts).
  *
  * Kept apart from `antonym-rows.test.ts` on purpose: every `runCheck` grows the one z3 heap a
  * test file shares, and one file holding all of them runs that heap out of memory.
@@ -14,7 +15,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseLine } from '../parse/result.ts'
 import { runCheck } from '../pipeline/check.ts'
-import { buildAntonymIndexWithDoc, COMMITTED_GOVERNS } from './antonyms.ts'
+import { buildAntonymIndexWithDoc } from './antonyms.ts'
 import { areContrary, atomize } from './atomize.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -97,10 +98,6 @@ describe("the first place preposition is the verb's own place, when the verb gov
     // A spatial `within` names the place as `in` does.
     ['enable the alarm within the zone', 'disable the alarm in the zone'],
     ['include the file within the set', 'exclude the file from the set'],
-    // A locative before a bare time noun may be left out.
-    ['start the pump Monday', 'stop the pump on Monday'],
-    ['enable the alarm weekends', 'disable the alarm on weekends'],
-    ['open the gate Monday', 'close the gate on Monday'],
   ] as const
   for (const [x, y] of PROVED) {
     it(`${x} / ${y} is FND_CONTRADICTION`, async () => {
@@ -154,13 +151,14 @@ describe("the first place preposition is the verb's own place, when the verb gov
     }
   })
 
-  it('a locative is left out only before a bare noun, never before a determiner', async () => {
+  it('a left-out locative is no key: the pair demotes, never certifies', async () => {
     // "show the user the dashboard" shows the dashboard TO the user; "hide the user on the
-    // dashboard" hides the user's entry there. Leaving out `on` before `the` made them one key.
-    // The pair is one preposition added, so it demotes, never certifies.
+    // dashboard" hides the user's entry there. Whether a remainder left a locative out is a
+    // grammar guess no row states, so no key reads it; the pair demotes.
     for (const [x, y] of [
       ['show the user the dashboard', 'hide the user on the dashboard'],
       ['grant the operator the override', 'revoke the operator on the override'],
+      ['open the gate Monday', 'close the gate on Monday'],
     ] as const) {
       const report = await reportOf(x, y)
       expect(
@@ -169,47 +167,38 @@ describe("the first place preposition is the verb's own place, when the verb gov
       ).toEqual([])
       expect(report.verified, `${x} / ${y}`).toBe(false)
     }
+    expect(areContrary(resp('stop the pump on Monday'), resp('start the pump Monday'))).toBe(false)
     expect(
       areContrary(
         resp('stop the pump on Monday in the yard'),
         resp('start the pump Monday in the yard'),
       ),
-      'a left-out locative meets only a remainder that names no place',
     ).toBe(false)
   })
 
-  it('a verb only a document pairs takes the place as the old rule read it (COMMITTED_GOVERNS)', async () => {
-    // A committed row says nothing about which verb puts and which removes, so its verbs govern
-    // every preposition the old antonym-remainder rule read as the place; still only the first.
+  it('a verb only a document pairs governs no preposition: its row relates identical objects', async () => {
+    // A committed row says nothing about which verb puts and which removes, so no preposition
+    // after a committed verb is marked; the row still relates two identical remainders.
     for (const [pair, x, y] of [
-      [['admit', 'expel'], 'admit the student to the school', 'expel the student from the school'],
-      [['admit', 'expel'], 'admit the student in the school', 'expel the student from the school'],
-      [['hold', 'release'], 'hold the order in the queue', 'release the order from the queue'],
-      [['admit', 'expel'], 'admit the user to the club', 'expel the user from the club'],
+      [['admit', 'expel'], 'admit the student to the school', 'expel the student to the school'],
+      [['hold', 'release'], 'hold the order in the queue', 'release the order in the queue'],
     ] as const) {
       expect(
         await contradictionsOf([`${BUTTON} ${x}.`, `${BUTTON} ${y}.`], [pair]),
         `${x} / ${y}`,
       ).toEqual([[idOf(1), idOf(2)]])
     }
-    for (const p of COMMITTED_GOVERNS.keys()) {
+    const index = buildAntonymIndexWithDoc([['admit', 'expel']])
+    const committed = (text: string) =>
+      atomize({ kind: 'resp', text, systemName: 'controller', antonyms: index })
+    for (const p of ['at', 'from', 'in', 'inside', 'into', 'on', 'onto', 'to', 'within']) {
       expect(
         areContrary(
-          atomize({
-            kind: 'resp',
-            text: `admit the item ${p} the place`,
-            systemName: 'controller',
-            antonyms: buildAntonymIndexWithDoc([['admit', 'expel']]),
-          }),
-          atomize({
-            kind: 'resp',
-            text: 'expel the item at the place',
-            systemName: 'controller',
-            antonyms: buildAntonymIndexWithDoc([['admit', 'expel']]),
-          }),
+          committed(`admit the item ${p} the place`),
+          committed('expel the item at the place'),
         ),
         `admit ${p} / expel at`,
-      ).toBe(true)
+      ).toBe(p === 'at')
     }
   })
 })

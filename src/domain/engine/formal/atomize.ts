@@ -902,39 +902,6 @@ const PLACE_PREPOSITIONS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * The locatives a remainder may also leave out, as ordinary requirements English does before a
- * bare time or place noun: "start the pump Monday" / "stop the pump on Monday".
- */
-const ELIDABLE: ReadonlySet<string> = new Set(['at', 'in', 'inside', 'on'])
-
-/**
- * The words that open a noun phrase with a determiner. A locative before one is never left out
- * ("hide the user on the dashboard" is not "hide the user the dashboard"), and the ditransitive
- * "show the user the dashboard" — the dashboard shown TO the user — must not meet it.
- */
-const DETERMINERS: ReadonlySet<string> = new Set([
-  'a',
-  'all',
-  'an',
-  'any',
-  'each',
-  'every',
-  'her',
-  'his',
-  'its',
-  'my',
-  'our',
-  'some',
-  'that',
-  'the',
-  'their',
-  'these',
-  'this',
-  'those',
-  'your',
-])
-
-/**
  * The words that make a `within` a DEADLINE rather than a place ("within 5 seconds", "within the
  * hour", "within one day"): time units, as the numeric tier spells them and the calendar units it
  * deliberately does not convert, and the spelled-out numbers. A closed list; a deadline it misses
@@ -1023,10 +990,12 @@ const opensDeadline = (after: readonly string[]): boolean =>
  * and a class-wide set made them one key. Every response also keeps its LITERAL remainder as a key
  * ({@link antonymReading}), so identical remainders are contraries whatever their prepositions.
  *
- * One more key when the marked place is a locative before a bare noun ({@link ELIDABLE}, no
- * {@link DETERMINERS}): the remainder with the locative left out, so "stop the pump on Monday"
- * meets "start the pump Monday". Only when nothing else in it is a place preposition, so the one
- * remainder it can equal names no place of its own.
+ * No other key. Whether a remainder LEFT OUT a locative ("stop the pump on Monday" / "start the
+ * pump Monday"), or moved its preposition a word ("grant access to only admins" / "revoke access
+ * only from admins"), is a grammar guess no table row states, and a guess may not create a proof
+ * (spec 007 demote-not-prove C1): those pairs are the opposition-candidate tier's, which demotes
+ * on every two remainders equal once their prepositions are removed (semantic.ts
+ * `prepositionVariant`).
  *
  * Only in the key. "allow calls to the number" and "allow calls from the number" are different
  * acts, and the rule that dropped the first of `in into from within inside to onto at on` for
@@ -1049,19 +1018,7 @@ function governedReadings(rest: string, entry: AntonymEntry): readonly string[] 
   const marked = [...tokens]
   // `_` joins to `a___b`: two empty tokens, which neither `normalize` nor the place mark emits.
   marked[i] = outside ? '_' : ''
-  const keys = [marked.join('_')]
-  const next = tokens[i + 1]
-  const elided = [...tokens.slice(0, i), ...tokens.slice(i + 1)]
-  if (
-    !outside &&
-    ELIDABLE.has(token) &&
-    next !== undefined &&
-    !DETERMINERS.has(next) &&
-    !elided.some((t, at) => at > 0 && PLACE_PREPOSITIONS.has(t))
-  ) {
-    keys.push(elided.join('_'))
-  }
-  return keys
+  return [marked.join('_')]
 }
 
 /**

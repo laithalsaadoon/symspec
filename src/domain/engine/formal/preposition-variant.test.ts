@@ -172,6 +172,9 @@ describe('two verbs one contrary row relates, prepositions apart or moved, demot
     // A preposition that moved one slot (adverb placement): base dropped it wherever it sat.
     ['grant access to only admins', 'revoke access only from admins'],
     ['show the report to just the manager', 'hide the report just from the manager'],
+    // A left-out locative before a bare noun: a grammar guess, so no longer a proof.
+    ['start the pump Monday', 'stop the pump on Monday'],
+    ['enable the alarm weekends', 'disable the alarm on weekends'],
   ] as const
   for (const [x, y] of CONTRARY) {
     it(`${x} / ${y}`, async () => {
@@ -184,6 +187,17 @@ describe('two verbs one contrary row relates, prepositions apart or moved, demot
       expect(message).toContain(`\`symspec glossary add "${aligned}" "${y}"\``)
     })
   }
+
+  it('a verb only a document pairs relates through its row, never through a preposition guess', async () => {
+    // A committed row says nothing about prepositions, so no committed verb governs one: the pair
+    // is proposed, not proved.
+    for (const [pair, x, y] of [
+      [['admit', 'expel'], 'admit the student to the school', 'expel the student from the school'],
+      [['hold', 'release'], 'hold the order in the queue', 'release the order from the queue'],
+    ] as const) {
+      expectDemoted(await reportOf(x, y, [pair]), `${x} / ${y}`)
+    }
+  })
 
   it('"do neither" and "do one, not the other" are never candidates: no reading conflicts', async () => {
     // A contrary is ¬(A ∧ B): with either side negated, aligning the preposition still leaves a

@@ -24,8 +24,8 @@
  *     table deliberately keeps apart — curation IS the architecture here.
  *   - A contrary requires the (de-inflected) leading verbs to be one seeded or
  *     committed pair AND the object remainder to be identical after
- *     normalization, or identical once the first place preposition, when the verb governs it, is marked out
- *     ({@link GOVERNED_PREPOSITIONS}):
+ *     normalization, or identical once the first place preposition, when the verb's own row governs
+ *     it, is marked out ({@link GOVERNED_PREPOSITIONS}):
  *     "grant access" is a contrary of "revoke access" but not of "revoke permission".
  *
  * Shared-member semantics (why a signed union-find, and why it is not a synonym table):
@@ -202,19 +202,6 @@ const REMOVERS = [
  */
 const RIGHT_REMOVERS = ['revoke', 'suspend'] as const
 
-/**
- * The prepositions a verb only a DOCUMENT pairs governs ({@link GOVERNED_PREPOSITIONS} lists only
- * seed verbs): every preposition the antonym-remainder rule used to read as the place after any
- * antonym head, each for the one place. A committed row says nothing about which of its verbs
- * puts and which removes, so its verbs take the place the way that rule read it: "admit the
- * student to the school" / "expel the student from the school", and "hold the order in the queue"
- * against the seed `release … from`. The mark is still the FIRST such preposition only, so no
- * committed pair relates more than that rule did.
- */
-export const COMMITTED_GOVERNS: ReadonlyMap<string, GovernedPlace> = new Map(
-  [...LOCATIVE, 'into', 'onto', 'to', 'from'].map((p) => [p, 'place'] as const),
-)
-
 /** The verbs of a row whose contrary takes the place with the same prepositions: the locatives. */
 const SAME_PLACE = [
   'accept',
@@ -297,8 +284,14 @@ const places = (
  * well, so "connect calls FROM the number" (incoming calls allowed) and "disconnect calls TO the
  * number" (outgoing calls cut) shared one key and were an error-severity FND_CONTRADICTION on a
  * consistent document. Two remainders that are identical word for word need no mark at all:
- * every response also keeps the key of its literal remainder. A verb only a document pairs is not
- * in this table and governs {@link COMMITTED_GOVERNS}.
+ * every response also keeps the key of its literal remainder.
+ *
+ * A verb only a DOCUMENT pairs governs nothing. A committed row says two verbs are contraries; it
+ * says nothing about which of them puts and which removes, so any preposition it would govern is a
+ * guess, and a guess may not create a proof (spec 007 demote-not-prove C1). Such a pair is a
+ * contrary over identical remainders, and the opposition-candidate tier demotes on the same pair
+ * written with different prepositions ("admit the student to the school" / "expel the student from
+ * the school"), naming the rewording that makes it provable.
  */
 export const GOVERNED_PREPOSITIONS: ReadonlyMap<
   string,
@@ -418,7 +411,7 @@ export function buildAntonymIndex(
     // Re-base sign relative to the canonical (which we pin to positive).
     const negated = (sign.get(verb) as boolean) !== (sign.get(canonical) as boolean)
     const opposes = [...new Set(adj.get(verb) ?? [])].sort()
-    const places = [...(GOVERNED_PREPOSITIONS.get(verb) ?? COMMITTED_GOVERNS)]
+    const places = [...(GOVERNED_PREPOSITIONS.get(verb) ?? [])]
     const governs = places.map(([p]) => p).sort()
     const outside = places
       .filter(([, place]) => place === 'outside')
