@@ -912,8 +912,26 @@ const effectBody = (
   // it would have caused was "proved" impossible. The overflow is now a real transition,
   // and {@link checkRanges} reports it as `FND_RANGE_VIOLATION`. A PINNED variable keeps
   // its value, in range or not.
-  const free = prepared.variables.filter((v) => !written.has(v.name) && !pinned.has(v.name))
-  return andOf(Z3, ctx, [...updates, ...rangeConstraints(Z3, ctx, free, postBinding)])
+  //
+  // A FREE variable takes any value in its range OR KEEPS the one it has. Keeping is always
+  // one of the environment's choices, and it is what makes the frames NESTED: every `full`
+  // step is a `declared` step and every `declared` step a `none` step, which is the whole
+  // reason an unreachable `none` run licenses PROVED. Range-only redrew an out-of-range
+  // value back inside the range: after `x := 3`, a step writing only `y` could not keep
+  // x = 3 under `none` though every other frame does, and a constraint violated at
+  // x = 3, y = 3 came back PROVED "with nothing assumed" beside the range violation that
+  // reached it.
+  const kept: Ast[] = []
+  for (const variable of prepared.variables) {
+    if (written.has(variable.name) || pinned.has(variable.name)) continue
+    const before = preBinding.get(variable.name)
+    const after = postBinding.get(variable.name)
+    if (before === undefined || after === undefined) continue
+    const range = rangeConstraints(Z3, ctx, [variable], postBinding)
+    if (range.length === 0) continue
+    kept.push(Z3.mk_or(ctx, [andOf(Z3, ctx, range), Z3.mk_eq(ctx, after, before)]))
+  }
+  return andOf(Z3, ctx, [...updates, ...kept])
 }
 
 /** One built Horn system, ready to query, plus what is needed to re-check its answer. */
