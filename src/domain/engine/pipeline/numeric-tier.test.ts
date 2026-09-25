@@ -22,6 +22,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { extractNumericPredicates } from '../formal/numeric.ts'
 import { runCheck } from './check.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -219,6 +220,41 @@ describe('AC-2-5: a bound is keyed on (quantity, dimension, unit), converted exa
       gateway('respond in at least 1,500 ms'),
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
+  })
+
+  // `2_000_000 ms`, `2 000 000 ms` and `2'000 ms` group digits with a separator the NUMBER
+  // token does not read. It used to read the leading group alone, as a UNITLESS `<= 2`, so the
+  // consistent pair below (at most 2,000,000 ms, at least 3,000 ms) was proved as `<= 2` against
+  // `>= 3`. R6 reads each group of such a number on its own (05632b8), not the whole group, so
+  // the tier declines the number: no predicate, so no proof.
+  it.each([
+    ['_', '2_000_000', '3_000'],
+    ['space', '2 000 000', '3 000'],
+    ['narrow no-break space', '2\u202f000\u202f000', '3\u202f000'],
+    ['apostrophe', "2'000'000", "3'000"],
+    ['right single quote', '2\u2019000\u2019000', '3\u2019000'],
+  ])('declines a number grouped by %s rather than reading its leading group', async (_, x, y) => {
+    const gateway = (systemResponse: string): ReqSpec => ({
+      systemName: 'api gateway',
+      systemResponse,
+    })
+    expect(
+      await numericFindings(
+        gateway(`respond within ${x} ms`),
+        gateway(`respond in at least ${y} ms`),
+      ),
+    ).toEqual([])
+    for (const text of [`respond within ${x} ms`, `respond in at least ${y} ms`]) {
+      expect(extractNumericPredicates(text, 'api gateway', 'resp'), text).toEqual([])
+    }
+  })
+
+  it('still reads a number that a space, `_` or quote does not group', () => {
+    const read = (text: string) =>
+      extractNumericPredicates(text, 'api gateway', 'resp').map((p) => [p.comparator, p.value])
+    expect(read('respond within 30 ms 100 times')).toEqual([['<=', 30]])
+    expect(read('respond within 2,000,000 ms')).toEqual([['<=', 2_000_000]])
+    expect(read("respond within 30 ms, the 'fast' path")).toEqual([['<=', 30]])
   })
 
   it('declines a toleranced value rather than reading `2 ± 0.5` as the point 2', async () => {

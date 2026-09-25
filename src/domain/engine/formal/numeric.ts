@@ -477,8 +477,16 @@ const COMPARATOR_LEXICON: ReadonlyArray<{ phrase: string; comparator: NumericCom
  * `1.2.3` match NOTHING rather than a prefix of themselves. Stripping every comma
  * read `at least 1,5 seconds` as fifteen seconds. Declining is a miss; any reading
  * of `1,5` is a guess about the author's locale.
+ *
+ * The same lookahead refuses a number that runs on into a digit group this token does not
+ * read: `_<digit>` (`2_000_000`), a quote then a digit (`2'000`, `2’000`), or whitespace then
+ * exactly three digits (`2 000 000`, with a space or a no-break space). The token used to read the
+ * leading group alone, as a unitless `<= 2`, and prove `respond within 2_000_000 ms` against
+ * `respond in at least 3_000 ms`, which is consistent. Reading the whole group instead would be a
+ * rule R6 does not share: its digit run treats each such group as its own number (`gtwr.ts`). So
+ * the number is declined, and a declined number is no predicate and no proof.
  */
-const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?!\d|[.,]\d)`
+const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?!\d|[.,_'\u2019]\d|\s\d{3}(?!\d))`
 
 /** A tolerance after the number (`200 ± 5`): the bound is a range, not the point. */
 const TOLERANCE = /^\s*(?:±|\+\/-|\+-)/
