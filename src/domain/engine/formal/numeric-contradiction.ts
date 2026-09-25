@@ -1012,7 +1012,8 @@ async function uncomparedPairs(
               `${HOLDING_VERBS.filter((v) => v !== 'keep').join(', ')} for keep), with the quantity ` +
               'named by content words alone ("the endpoint response time", not "the response time ' +
               'of the endpoint"); a time bound its own role word (for, in, within, every) ' +
-              'introduces right after the action ("run the pump for at least <N> ' +
+              'introduces right after the action, a duration or period after one noun or a plural ' +
+              '("run the pump for at least <N> ' +
               'minutes"), or the verb alone ("respond within <N> milliseconds"); move a condition ' +
               'into the trigger or precondition ("While <condition>, the <system> shall keep ' +
               '<quantity> below <N>"). Or waive this finding once you have checked they cannot ' +

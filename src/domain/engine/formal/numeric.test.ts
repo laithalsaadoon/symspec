@@ -375,6 +375,14 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
       ['log the request above 200 milliseconds', 'the verb "log"'],
       ['sound the siren above 5 seconds', 'the verb "sound"'],
       ['charge the battery to exactly 80 percent', 'the verb "charge"'],
+      [
+        'close the session idle for at least 30 minutes',
+        'the verb "close" and the words "session idle"',
+      ],
+      [
+        'run the backup once-daily for at most 2 hours',
+        'the verb "run" and the words "backup once-daily"',
+      ],
     ] as const) {
       expect(read(text), text).toEqual([[text, clause]])
     }
@@ -395,7 +403,9 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
       'run the pump for at least 10 minutes',
       'sound the siren within 2 seconds',
       'retain the logs for at least 90 days',
-      'run the backup once-daily for at most 2 hours',
+      'retain audit logs for at least 9 months',
+      'expire the idle session after at most 30 minutes',
+      'flush the write cache within 2 seconds',
       'poll the sensor at least once every 5 seconds',
     ]) {
       expect(read(text), text).toEqual([[undefined, undefined]])

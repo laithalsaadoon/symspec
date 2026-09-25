@@ -216,6 +216,18 @@ const RESTRICTING: ReadonlyArray<readonly [string, string, string]> = [
     'run the fan the heater drove above 60 degrees celsius',
     'run the fan the heater drove below 40 degrees celsius',
   ],
+  // A duration after a postmodifier of a singular object: it picks out which session, not how
+  // long the closing lasts.
+  [
+    'monitor',
+    'close the session idle for at least 30 minutes',
+    'close the session idle for at most 1 minute',
+  ],
+  [
+    'monitor',
+    'flag the connection open for at least 1 hour',
+    'flag the connection open for at most 5 minutes',
+  ],
   // A kept object that is a set of things, not a quantity: `keep` also means retain.
   [
     'recorder',

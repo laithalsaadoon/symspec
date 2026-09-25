@@ -909,19 +909,23 @@ function finiteVerbIn(subject: string): string | undefined {
  *     no object for the bound to pick anything out of;
  *   - a {@link HOLDING_VERB} and a quantity named by content words alone (`keep the response time
  *     below 200 milliseconds`, `keep the door unlocked for at least 30 seconds`);
- *   - a time bound its own role word introduces (`timeMarked`: `for`, `in`, `within`, `every`, or
- *     a governing time preposition) right after an action named by content words alone (`run the
- *     pump for at least 10 minutes`), where a plural may stand last (`retain the logs for at least
- *     90 days`) because nothing follows it for the bound to modify.
+ *   - a time bound its own role word introduces (`marker`: `for`, `in`, `within`, `every`, or a
+ *     governing time preposition) right after an action named by content words alone (`expire
+ *     the idle session after at most 30 minutes`), where a plural may stand last (`retain the logs
+ *     for at least 90 days`) because nothing follows it for the bound to modify. A span (`for`,
+ *     `every`) needs one noun or a plural head before it: after another word, that word may be a
+ *     postmodifier the span belongs to (`close the session idle for at least 30 minutes` picks
+ *     out a session).
  *
  * Every other subject has structure a bound may restrict (a finite verb, a function word, a plural)
  * or a verb that does not hold its object to anything, and the answer names the first such word.
  * The caller then gives the bound its whole slot as qualifier, so it is compared with no bound not
  * spelled identically, and `numeric-contradiction.ts` discloses the pair. What this cannot see is a
- * postmodifier made of content words inside an otherwise plain object (`close the session idle for
- * more than 30 minutes`); the object is then read as the quantity, as it is written.
+ * plural no `-s` marks (`keep the fish above 3 meters`), or a content-word postmodifier inside a
+ * holding verb's object; the object is then read as the quantity, as it is written.
  */
-function unheldBy(subject: string, timeMarked: boolean): string | undefined {
+function unheldBy(subject: string, marker: TimeMarker | undefined): string | undefined {
+  const timeMarked = marker !== undefined
   const tokens = wordsOf(subject)
   while (tokens.length > 1 && BOUND_OWN_WORD.has(tokens[tokens.length - 1]!.toLowerCase())) {
     tokens.pop()
@@ -936,9 +940,23 @@ function unheldBy(subject: string, timeMarked: boolean): string | undefined {
     .slice(1)
     .find((w, i) => PLURAL_LOOKING.test(w) && !(timeMarked && i === object.length - 1))
   if (plural !== undefined) return `the plural "${plural}"`
-  if (timeMarked || HOLDING_VERB.has(verb!)) return undefined
-  return `the verb "${verb!}"`
+  if (HOLDING_VERB.has(verb!)) return undefined
+  if (marker === undefined) return `the verb "${verb!}"`
+  // A span (`for`, `every`) attaches as readily to a postmodifier of the object as to the action
+  // (`close the session idle for at least 30 minutes`), so after a word that may be one, a span is
+  // not read as the action's: only after one noun, or a plural head (`retain audit logs for`).
+  const nouns = object[0] === 'the' ? object.slice(1) : object
+  if (marker === 'point' || nouns.length <= 1) return undefined
+  if (PLURAL_LOOKING.test(tokens[tokens.length - 1]!)) return undefined
+  return `the verb "${verb!}" and the words "${nouns.join(' ')}"`
 }
+
+/**
+ * How a time bound's own word marks it ({@link unheldBy}): a `span` of the action (a duration,
+ * `for`, or a period, `every`), or a `point` in time (a deadline, `within`/`in`, or a delay a
+ * {@link TIME_PREPOSITION} governs, `expire the idle session after at most 30 minutes`).
+ */
+type TimeMarker = 'span' | 'point'
 
 /**
  * The {@link NumericPredicate.qualifier} of a bound at `[start, end)` in `text`, where
@@ -1593,10 +1611,14 @@ export function extractNumericPredicates(
           slot === 'resp'
             ? unheldBy(
                 text.slice(0, labelEnd),
-                reading.role !== '' ||
-                  (timeLike(dimension) &&
-                    prev !== null &&
-                    (prev.word === 'within' || TIME_PREPOSITION.test(prev.word))),
+                reading.role === 'duration' || reading.role === 'period'
+                  ? 'span'
+                  : reading.role === 'deadline' ||
+                      (timeLike(dimension) &&
+                        prev !== null &&
+                        (prev.word === 'within' || TIME_PREPOSITION.test(prev.word)))
+                    ? 'point'
+                    : undefined,
               )
             : undefined,
       })
