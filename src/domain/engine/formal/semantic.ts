@@ -25,6 +25,7 @@ import {
   deInflectHead,
   makeAtomize,
   normalize,
+  normalizeScope,
   type Opposition,
 } from './atomize.ts'
 import type { Embedder } from './embed.ts'
@@ -471,8 +472,9 @@ export async function findSimilarSemantic(
     for (let j = i + 1; j < reqs.length; j++) {
       const a = reqs[i] as SemanticRequirement
       const b = reqs[j] as SemanticRequirement
-      // Same-system only (per-system atom scoping, AC-4-2a).
-      if (a.systemName !== b.systemName) continue
+      // Same-system only (per-system atom scoping, AC-4-2a), by the scope the atoms carry: two
+      // spellings of one system ("Access Controller" / "access controller") are one scope.
+      if (normalizeScope(a.systemName) !== normalizeScope(b.systemName)) continue
 
       // Skip pairs already unified by atomize (glossary/identical), and contraries the seed
       // table already relates (AC-2-1) — a synonym proposal for those would be a merge of opposites.
@@ -781,7 +783,10 @@ export async function findOppositionCandidates(
     for (let j = i + 1; j < reqs.length; j++) {
       const a = reqs[i] as SemanticRequirement
       const b = reqs[j] as SemanticRequirement
-      if (a.systemName !== b.systemName) continue
+      // One system by the scope its atoms carry, never by the raw name: "Access Controller" and
+      // "access controller" are one scope to the solver, and a pair skipped here on spelling alone
+      // is a pair the decide tier may not relate either, so nothing demotes over it.
+      if (normalizeScope(a.systemName) !== normalizeScope(b.systemName)) continue
 
       // Already one atom (glossary, terms, identical) ⇒ the solver compares them at polarity; a
       // pair the antonym tables ALREADY relate ⇒ the solver relates them by a contrary axiom.

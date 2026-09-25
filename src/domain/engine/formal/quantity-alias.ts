@@ -58,7 +58,7 @@
  * those are distinct quantities that merely start the same, not a verb split.
  */
 
-import { normalize } from './atomize.ts'
+import { normalize, normalizeScope } from './atomize.ts'
 import {
   type NumericPredicate,
   opposedComparators,
@@ -188,7 +188,9 @@ export function findQuantityAliasCandidates(
       // alone maps every precondition-guarded requirement to `''`: it co-asserts
       // guards the document keeps apart, and it makes the message below claim "no
       // trigger" about a document that has two.
-      if (ra.systemName !== rb.systemName) continue
+      // Same system by atom scope, never the raw name: a case or punctuation variant of one
+      // system is one scope, and a discloser that is finer than the scope under-discloses.
+      if (normalizeScope(ra.systemName) !== normalizeScope(rb.systemName)) continue
       if (ra.guardKey !== rb.guardKey) continue
 
       const pairKey = [ra.id, rb.id].sort().join('|')
