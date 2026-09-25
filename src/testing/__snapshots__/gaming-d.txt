@@ -1,0 +1,54 @@
+glossary-bridged	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	rename-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+glossary-bridged	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+glossary-bridged	alias-contraries-glossary	inapplicable
+glossary-bridged	alias-contraries-term	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	delete-requirement	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	flip-negated	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	condition-into-response	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+glossary-bridged	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	shall-to-should	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	unglossary	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	unantonym	inapplicable
+glossary-bridged	unterm	inapplicable
+glossary-bridged	declassify-constraint	inapplicable
+glossary-bridged	rebind-effect	inapplicable
+glossary-bridged	vacuous-initial	inapplicable
+glossary-bridged	release-frame	inapplicable
+glossary-bridged	unstate	inapplicable
+glossary-bridged	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
+glossary-bridged	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+glossary-bridged	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+glossary-bridged	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+glossary-bridged	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	rename-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+term-bridged	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+term-bridged	alias-contraries-glossary	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	alias-contraries-term	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	delete-requirement	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	flip-negated	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	condition-into-response	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+term-bridged	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	shall-to-should	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	unglossary	inapplicable
+term-bridged	unantonym	inapplicable
+term-bridged	unterm	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	declassify-constraint	inapplicable
+term-bridged	rebind-effect	inapplicable
+term-bridged	vacuous-initial	inapplicable
+term-bridged	release-frame	inapplicable
+term-bridged	unstate	inapplicable
+term-bridged	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
+term-bridged	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+term-bridged	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+term-bridged	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+term-bridged	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
