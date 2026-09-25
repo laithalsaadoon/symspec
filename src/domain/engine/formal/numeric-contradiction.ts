@@ -545,12 +545,17 @@ function disagreementOf(reading: Reading, marked: readonly BoundRole[]): string 
     'a day or week bound reads as 24 hours a day only on a day with no daylight-saving ' +
     'change, and a civil day runs 23 to 25 hours; the bounds conflict at the nominal length ' +
     'and not at every civil one'
+  const anchored =
+    'a time bound with no role word before other text (anchored) may be a delay from that ' +
+    "text's event (a siren sounded at least 5 seconds after the door opens can sound for at " +
+    'most 3) or how long or by when the response happens, and the sentence does not say which'
   const merged = reading.roles === 'merged' && marked.length >= 2
   const rest = [
     ...(reading.temperature === 'difference' ? [temperature] : []),
     ...(reading.calendar === 'nominal' ? [calendar] : []),
   ]
-  if (merged) return [roles, ...rest].join('; and ')
+  if (merged)
+    return [roles, ...(marked.includes('anchored') ? [anchored] : []), ...rest].join('; and ')
   return rest.length > 0 ? rest.join('; and ') : temperature
 }
 

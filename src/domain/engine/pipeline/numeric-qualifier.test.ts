@@ -197,3 +197,46 @@ describe('AC-2-6: a bound inside a condition is not an obligation', () => {
     expect(out.errors).toEqual(['FND_NUMERIC_CONTRADICTION'])
   })
 })
+
+describe('AC-2-6: an unmarked time bound before other text is its own role', () => {
+  it('never reads a delay after an event as a duration after the same event', async () => {
+    // The qualifier split a delay from a duration only when their clauses differed. Under one
+    // clause, the unmarked `at least 5 seconds` was asserted on the duration's variable, and
+    // `delay >= 5 s ∧ duration <= 3 s`, satisfiable, was an error.
+    for (const [system, a, b] of [
+      [
+        'alarm',
+        'sound the siren at least 5 seconds after the door opens',
+        'sound the siren for at most 3 seconds after the door opens',
+      ],
+      [
+        'pump controller',
+        'run the pump for at least 10 minutes after the tank fills',
+        'run the pump at most 2 minutes after the tank fills',
+      ],
+      [
+        'alarm',
+        'sound the siren within 2 seconds after the door opens',
+        'sound the siren at least 30 seconds after the door opens',
+      ],
+    ] as const) {
+      const out = await verdict(system, a, b)
+      expect(out.errors, a).toEqual([])
+      expect(out.uncompared, a).toEqual([[ID_A, ID_B]])
+    }
+  })
+
+  it('still proves two unmarked bounds after one event, and an unmarked bound on its own', async () => {
+    // The controls: two delays after one event are one variable, and without trailing text an
+    // unmarked bound still meets a marked one.
+    for (const [a, b] of [
+      [
+        'sound the siren at least 5 seconds after the door opens',
+        'sound the siren at most 3 seconds after the door opens',
+      ],
+      ['sound the siren above 5 seconds', 'sound the siren for at most 3 seconds'],
+    ] as const) {
+      expect((await verdict('alarm', a, b)).errors, a).toEqual(['FND_NUMERIC_CONTRADICTION'])
+    }
+  })
+})

@@ -144,8 +144,11 @@ export interface NumericPredicate {
  *     measured from the trigger.
  *   - `duration` — `for at least 30 s`: how LONG the response lasts.
  *   - `period` — `at least once every 5 s`: the INTERVAL between repetitions.
- *   - `''` — no role marker: a magnitude of the quantity itself (`at most 2 km`,
- *     `above 30 seconds`).
+ *   - `anchored` — no role marker, on a time-like unit, with text after the bound
+ *     ({@link NumericPredicate.qualifier}): `at least 5 seconds after the door opens` may be
+ *     a DELAY from the clause's event rather than how long or by when the response happens.
+ *   - `''` — no role marker and nothing after the bound: a magnitude of the quantity itself
+ *     (`at most 2 km`, `above 30 seconds`).
  *
  * "Sound the siren within 2 seconds" and "sound the siren for at least 30 seconds"
  * are one quantity key and two roles; read as one variable they were `<= 2 s ∧ >=
@@ -160,8 +163,10 @@ export interface NumericPredicate {
  * An unmarked bound followed by other text is not known to be a magnitude of the whole
  * response: `run the pump at most 2 minutes after the tank fills` is a delay from an event.
  * Its {@link NumericPredicate.qualifier} keeps it apart from every bound without that same
- * clause, so it never meets `run the pump for at least 10 minutes` on one variable, and the
- * pair is disclosed.
+ * clause, and its `anchored` role from every marked bound WITH it: `sound the siren at least
+ * 5 seconds after the door opens` against `... for at most 3 seconds after the door opens`
+ * shared the clause, and the unmarked bound was asserted on the duration's variable. Either
+ * way the pair is disclosed, and two anchored bounds under one clause still meet.
  *
  * A role is a TIME role: `keep the positioning error within 5 mm` is a tolerance on a
  * distance, not a deadline, and carries no role. A unit this tier does not recognize
@@ -174,7 +179,7 @@ export interface NumericPredicate {
  * a label that names its own role is the author's statement that the two are one
  * quantity.
  */
-export type BoundRole = 'deadline' | 'duration' | 'period' | ''
+export type BoundRole = 'deadline' | 'duration' | 'period' | 'anchored' | ''
 
 /** The {@link NumericPredicate.dimension} of a unit token no dimension recognizes. */
 export const RAW_UNIT_DIMENSION = 'unrecognized'
@@ -977,12 +982,19 @@ function roleOf(
   // `within` before another comparator is the last word of the LABEL, so the key
   // already names the deadline; see {@link BoundRole}.
   if (prev === 'within') return { role: '', invert: false }
-  const timeLike = dimension === 'time' || dimension === RAW_UNIT_DIMENSION || dimension === ''
-  if (!timeLike) return { role: '', invert: false }
+  if (!timeLike(dimension)) return { role: '', invert: false }
   if (phrase === 'within' || prev === 'in') return { role: 'deadline', invert: false }
   if (prev === 'for') return { role: 'duration', invert: false }
   if (prev === 'every') return { role: 'period', invert: false }
   return { role: '', invert: false }
+}
+
+/**
+ * Whether a bound on `dimension` may be a time, and so carry a time role: a recognized time,
+ * a unit no dimension recognizes (`months`), or no unit at all.
+ */
+function timeLike(dimension: string): boolean {
+  return dimension === 'time' || dimension === RAW_UNIT_DIMENSION || dimension === ''
 }
 
 /** The whitespace-delimited word ending at `end`, lowercased, with where it starts. */
@@ -1187,7 +1199,11 @@ export function extractNumericPredicates(
   const preds = dedupe(
     out.map(({ pred, start, end }) => {
       const qualifier = qualifierAt(text, start, end, first?.[0] === start ? undefined : first?.[1])
-      return qualifier === undefined ? pred : { ...pred, qualifier }
+      if (qualifier === undefined) return pred
+      // An unmarked time bound before other text may be a delay from its event, not a
+      // magnitude of the response ({@link BoundRole} `anchored`).
+      const anchored = pred.role === '' && timeLike(pred.dimension)
+      return { ...pred, ...(anchored ? { role: 'anchored' as const } : {}), qualifier }
     }),
   )
   if (!negated) return preds

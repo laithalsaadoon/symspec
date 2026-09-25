@@ -235,6 +235,19 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
     expect(qualifier('respond within 30 ms.')).toEqual([['respond', undefined]])
   })
 
+  it('gives an unmarked time bound before other text its own role', () => {
+    expect(read('run the pump at most 2 minutes after the tank fills')).toEqual([
+      ['run the pump', 'anchored', '<='],
+    ])
+    // A marked role is kept, and a non-time dimension carries none.
+    expect(read('run the pump for at most 2 minutes after the tank fills')).toEqual([
+      ['run the pump', 'duration', '<='],
+    ])
+    expect(read('keep the temperature above 30 degrees celsius when heating')).toEqual([
+      ['keep the temperature', '', '>'],
+    ])
+  })
+
   it('reads a bound inside a condition with the whole clause as its qualifier', () => {
     const qualifier = (text: string) =>
       extractNumericPredicates(text, 'svc', 'resp').map((p) => [p.label, p.qualifier])
