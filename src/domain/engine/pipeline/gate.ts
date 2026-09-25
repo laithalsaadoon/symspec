@@ -69,9 +69,21 @@ export interface GateInput {
 }
 
 /**
+ * True when the finding's requirement set is exactly `ids`, in any order. The exact-set scope of
+ * a {@link Waiver}: a finding over a superset (a relational cluster that grew) or an overlapping
+ * set (a sibling pair sharing one id) is a different finding, which nobody reviewed.
+ */
+export function namesExactly(findingIds: readonly string[], ids: readonly string[]): boolean {
+  const want = new Set(ids)
+  const got = new Set(findingIds)
+  return got.size === want.size && [...got].every((id) => want.has(id))
+}
+
+/**
  * True when a committed waiver `w` suppresses the blocking finding `f` on
  * requirement `requirementId`: the codes match and the waiver is either
- * document-wide (no `requirementId`) or scoped to this requirement. Mirrors
+ * document-wide (no scope) or scoped to this requirement — by `requirementId`,
+ * or by a `requirementIds` set that is exactly this one requirement. Mirrors
  * `isWaived` in `src/pipeline/check.ts` — kept in sync deliberately (the check
  * pipeline drops the SAME finding from `findings[]`, so a waived blocking
  * finding must both disappear from the report AND stop excluding the
@@ -79,6 +91,11 @@ export interface GateInput {
  */
 function isWaivedBlocking(f: GtWRFinding, requirementId: string, w: Waiver): boolean {
   if (f.code !== w.code) return false
+  // An exact-set waiver bites a one-requirement finding only when that set IS this requirement;
+  // reading it as unscoped would re-admit every requirement carrying the code.
+  if (w.requirementIds !== undefined && !namesExactly([requirementId], w.requirementIds)) {
+    return false
+  }
   if (w.requirementId === undefined) return true
   return w.requirementId === requirementId
 }

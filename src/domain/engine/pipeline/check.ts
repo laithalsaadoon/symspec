@@ -139,7 +139,7 @@ import { checkVacuity } from '../formal/vacuity.ts'
 import { checkGtWRules, checkGtWRulesSet } from '../lint/gtwr.ts'
 import { type FormalTierResult, runSolvers } from '../solvers/index.ts'
 import { asView, type ReqView } from '../solvers/types.ts'
-import { type Exclusion, excludedIds, gateRequirements } from './gate.ts'
+import { type Exclusion, excludedIds, gateRequirements, namesExactly } from './gate.ts'
 
 /** Which pipeline tier produced a finding. */
 export type CheckTier = 'structural' | 'lint' | 'formal'
@@ -644,12 +644,16 @@ const COVERAGE_GAP_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
 
 /**
  * True when finding `f` is suppressed by waiver `w` (wishlist #3): the codes
- * match, and either the waiver is document-wide (no `requirementId`) or the
- * finding names that requirement. Scoped waivers only bite findings that
- * actually reference the scoped requirement.
+ * match, and every scope the waiver carries holds — the finding names its
+ * `requirementId`, and names exactly its `requirementIds`. A waiver with neither
+ * is document-wide. Scoped waivers only bite findings that actually reference
+ * the scoped requirements.
  */
 function isWaived(f: CheckFinding, w: Waiver): boolean {
   if (f.code !== w.code) return false
+  if (w.requirementIds !== undefined && !namesExactly(f.requirementIds, w.requirementIds)) {
+    return false
+  }
   if (w.requirementId === undefined) return true
   return f.requirementIds.includes(w.requirementId)
 }
