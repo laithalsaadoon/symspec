@@ -17,6 +17,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { renderSentence } from '../core/render.ts'
+import type { Requirement } from '../core/schema.ts'
 import { parseLine } from '../parse/result.ts'
 import { runCheck } from '../pipeline/check.ts'
 import { atomize, normalize, normalizeScope } from './atomize.ts'
@@ -232,5 +234,74 @@ describe('AC-2-4 — a merged guard no longer fabricates a contradiction', () =>
       ]),
     )
     expect(report.findings.map((f) => f.code)).toContain('FND_CONTRADICTION')
+  })
+})
+
+describe('AC-2-4 — a separator inside a number is part of the number', () => {
+  // `,` and `.` are identity-free as sentence punctuation, but BETWEEN two digits they decide
+  // which number it is: the numeric tier reads `1,500 ms` as 1500 ms and `1.500 ms` as 1.5 ms.
+  // Deleting them gave both one atom, `respond_within_1_500_ms`, and the propositional tier
+  // then read two jointly satisfiable bounds (at most 1500 ms, more than 1.5 ms) as one atom at
+  // opposite polarity: an error-severity FND_CONTRADICTION on a consistent document.
+  it('`1,500` and `1.500` are two atoms, and neither is `1_500` or `1500`', () => {
+    expect(resp('respond within 1,500 ms')).not.toBe(resp('respond within 1.500 ms'))
+    expect(guard('the delay is above 2,500 ms')).not.toBe(guard('the delay is above 2.500 ms'))
+    for (const spelling of ['1 500 ms', '1_500 ms', '1-500 ms', '1500 ms']) {
+      expect(normalize('1,500 ms')).not.toBe(normalize(spelling))
+      expect(normalize('1.500 ms')).not.toBe(normalize(spelling))
+    }
+  })
+
+  it('one spelling is still one atom, and the unit after it keeps its case', () => {
+    expect(resp('respond within 1,500 ms')).toBe(resp('Respond within 1,500 ms'))
+    expect(normalize('12,345.5 MBps')).not.toBe(normalize('12,345.5 Mbps'))
+    expect(normalize(normalize('12,345.5 ms'))).toBe(normalize('12,345.5 ms'))
+  })
+
+  it('a separator that does not sit between two digits is still punctuation', () => {
+    expect(normalize('retry 3 times, then stop.')).toBe('retry_3_times_then_stop')
+    expect(normalize('zones 1, 2 and 3')).toBe('zones_1_2_and_3')
+    expect(normalize('respond within 5 ms.')).toBe(normalize('respond within 5 ms'))
+  })
+})
+
+describe('AC-2-4 — a thousands separator never proves a conflict the numbers do not have', () => {
+  // The document the CLI stores: `apply` renders each sentence from its slots, so a stripped
+  // leading `never` is linted as `shall not`, as it is in `parse | init | apply | check`.
+  const checkRendered = async (sentences: readonly string[]) => {
+    const doc = (await docOf(sentences)) as { requirements: Record<string, Requirement> }
+    for (const r of Object.values(doc.requirements)) r.sentence = renderSentence(r)
+    return runCheck(doc as never)
+  }
+
+  it.each([
+    [
+      'The api gateway shall respond within 1,500 ms.',
+      'The api gateway shall not respond within 1.500 ms.',
+    ],
+    [
+      'The scheduler shall keep the job timeout within 2,500 ms.',
+      'The scheduler shall never keep the job timeout within 2.500 ms.',
+    ],
+  ])('"%s" / "%s": no proof', async (a, b) => {
+    const report = await checkRendered([a, b])
+    const proofs = report.findings.filter(
+      (f) => f.code === 'FND_CONTRADICTION' || f.code === 'FND_NUMERIC_CONTRADICTION',
+    )
+    expect(proofs, JSON.stringify(report.findings)).toEqual([])
+  })
+
+  it.each([
+    [
+      'The api gateway shall respond within 1.500 ms.',
+      'The api gateway shall not respond within 1,500 ms.',
+    ],
+    [
+      'The furnace shall hold the chamber temperature above 1,020 °C.',
+      'The furnace shall not hold the chamber temperature above 1.020 °C.',
+    ],
+  ])('"%s" / "%s": the real clash is proved on the numbers', async (a, b) => {
+    const report = await checkRendered([a, b])
+    expect(report.findings.map((f) => f.code)).toContain('FND_NUMERIC_CONTRADICTION')
   })
 })

@@ -605,6 +605,19 @@ export const SYMBOL_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
 ]
 
 /**
+ * A `,` or `.` BETWEEN two digits: part of the number, not punctuation (spec 007 AC-2-4). It
+ * decides which number it is. The numeric tier's NUMBER token reads `1,500 ms` as 1500 ms and
+ * `1.500 ms` as 1.5 ms, so deleting the separator gave both the atom `…_1_500_ms`, and the
+ * propositional tier read two jointly satisfiable bounds (at most 1500 ms, more than 1.5 ms) as
+ * one atom at opposite polarity: a proved contradiction on a consistent document. The separator
+ * stays inside its number's token (`1,500`, `12,345.5`), so the number is one token, a unit after
+ * it keeps its case ({@link NUMBER_TOKEN}), and `normalize` stays idempotent. Keeping it can only
+ * SPLIT atoms: `1,500`, `1.500` and `1500` are three phrases, and one spelling is still one.
+ * A source string, because {@link IDENTITY_FREE} and {@link IDENTITY_SYMBOL} both refuse it.
+ */
+const DIGIT_SEPARATOR = String.raw`(?<=\p{N})[.,](?=\p{N})`
+
+/**
  * The punctuation {@link normalize} deletes: the characters that carry no identity (spec 007
  * AC-2-4). Each becomes a token boundary. The set is closed:
  *   - connectors, dashes, brackets and quotes (`\p{Pc}` `\p{Pd}` `\p{Ps}` `\p{Pe}` `\p{Pi}`
@@ -617,9 +630,12 @@ export const SYMBOL_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
  *   - control and format characters (`\p{Cc}` `\p{Cf}`) and variation selectors, which change how
  *     a character is drawn, not which character it is.
  * Every other character outside letters, marks and digits is kept ({@link IDENTITY_SYMBOL}).
+ * The one exception to the list is a {@link DIGIT_SEPARATOR}.
  */
-const IDENTITY_FREE =
-  /[\s\p{Pc}\p{Pd}\p{Ps}\p{Pe}\p{Pi}\p{Pf}\p{Quotation_Mark}\p{Terminal_Punctuation}\p{Cc}\p{Cf}\p{Variation_Selector}/\\|*`´…‥•‣⁃¡¿]+/gu
+const IDENTITY_FREE = new RegExp(
+  String.raw`(?:(?!${DIGIT_SEPARATOR})[\s\p{Pc}\p{Pd}\p{Ps}\p{Pe}\p{Pi}\p{Pf}\p{Quotation_Mark}\p{Terminal_Punctuation}\p{Cc}\p{Cf}\p{Variation_Selector}/\\|*\x60´…‥•‣⁃¡¿])+`,
+  'gu',
+)
 
 /**
  * A character {@link normalize} KEEPS although it is neither a letter, a mark nor a digit: a
@@ -629,7 +645,10 @@ const IDENTITY_FREE =
  * two exclusive conditions then proved a contradiction the document does not contain. Each one
  * becomes its OWN token, so `$5` and `$ 5`, or `50%` and `50 %`, stay one phrase.
  */
-const IDENTITY_SYMBOL = /[^\p{L}\p{M}\p{N}\s]\p{M}*/gu
+const IDENTITY_SYMBOL = new RegExp(
+  String.raw`(?!${DIGIT_SEPARATOR})[^\p{L}\p{M}\p{N}\s]\p{M}*`,
+  'gu',
+)
 
 /** Delete {@link IDENTITY_FREE} punctuation and split every {@link IDENTITY_SYMBOL} into its own token. */
 function tokenize(text: string): string[] {
@@ -642,9 +661,11 @@ function tokenize(text: string): string[] {
 
 /**
  * Whether a raw token is a NUMBER, the position after which a token is a unit (AC-2-4). Digits in
- * any script, because `normalize` keeps every script's digits.
+ * any script, because `normalize` keeps every script's digits, with the {@link DIGIT_SEPARATOR}s
+ * that stay inside them (`1,500`, `12,345.5`).
  */
-const NUMBER_TOKEN = /^\p{N}+$/u
+const NUMBER = String.raw`\p{N}+(?:[.,]\p{N}+)*`
+const NUMBER_TOKEN = new RegExp(`^${NUMBER}$`, 'u')
 
 /**
  * A token a unit may follow: a {@link NUMBER_TOKEN}, or the degree sign that {@link tokenize} splits
@@ -653,7 +674,7 @@ const NUMBER_TOKEN = /^\p{N}+$/u
 const UNIT_POSITION = new RegExp(`${NUMBER_TOKEN.source}|^°$`, 'u')
 
 /** A token that OPENS with a number and continues with a unit: `100Mbps`, `5G`. */
-const NUMBER_THEN_UNIT = /^(\p{N}+)(.+)$/u
+const NUMBER_THEN_UNIT = new RegExp(`^(${NUMBER})(.+)$`, 'u')
 
 /**
  * A UNIT token, the closed grammar whose case is kept (spec 007 AC-2-4): an optional SI or binary
@@ -705,7 +726,7 @@ function foldCase(token: string, previous: string | undefined): string {
  *   3. {@link tokenize}: {@link IDENTITY_FREE} punctuation becomes a space, which also normalizes
  *      input underscores so `auth_service` is idempotent; every other character that is not a
  *      letter, combining mark or digit IN ANY SCRIPT is an {@link IDENTITY_SYMBOL} and becomes its
- *      own token
+ *      own token, except a {@link DIGIT_SEPARATOR}, which stays inside its number (`1,500`)
  *   4. split on whitespace and fold each token's case ({@link foldCase}: lowercase, except a
  *      {@link UNIT_TOKEN} after a number, whose case is its identity)
  *   5. underscore-join the surviving tokens
