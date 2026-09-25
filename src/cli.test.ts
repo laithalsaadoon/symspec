@@ -44,7 +44,16 @@
  */
 
 import { execFile, execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1626,6 +1635,46 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
     }
     // With the fake gone, the toplevel pin holds.
     expect(checkRun(doc, '--temporal-bound', '1').data.run.belowPinned).toEqual(['temporalBound'])
+  })
+
+  it('a well-formed marker beside a committed document does not shadow the toplevel config (F11)', () => {
+    /** git with no inherited GIT_* variable: a hook's GIT_DIR would redirect it. */
+    const git = (cwd: string, ...args: string[]): string =>
+      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
+        cwd,
+        encoding: 'utf8',
+        env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
+      }).trim()
+    const marker = (docs: string) => join(docs, REPO_MARKER)
+    // Each is well-formed, makes `git rev-parse --show-toplevel` print docs/, and leaves
+    // `git status --porcelain --ignored -uall` empty.
+    const plants: [string, (docs: string) => void][] = [
+      ['a gitfile naming ../.git', (d) => writeFileSync(marker(d), 'gitdir: ../.git\n')],
+      ['a symlink to ../.git', (d) => symlinkSync(join('..', REPO_MARKER), marker(d))],
+      ['a hand-made git directory', (d) => repoAt(d)],
+      ['git init docs', (d) => git(d, 'init', '-q')],
+    ]
+    for (const [what, plant] of plants) {
+      const root = realpathSync(workDir())
+      git(root, 'init', '-q')
+      writeFileSync(join(root, CONFIG), json({ configVersion: 1, gate: { temporalBound: 10 } }))
+      const docs = join(root, 'docs')
+      mkdirSync(docs)
+      const doc = docIn(docs)
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      expect(checkRun(doc, '--temporal-bound', '1').data.run.belowPinned, what).toEqual([
+        'temporalBound',
+      ])
+      plant(docs)
+      expect(git(root, 'status', '--porcelain', '--ignored', '-uall'), what).toBe('')
+      // The shadow the marker would promote: a config beside the document that pins nothing.
+      writeFileSync(join(docs, CONFIG), json({ configVersion: 1, gate: {} }))
+      const { envelope, code } = runJson('check', doc, '--temporal-bound', '1')
+      expect(code, what).toBe(2)
+      expect(envelope.code, what).toBe('ERR_CONFIG_INVALID')
+      expect(String(envelope.error), what).toContain(marker(docs))
+    }
   })
 
   it('running the published repair discharges every pin, even one the run met by a flag', () => {

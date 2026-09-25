@@ -75,7 +75,12 @@ place — the document's repository toplevel, or the document's own directory ou
 tree — and never searched for, so a config dropped beside the document is not read. The
 toplevel is the nearest directory whose `.git` is a git directory or a gitfile naming one;
 any other `.git` entry on the way up is `ERR_CONFIG_INVALID`, because it would move the
-toplevel.
+toplevel. A repository nested in another's work tree is a toplevel of its own only when the
+enclosing one agrees: a linked work tree registered with the same repository, a registered
+submodule, or a directory the enclosing index tracks nothing inside. Anything else — a
+gitfile or symlink naming the enclosing `.git`, a hand-made git directory, a `git init`
+over committed files — is `ERR_CONFIG_INVALID`: git itself would take it for the toplevel,
+and `git status` never shows it.
 `symspec init --split` writes one pinning every knob at its default, beside skeleton intent
 and policy files, and never overwrites any of the three. A `check` below a pin is demoted
 `run-weakened` once per knob and listed in `data.run.belowPinned` next to

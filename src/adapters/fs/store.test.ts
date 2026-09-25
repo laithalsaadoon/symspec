@@ -26,6 +26,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -683,6 +684,102 @@ describe('configPath reads the toplevel git resolves', () => {
     )
     const r = await attemptStore((s) => s.configPath(join(docs, 'requirements.json')))
     expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
+  })
+
+  /**
+   * A repository whose toplevel commits `docs/requirements.json` and a config: the state every
+   * marker below is planted into. Each marker is well-formed, fools `git rev-parse` itself, and
+   * is invisible to `git status --porcelain --ignored`, because git never lists a `.git` path.
+   */
+  const committedRepo = (): { root: string; docs: string } => {
+    const root = realpathSync(tempDir())
+    git(root, 'init', '-q')
+    const docs = join(root, 'docs')
+    mkdirSync(docs)
+    writeFileSync(join(docs, 'requirements.json'), serializeDocument(emptyDocument()))
+    writeFileSync(join(root, 'symspec.config.json'), '{"configVersion":1,"gate":{}}\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'init')
+    return { root, docs }
+  }
+
+  const expectRefused = async (docs: string, what: string) => {
+    const r = await attemptStore((s) => s.configPath(join(docs, 'requirements.json')))
+    expect(r._tag === 'Failure' ? r.failure._tag : r._tag, what).toBe('ERR_CONFIG_INVALID')
+    if (r._tag === 'Failure') expect(r.failure.error, what).toContain(join(docs, '.git'))
+  }
+
+  it('refuses a well-formed marker beside the document that the enclosing repository explains away', async () => {
+    const plants: [string, (docs: string) => void][] = [
+      [
+        'a gitfile naming the enclosing git dir',
+        (d) => writeFileSync(join(d, '.git'), 'gitdir: ../.git\n'),
+      ],
+      ['a symlink to the enclosing git dir', (d) => symlinkSync('../.git', join(d, '.git'))],
+      [
+        'a hand-made git directory',
+        (d) => {
+          mkdirSync(join(d, '.git', 'objects'), { recursive: true })
+          mkdirSync(join(d, '.git', 'refs'))
+          writeFileSync(join(d, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+        },
+      ],
+      ['git init over committed files', (d) => git(d, 'init', '-q')],
+    ]
+    for (const [what, plant] of plants) {
+      const { root, docs } = committedRepo()
+      plant(docs)
+      // git itself now takes the document's directory for the toplevel, and shows nothing.
+      expect(git(docs, 'rev-parse', '--show-toplevel'), what).toBe(docs)
+      expect(git(root, 'status', '--porcelain', '--ignored', '-uall'), what).toBe('')
+      await expectRefused(docs, what)
+    }
+  })
+
+  it('refuses a nested repository vouched for only by a repository that is itself planted', async () => {
+    // root commits a/b/docs/requirements.json; `a` is then made a repository that registers
+    // b/docs as a submodule. The pair (docs, a) holds; the pair (a, root) does not.
+    const root = realpathSync(tempDir())
+    git(root, 'init', '-q')
+    const docs = join(root, 'a', 'b', 'docs')
+    mkdirSync(docs, { recursive: true })
+    writeFileSync(join(docs, 'requirements.json'), serializeDocument(emptyDocument()))
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'init')
+    git(join(root, 'a'), 'init', '-q')
+    git(join(root, 'a'), 'update-index', '--add', '--cacheinfo', `160000,${'1'.repeat(40)},b/docs`)
+    git(docs, 'init', '-q')
+    const r = await attemptStore((s) => s.configPath(join(docs, 'requirements.json')))
+    expect(r._tag === 'Failure' ? r.failure._tag : r._tag).toBe('ERR_CONFIG_INVALID')
+    if (r._tag === 'Failure') expect(r.failure.error).toContain(join(root, 'a', '.git'))
+  })
+
+  it('a registered submodule, a nested linked work tree, and an untracked nested clone are each their own toplevel', async () => {
+    const { root } = committedRepo()
+    // A submodule: the enclosing index registers it as a gitlink.
+    const upstream = realpathSync(tempDir())
+    git(upstream, 'init', '-q')
+    git(upstream, 'commit', '-q', '--allow-empty', '-m', 'init')
+    git(root, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', upstream, 'vendor/sub')
+    const sub = join(root, 'vendor', 'sub', 'specs')
+    mkdirSync(sub)
+    expect(await withStore((s) => s.configPath(join(sub, 'requirements.json')))).toBe(
+      join(git(sub, 'rev-parse', '--show-toplevel'), 'symspec.config.json'),
+    )
+    expect(git(sub, 'rev-parse', '--show-toplevel')).toBe(join(root, 'vendor', 'sub'))
+    // A linked work tree of the SAME repository, placed inside its main work tree.
+    const linked = join(root, 'trees', 'wt')
+    git(root, 'worktree', 'add', '-q', linked)
+    expect(await withStore((s) => s.configPath(join(linked, 'docs', 'requirements.json')))).toBe(
+      join(linked, 'symspec.config.json'),
+    )
+    // An unrelated clone the enclosing repository tracks nothing inside (git status shows it).
+    const clone = join(root, 'scratch')
+    mkdirSync(clone)
+    git(clone, 'init', '-q')
+    expect(await withStore((s) => s.configPath(join(clone, 'requirements.json')))).toBe(
+      join(clone, 'symspec.config.json'),
+    )
   })
 })
 
