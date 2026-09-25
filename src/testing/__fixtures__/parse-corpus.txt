@@ -797,3 +797,13 @@ Requests shall not be dropped.
 5 seconds before the press starts, the press controller shall sound the horn.
 Unless the guard door is closed, the press controller shall stop the press unless overridden.
 The user that is not an admin shall be denied access, not logged.
+Unless the door (north) is closed, the press controller shall stop the press.
+Unless the door [north] is closed, the press controller shall stop the press.
+Unless the door is 'closed', the press controller shall stop the press.
+Unless the door is "closed", the press controller shall stop the press.
+While the door isn't open unless overridden, the guard shall be locked.
+When the door can't open unless overridden, the guard shall be locked.
+While the door cannot open unless overridden, the guard shall be locked.
+While the door isn't open unless overridden, users shall be able to lock the guard.
+When the operator's badge isn't revoked unless expired, the door shall be opened.
+The gateway shall only log requests but also forward them.

@@ -65,7 +65,6 @@ const DETERMINERS: ReadonlySet<string> = new Set([
 /** The first modal, contracted forms included (both tiers pivot on it). */
 const MODAL = /\b(?:shall|must|will|should)\b|\b(?:shan|won|mustn|shouldn)'t\b/i
 
-const BRACKET = /[()[\]{}]/
 /** What ends a label or tag left of the clause: a bracket, or a colon or semicolon after it. */
 const LABEL_END = /[()[\]{}:;]/
 /** A character that joins two words into one (`Until-dates`, `until_x`, `unless's`). */
@@ -138,8 +137,11 @@ function cover(
   const starts = [...Array(Math.max(0, words.length - target.length + 1)).keys()].filter(at)
   const p = which === 'first' ? starts[0] : starts.at(-1)
   if (p === undefined) {
-    // The slot is not a contiguous run of source words (a tier normalized it): fall back to
-    // word membership, which can only cover more — never refuse a line base's slots account for.
+    // The slot is not a contiguous run of source words (a tier normalized it — Tier 2 splits
+    // contractions, so "isn't" is stored as "is n't" and "cannot" as "can not"): fall back to
+    // word membership, which can only cover more — never refuse a line base's slots account
+    // for. Without it, "While the door isn't open unless overridden, …" would be refused with
+    // its "unless" inside the stored preCondition, which D1 forbids.
     if (!fallback) return
     const set = new Set(target)
     words.forEach((w, i) => {
@@ -173,11 +175,14 @@ const isWhole = (text: string, w: Word): boolean =>
   !(JOINER.test(text[w.end] ?? '') && ALNUM.test(text[w.end + 1] ?? ''))
 
 /**
- * The run of dropped words around the marker, as the author wrote it: extended over dropped
- * words until a covered word or a bracket (`[P1] [Unless …]`, `(1) Unless …`), and leftwards
- * also until a label's colon or semicolon (`Note: Unless …`). A bare section number directly
- * before the marker (`§3 Unless …`) is dropped from the name, as are a trailing determiner and
- * any unpaired bracket or quote.
+ * The run of dropped words around the marker, as the author wrote it. It extends leftwards over
+ * dropped words until a covered word, a bracket or a label's colon or semicolon (`[P1] Unless …`,
+ * `(1) Unless …`, `Note: Unless …`), and rightwards over dropped words until a covered word or a
+ * bracket that closes one opened outside the run (`[Unless …] [P1]`), so a parenthetical inside
+ * the clause stays in it (`Unless the door (north) is closed`). A bare section number directly
+ * before the marker (`§3 Unless …`) and a trailing determiner are dropped from the name. A closer
+ * right after the last word joins the name when it pairs an opener inside it (`is 'closed'`), and
+ * then every bracket or quote still without a partner is removed — see {@link withoutUnpaired}.
  */
 function spanAround(
   text: string,
@@ -190,30 +195,78 @@ function spanAround(
   let l = first
   let r = last
   while (l > 0 && !covered[l - 1] && !LABEL_END.test(gap(l - 1))) l--
-  while (r + 1 < words.length && !covered[r + 1] && !BRACKET.test(gap(r))) r++
+  let depth = 0
+  while (r + 1 < words.length && !covered[r + 1]) {
+    const next = depthAfter(gap(r), depth)
+    if (next === undefined) break
+    depth = next
+    r++
+  }
   if (words.slice(l, first).every((w) => /^\p{N}+$/u.test(w.lower))) l = first
   while (r > last && DETERMINERS.has(words[r]!.lower)) r--
-  return withoutUnpaired(text.slice(words[l]!.start, words[r]!.end))
+  const start = words[l]!.start
+  let end = words[r]!.end
+  while (end < text.length && CLOSER.test(text[end]!)) {
+    const longer = text.slice(start, end + 1)
+    if (unpaired(longer).size >= unpaired(text.slice(start, end)).size) break
+    end++
+  }
+  return withoutUnpaired(text.slice(start, end))
 }
 
-/** Drop brackets without a partner in `s`, and every quote when they do not pair up. */
-function withoutUnpaired(s: string): string {
-  const partner: Record<string, string> = { ')': '(', ']': '[', '}': '{' }
-  const drop = new Set<number>()
-  const open: number[] = []
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i]!
-    if ('([{'.includes(ch)) open.push(i)
-    else if (ch in partner) {
-      if (open.length > 0 && s[open.at(-1)!] === partner[ch]) open.pop()
-      else drop.add(i)
+const CLOSER = /[)\]}']/
+const PARTNER: Readonly<Record<string, string>> = { ')': '(', ']': '[', '}': '{' }
+
+/** The bracket depth after crossing `gap` at `depth`, or `undefined` when `gap` closes a bracket the run did not open. */
+function depthAfter(gap: string, depth: number): number | undefined {
+  let d = depth
+  for (const ch of gap) {
+    if ('([{'.includes(ch)) d++
+    else if (ch in PARTNER) {
+      if (d === 0) return undefined
+      d--
     }
   }
-  for (const i of open) drop.add(i)
-  const quotes = s.split('').filter((ch) => ch === '"').length
+  return d
+}
+
+/**
+ * The indices of `s` that pair with nothing: a bracket without its partner, a single quote
+ * without its partner, and every double quote or backtick. Double quotes always go because the
+ * refusal message delimits the span with them. A single quote between two letters or digits is
+ * an apostrophe (`isn't`, `operator's`), not a quote, and is never counted. Indices are UTF-16
+ * code units, as `s[i]` reads them.
+ */
+function unpaired(s: string): Set<number> {
+  const drop = new Set<number>()
+  const brackets: number[] = []
+  const quotes: number[] = []
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!
+    if ('([{'.includes(ch)) brackets.push(i)
+    else if (ch in PARTNER) {
+      if (brackets.length > 0 && s[brackets.at(-1)!] === PARTNER[ch]) brackets.pop()
+      else drop.add(i)
+    } else if (ch === '"' || ch === '`') drop.add(i)
+    else if (ch === "'") {
+      const before = ALNUM.test(s[i - 1] ?? '')
+      const after = ALNUM.test(s[i + 1] ?? '')
+      if (before && after) continue
+      if (before && quotes.length > 0) quotes.pop()
+      else if (before) drop.add(i)
+      else quotes.push(i)
+    }
+  }
+  for (const i of [...brackets, ...quotes]) drop.add(i)
+  return drop
+}
+
+/** `s` without the characters {@link unpaired} finds, whitespace collapsed. */
+function withoutUnpaired(s: string): string {
+  const drop = unpaired(s)
   return s
     .split('')
-    .filter((ch, i) => !drop.has(i) && !(ch === '"' && quotes % 2 === 1))
+    .filter((_, i) => !drop.has(i))
     .join('')
     .replace(/\s+/g, ' ')
     .trim()

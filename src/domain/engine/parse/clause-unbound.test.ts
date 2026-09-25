@@ -161,6 +161,53 @@ describe('AC-2-2: a dropped unbound marker is refused with ERR_CLAUSE_UNBOUND', 
     await refused(line)
   })
 
+  it.each([
+    [
+      'Unless the door (north) is closed, the press controller shall stop the press.',
+      'Unless the door (north) is closed',
+    ],
+    [
+      'Unless the door [north] is closed, the press controller shall stop the press.',
+      'Unless the door [north] is closed',
+    ],
+    [
+      'Unless the door {north} is closed, the press controller shall stop the press.',
+      'Unless the door {north} is closed',
+    ],
+    [
+      '(Unless the door (north) is closed) the press controller shall stop the press.',
+      'Unless the door (north) is closed',
+    ],
+    [
+      "Unless the door is 'closed', the press controller shall stop the press.",
+      "Unless the door is 'closed'",
+    ],
+    [
+      'Unless the door is "closed", the press controller shall stop the press.',
+      'Unless the door is closed',
+    ],
+    [
+      'Unless the "north" door is closed, the press controller shall stop the press.',
+      'Unless the north door is closed',
+    ],
+    [
+      "Unless the 'north door is closed, the press controller shall stop the press.",
+      'Unless the north door is closed',
+    ],
+    [
+      "Unless the operator's door isn't closed, the press controller shall stop the press.",
+      "Unless the operator's door isn't closed",
+    ],
+  ] as const)('the whole dropped clause is named, with no unpaired bracket or quote — %s', async (line, span) => {
+    // The message wraps the span in double quotes, so the name carries none of its own. A
+    // bracket or single quote is kept when its partner is in the name too (a closer right
+    // after the clause's last word joins it), and dropped when it has none. An apostrophe
+    // inside a word is not a quote.
+    const r = await refused(line)
+    expect(r.error.startsWith(`"${span}" `), r.error).toBe(true)
+    expect(balanced(span)).toBe(true)
+  })
+
   it('a word of the clause recurring in a slot does not cover the marker', async () => {
     const r = await refused(
       'Unless the press is closed, the press controller shall stop the press.',
@@ -219,6 +266,40 @@ describe('AC-2-2 controls: a line that drops no marker keeps its base parse', ()
     ['Except-list entries shall be skipped.', 'list entries'],
   ] as const)('a hyphenated compound is not the marker word — %s', async (line, systemName) => {
     expect((await stored(line)).slots.systemName).toBe(systemName)
+  })
+
+  it.each([
+    [
+      "While the door isn't open unless overridden, the guard shall be locked.",
+      'preCondition',
+      "the door is n't open unless overridden",
+    ],
+    [
+      "When the door can't open unless overridden, the guard shall be locked.",
+      'trigger',
+      "the door ca n't open unless overridden",
+    ],
+    [
+      'While the door cannot open unless overridden, the guard shall be locked.',
+      'preCondition',
+      'the door can not open unless overridden',
+    ],
+    [
+      "While the door isn't open unless overridden, users shall be able to lock the guard.",
+      'preCondition',
+      "the door is n't open unless overridden",
+    ],
+    [
+      "When the operator's badge isn't revoked unless expired, the door shall be opened.",
+      'trigger',
+      "the operator 's badge is n't revoked unless expired",
+    ],
+  ] as const)('a bound clause Tier 2 re-tokenised keeps its marker, stored — %s', async (line, slot, text) => {
+    // Tier 2 splits contractions ("isn't" → "is n't", "cannot" → "can not"), so the stored
+    // slot is no longer a contiguous run of source words. The marker word is still IN that
+    // slot, so D1 forbids a refusal: only the word-membership fallback in `cover` sees it.
+    const r = await stored(line)
+    expect(r.slots[slot]).toBe(text)
   })
 
   it('a marker inside a bound clause survives into that slot', async () => {
