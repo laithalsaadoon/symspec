@@ -11,7 +11,8 @@
  * Two readings relax the rule, and both come from the numeric tier rather than from R6:
  *   - a unit the numeric tier converts (`DIMENSIONS`) is a unit;
  *   - a numeral inside the quantity subject of a bound that tier reads with a converted unit,
- *     directly before the noun naming what the bound measures, names WHICH quantity it is.
+ *     between a noun whose instances are numbered and the noun naming what the bound
+ *     measures (`zone 1 temperature`), names WHICH quantity it is.
  * Everything else is an R6 error exactly as before; `src/testing/r6-corpus.test.ts` pins that.
  */
 
@@ -20,7 +21,7 @@ import { renderSentence } from '../core/render.ts'
 import type { Requirement } from '../core/schema.ts'
 import { DIMENSIONS } from '../formal/numeric.ts'
 import { runCheck } from '../pipeline/check.ts'
-import { checkGtWRules, R6_QUANTITY_NOUNS } from './gtwr.ts'
+import { checkGtWRules, R6_NUMBERED_NOUNS, R6_QUANTITY_NOUNS } from './gtwr.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
 const ID_A = 'aaaaaaaa-0000-4000-8000-00000000000a'
@@ -155,6 +156,72 @@ describe('GTWR_R6 in a full check: a unitless amount keeps the requirement out',
   }
 })
 
+describe('GTWR_R6 in a full check: an amount written before its quantity noun keeps its error', () => {
+  // '<verb or modifier> N <quantity noun> <comparator> <converted unit>' has the numeral inside
+  // a converted bound's subject, directly before the noun naming what the bound measures, yet
+  // the numeral is an AMOUNT (a target, a delay, a setpoint), not which quantity it is. Each
+  // pair clashes on that amount, and no tier compares it, so the R6 error is the only guard.
+  const event = (systemResponse: string): Slots => ({
+    patternType: 'event-driven',
+    systemName: 'controller',
+    trigger: 'the alarm sounds',
+    systemResponse,
+  })
+  const pairs: ReadonlyArray<readonly [Slots, Slots, string, string]> = [
+    [
+      ubiquitous('target 5 latency below 10 ms', 'encoder'),
+      {
+        patternType: 'state-driven',
+        systemName: 'encoder',
+        preCondition: 'streaming',
+        systemResponse: 'target 8 latency below 10 ms',
+      },
+      '5',
+      '8',
+    ],
+    [
+      event('apply 30 delay below 60 seconds'),
+      event('apply 90 delay below 60 seconds'),
+      '30',
+      '90',
+    ],
+    [
+      ubiquitous('deliver 50 volume below 500 L', 'pump'),
+      ubiquitous('deliver 20 volume below 500 L', 'pump'),
+      '50',
+      '20',
+    ],
+    [
+      ubiquitous('keep setpoint 22 temperature above 18 °C'),
+      ubiquitous('keep setpoint 16 temperature above 18 °C'),
+      '22',
+      '16',
+    ],
+    [
+      ubiquitous('pump 50 volume below 500 L', 'system'),
+      ubiquitous('pump 20 volume below 500 L', 'system'),
+      '50',
+      '20',
+    ],
+  ]
+
+  for (const [a, b, amountA, amountB] of pairs) {
+    it(`"${a.systemResponse}" / "${b.systemResponse}": R6 errors, both excluded, exit-1 counts`, async () => {
+      const report = await checkPair(a, b)
+      const r6 = report.findings.filter((f) => f.code === 'GTWR_R6_MISSING_UNITS')
+      for (const amount of [amountA, amountB]) {
+        expect(
+          r6.some((f) => f.severity === 'error' && f.message.includes(`"${amount}"`)),
+          `${amount}: ${JSON.stringify(r6)}`,
+        ).toBe(true)
+      }
+      expect(report.counts.error).toBeGreaterThanOrEqual(2)
+      expect(report.findings.filter((f) => f.code === 'FND_EXCLUDED_FROM_FORMAL')).toHaveLength(2)
+      expect(report.verified).toBe(false)
+    })
+  }
+})
+
 describe('GTWR_R6: a unit the numeric tier converts is never a missing unit', () => {
   // One source: R6 reads the numeric tier's DIMENSIONS through the tier's own unit reader,
   // so every spelling the tier compares arithmetically is a unit to R6 as well.
@@ -178,6 +245,8 @@ describe('GTWR_R6: a numeral naming which quantity a converted bound is on', () 
     ['keep disk 2 usage below 5 GB'],
     ['keep axis 3 position within 5 mm'],
     ['keep link 1 latency below 5 ms'],
+    ['keep the zone 1 temperature above 20 °C'],
+    ['keep the tank 2 volume below 500 L'],
   ])('"%s": no R6 finding', (response) => {
     expect(r6Numerals(ubiquitous(response))).toEqual([])
   })
@@ -215,12 +284,39 @@ describe('GTWR_R6: a numeral naming which quantity a converted bound is on', () 
     // the last word does not name what the dimension measures
     ['keep the room 22 constant above 18 °C', ['22']],
     ['keep the pump 50 running over 10 minutes', ['50']],
+    // the word before the numeral is not a noun that numbers its instances: a verb or a
+    // modifier stands there, and the numeral is the amount it sets
+    ['target 5 latency below 10 ms', ['5']],
+    ['allocate 512 memory below 1 GB', ['512']],
+    ['use 30 timeout below 60 seconds', ['30']],
+    ['add 5 delay within 10 seconds', ['5']],
+    ['hold max 80 temperature below 90 °C', ['80']],
+    ['keep target 22 temperature above 18 °C', ['22']],
+    ['keep setpoint 22 temperature above 18 °C', ['22']],
+    ['keep ambient 22 temperature above 18 °C', ['22']],
+    ['keep room 22 temperature above 18 °C', ['22']],
+    ['keep water 60 temperature above 50 °C', ['60']],
+    // a numbered noun that is the response's verb is still the verb
+    ['pump 50 volume below 500 L', ['50']],
+    ['scale 1 load below 5 kg', ['1']],
+    ['link 1 throughput above 500 Mbps', ['1']],
     // the bound's unit is not converted, so no dimension says what it measures
     ['keep pump 3 pressure below 5 bar', ['3', '5']],
     // no bound at all: `exceeds` is not a comparator the numeric tier reads
     ['hold zone 1 temperature exceeding nothing and set the fan to 80', ['1', '80']],
   ] as const)('"%s": R6 errors on %j', (response, numerals) => {
     expect(r6Numerals(ubiquitous(response))).toEqual(numerals)
+  })
+
+  it('reads a guard slot the same way: a verb before the numeral keeps its error', () => {
+    const guarded = (trigger: string): Slots => ({
+      patternType: 'event-driven',
+      systemName: 'controller',
+      trigger,
+      systemResponse: 'stop',
+    })
+    expect(r6Numerals(guarded('the fan reaches 80 temperature above 20 °C'))).toEqual(['80'])
+    expect(r6Numerals(guarded('zone 1 temperature is above 20 °C'))).toEqual([])
   })
 
   it('reads only a sentence that is the requirement rendering', () => {
@@ -239,8 +335,15 @@ describe('GTWR_R6: a numeral naming which quantity a converted bound is on', () 
       expect(dim, dimension).toBeDefined()
       const unit = Object.keys(dim?.words ?? {})[0] ?? Object.keys(dim?.symbols ?? {})[0]
       for (const noun of nouns) {
-        expect(r6Numerals(ubiquitous(`keep unit 7 ${noun} below 5 ${unit}`)), noun).toEqual([])
+        expect(r6Numerals(ubiquitous(`keep zone 7 ${noun} below 5 ${unit}`)), noun).toEqual([])
       }
+    }
+  })
+
+  it("every numbered noun reads the numeral after it as a label, and none as a response's first word", () => {
+    for (const noun of R6_NUMBERED_NOUNS) {
+      expect(r6Numerals(ubiquitous(`keep ${noun} 7 temperature above 5 °C`)), noun).toEqual([])
+      expect(r6Numerals(ubiquitous(`${noun} 7 temperature above 5 °C`)), noun).toEqual(['7'])
     }
   })
 })

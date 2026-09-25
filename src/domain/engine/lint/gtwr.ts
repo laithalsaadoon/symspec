@@ -13,12 +13,7 @@
 
 import { renderSentenceSlots, type SlotOffsets } from '../core/render.ts'
 import type { Requirement } from '../core/schema.ts'
-import {
-  NOT_A_UNIT,
-  opensConvertedUnit,
-  type PredicateSlot,
-  requirementBounds,
-} from '../formal/numeric.ts'
+import { opensConvertedUnit, type PredicateSlot, requirementBounds } from '../formal/numeric.ts'
 import { KW } from '../parse/tier1.ts'
 
 export interface GtWRFinding {
@@ -565,6 +560,54 @@ const quantityNoun = (dimension: string, word: string): boolean =>
   QUANTITY_NOUNS_BY_DIMENSION.get(dimension)?.has(word.toLowerCase()) ?? false
 
 /**
+ * The nouns whose instances are told apart by a number — the word that has to stand directly
+ * before a numeral for {@link identifierNumerals} to read it as naming WHICH one (`zone 1`,
+ * `link 2`, `disk 2`).
+ *
+ * Closed and fail-closed: a noun left out keeps its numeral an R6 error, which is base
+ * behaviour, while a word let in reads a setpoint as a label. So it holds no quantity
+ * modifier (`target`, `setpoint`, `max`, `ambient`, `nominal`: `keep setpoint 22
+ * temperature` sets 22), no material or place that forms a compound quantity (`room`,
+ * `water`, `core`: `keep room 22 temperature` reads as a room temperature of 22), and no
+ * noun that is also a common verb (`pump`, `scale`, `drive`, `queue`, `stage`: `pump 50
+ * volume` delivers 50), since a response's verb need not be its first word (`immediately
+ * pump 50 volume`). `link` is the one exception, pinned by spec 007's B8 reproducer, and
+ * {@link identifierNumerals} still refuses it as a response's first word.
+ */
+export const R6_NUMBERED_NOUNS: readonly string[] = [
+  'axis',
+  'battery',
+  'bay',
+  'boiler',
+  'cell',
+  'chamber',
+  'circuit',
+  'compressor',
+  'cylinder',
+  'device',
+  'disk',
+  'heater',
+  'instance',
+  'job',
+  'lane',
+  'link',
+  'module',
+  'motor',
+  'node',
+  'oven',
+  'radio',
+  'replica',
+  'sensor',
+  'server',
+  'tank',
+  'valve',
+  'worker',
+  'zone',
+]
+
+const NUMBERED_NOUNS: ReadonlySet<string> = new Set(R6_NUMBERED_NOUNS)
+
+/**
  * The sentence spans of the numerals R6 reads as IDENTIFIERS, not amounts: `1` in "hold
  * zone 1 temperature above 20 degrees celsius", `2` in "keep link 2 throughput below 100
  * Mbps" (spec 007 AC-2-6: "no error for any of them").
@@ -581,13 +624,15 @@ const quantityNoun = (dimension: string, word: string): boolean =>
  * zone temperature is above 20 degrees celsius" has `80` in the subject of a temperature
  * bound, and admitting it would let "... to 20 while ..." sit beside it with the setpoint
  * clash unseen. So the numeral also has to sit exactly where it can only name WHICH
- * quantity the bound is on:
+ * quantity the bound is on, `<numbered noun> N <measured noun>`:
  *   - it is the subject's second-to-last word, and the last word is a noun for what the
  *     bound's dimension measures ({@link R6_QUANTITY_NOUNS}): `zone 1 temperature`, not
  *     `set the fan to 80`, `fan 80 while the temperature`, or `keep the room 22 constant`;
- *   - the word before it is not one the numeric tier reads as "no unit follows"
- *     ({@link NOT_A_UNIT}: `to 80 temperature`, `at 80 temperature`), which is where an
- *     amount stands.
+ *   - the word before it is a noun whose instances are numbered ({@link
+ *     R6_NUMBERED_NOUNS}), and, in a response, not the response's first word, which is its
+ *     verb. A verb or a modifier there (`target 5 latency`, `apply 30 delay`, `keep
+ *     setpoint 22 temperature`) makes the numeral the amount it sets, with the measured noun
+ *     standing in for a unit.
  *
  * Only a sentence that IS this requirement's rendering is read, because the spans come
  * from its slots; any other sentence keeps every numeral a finding.
@@ -605,7 +650,8 @@ function identifierNumerals(
     const [before, numeral, last] = subjectWords.slice(-3).map(([s, e]) => [start + s, start + e])
     if (before === undefined || numeral === undefined || last === undefined) continue
     if (!quantityNoun(predicate.dimension, sentence.slice(last[0], last[1]))) continue
-    if (NOT_A_UNIT.has(sentence.slice(before[0], before[1]).toLowerCase())) continue
+    if (!NUMBERED_NOUNS.has(sentence.slice(before[0], before[1]).toLowerCase())) continue
+    if (predicate.slot === 'resp' && subjectWords.length === 3) continue
     out.push([numeral[0]!, numeral[1]!])
   }
   return out

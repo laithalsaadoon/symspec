@@ -488,7 +488,7 @@ const TOLERANCE = /^\s*(?:±|\+\/-|\+-)/
  * least 2 of the replicas`). One of these after the number means "no unit", the
  * same reading every unknown word had before units keyed on their raw text.
  */
-export const NOT_A_UNIT: ReadonlySet<string> = new Set([
+const NOT_A_UNIT: ReadonlySet<string> = new Set([
   'a',
   'an',
   'and',
