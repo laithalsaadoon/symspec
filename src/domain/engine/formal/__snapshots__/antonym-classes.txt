@@ -1,53 +1,53 @@
-accept	+	accept	decline,reject	at,in,inside,on	
-accept	+	approve	decline,reject	at,in,inside,on	
-accept	-	decline	accept,approve	at,in,inside,on	
-accept	-	reject	accept,approve	at,in,inside,on	
-activate	+	activate	deactivate	at,in,inside,on	
-activate	-	deactivate	activate	at,in,inside,on	
-add	+	add	remove	at,in,inside,into,on,onto,to	
-add	-	remove	add	at,from,in,inside,on	
-allow	+	allow	deny,forbid,revoke	at,in,inside,into,on,onto,to	
-allow	+	authorize	deny,forbid,revoke	at,in,inside,into,on,onto,to	
-allow	+	grant	deny,forbid,revoke	at,in,inside,into,on,onto,to	
-allow	+	permit	deny,forbid,revoke	at,in,inside,into,on,onto,to	
-allow	-	deny	allow,authorize,grant,permit	at,in,inside,into,on,onto,to	
-allow	-	forbid	allow,authorize,grant,permit	at,in,inside,into,on,onto,to	
-allow	-	revoke	allow,authorize,grant,permit	at,from,in,inside,on,to	
-close	+	close	open	at,in,inside,on	
-close	-	open	close	at,in,inside,on	
-commit	+	commit	roll_back,rollback	at,in,inside,into,on,onto,to	
-commit	-	roll_back	commit	at,from,in,inside,on	
-commit	-	rollback	commit	at,from,in,inside,on	
-conceal	+	conceal	expose	at,from,in,inside,on	
-conceal	+	seal	expose,unseal	at,from,in,inside,on	
-conceal	-	expose	conceal,seal	at,in,inside,into,on,onto,to	
-conceal	-	unseal	seal	at,in,inside,on	
-connect	+	connect	disconnect	at,in,inside,into,on,onto,to,with	
-connect	-	disconnect	connect	at,from,in,inside,on	
-de_energize	+	de_energize	energize	at,in,inside,on	
-de_energize	-	energize	de_energize	at,in,inside,on	
-disable	+	disable	enable	at,in,inside,on	
-disable	-	enable	disable	at,in,inside,on	
-disengage	+	disengage	engage	at,from,in,inside,on	
-disengage	-	engage	disengage	at,in,inside,into,on,onto,to,with	
-drain	+	drain	flood	at,in,inside,on	
-drain	-	flood	drain	at,in,inside,on	
-exclude	+	exclude	include	at,from,in,inside,on	
-exclude	-	include	exclude	at,in,inside,into,on,onto,to	
-extend	+	extend	retract	at,in,inside,into,on,onto,to	
-extend	+	publish	retract	at,in,inside,into,on,onto,to	
-extend	-	retract	extend,publish	at,from,in,inside,on	
-hide	+	hide	show	at,from,in,inside,on	
-hide	-	show	hide	at,in,inside,into,on,onto,to	
-insert	+	insert	withdraw	at,in,inside,into,on,onto,to	
-insert	-	withdraw	insert	at,from,in,inside,on	
-lock	+	lock	unlock	at,in,inside,on	
-lock	-	unlock	lock	at,in,inside,on	
-lower	+	lower	raise	at,in,inside,on	
-lower	-	raise	lower	at,in,inside,on	
-quarantine	+	quarantine	release	at,from,in,inside,into,on,onto,to	from
-quarantine	-	release	quarantine	at,from,in,inside,into,on,onto,to	into,on,onto,to
-resume	+	resume	suspend	at,in,inside,on	
-resume	-	suspend	resume	at,from,in,inside,on,to	
-start	+	start	stop	at,in,inside,on	
-start	-	stop	start	at,in,inside,on	
+accept	+	accept	decline,reject		
+accept	+	approve	decline,reject		
+accept	-	decline	accept,approve		
+accept	-	reject	accept,approve		
+activate	+	activate	deactivate		
+activate	-	deactivate	activate		
+add	+	add	remove	into,onto,to	
+add	-	remove	add	from	
+allow	+	allow	deny,forbid,revoke	into,onto,to	
+allow	+	authorize	deny,forbid,revoke	into,onto,to	
+allow	+	grant	deny,forbid,revoke	into,onto,to	
+allow	+	permit	deny,forbid,revoke	into,onto,to	
+allow	-	deny	allow,authorize,grant,permit	into,onto,to	
+allow	-	forbid	allow,authorize,grant,permit	into,onto,to	
+allow	-	revoke	allow,authorize,grant,permit	from,to	
+close	+	close	open		
+close	-	open	close		
+commit	+	commit	roll_back,rollback	into,onto,to	
+commit	-	roll_back	commit	from	
+commit	-	rollback	commit	from	
+conceal	+	conceal	expose	from	
+conceal	+	seal	expose,unseal	from	
+conceal	-	expose	conceal,seal	into,onto,to	
+conceal	-	unseal	seal		
+connect	+	connect	disconnect	into,onto,to,with	
+connect	-	disconnect	connect	from	
+de_energize	+	de_energize	energize		
+de_energize	-	energize	de_energize		
+disable	+	disable	enable		
+disable	-	enable	disable		
+disengage	+	disengage	engage	from	
+disengage	-	engage	disengage	into,onto,to,with	
+drain	+	drain	flood		
+drain	-	flood	drain		
+exclude	+	exclude	include	from	
+exclude	-	include	exclude	into,onto,to	
+extend	+	extend	retract	into,onto,to	
+extend	+	publish	retract	into,onto,to	
+extend	-	retract	extend,publish	from	
+hide	+	hide	show	from	
+hide	-	show	hide	into,onto,to	
+insert	+	insert	withdraw	into,onto,to	
+insert	-	withdraw	insert	from	
+lock	+	lock	unlock		
+lock	-	unlock	lock		
+lower	+	lower	raise		
+lower	-	raise	lower		
+quarantine	+	quarantine	release	from,into,onto,to	from
+quarantine	-	release	quarantine	from,into,onto,to	into,onto,to
+resume	+	resume	suspend		
+resume	-	suspend	resume		
+start	+	start	stop		
+start	-	stop	start		

@@ -434,9 +434,9 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
     ).toEqual([])
   })
 
-  it('a verb-governed complement still opposes: include IN / exclude FROM, add TO / remove FROM', async () => {
+  it('a verb-governed complement still opposes: include INTO / exclude FROM, add TO / remove FROM', async () => {
     for (const [x, y] of [
-      ['include the tile in the view', 'exclude the tile from the view'],
+      ['include the tile into the view', 'exclude the tile from the view'],
       ['include the file in the box', 'exclude the file in the box'],
       ['add the user to the group', 'remove the user from the group'],
       ['insert the card into the reader', 'withdraw the card from the reader'],
@@ -474,13 +474,16 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
     // cosine and `verified` cannot come back true over it. The same holds for one side of a
     // class a preposition apart (grant / not allow), which the old side rename made one atom.
     // ("grant access to the user" / "revoke access from the user" is no longer here: each verb
-    // governs its own preposition, so the solver proves it — antonym-rows.test.ts.)
+    // governs its own preposition, so the solver proves it — antonym-rows.test.ts.) A locative is
+    // governed by no verb, since it names a time as readily as a place, so "include the tile IN
+    // the view" / "exclude the tile FROM the view" is two keys and demotes too.
     const orthogonal: Embedder = async (texts) =>
       texts.map((_, i) => Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1]))
     for (const [x, y] of [
       ['grant access to the user', 'not allow access from the user'],
       ['connect calls from the number', 'disconnect calls to the number'],
       ['add traffic from the subnet', 'remove traffic to the subnet'],
+      ['include the tile in the view', 'exclude the tile from the view'],
     ] as const) {
       const report = await runCheck(await docOf([`${BLOCK} ${x}.`, `${BLOCK} ${y}.`]), {
         semantic: { embedder: orthogonal },
@@ -528,12 +531,12 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
     }
   })
 
-  it('a pair the solver DOES relate is not proposed: include IN / exclude FROM', async () => {
+  it('a pair the solver DOES relate is not proposed: include INTO / exclude FROM', async () => {
     const orthogonal: Embedder = async (texts) =>
       texts.map((_, i) => Float32Array.from(i % 2 === 0 ? [1, 0] : [0, 1]))
     const report = await runCheck(
       await docOf([
-        `${BLOCK} include the tile in the view.`,
+        `${BLOCK} include the tile into the view.`,
         `${BLOCK} exclude the tile from the view.`,
       ]),
       { semantic: { embedder: orthogonal } },
@@ -542,16 +545,20 @@ describe('AC-2-1 — a preposition that carries direction is never dropped', () 
   })
 
   it('marks the governed preposition, so a governed key never meets a literal one', () => {
-    // "include the tile in the view" reads `the_tile__the_view` with the `in` it governs marked
+    // "include the tile into the view" reads `the_tile__the_view` with the `into` it governs marked
     // out. Dropping the word instead made that key equal to the LITERAL key of "exclude the tile
     // the view" — a remainder that never had a preposition there, related by a word it lacks.
     const resp = (text: string) => atomize({ kind: 'resp', text, systemName: 'viewer' })
     expect(
-      areContrary(resp('include the tile in the view'), resp('exclude the tile the view')),
+      areContrary(resp('include the tile into the view'), resp('exclude the tile the view')),
     ).toBe(false)
     expect(
-      areContrary(resp('include the tile in the view'), resp('exclude the tile from the view')),
+      areContrary(resp('include the tile into the view'), resp('exclude the tile from the view')),
     ).toBe(true)
+    // `in` is no verb's place: a locative names a time as readily as a place.
+    expect(
+      areContrary(resp('include the tile in the view'), resp('exclude the tile from the view')),
+    ).toBe(false)
   })
 
   it('keeps every preposition in the atom body', () => {

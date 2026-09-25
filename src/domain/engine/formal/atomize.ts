@@ -907,11 +907,11 @@ const PLACE_PREPOSITIONS: ReadonlySet<string> = new Set([
  * token is the verb's own place when the head ITSELF governs it ({@link AntonymEntry.governs}),
  * and then the key replaces it with the mark of that place — an empty token for the place, two
  * for the outside ({@link AntonymEntry.outside}). So "hide the alarm from the display" and "show
- * the alarm on the display" both read `the_alarm__the_display` and are contraries: for those verbs
+ * the alarm to the display" both read `the_alarm__the_display` and are contraries: for those verbs
  * the HEAD carries the direction (show vs hide) and the preposition only introduces the place.
- * When that first preposition is one the head does not govern (`within`, which no verb governs,
- * among them), the remainder has no governed key: the preposition after it modifies something
- * else, or names a deadline rather than a place.
+ * When that first preposition is one the head does not govern (a locative — `at`, `in`, `inside`,
+ * `on`, `within` — which no verb governs, among them), the remainder has no governed key: the
+ * preposition after it modifies something else, or names a time rather than a place.
  *
  * Marked, not dropped, and per verb. The mark keeps the position, and `normalize` never emits an
  * empty token, so a governed key can meet only another governed key with the same mark in the

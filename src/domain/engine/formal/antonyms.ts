@@ -132,28 +132,20 @@ export const SEED_ANTONYM_PAIRS: ReadonlyArray<readonly [string, string]> = [
 /**
  * Which place a governed preposition introduces. Every row names one `place` — where the act is
  * done, or the place it removes its object from — except `quarantine`/`release`, which name two:
- * the `place` the object is held ("quarantine the file in the vault", "release the file from the
- * vault") and the `outside` it is cut off from and returned to ("quarantine the host from the
+ * the `place` the object is held ("quarantine the file into the vault", "release the file from
+ * the vault") and the `outside` it is cut off from and returned to ("quarantine the host from the
  * network", "release the host to the network"). A mark meets only a mark for the same place, so
- * "quarantine the file in the vault" and "release the file to the vault", which both put the file
+ * "quarantine the file into the vault" and "release the file to the vault", which both put the file
  * there, are not contraries.
  */
 export type GovernedPlace = 'place' | 'outside'
-
-/**
- * The locative prepositions every row's verbs name a place with: "on the display", "at the site",
- * "inside the cabinet". Not `within`: it opens a deadline as readily as a place ("start the pump
- * within 5 seconds" / "stop the pump in 5 seconds" is consistent), and telling the two apart is a
- * phrase-classification guess no row states, so no verb governs it (spec 007 demote-not-prove C1).
- */
-const LOCATIVE = ['at', 'in', 'inside', 'on'] as const
 
 /** The goal prepositions a verb that puts its object somewhere names the place with. */
 const GOAL = ['into', 'onto', 'to'] as const
 
 /**
  * The verbs of a row whose contrary removes its object FROM the place, and deny/forbid, which take
- * their place as grant does ("deny access to the server"): the locatives and the goals.
+ * their place as grant does ("deny access to the server"): the goals.
  */
 const PUTTERS = [
   'add',
@@ -175,8 +167,9 @@ const PUTTERS = [
 ] as const
 
 /**
- * The verbs that remove their object FROM the place: the locatives and `from`. Two of them,
- * {@link RIGHT_REMOVERS}, also take `to`.
+ * The verbs that remove their object FROM the place: `from`. One of them, `revoke`, also takes
+ * `to`. Not `suspend`: its one contrary, `resume`, names the place only with a locative, which no
+ * verb governs, so a `from` after suspend meets no contrary's mark and would be dead.
  */
 const REMOVERS = [
   'conceal',
@@ -190,43 +183,7 @@ const REMOVERS = [
   'roll_back',
   'rollback',
   'seal',
-  'suspend',
   'withdraw',
-] as const
-
-/**
- * The removers that take away a RIGHT, which names its place with `to` as grant does: "revoke
- * access to the server" and "suspend access to the account" remove access where "grant access on
- * the server" and "resume access on the account" give it. The other removers' `to` is a direction
- * ("remove the item to the trash", "withdraw the funds to the account", "roll back the change to
- * the checkpoint") or not English ("hide the report to the user"), so they do not take it.
- */
-const RIGHT_REMOVERS = ['revoke', 'suspend'] as const
-
-/** The verbs of a row whose contrary takes the place with the same prepositions: the locatives. */
-const SAME_PLACE = [
-  'accept',
-  'activate',
-  'approve',
-  'close',
-  'de_energize',
-  'deactivate',
-  'decline',
-  'disable',
-  'drain',
-  'enable',
-  'energize',
-  'flood',
-  'lock',
-  'lower',
-  'open',
-  'raise',
-  'reject',
-  'resume',
-  'start',
-  'stop',
-  'unlock',
-  'unseal',
 ] as const
 
 /** `preps` as governed prepositions for one place ({@link GovernedPlace}; `place` by default). */
@@ -237,7 +194,7 @@ const places = (
 
 /**
  * The prepositions a seed verb GOVERNS: the ones that introduce the place its act is done at, to
- * or from, where the verb, not the preposition, carries the direction. "show the alarm on the
+ * or from, where the verb, not the preposition, carries the direction. "show the alarm to the
  * display" and "hide the alarm from the display" name one place, so the governed preposition is
  * marked out of a further opposition KEY and the two are contraries (atomize.ts
  * `governedReadings`). Nothing is ever dropped from the atom body.
@@ -246,37 +203,39 @@ const places = (
  * preposition ordinary requirements English uses to introduce that place, when a contrary it has
  * a ROW with may name the same place with a different one. Applied row by row:
  *
- *   - Every verb: the {@link LOCATIVE}s ("enable the feature on the device" / "disable the feature
- *     in the device").
- *   - A verb that puts its object in, on or to the place against a contrary that removes it FROM
- *     there ({@link PUTTERS}: grant/revoke, show/hide, publish/retract, add/remove, commit/roll
- *     back, …) adds the {@link GOAL}s, and deny/forbid, which take the place as grant does ("deny
- *     access to the server" / "grant access on the server"), add them too.
- *   - A verb that removes its object from the place ({@link REMOVERS}) adds `from`; that includes
- *     suspend, whose contrary resumes the object IN the place ("suspend the user from the service"
- *     / "resume the user in the service").
- *   - The two removers of a right ({@link RIGHT_REMOVERS}: revoke, suspend) add `to`, which names
- *     the place of the right as it does after grant: "revoke access to the server" / "grant
- *     access on the server", "suspend access to the account" / "resume access on the account".
- *   - connect/engage add `with` ("connect the cable with the socket" / "disconnect it from the
+ *   - A verb that puts its object into, onto or to the place against a contrary that removes it
+ *     FROM there ({@link PUTTERS}: grant/revoke, show/hide, publish/retract, add/remove,
+ *     commit/roll back, …) governs the {@link GOAL}s, and deny/forbid, which take the place as
+ *     grant does ("deny access to the server" / "grant access into the server"), govern them too.
+ *   - A verb that removes its object from the place ({@link REMOVERS}) governs `from`.
+ *   - `revoke`, the remover of a right, governs `to`, which names the place of the right as it
+ *     does after grant: "revoke access to the server" / "grant access into the server". The other
+ *     removers' `to` is a direction ("remove the item to the trash", "withdraw the funds to the
+ *     account", "roll back the change to the checkpoint") or not English ("hide the report to the
+ *     user"), so they do not take it.
+ *   - connect/engage govern `with` ("connect the cable with the socket" / "disconnect it from the
  *     socket").
  *   - quarantine/release name two places ({@link GovernedPlace}): the place the object is held
- *     (quarantine: the locatives and goals; release: the locatives and `from`) and the outside
- *     (quarantine: `from`; release: the goals and `on`, "release the host on the network").
+ *     (quarantine: the goals; release: `from`) and the outside (quarantine: `from`; release: the
+ *     goals, "release the host to the network").
  *
  * Deliberately NOT listed, because the preposition carries direction or names something other
  * than the place the contrary acts on:
  *   - `from` after any verb that does not remove its object from the place ("connect calls FROM
  *     the number" is incoming calls, and "disconnect calls TO the number" outgoing ones; "allow
  *     calls to" / "deny calls from"; "accept the bid from the vendor" names the sender).
- *   - a goal after a remover other than revoke/suspend ("withdraw the card into the tray",
+ *   - a goal after a remover other than revoke ("withdraw the card into the tray",
  *     "remove the item to the trash", "roll back the change to the checkpoint"), or after a
  *     same-place verb, where it names a direction, a target value, or the object's own complement
  *     ("open the door to the garden", "raise the level to 5", "enable transfers to the account").
  *   - `of` after drain, which is overwhelmingly possessive ("drain the tank of the pump").
- *   - `within` after any verb: it names a deadline as readily as a place ("start the pump within
- *     5 seconds" and "stop the pump in 5 seconds" are consistent; so are "in a moment" and "within
- *     a moment"), and which one it names is a guess about the phrase after it.
+ *   - a locative (`at`, `in`, `inside`, `on`, `within`) after any verb: each names a time as
+ *     readily as a place ("start the pump at ten" / "stop the pump in ten" are 10:00 and ten
+ *     minutes on; "start the pump in time" / "stop the pump on time" are early enough and
+ *     punctually; "start the pump within 5 seconds" / "stop the pump inside 5 seconds" are two
+ *     deadlines), and which one it names is a guess about the phrase after it. So two DIFFERENT
+ *     locatives are never one key; the SAME locative on both sides is one literal remainder, an
+ *     exact atom, and needs no mark.
  * An unlisted preposition keeps its place in every key, so it can only miss a contrary, never
  * invent one; the opposition-candidate tier demotes `verified` over every such pair whose
  * remainders are equal once their prepositions are removed (semantic.ts `prepositionVariant`).
@@ -306,16 +265,12 @@ export const GOVERNED_PREPOSITIONS: ReadonlyMap<
   ) => {
     for (const verb of verbs) table.set(verb, [...(table.get(verb) ?? []), ...entries])
   }
-  add([...PUTTERS, ...REMOVERS, ...SAME_PLACE], places(LOCATIVE))
   add(PUTTERS, places(GOAL))
   add(REMOVERS, places(['from']))
-  add(RIGHT_REMOVERS, places(['to']))
+  add(['revoke'], places(['to']))
   add(['connect', 'engage'], places(['with']))
-  add(['quarantine'], [...places([...LOCATIVE, ...GOAL]), ...places(['from'], 'outside')])
-  add(
-    ['release'],
-    [...places(['at', 'in', 'inside', 'from']), ...places([...GOAL, 'on'], 'outside')],
-  )
+  add(['quarantine'], [...places(GOAL), ...places(['from'], 'outside')])
+  add(['release'], [...places(['from']), ...places(GOAL, 'outside')])
   return new Map([...table].map(([verb, entries]) => [verb, new Map(entries)]))
 })()
 

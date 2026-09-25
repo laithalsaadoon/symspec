@@ -196,8 +196,8 @@ describe('every governed preposition is reachable: its contrary names the same p
   })
 
   it('a preposition neither verb governs keeps its direction: grant FROM / revoke TO', () => {
-    // `grant` takes its place with to/into/at/in/inside/on and `revoke` with from and the
-    // locatives; `grant … from` and `revoke … to` are two different places.
+    // `grant` takes its place with to/into/onto and `revoke` with from and to; `grant … from`
+    // and `revoke … to` are two different places.
     expect(
       areContrary(resp('grant calls from the number'), resp('revoke calls to the number')),
     ).toBe(false)
@@ -229,7 +229,6 @@ describe('the to/from contraries prove end to end (AC-2-1, the governed-preposit
     ['seal the sample from the air', 'expose the sample to the air'],
     ['publish the article to the portal', 'retract the article from the portal'],
     ['extend the offer to the customer', 'retract the offer from the customer'],
-    ['quarantine the message in the queue', 'release the message from the queue'],
     ['engage the clutch with the gear', 'disengage the clutch from the gear'],
   ] as const
   for (const [x, y] of TO_FROM) {
@@ -242,20 +241,10 @@ describe('the to/from contraries prove end to end (AC-2-1, the governed-preposit
 
   // Each is a direct seed row that base 669c0e9 proved as FND_CONTRADICTION and a one-preposition-
   // per-verb table lost (verifier H1-H7, B1, B3, C1n, C2, R1-R12): ordinary requirements English
-  // names one place with on, in, at, into or onto as readily as with to.
+  // names one place with into or onto as readily as with to.
   const PLACE_WORDINGS = [
-    ['show the alarm on the display', 'hide the alarm from the display'],
-    ['show the banner on the home page', 'hide the banner from the home page'],
-    ['show the warning in the dialog', 'hide the warning from the dialog'],
-    ['publish the notice on the portal', 'retract the notice from the portal'],
-    ['publish the article at the site', 'retract the article from the site'],
-    ['include the item on the invoice', 'exclude the item from the invoice'],
-    ['add the item on the list', 'remove the item from the list'],
-    ['engage the brake on the wheel', 'disengage the brake from the wheel'],
     ['extend the probe into the chamber', 'retract the probe from the chamber'],
     ['extend the ramp onto the platform', 'retract the ramp from the platform'],
-    ['expose the service on the network', 'conceal the service from the network'],
-    ['grant access on the server', 'revoke access from the server'],
     ['quarantine the file into the vault', 'release the file from the vault'],
     ['quarantine the host from the network', 'release the host to the network'],
     ['connect the cable into the socket', 'disconnect the cable from the socket'],
@@ -263,12 +252,7 @@ describe('the to/from contraries prove end to end (AC-2-1, the governed-preposit
     ['commit the change to production', 'roll back the change from production'],
     ['commit the batch to the ledger', 'roll back the batch from the ledger'],
     ['commits the batch to the ledger', 'rolls back the batch from the ledger'],
-    ['commit the change to the database', 'roll back the change in the database'],
     ['commit the batch to the ledger', 'rollback the batch from the ledger'],
-    ['enable the feature on the device', 'disable the feature in the device'],
-    ['grant access on the server', 'deny access to the server'],
-    ['remove the user in the group', 'add the user to the group'],
-    ['suspend the user from the service', 'resume the user in the service'],
   ] as const
   for (const [x, y] of PLACE_WORDINGS) {
     it(`${x} / ${y} is FND_CONTRADICTION`, async () => {
@@ -278,8 +262,47 @@ describe('the to/from contraries prove end to end (AC-2-1, the governed-preposit
     })
   }
 
+  it("a locative is no verb's place: each pair base proved through one demotes, never proves", async () => {
+    // `at`, `in`, `inside` and `on` name a time as readily as a place ("show the warning on time"
+    // / "hide the warning in time"), and which one they name is a guess about the words after
+    // them, so no row governs any of them (spec 007 demote-not-prove C1). Each pair below base
+    // 669c0e9 proved through a locative; it is now two keys, and the preposition-variant rule
+    // demotes it with a named repair (C2): write the one preposition the row governs.
+    for (const [x, y] of [
+      ['show the alarm on the display', 'hide the alarm from the display'],
+      ['show the banner on the home page', 'hide the banner from the home page'],
+      ['show the warning in the dialog', 'hide the warning from the dialog'],
+      ['publish the notice on the portal', 'retract the notice from the portal'],
+      ['publish the article at the site', 'retract the article from the site'],
+      ['include the item on the invoice', 'exclude the item from the invoice'],
+      ['add the item on the list', 'remove the item from the list'],
+      ['engage the brake on the wheel', 'disengage the brake from the wheel'],
+      ['expose the service on the network', 'conceal the service from the network'],
+      ['grant access on the server', 'revoke access from the server'],
+      ['commit the change to the database', 'roll back the change in the database'],
+      ['enable the feature on the device', 'disable the feature in the device'],
+      ['grant access on the server', 'deny access to the server'],
+      ['remove the user in the group', 'add the user to the group'],
+      ['suspend the user from the service', 'resume the user in the service'],
+      ['quarantine the message in the queue', 'release the message from the queue'],
+    ] as const) {
+      const report = await runCheck(await docOf([`${BUTTON} ${x}.`, `${BUTTON} ${y}.`]), {
+        semantic: { embedder: async (texts) => texts.map(() => Float32Array.from([1, 0])) },
+      })
+      expect(
+        report.findings.filter((f) => f.severity === 'error').map((f) => f.code),
+        `${x} / ${y}`,
+      ).toEqual([])
+      expect(
+        report.findings.map((f) => f.code),
+        `${x} / ${y}`,
+      ).toContain('FND_OPPOSITION_CANDIDATE')
+      expect(report.verified, `${x} / ${y}`).toBe(false)
+    }
+  })
+
   it('two places stay two: quarantine IN the vault / release TO the vault is no error', async () => {
-    // `quarantine` and `release` each name two places: where the object is held (quarantine in,
+    // `quarantine` and `release` each name two places: where the object is held (quarantine into,
     // release from) and the outside it is cut off from and returned to (quarantine from, release
     // to). Releasing a file TO the vault and quarantining it IN the vault both put it there.
     for (const [x, y] of [

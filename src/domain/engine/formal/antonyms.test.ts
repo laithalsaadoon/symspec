@@ -90,28 +90,28 @@ describe('the resolved seed index', () => {
       canonical: 'conceal',
       negated: false,
       opposes: ['expose', 'unseal'],
-      governs: ['at', 'from', 'in', 'inside', 'on'],
+      governs: ['from'],
       outside: [],
     })
     expect(ANTONYM_INDEX.get('conceal')).toEqual({
       canonical: 'conceal',
       negated: false,
       opposes: ['expose'],
-      governs: ['at', 'from', 'in', 'inside', 'on'],
+      governs: ['from'],
       outside: [],
     })
     expect(ANTONYM_INDEX.get('expose')).toEqual({
       canonical: 'conceal',
       negated: true,
       opposes: ['conceal', 'seal'],
-      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to'],
+      governs: ['into', 'onto', 'to'],
       outside: [],
     })
     expect(ANTONYM_INDEX.get('unseal')).toEqual({
       canonical: 'conceal',
       negated: true,
       opposes: ['seal'],
-      governs: ['at', 'in', 'inside', 'on'],
+      governs: [],
       outside: [],
     })
   })
@@ -121,48 +121,28 @@ describe('the resolved seed index', () => {
     // `connect` drop `from` too, so "connect calls FROM the number" and "disconnect calls TO the
     // number" shared a key. Identical remainders ("include/exclude the file in the box") stay one
     // key through the LITERAL reading every response keeps, so no mark has to be shared.
-    expect(ANTONYM_INDEX.get('include')?.governs).toEqual([
-      'at',
-      'in',
-      'inside',
-      'into',
-      'on',
-      'onto',
-      'to',
-    ])
-    expect(ANTONYM_INDEX.get('exclude')?.governs).toEqual(['at', 'from', 'in', 'inside', 'on'])
-    expect(ANTONYM_INDEX.get('connect')?.governs).toEqual([
-      'at',
-      'in',
-      'inside',
-      'into',
-      'on',
-      'onto',
-      'to',
-      'with',
-    ])
-    expect(ANTONYM_INDEX.get('disconnect')?.governs).toEqual(['at', 'from', 'in', 'inside', 'on'])
-    expect(ANTONYM_INDEX.get('grant')?.governs).toEqual([
-      'at',
-      'in',
-      'inside',
-      'into',
-      'on',
-      'onto',
-      'to',
-    ])
-    // revoke and suspend take away a right, which names its place with `to` as grant does
-    // ("revoke access to the server" / "grant access on the server").
-    expect(ANTONYM_INDEX.get('revoke')?.governs).toEqual(['at', 'from', 'in', 'inside', 'on', 'to'])
-    // No verb governs `within`: whether it names a place or a deadline is a guess about the words
-    // after it ("in a moment" / "within a moment"), and a guess may not create a proof.
+    expect(ANTONYM_INDEX.get('include')?.governs).toEqual(['into', 'onto', 'to'])
+    expect(ANTONYM_INDEX.get('exclude')?.governs).toEqual(['from'])
+    expect(ANTONYM_INDEX.get('connect')?.governs).toEqual(['into', 'onto', 'to', 'with'])
+    expect(ANTONYM_INDEX.get('disconnect')?.governs).toEqual(['from'])
+    expect(ANTONYM_INDEX.get('grant')?.governs).toEqual(['into', 'onto', 'to'])
+    // revoke takes away a right, which names its place with `to` as grant does ("revoke access
+    // to the server" / "grant access into the server").
+    expect(ANTONYM_INDEX.get('revoke')?.governs).toEqual(['from', 'to'])
+    // No verb governs a locative: whether `at`, `in`, `inside`, `on` or `within` names a place or
+    // a time is a guess about the words after it ("at ten" / "in ten", "in time" / "on time", "in
+    // a moment" / "within a moment"), and a guess may not create a proof.
     for (const [verb, entry] of ANTONYM_INDEX) {
-      expect(entry.governs, verb).not.toContain('within')
+      for (const p of ['at', 'in', 'inside', 'on', 'within']) {
+        expect(entry.governs, `${verb} ${p}`).not.toContain(p)
+      }
     }
     // No verb that does not remove its object FROM the place governs `from`, and no verb that
-    // does governs a goal, but for the `to` of the two removers of a right: those prepositions
+    // does governs a goal, but for the `to` of revoke, the remover of a right: those prepositions
     // carry direction ("allow calls to" / "deny calls from", "remove the item to the trash").
     // `release … to` is the one other goal after a from-verb, and it names the OTHER place.
+    // `suspend` removes, but its one contrary, `resume`, names the place only with a locative, so
+    // a `from` after suspend would meet no mark: it governs nothing.
     const removers = new Set([
       'exclude',
       'remove',
@@ -177,7 +157,6 @@ describe('the resolved seed index', () => {
       'roll_back',
       'rollback',
       'release',
-      'suspend',
     ])
     for (const [verb, entry] of ANTONYM_INDEX) {
       expect(entry.governs.includes('from'), `${verb} from`).toBe(
@@ -188,14 +167,28 @@ describe('the resolved seed index', () => {
           expect(
             entry.governs.includes(goal) && !entry.outside.includes(goal),
             `${verb} ${goal}`,
-          ).toBe(goal === 'to' && (verb === 'revoke' || verb === 'suspend'))
+          ).toBe(goal === 'to' && verb === 'revoke')
         }
       }
     }
     expect(ANTONYM_INDEX.get('quarantine')?.outside).toEqual(['from'])
-    // Every row is under the rule (A3): each seed verb has an entry, and nothing else does.
-    expect([...GOVERNED_PREPOSITIONS.keys()].sort()).toEqual(SEED_VERBS)
-    expect(ANTONYM_INDEX.get('release')?.outside).toEqual(['into', 'on', 'onto', 'to'])
+    // Every row is under the rule (A3): only seed verbs have an entry, and a verb whose every
+    // contrary names the place only with a locative (start/stop, open/close, suspend/resume, …)
+    // governs nothing, so it has none.
+    for (const verb of GOVERNED_PREPOSITIONS.keys()) expect(SEED_VERBS, verb).toContain(verb)
+    for (const verb of [
+      'start',
+      'stop',
+      'open',
+      'close',
+      'enable',
+      'disable',
+      'suspend',
+      'resume',
+    ]) {
+      expect(ANTONYM_INDEX.get(verb)?.governs, verb).toEqual([])
+    }
+    expect(ANTONYM_INDEX.get('release')?.outside).toEqual(['into', 'onto', 'to'])
     for (const [verb, entry] of ANTONYM_INDEX) {
       const places = [...(GOVERNED_PREPOSITIONS.get(verb) ?? new Map())]
       expect(entry.governs, verb).toEqual(places.map(([p]) => p).sort())
@@ -247,21 +240,21 @@ describe('a document pair that touches a seed class', () => {
       canonical: 'commit',
       negated: false,
       opposes: ['roll_back', 'rollback'],
-      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to'],
+      governs: ['into', 'onto', 'to'],
       outside: [],
     })
     expect(merged.get('commit')).toEqual({
       canonical: 'abort',
       negated: true,
       opposes: ['abort', 'roll_back', 'rollback'],
-      governs: ['at', 'in', 'inside', 'into', 'on', 'onto', 'to'],
+      governs: ['into', 'onto', 'to'],
       outside: [],
     })
     expect(merged.get('roll_back')).toEqual({
       canonical: 'abort',
       negated: false,
       opposes: ['commit'],
-      governs: ['at', 'from', 'in', 'inside', 'on'],
+      governs: ['from'],
       outside: [],
     })
   })

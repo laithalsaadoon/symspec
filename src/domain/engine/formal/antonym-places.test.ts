@@ -87,15 +87,9 @@ const resp = (text: string) => atomize({ kind: 'resp', text, systemName: 'contro
 
 describe("the first place preposition is the verb's own place, when the verb governs it", () => {
   const PROVED = [
-    // revoke and suspend take a right away where grant and resume give it: "access to X".
-    ['grant access on the server', 'revoke access to the server'],
-    ['grant permissions on the folder', 'revoke permissions to the folder'],
-    ['authorize access in the building', 'revoke access to the building'],
-    ['permit entry in the zone', 'revoke entry to the zone'],
+    // revoke takes a right away where grant gives it: "access to X".
     ['revoke access to the database', 'grant access into the database'],
-    ['authorize permission on the repository', 'revoke permission to the repository'],
     ['allow access into the vault', 'revoke access to the vault'],
-    ['suspend access to the account', 'resume access on the account'],
   ] as const
   for (const [x, y] of PROVED) {
     it(`${x} / ${y} is FND_CONTRADICTION`, async () => {
@@ -169,6 +163,57 @@ describe("the first place preposition is the verb's own place, when the verb gov
     expect(
       areContrary(resp('start the pump in a moment'), resp('stop the pump within a moment')),
     ).toBe(false)
+  })
+
+  it('no verb governs a locative: two different locatives demote, one locative is one atom', async () => {
+    // `at`, `in`, `on` and `inside` name a time as readily as a place ("start the pump at ten" /
+    // "stop the pump in ten": 10:00 and ten minutes on; "in time" / "on time": early enough and
+    // punctually), and which one they name is a guess about the phrase after them, so no row
+    // governs any of them (spec 007 demote-not-prove C1). Two DIFFERENT locatives are two keys,
+    // and the preposition-variant rule demotes the pair (C2) with a named repair.
+    for (const [x, y] of [
+      ['start the pump at ten', 'stop the pump in ten'],
+      ['open the gate at seven', 'close the gate in seven'],
+      ['show the warning on time', 'hide the warning in time'],
+      ['enable the alarm on the hour', 'disable the alarm in the hour'],
+      ['start the pump in the end', 'stop the pump at the end'],
+      ['start the pump inside 5 seconds', 'stop the pump in 5 seconds'],
+      ['start the pump inside a moment', 'stop the pump in a moment'],
+      ['lock the door inside a minute', 'unlock the door in a minute'],
+      ['start the pump in time', 'stop the pump on time'],
+      ['grant access in time', 'revoke access on time'],
+      ['start the timer in the hour', 'stop the timer on the hour'],
+      ['enable the feature on the device', 'disable the feature in the device'],
+      // Base 669c0e9 proved these through a locative the right's grantor was written with.
+      ['grant access on the server', 'revoke access to the server'],
+      ['grant permissions on the folder', 'revoke permissions to the folder'],
+      ['authorize access in the building', 'revoke access to the building'],
+      ['permit entry in the zone', 'revoke entry to the zone'],
+      ['authorize permission on the repository', 'revoke permission to the repository'],
+      ['suspend access to the account', 'resume access on the account'],
+    ] as const) {
+      const report = await reportParallel(x, y)
+      expect(
+        report.findings.filter((f) => f.severity === 'error').map((f) => f.code),
+        `${x} / ${y}`,
+      ).toEqual([])
+      expect(
+        report.findings.map((f) => f.code),
+        `${x} / ${y}`,
+      ).toContain('FND_OPPOSITION_CANDIDATE')
+      expect(report.verified, `${x} / ${y}`).toBe(false)
+    }
+    // The SAME locative on both sides is one literal remainder, an exact atom: still proved.
+    for (const [x, y] of [
+      ['start the pump at ten', 'stop the pump at ten'],
+      ['show the warning on time', 'hide the warning on time'],
+      ['enable the feature in the device', 'disable the feature in the device'],
+    ] as const) {
+      expect(await contradictionsOf([`${BUTTON} ${x}.`, `${BUTTON} ${y}.`]), `${x} / ${y}`).toEqual(
+        [[idOf(1), idOf(2)]],
+      )
+    }
+    expect(areContrary(resp('start the pump at ten'), resp('stop the pump in ten'))).toBe(false)
   })
 
   it('a left-out locative is no key: the pair demotes, never certifies', async () => {
