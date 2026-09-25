@@ -90,6 +90,7 @@ import {
   glossaryContraries,
   glossaryIndex,
   makeAtomize,
+  makeDigitSeparatorFoldAtomize,
   normalize,
   type Opposition,
   termIndex,
@@ -116,6 +117,7 @@ import {
   type EncodableRequirement,
   type EncodedRequirement,
   encode,
+  toEncodable,
 } from '../formal/encode.ts'
 import { attachEvidenceToAll, type Evidence } from '../formal/finding.ts'
 import { buildSimilarityGraph, type GraphRequirement } from '../formal/graph.ts'
@@ -125,7 +127,8 @@ import {
   type GroupChecker,
   SolverBudgetExceededError,
 } from '../formal/needs-review.ts'
-import { actionOccurrences, extractNumericPredicates } from '../formal/numeric.ts'
+import { findNumberSpellingCandidates } from '../formal/number-spelling.ts'
+import { actionOccurrences, type NumericPredicate, requirementBounds } from '../formal/numeric.ts'
 import { analyzeNumericBounds } from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
 import { findRelationalUnchecked } from '../formal/relational.ts'
@@ -143,7 +146,7 @@ import { earsToTemporal, G, tAnd, tAtom, tNot } from '../formal/temporal-pattern
 import { checkVacuity } from '../formal/vacuity.ts'
 import { checkGtWRules, checkGtWRulesSet } from '../lint/gtwr.ts'
 import { type FormalTierResult, runSolvers } from '../solvers/index.ts'
-import { asView, type ReqView } from '../solvers/types.ts'
+import { asView } from '../solvers/types.ts'
 import { type Exclusion, excludedIds, gateRequirements, namesExactly } from './gate.ts'
 
 /** Which pipeline tier produced a finding. */
@@ -422,6 +425,13 @@ export interface CoverageDemotion {
     // or split an atom the document already shares, and a rewrite is the route instead) or by
     // waiving the finding (declared distinct) — the finding is the triage record.
     | 'opposite-polarity-near-duplicate'
+    // AC-2-4: two requirements write one phrase with numbers that differ only in a digit
+    // separator (`1.5` / `1,5`, `1_500` / `1.500`), so they sit on two atoms and were never
+    // compared. Whether they are one number turns on the decimal convention, which no closed
+    // rule fixes, so the pair is demoted and never proved. Discharged by spelling the number
+    // identically in both (one atom, compared by the solver) or by waiving the
+    // FND_NUMBER_SPELLING_CANDIDATE finding for the pair when they are different numbers.
+    | 'number-spelling-candidate'
     // A committed glossary entry names two CONTRARIES as one action ("open the door" with alias
     // "close the door"). With the antonym table's ¬(A ∧ B) that entry makes both actions
     // impossible, which no requirement is checked against, so the atomizer keeps each contrary
@@ -614,6 +624,7 @@ const PROPOSE_ONLY_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
   'FND_QUANTITY_ALIAS_CANDIDATE',
   'FND_RELATIONAL_UNCHECKED',
   'FND_NUMERIC_UNCOMPARED',
+  'FND_NUMBER_SPELLING_CANDIDATE',
   // The completeness heuristic names its whole same-trigger group, so it always
   // spans ≥2 ids — but its solver answer is fixed by the encoding, not read off
   // the document: `encode` emits every `pre` row positive, and a disjunction of
@@ -649,6 +660,7 @@ const COVERAGE_GAP_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
   'FND_QUANTITY_ALIAS_CANDIDATE',
   'FND_RELATIONAL_UNCHECKED',
   'FND_NUMERIC_UNCOMPARED',
+  'FND_NUMBER_SPELLING_CANDIDATE',
   'FND_INCOMPLETE',
   'FND_NEEDS_REVIEW',
 ])
@@ -790,33 +802,6 @@ function docAntonymIndex(doc: Doc): ReadonlyMap<string, AntonymEntry> | undefine
 }
 
 /**
- * Conservative leading-negator scan for stored response text (see header). `not only`
- * opens "not only X but also Y", a positive obligation, so it is not a negator.
- */
-const LEADING_NEGATOR = /^(?:(?:do(?:es)?\s+)?not(?!\s+only\b)|never)\s+/i
-
-/**
- * Project a stored requirement into the encodable view, resolving negation.
- *
- * The persisted `negated` flag (C1) is authoritative: when it is set, the
- * stored `systemResponse` is already the positive atom, so it passes through
- * untouched with `negated: true`. Only when the flag is absent/false do we
- * fall back to the conservative leading-negator text scan (for hand-authored
- * docs that baked "not …" into the response), stripping it to the positive
- * atom.
- */
-export function toEncodable(view: ReqView): EncodableRequirement {
-  if (view.negated === true) return { ...view, negated: true }
-  const match = LEADING_NEGATOR.exec(view.systemResponse)
-  if (match === null) return view
-  return {
-    ...view,
-    systemResponse: view.systemResponse.slice(match[0].length),
-    negated: true,
-  }
-}
-
-/**
  * The CO-LIVENESS context key: BOTH guard slots, never `trigger` alone.
  *
  * Two requirements' obligations hold together only when their guards can hold
@@ -879,6 +864,19 @@ function guardKeyOf(r: {
  */
 function pipelineAtomize(doc: Doc): Atomize {
   return makeAtomize(glossaryIndex(doc.glossary), docAntonymIndex(doc), termIndex(doc.terms ?? []))
+}
+
+/**
+ * {@link pipelineAtomize} in digit-separator fold space, over the same committed tables: the
+ * PROPOSE-only encoding `findNumberSpellingCandidates` compares against the real one. Built from
+ * the same three indexes, so a table threaded into one and not the other cannot compile away.
+ */
+function pipelineDigitSeparatorFoldAtomize(doc: Doc): Atomize {
+  return makeDigitSeparatorFoldAtomize(
+    glossaryIndex(doc.glossary),
+    docAntonymIndex(doc),
+    termIndex(doc.terms ?? []),
+  )
 }
 
 /**
@@ -1503,22 +1501,12 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // co-assert its bounds with everything. `encode` is pure and Z3-free, so the
       // extra encodings cost no solver time.
       const quantityAliases = glossaryIndex(doc.glossary)
-      // The response is read through the SAME negation view the propositional tier
-      // encodes (`toEncodable`): the stored `negated` flag, or a leading `not`/`never`
-      // stripped from hand-authored text. `shall not … above 30 seconds` bounds the
-      // quantity at `<= 30 s`; read without the flag it asserted `> 30 s` (spec 007
-      // AC-2-6).
-      const responseBounds = (r: (typeof reqs)[number]) => {
-        const view = toEncodable(r)
-        const negated = view.negated === true
-        return extractNumericPredicates(
-          view.systemResponse,
-          r.systemName,
-          'resp',
-          quantityAliases,
-          negated,
-        )
-      }
+      // `requirementBounds` reads the response through the SAME negation view the
+      // propositional tier encodes (`toEncodable`): the stored `negated` flag, or a leading
+      // `not`/`never` stripped from hand-authored text. `shall not … above 30 seconds`
+      // bounds the quantity at `<= 30 s`; read without the flag it asserted `> 30 s` (spec
+      // 007 AC-2-6). The R6 lint reads its bounds through the same function.
+      //
       // A response that does an action asserts its occurrence, which is what two opposed
       // prohibitions on it (`shall not keep the door unlocked above 30 seconds`, `... below 40
       // seconds`) cannot both survive: at every place a bound could stand, keyed as that bound's
@@ -1530,10 +1518,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // seconds` a delay, while both keep the door unlocked, so a bound response keys its
       // prefixes too. Its whole text, bound included, names no action, and is not one of them.
       // Never a prohibition's: `shall not keep the door unlocked` does not do the action.
-      const occurrencesOf = (
-        r: (typeof reqs)[number],
-        response: ReturnType<typeof extractNumericPredicates>,
-      ) => {
+      const occurrencesOf = (r: (typeof reqs)[number], response: readonly NumericPredicate[]) => {
         const view = toEncodable(r)
         if (view.negated === true) return []
         const sourceText = view.systemResponse.trim()
@@ -1548,7 +1533,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         return [...bound, ...prefixes].map((a) => ({ ...a, sourceText }))
       }
       const numericReqPreds = reqs.map((r) => {
-        const response = responseBounds(r)
+        const predicates = requirementBounds(r, quantityAliases).map((b) => b.predicate)
+        const response = predicates.filter((p) => p.slot === 'resp')
         return {
           id: r.id,
           contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
@@ -1558,15 +1544,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
             : {
                 response: { systemName: r.systemName, text: toEncodable(r).systemResponse.trim() },
               }),
-          predicates: [
-            ...response,
-            ...(r.trigger !== undefined
-              ? extractNumericPredicates(r.trigger, r.systemName, 'trig', quantityAliases)
-              : []),
-            ...(r.preCondition !== undefined
-              ? extractNumericPredicates(r.preCondition, r.systemName, 'pre', quantityAliases)
-              : []),
-          ],
+          predicates,
         }
       })
       // The decide half (`contradictions`) and what it declined to decide (`uncompared`,
@@ -1594,6 +1572,23 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           guardKey: guardKeyOf(r),
           predicates: predsById.get(r.id) ?? [],
         })),
+      )
+
+      // AC-2-4: a phrase whose numbers differ only in a digit separator is two atoms, and no
+      // closed rule says whether they are one number. Propose-only: name the pair so it is
+      // demoted, never silently covered. Over EVERY requirement, gate-excluded ones too, encoded
+      // through the solver's own atomizer: a `1_500 ms` that R6 keeps out is still half of a
+      // pair 669c0e9 proved against `1.500 ms`, and only a pair demotion names its partner. A
+      // propose-only demotion over an untrusted slot can only withhold `verified`.
+      //
+      // A committed glossary or term alias is a spelling too: an alias written `1,5 m pipe`
+      // no longer matches a body that spells `1.5 m pipe`, so the table rewrites one side only
+      // and the two atoms' folds differ. Each requirement is therefore also encoded in fold
+      // space, tables included, and a pair that shares an atom THERE is named as well.
+      const foldAtomize = pipelineDigitSeparatorFoldAtomize(doc)
+      const numberSpellingCandidates = findNumberSpellingCandidates(
+        reqs.map((r) => encodedById.get(r.id) ?? encode(toEncodable(r), atomize)),
+        reqs.map((r) => encode(toEncodable(r), foldAtomize)),
       )
 
       // Issue #2 (reproducer b + aggregate/relational families): detect the
@@ -1773,6 +1768,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         ...graph,
         ...opposition,
         ...quantityAliasCandidates,
+        ...numberSpellingCandidates,
         ...numericUncompared,
       ]) {
         formal.push({
@@ -2060,6 +2056,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   const quantityAliasFindings = kept.filter((f) => f.code === 'FND_QUANTITY_ALIAS_CANDIDATE')
   const relationalFindings = kept.filter((f) => f.code === 'FND_RELATIONAL_UNCHECKED')
   const numericUncomparedFindings = kept.filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
+  const numberSpellingFindings = kept.filter((f) => f.code === 'FND_NUMBER_SPELLING_CANDIDATE')
 
   const demotions: CoverageDemotion[] = []
   if (requirements.length >= 2) {
@@ -2159,6 +2156,20 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           "(the finding's message says which reading splits them). Restate them in one sense and " +
           'one recognized unit so the numeric tier can decide them, or waive this finding once you ' +
           'have checked they are consistent. Then re-run `symspec check`.',
+      })
+    }
+    // AC-2-4: a number spelled with two digit separators. Off the KEPT set, so the reviewed
+    // waiver that declares the two numbers different discharges it.
+    for (const f of numberSpellingFindings) {
+      demotions.push({
+        reason: 'number-spelling-candidate',
+        requirementIds: [...f.requirementIds],
+        action:
+          `${f.requirementIds.join(' and ')} write one phrase with numbers that differ only in a ` +
+          'digit separator, on two atoms the solver never compared. If they are one number, ' +
+          'rewrite one with `symspec update` so both spell it identically, then re-run `symspec ' +
+          'check`: the shared atom makes any conflict provable. If they are different numbers, ' +
+          'waive FND_NUMBER_SPELLING_CANDIDATE for the pair.',
       })
     }
     // AC-3-6: an untriaged opposite-polarity inflection variant is a possible

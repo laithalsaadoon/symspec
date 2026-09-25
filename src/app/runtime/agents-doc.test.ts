@@ -99,11 +99,11 @@ describe('every operation is projected, with the table`s own summary', () => {
   })
 })
 
-describe('all 87 codes are projected, in all three families', () => {
+describe('all 88 codes are projected, in all three families', () => {
   it('names every code from every catalog', () => {
     const rendered = doc()
     const codes = allCodes()
-    expect(codes).toHaveLength(87)
+    expect(codes).toHaveLength(88)
     for (const row of codes) {
       expect(rendered, `${row.code} is missing`).toContain(`\`${row.code}\``)
     }

@@ -27,8 +27,9 @@
  * a fabricated constraint.
  */
 
+import type { ReqView } from '../solvers/types.ts'
 import { type AtomKind, DIGIT_SEPARATOR, normalize, normalizeScope } from './atomize.ts'
-import type { NumericComparator } from './encode.ts'
+import { type NumericComparator, toEncodable } from './encode.ts'
 
 /**
  * The EARS slot a numeric predicate was read out of, in the atomizer's own
@@ -559,12 +560,20 @@ const COMPARATOR_LEXICON: ReadonlyArray<{ phrase: string; comparator: NumericCom
  * read `at least 1,5 seconds` as fifteen seconds. Declining is a miss; any reading
  * of `1,5` is a guess about the author's locale.
  *
+ * The same lookahead refuses a number that runs on into a digit group this token does not
+ * read: `_<digit>` (`2_000_000`), a quote then a digit (`2'000`, `2’000`), or whitespace then
+ * exactly three digits (`2 000 000`, with a space or a no-break space). The token used to read the
+ * leading group alone, as a unitless `<= 2`, and prove `respond within 2_000_000 ms` against
+ * `respond in at least 3_000 ms`, which is consistent. Reading the whole group instead would be a
+ * rule R6 does not share: its digit run treats each such group as its own number (`gtwr.ts`). So
+ * the number is declined, and a declined number is no predicate and no proof.
+ *
  * Scientific notation is read with its exponent (`1e3 ms` is 1000 ms, `1.5E-3 s` is 1.5
  * ms). Without it, `1e3 ms` was the number `1` in the unit `e`, and `at most 1e3 ms`
  * against `at least 5e2 ms` was `<= 1 ∧ >= 5`. An exponent of more than three digits is
  * refused whole by the same lookahead, never read as a prefix of itself.
  */
-const NUMBER = String.raw`((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d{1,3})?)(?!\d|[.,]\d|[eE][+-]?\d)`
+const NUMBER = String.raw`((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d{1,3})?)(?!\d|[.,_'\u2019]\d|[eE][+-]?\d|\s\d{3}(?!\d))`
 
 /**
  * The normalized {@link NumericPredicate.qualifier} of the text after a bound: ALL of it,
@@ -1126,6 +1135,18 @@ function readUnit(rest: string): { raw: string; length: number } {
 }
 
 /**
+ * Whether the text right after a number opens a unit this tier CONVERTS: one that
+ * {@link readUnit} reads and a {@link DIMENSIONS} entry resolves, by the same
+ * case-sensitive symbol and case-insensitive word lookup a bound is normalized with.
+ * Exported so the R6 missing-units lint reads units off this table rather than a copy of
+ * it: a spelling this tier compares arithmetically can never be one R6 calls missing.
+ */
+export function opensConvertedUnit(rest: string): boolean {
+  const unit = readUnit(rest)
+  return unit.raw !== '' && resolveUnit(unit.raw) !== null
+}
+
+/**
  * Normalize a number and its raw unit into the bound's dimension, base unit, and
  * exact value. An unrecognized unit is not dropped: it keys on its own raw text, so
  * `9 months` meets `3 months` and never `1 year`. Keyed on `''`, every unknown unit
@@ -1259,6 +1280,16 @@ function quantityKey(
 const KEY_PUNCTUATION = new RegExp(String.raw`(?:(?!${DIGIT_SEPARATOR})[^\p{L}\p{N}])+`, 'gu')
 
 /**
+ * The quantity subject of a bound: its {@link NumericPredicate.label}, and where each of
+ * the label's words sits in the slot text it was read from.
+ */
+interface Subject {
+  readonly label: string
+  /** `[start, end)` of each label word, in order, as offsets into the slot text. */
+  readonly words: ReadonlyArray<readonly [number, number]>
+}
+
+/**
  * Candidate quantity label: the noun-ish phrase that owns the numeric bound —
  * EVERY word before the comparator phrase (e.g. "the primary shard replication
  * lag at most 10 ms" → "primary shard replication lag"), less trailing filler and
@@ -1296,14 +1327,15 @@ const KEY_PUNCTUATION = new RegExp(String.raw`(?:(?!${DIGIT_SEPARATOR})[^\p{L}\p
  * reads off closed-class words; any other carries its whole slot as its qualifier, and its pairs
  * are disclosed (spec 007 C1/C2).
  */
-function labelBefore(text: string, comparatorStart: number): string | null {
-  const before = text.slice(0, comparatorStart).trim()
-  if (before === '') return null
+function subjectBefore(text: string, comparatorStart: number): Subject | null {
+  const before = text.slice(0, comparatorStart)
   // A word is any run carrying a letter or a digit in ANY script (AC-2-6). Keeping
   // only Latin letters dropped `1` from `hold zone 1 temperature` and `温度` from
   // `keep the 温度 reading`, so two zones' temperatures, or temperature and
   // humidity, were one quantity key and their bounds one conflict.
-  let words = before.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w))
+  let words = [...before.matchAll(/\S+/g)]
+    .filter((m) => /[\p{L}\p{N}]/u.test(m[0]))
+    .map((m) => ({ word: m[0], span: [m.index, m.index + m[0].length] as const }))
   if (words.length === 0) return null
   // Strip TRAILING prepositions/fillers so "respond in", "respond in no" and
   // "respond" all normalize to the same quantity — otherwise a unit/phrasing
@@ -1336,12 +1368,23 @@ function labelBefore(text: string, comparatorStart: number): string | null {
   // surfaced by the PROPOSE-ONLY quantity-alias detector (quantity-alias.ts),
   // where lenient object-matching is sound because it can only DEMOTE and
   // suggest a glossary alias — never assert a contradiction.
-  while (words.length > 1 && TRAILING_FILLER.has(words[words.length - 1]!.toLowerCase())) {
+  while (words.length > 1 && TRAILING_FILLER.has(words[words.length - 1]!.word.toLowerCase())) {
     words = words.slice(0, -1)
   }
-  const phrase = words.join(' ')
+  const phrase = words.map((w) => w.word).join(' ')
   // Strip leading verb-ish stopwords so "shall respond with latency" → "latency".
-  return phrase.replace(/^(?:shall|be|is|are|the|a|an|with|of|to|have|has)\s+/i, '').trim() || null
+  const label =
+    phrase.replace(/^(?:shall|be|is|are|the|a|an|with|of|to|have|has)\s+/i, '').trim() || null
+  if (label === null) return null
+  // The strip removes exactly one whole leading word when it fires, since the words were
+  // joined on single spaces and the pattern needs whitespace after the stopword.
+  const kept = label === phrase ? words : words.slice(1)
+  return { label, words: kept.map((w) => w.span) }
+}
+
+/** The {@link NumericPredicate.label} {@link subjectBefore} reads, without its word spans. */
+function labelBefore(text: string, comparatorStart: number): string | null {
+  return subjectBefore(text, comparatorStart)?.label ?? null
 }
 
 /** The comparator of `NOT (x <c> v)`: exact, because the comparison is atomic. */
@@ -1479,10 +1522,10 @@ function precedingWord(text: string, end: number): { word: string; start: number
  */
 function negateResponse(
   text: string,
-  preds: readonly NumericPredicate[],
+  preds: readonly SubjectBound[],
   declined: number,
   claimed: ReadonlyArray<readonly [number, number]>,
-): NumericPredicate[] {
+): SubjectBound[] {
   const [only] = preds
   // Exactly one comparator phrase claimed a number, and it became the one predicate.
   if (claimed.length !== 1 || preds.length !== 1 || only === undefined) return []
@@ -1493,12 +1536,16 @@ function negateResponse(
   // `NOT (x < 30 s ∧ drill)`, and `x >= 30 s` alone forbids what the drill clause
   // permits.
   if (/[\p{L}\p{N}]/u.test(text.slice(claimed[0]![1]))) return []
+  const { predicate } = only
   return [
     {
       ...only,
-      comparator: NEGATE[only.comparator],
-      negated: true,
-      sourceText: `not ${only.sourceText}`,
+      predicate: {
+        ...predicate,
+        comparator: NEGATE[predicate.comparator],
+        negated: true,
+        sourceText: `not ${predicate.sourceText}`,
+      },
     },
   ]
 }
@@ -1530,16 +1577,42 @@ export function extractNumericPredicates(
   quantityAliases?: ReadonlyMap<string, string>,
   negated = false,
 ): NumericPredicate[] {
+  return readBounds(text, systemName, slot, quantityAliases, negated).map((b) => b.predicate)
+}
+
+/**
+ * A bound {@link extractNumericPredicates} reads, with where its quantity subject and its
+ * number sit. Both are offsets into the text the bound was read from.
+ */
+export interface SubjectBound {
+  readonly predicate: NumericPredicate
+  /** `[start, end)` of each word of `predicate.label`, in order. */
+  readonly subjectWords: ReadonlyArray<readonly [number, number]>
+  /** `[start, end)` of the number the bound's value was read from (`1,500` in `1,500 ms`). */
+  readonly numberSpan: readonly [number, number]
+}
+
+/** {@link extractNumericPredicates}, keeping each bound's subject word spans. */
+function readBounds(
+  text: string,
+  systemName: string,
+  slot: PredicateSlot,
+  quantityAliases: ReadonlyMap<string, string> | undefined,
+  negated: boolean,
+): SubjectBound[] {
   if (negated && slot !== 'resp') {
     throw new RangeError('numeric: only a response is negated by its modal')
   }
   // Each bound with the span it was read from, so its qualifier can be settled once every
-  // bound in the slot is claimed (`qualifierAt`).
+  // bound in the slot is claimed (`qualifierAt`), and with where its subject words and its
+  // number sit, for R6 (`SubjectBound`).
   const out: Array<{
     pred: Omit<NumericPredicate, 'qualifier'>
     start: number
     end: number
     unheld: string | undefined
+    subjectWords: SubjectBound['subjectWords']
+    numberSpan: SubjectBound['numberSpan']
   }> = []
   const lower = text.toLowerCase()
   // Comparator phrases that introduced a bound this function then declined to read.
@@ -1622,11 +1695,12 @@ export function extractNumericPredicates(
       }
       if (reading.invert) cmpr = FLIP[cmpr]
 
-      const label = labelBefore(text, labelEnd)
-      if (label === null) {
+      const subject = subjectBefore(text, labelEnd)
+      if (subject === null) {
         declined += 1
         continue
       }
+      const { label } = subject
 
       const { exact, difference, days, dimension, baseUnit } = bound
 
@@ -1645,6 +1719,11 @@ export function extractNumericPredicates(
           slot,
           sourceText: text.slice(labelEnd, end).trim(),
         },
+        subjectWords: subject.words,
+        numberSpan: [
+          idx + phrase.length + m[0].length - m[1]!.length,
+          idx + phrase.length + m[0].length,
+        ],
         start: idx,
         end,
         // A guard's subject is predicated by its own copula: the guard, not an obligation.
@@ -1674,7 +1753,7 @@ export function extractNumericPredicates(
     undefined,
   )
   const preds = dedupe(
-    out.map(({ pred, start, end, unheld }) => {
+    out.map(({ pred, start, end, unheld, subjectWords, numberSpan }): SubjectBound => {
       const { qualifier, clause } = qualifierAt(
         text,
         start,
@@ -1683,15 +1762,19 @@ export function extractNumericPredicates(
         pred.dimension,
         unheld,
       )
-      if (qualifier === undefined) return pred
+      if (qualifier === undefined) return { predicate: pred, subjectWords, numberSpan }
       // An unmarked time bound before other text may be a delay from its event, not a
       // magnitude of the response ({@link BoundRole} `anchored`).
       const anchored = pred.role === '' && timeLike(pred.dimension)
       return {
-        ...pred,
-        ...(anchored ? { role: 'anchored' as const } : {}),
-        qualifier,
-        ...(clause !== undefined ? { clause } : {}),
+        predicate: {
+          ...pred,
+          ...(anchored ? { role: 'anchored' as const } : {}),
+          qualifier,
+          ...(clause !== undefined ? { clause } : {}),
+        },
+        subjectWords,
+        numberSpan,
       }
     }),
   )
@@ -1792,10 +1875,11 @@ export function actionOccurrences(
  * record's identity, and a key over a proper subset of the fields is a merge
  * waiting for the first caller that folds two slots together.
  */
-function dedupe(preds: NumericPredicate[]): NumericPredicate[] {
+function dedupe(bounds: SubjectBound[]): SubjectBound[] {
   const seen = new Set<string>()
-  const out: NumericPredicate[] = []
-  for (const p of preds) {
+  const out: SubjectBound[] = []
+  for (const bound of bounds) {
+    const p = bound.predicate
     const key = JSON.stringify([
       p.slot,
       p.quantity,
@@ -1812,7 +1896,46 @@ function dedupe(preds: NumericPredicate[]): NumericPredicate[] {
     ])
     if (seen.has(key)) continue
     seen.add(key)
-    out.push(p)
+    out.push(bound)
   }
   return out
+}
+
+/**
+ * Every bound the numeric tier reads out of one stored requirement: its response, read
+ * through the requirement's polarity ({@link toEncodable}: the stored `negated` flag, or a
+ * leading `not`/`never` stripped from hand-authored text), then its trigger, then its
+ * precondition. `check` hands exactly these predicates to the decide tier, and the R6 lint
+ * asks the same function which numerals sit inside a bound's subject, so the two can never
+ * disagree about which bounds a requirement carries.
+ *
+ * `subjectWords` and `numberSpan` are offsets into the STORED slot text (`r.systemResponse`,
+ * `r.trigger`, `r.preCondition`), so a stripped leading negator is added back.
+ */
+export function requirementBounds(
+  r: ReqView,
+  quantityAliases?: ReadonlyMap<string, string>,
+): SubjectBound[] {
+  const view = toEncodable(r)
+  const shift = r.systemResponse.length - view.systemResponse.length
+  const response = readBounds(
+    view.systemResponse,
+    r.systemName,
+    'resp',
+    quantityAliases,
+    view.negated === true,
+  ).map((b) => ({
+    ...b,
+    subjectWords: b.subjectWords.map(([start, end]) => [start + shift, end + shift] as const),
+    numberSpan: [b.numberSpan[0] + shift, b.numberSpan[1] + shift] as const,
+  }))
+  return [
+    ...response,
+    ...(r.trigger !== undefined
+      ? readBounds(r.trigger, r.systemName, 'trig', quantityAliases, false)
+      : []),
+    ...(r.preCondition !== undefined
+      ? readBounds(r.preCondition, r.systemName, 'pre', quantityAliases, false)
+      : []),
+  ]
 }

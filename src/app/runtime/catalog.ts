@@ -294,6 +294,7 @@ const FND_TIER = {
   FND_QUANTITY_ALIAS_CANDIDATE: 'formal',
   FND_RELATIONAL_UNCHECKED: 'formal',
   FND_NUMERIC_UNCOMPARED: 'formal',
+  FND_NUMBER_SPELLING_CANDIDATE: 'formal',
 } as const satisfies Record<(typeof FND_CODES)[number], 'structural' | 'lint' | 'formal'>
 
 /**

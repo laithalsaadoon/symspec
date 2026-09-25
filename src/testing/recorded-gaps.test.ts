@@ -1,20 +1,24 @@
 /**
- * RECORDED GAPS: consistent documents the tool still gets wrong, pinned at their CURRENT wrong
- * outcome (spec 007 invariant I-5, the pattern of `fabrication.test.ts`'s "the recorded gap is
- * still open").
+ * RECORDED GAPS: consistent documents the tool still gets wrong, and residuals a verification
+ * round found and a bounded close-out round did not fix, each pinned at its CURRENT wrong outcome
+ * (spec 007 invariant I-5, "a deletion is a finding"; the pattern of `fabrication.test.ts`'s "the
+ * recorded gap is still open").
  *
- * Each gap rests on an ambiguity English does not mark: which phrase a prepositional phrase
- * attaches to, whether a preposition names a time or a place, which sense a verb has. No closed
- * rule over the words tells the readings apart, so under the demote-not-prove contract another
- * heuristic would buy each case with many honest proofs. The owner is the controlled vocabulary
- * (spec 007 Phase 3, Story 4: the author binds each phrase to a declared symbol) or the typed
- * quantities and IR (Phase 4, typed-atom slices 10-14).
+ * Each test builds the residual's document, runs `check`, and asserts the wrong outcome, with a
+ * comment that names why it is wrong, who owns the fix, and what the right outcome is. Most rest
+ * on an ambiguity English does not mark: which phrase a prepositional phrase attaches to, whether
+ * a preposition names a time or a place, which sense a verb has. No closed rule over the words
+ * tells the readings apart, so under the demote-not-prove contract another heuristic would buy
+ * each case with many honest proofs. The owner is the controlled vocabulary (spec 007 Phase 3,
+ * Story 4: the author binds each phrase to a declared symbol) or the typed quantities and IR
+ * (Phase 4, typed-atom slices 10-14).
  *
- * Every assertion here states the WRONG outcome, and the comment beside it names the correct one.
- * A fix therefore turns this file red, and the gap is retired on purpose, by deleting its case,
+ * These are not endorsements of the wrong outcome. A fix turns this file red, and whoever lands
+ * it retires the gap on purpose, by deleting its case and adding a guard for the right outcome,
  * not by a later change that silently moves it.
  *
- * One `describe` per owning group, so groups append without touching each other's block.
+ * One `describe('recorded gaps: <group>')` block per owning group, each with its own helpers, so
+ * groups append without touching each other's block.
  */
 
 import { describe, expect, it } from 'vitest'

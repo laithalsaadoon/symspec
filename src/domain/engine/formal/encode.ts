@@ -282,6 +282,38 @@ export interface EncodedRequirement {
 export type EncodableRequirement = ReqView & { negated?: boolean }
 
 /**
+ * Conservative leading-negator scan for stored response text (see `pipeline/check.ts`'s
+ * "Stored negation view"). `not only`
+ * opens "not only X but also Y", a positive obligation, so it is not a negator.
+ */
+const LEADING_NEGATOR = /^(?:(?:do(?:es)?\s+)?not(?!\s+only\b)|never)\s+/i
+
+/**
+ * Project a stored requirement into the encodable view, resolving negation.
+ *
+ * The persisted `negated` flag (C1) is authoritative: when it is set, the
+ * stored `systemResponse` is already the positive atom, so it passes through
+ * untouched with `negated: true`. Only when the flag is absent/false do we
+ * fall back to the conservative leading-negator text scan (for hand-authored
+ * docs that baked "not …" into the response), stripping it to the positive
+ * atom.
+ *
+ * Lives beside {@link EncodableRequirement} so every reader of a stored requirement's
+ * polarity — the solver tiers through `check.ts`, the numeric tier's bound reader, and
+ * the lint that asks which bounds that reader extracts — resolves it through one function.
+ */
+export function toEncodable(view: ReqView): EncodableRequirement {
+  if (view.negated === true) return { ...view, negated: true }
+  const match = LEADING_NEGATOR.exec(view.systemResponse)
+  if (match === null) return view
+  return {
+    ...view,
+    systemResponse: view.systemResponse.slice(match[0].length),
+    negated: true,
+  }
+}
+
+/**
  * True when a slot carries no atomizable content, so it must be OMITTED rather
  * than atomized (AC-2-7, divergence 9).
  *

@@ -691,13 +691,68 @@ export const SYMBOL_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
 
 /**
  * A `,` or `.` BETWEEN two digits: part of the number, not punctuation (spec 007 AC-2-4). It
- * decides which number it is: the numeric tier's NUMBER reader takes `1,500` as 1500 and `1.500`
- * as 1.5, so a key that deletes it merges two numbers. Keeping it can only SPLIT a key: `1,500`,
- * `1.500` and `1500` are three spellings, and one spelling is still one. The numeric tier's
- * quantity key keeps it inside its number (`numeric.ts` `quantityKey`). One definition, as a
- * regex source string, so each consumer composes it into its own pattern.
+ * decides which number it is. The numeric tier's NUMBER token reads `1,500 ms` as 1500 ms and
+ * `1.500 ms` as 1.5 ms, so deleting the separator gave both the atom `…_1_500_ms`, and the
+ * propositional tier read two jointly satisfiable bounds (at most 1500 ms, more than 1.5 ms) as
+ * one atom at opposite polarity: a proved contradiction on a consistent document. The separator
+ * stays inside its number's token (`1,500`, `12,345.5`), so the number is one token, a unit after
+ * it keeps its case ({@link NUMBER_TOKEN}), and `normalize` stays idempotent. Keeping it can only
+ * SPLIT atoms or keys: `1,500`, `1.500` and `1500` are three phrases, and one spelling is still
+ * one. ONE definition, as a regex source string, so each consumer composes it into its own
+ * pattern: {@link IDENTITY_FREE} and {@link IDENTITY_SYMBOL} refuse it, {@link digitSeparatorFold}
+ * reads it as a boundary, and the numeric tier's quantity key keeps it inside its number
+ * (`numeric.ts` `quantityKey`).
  */
 export const DIGIT_SEPARATOR = String.raw`(?<=\p{N})[.,](?=\p{N})`
+
+/** Every {@link DIGIT_SEPARATOR} in a string, for {@link digitSeparatorFold}. */
+const DIGIT_SEPARATOR_ANYWHERE = new RegExp(DIGIT_SEPARATOR, 'gu')
+
+/**
+ * An atom name with every {@link DIGIT_SEPARATOR} read as a token boundary, as {@link normalize}
+ * read it before the separator stayed inside its number. PROPOSE-only: two DIFFERENT atoms with
+ * one fold spell a phrase whose numbers differ only in a separator (`1.5` / `1,5`, `1_500` /
+ * `1.500`), a pair the old deletion collapsed onto one atom and proved. Whether they spell one
+ * number is not something a closed rule settles (`1,500` is 1500 or 1.5 by convention), so the
+ * fold is never a key the decide tier compares: `number-spelling.ts` demotes the pair instead.
+ */
+export function digitSeparatorFold(name: string): string {
+  return name.replace(DIGIT_SEPARATOR_ANYWHERE, '_')
+}
+
+/**
+ * {@link makeAtomize} over the {@link digitSeparatorFold} of everything it reads: the slot text,
+ * the system name, and every key and value of the committed glossary and term tables. The atom
+ * names it returns are the ones the document WOULD have if a digit separator were a token
+ * boundary in bodies and table rows alike. PROPOSE-only, exactly as the fold is.
+ *
+ * Folding the atoms after the fact is not enough once a table is committed. A term alias
+ * `1,5 m pipe` no longer matches a body that spells `1.5 m pipe`, so the substitution rewrites
+ * one requirement to `open_the_north_pipe` and leaves the other on `open_the_1.5_m_pipe`: two
+ * atoms whose folds differ, and nothing names the pair. In fold space the alias matches both
+ * bodies, both land on one atom, and `number-spelling.ts` demotes the pair. The same holds for a
+ * whole-body glossary alias, and for two aliases that differ only in a separator.
+ */
+export function makeDigitSeparatorFoldAtomize(
+  glossary: ReadonlyMap<string, string>,
+  antonyms: ReadonlyMap<string, AntonymEntry> | undefined,
+  terms: ReadonlyMap<string, readonly string[]>,
+): Atomize {
+  const foldedGlossary = new Map<string, string>()
+  for (const [alias, canonical] of glossary) {
+    foldedGlossary.set(digitSeparatorFold(alias), digitSeparatorFold(canonical))
+  }
+  const foldedTerms = new Map<string, readonly string[]>()
+  for (const [alias, canonical] of terms) {
+    foldedTerms.set(
+      digitSeparatorFold(alias),
+      canonical.flatMap((token) => digitSeparatorFold(token).split('_')),
+    )
+  }
+  const inner = makeAtomize(foldedGlossary, antonyms, foldedTerms)
+  return (kind, slotText, systemName, negated) =>
+    inner(kind, digitSeparatorFold(slotText), digitSeparatorFold(systemName), negated)
+}
 
 /**
  * The punctuation {@link normalize} deletes: the characters that carry no identity (spec 007
@@ -712,9 +767,12 @@ export const DIGIT_SEPARATOR = String.raw`(?<=\p{N})[.,](?=\p{N})`
  *   - control and format characters (`\p{Cc}` `\p{Cf}`) and variation selectors, which change how
  *     a character is drawn, not which character it is.
  * Every other character outside letters, marks and digits is kept ({@link IDENTITY_SYMBOL}).
+ * The one exception to the list is a {@link DIGIT_SEPARATOR}.
  */
-const IDENTITY_FREE =
-  /[\s\p{Pc}\p{Pd}\p{Ps}\p{Pe}\p{Pi}\p{Pf}\p{Quotation_Mark}\p{Terminal_Punctuation}\p{Cc}\p{Cf}\p{Variation_Selector}/\\|*`´…‥•‣⁃¡¿]+/gu
+const IDENTITY_FREE = new RegExp(
+  String.raw`(?:(?!${DIGIT_SEPARATOR})[\s\p{Pc}\p{Pd}\p{Ps}\p{Pe}\p{Pi}\p{Pf}\p{Quotation_Mark}\p{Terminal_Punctuation}\p{Cc}\p{Cf}\p{Variation_Selector}/\\|*\x60´…‥•‣⁃¡¿])+`,
+  'gu',
+)
 
 /**
  * A character {@link normalize} KEEPS although it is neither a letter, a mark nor a digit: a
@@ -724,7 +782,10 @@ const IDENTITY_FREE =
  * two exclusive conditions then proved a contradiction the document does not contain. Each one
  * becomes its OWN token, so `$5` and `$ 5`, or `50%` and `50 %`, stay one phrase.
  */
-const IDENTITY_SYMBOL = /[^\p{L}\p{M}\p{N}\s]\p{M}*/gu
+const IDENTITY_SYMBOL = new RegExp(
+  String.raw`(?!${DIGIT_SEPARATOR})[^\p{L}\p{M}\p{N}\s]\p{M}*`,
+  'gu',
+)
 
 /** Delete {@link IDENTITY_FREE} punctuation and split every {@link IDENTITY_SYMBOL} into its own token. */
 function tokenize(text: string): string[] {
@@ -737,9 +798,11 @@ function tokenize(text: string): string[] {
 
 /**
  * Whether a raw token is a NUMBER, the position after which a token is a unit (AC-2-4). Digits in
- * any script, because `normalize` keeps every script's digits.
+ * any script, because `normalize` keeps every script's digits, with the {@link DIGIT_SEPARATOR}s
+ * that stay inside them (`1,500`, `12,345.5`).
  */
-const NUMBER_TOKEN = /^\p{N}+$/u
+const NUMBER = String.raw`\p{N}+(?:[.,]\p{N}+)*`
+const NUMBER_TOKEN = new RegExp(`^${NUMBER}$`, 'u')
 
 /**
  * A token a unit may follow: a {@link NUMBER_TOKEN}, or the degree sign that {@link tokenize} splits
@@ -748,7 +811,7 @@ const NUMBER_TOKEN = /^\p{N}+$/u
 const UNIT_POSITION = new RegExp(`${NUMBER_TOKEN.source}|^°$`, 'u')
 
 /** A token that OPENS with a number and continues with a unit: `100Mbps`, `5G`. */
-const NUMBER_THEN_UNIT = /^(\p{N}+)(.+)$/u
+const NUMBER_THEN_UNIT = new RegExp(`^(${NUMBER})(.+)$`, 'u')
 
 /**
  * A UNIT token, the closed grammar whose case is kept (spec 007 AC-2-4): an optional SI or binary
@@ -800,7 +863,7 @@ function foldCase(token: string, previous: string | undefined): string {
  *   3. {@link tokenize}: {@link IDENTITY_FREE} punctuation becomes a space, which also normalizes
  *      input underscores so `auth_service` is idempotent; every other character that is not a
  *      letter, combining mark or digit IN ANY SCRIPT is an {@link IDENTITY_SYMBOL} and becomes its
- *      own token
+ *      own token, except a {@link DIGIT_SEPARATOR}, which stays inside its number (`1,500`)
  *   4. split on whitespace and fold each token's case ({@link foldCase}: lowercase, except a
  *      {@link UNIT_TOKEN} after a number, whose case is its identity)
  *   5. underscore-join the surviving tokens

@@ -737,7 +737,7 @@ There are 24 operations. All of them are projections of one operations table, wh
 | Analysis | `check` |
 | Agent surface | `manifest`, `explain`, `version`, `install`, `download-model` |
 
-There are **87 stable codes** across three catalogs. `ERR_*` codes are operational failures,
+There are **88 stable codes** across three catalogs. `ERR_*` codes are operational failures,
 `FND_*` codes are check findings, and `GTWR_*` codes are lint rules from the INCOSE *Guide to
 Writing Requirements*. `symspec explain` resolves any of them. The catalogs are append-only, so a
 code's meaning never changes and a code is never removed. Agents branch on these codes, which is

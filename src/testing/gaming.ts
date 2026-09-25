@@ -859,7 +859,7 @@ export const NOT_APPLICABLE_YET: readonly PendingMove[] = [
   { id: 'edit-intent', clause: 'edit `intent`', direction: 'weakening', needs: 'AC-5-2' },
   { id: 'edit-policy', clause: 'edit `policy`', direction: 'weakening', needs: 'AC-5-2' },
   {
-    id: 'refine-exceeds-conflict',
+    id: 'narrow-exceeds-conflict',
     clause: 'submit a `narrow` whose carve-out exceeds the conflict region',
     direction: 'weakening',
     needs: 'AC-5-3',
@@ -920,7 +920,7 @@ export const AC_8_2: readonly { readonly clause: string; readonly moves: readonl
   { clause: 'edit `policy`', moves: ['edit-policy'] },
   {
     clause: 'submit a `narrow` whose carve-out exceeds the conflict region',
-    moves: ['refine-exceeds-conflict'],
+    moves: ['narrow-exceeds-conflict'],
   },
   { clause: 'yield against the policy order', moves: ['yield-against-policy'] },
   { clause: 'add an untraced environment assumption', moves: ['untraced-assumption'] },

@@ -77,4 +77,46 @@ describe('spec 007 C1: the quantity key keeps a digit separator inside its numbe
     )
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
+
+  // Retired from `testing/recorded-gaps.test.ts` (the lint group's "proved on one quantity key"
+  // gap, 302315b): 8f3a8b1 keeps the separator inside its number in `quantityKey`, so each pair
+  // lands on two keys. The right outcome it recorded: no proof, `verified` false, and a
+  // propose-only demotion naming both requirements (here FND_QUANTITY_ALIAS_CANDIDATE, since
+  // the two keys share their nouns).
+  it.each([
+    [
+      'zone `1,500` / `1.500` temperature',
+      { systemName: 'heater', systemResponse: 'hold zone 1,500 temperature below 20 °C' },
+      { systemName: 'heater', systemResponse: 'hold zone 1.500 temperature above 30 °C' },
+    ],
+    [
+      'the `1_500` / `1.500` m pipe temperature',
+      { systemName: 'heater', systemResponse: 'hold the 1_500 m pipe temperature below 20 °C' },
+      { systemName: 'heater', systemResponse: 'hold the 1.500 m pipe temperature above 30 °C' },
+    ],
+    [
+      'line `1,500` / `1.500` pressure',
+      { systemName: 'plant', systemResponse: 'hold line 1,500 pressure below 5 bar' },
+      { systemName: 'plant', systemResponse: 'hold line 1.500 pressure above 6 bar' },
+    ],
+    // The same separators in the shape the tier PROVES in (a holding verb's time bound), so
+    // this guard fails on the key alone, whatever `unheldBy` reads of `hold`.
+    [
+      'link `1,500` / `1.500` latency',
+      { systemName: 'router', systemResponse: 'keep link 1,500 latency below 20 milliseconds' },
+      { systemName: 'router', systemResponse: 'keep link 1.500 latency above 30 milliseconds' },
+    ],
+    [
+      'link `1_500` / `1.500` latency',
+      { systemName: 'router', systemResponse: 'keep link 1_500 latency below 20 milliseconds' },
+      { systemName: 'router', systemResponse: 'keep link 1.500 latency above 30 milliseconds' },
+    ],
+  ] as const)('%s: two keys, no proof, and a demotion naming both', async (_, a, b) => {
+    const report = await reportOf(a, b)
+    const codes = report.findings.map((f) => f.code)
+    expect(codes, JSON.stringify(report.findings)).not.toContain('FND_NUMERIC_CONTRADICTION')
+    expect(report.verified).toBe(false)
+    const demotion = report.findings.find((f) => f.code === 'FND_QUANTITY_ALIAS_CANDIDATE')
+    expect([...(demotion?.requirementIds ?? [])].sort()).toEqual([ID_A, ID_B])
+  })
 })

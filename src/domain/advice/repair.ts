@@ -277,6 +277,24 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
         ],
       }
 
+    case 'number-spelling-candidate':
+      // Whether two separator spellings are one number is the author's decimal convention; no
+      // command decides it. The primary repair is to spell the number identically, which needs
+      // the requirements read first. The reviewed waiver, bound to this pair and its text, is
+      // the discharge for two numbers that really differ.
+      return {
+        ops: scopedWaive(
+          demotion,
+          context,
+          'FND_NUMBER_SPELLING_CANDIDATE',
+          'reviewed: <why these are different numbers>',
+        ),
+        commands: [
+          ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
+          `symspec check ${context.docPath}`,
+        ],
+      }
+
     // ---------------------------------------------------------------------
     // Run-scoped reasons: the repair is a different INVOCATION, not an edit
     // ---------------------------------------------------------------------

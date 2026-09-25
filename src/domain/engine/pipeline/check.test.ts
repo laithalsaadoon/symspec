@@ -42,9 +42,10 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { toEncodable } from '../formal/encode.ts'
 import { emitCandidatePairs } from '../solvers/free/pairwise-filter.ts'
 import { asView, type ReqView } from '../solvers/types.ts'
-import { runCheck, toEncodable } from './check.ts'
+import { runCheck } from './check.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
 const ID = 'aaaaaaaa-0000-4000-8000-000000000001'
@@ -365,8 +366,9 @@ describe('a context group the solver could not decide', () => {
  *
  * The point of the fixture is the SLOT ROLE. `numeric-contradiction.ts` receives the slot
  * as data and `numeric.test.ts` pins the extractor, but the three string literals that
- * decide which EARS slot each bound is reported under live in `runCheck` alone
- * (`extractNumericPredicates(r.trigger, …, 'trig', …)` and its `pre`/`resp` siblings), and
+ * decide which EARS slot each bound is reported under live in `requirementBounds`, which
+ * `runCheck` alone hands the decide tier (`readBounds(r.trigger, …, 'trig', …)` and its
+ * `pre`/`resp` siblings), and
  * an author reading the core has to be able to tell the obligation from the precondition
  * without re-reading the sentence. Nothing between the extractor's unit test and here
  * crosses that wiring.

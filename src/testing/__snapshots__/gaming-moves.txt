@@ -32,7 +32,7 @@ registered-caught	run-weakening	temporal-bound-1
 registered-caught	run-weakening	temporal-off	
 not-applicable-yet	weakening	edit-intent	AC-5-2
 not-applicable-yet	weakening	edit-policy	AC-5-2
-not-applicable-yet	weakening	refine-exceeds-conflict	AC-5-3
+not-applicable-yet	weakening	narrow-exceeds-conflict	AC-5-3
 not-applicable-yet	weakening	yield-against-policy	AC-5-3
 not-applicable-yet	weakening	untraced-assumption	AC-5-5
 not-applicable-yet	weakening	weakening-derived	AC-5-2
