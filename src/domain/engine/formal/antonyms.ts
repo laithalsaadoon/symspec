@@ -19,7 +19,7 @@
  *     real-world blind spot), and grows only by an explicit edit to this seed
  *     set (AC-4-12) or the doc-committed `antonym add` path. A bulk dictionary
  *     import was evaluated (2026-07) and rejected: WordNet's 477 verb-antonym
- *     pairs cover only 13 of the 32 pairs this table needs, contain odd
+ *     pairs covered only 13 of the 32 pairs the table held then, contain odd
  *     polarity cycles that break the signed union-find, and merge classes this
  *     table deliberately keeps apart — curation IS the architecture here.
  *   - A contrary requires the (de-inflected) leading verbs to be one seeded or
@@ -41,8 +41,8 @@
  * axioms `¬(A ∧ C)` and `¬(B ∧ C)` do not entail `A ≡ B`, so members on one side of a
  * class stay DISTINCT atoms (`publish` and `extend` are two actions that each retract
  * opposes), and two members on opposite sides are contraries only when a pair joins them
- * directly ({@link AntonymEntry.opposes}): `approve` and `decline` meet only through
- * `accept`/`reject`, so nothing relates them. Reading synonymy off the table was a
+ * directly ({@link AntonymEntry.opposes}): `conceal` and `unseal` meet only through
+ * `seal`/`expose`, so nothing relates them. Reading synonymy off the table was a
  * fabrication that grew with every committed pair — committing `hold↔release` beside
  * the seed `quarantine↔release` made "hold the order" and "shall not quarantine the
  * order" an error-severity FND_CONTRADICTION.
@@ -63,12 +63,18 @@
  *
  * Shared classes (adversarial-eval driven, each a judgment call). A class relates
  * exactly its listed pairs, so each cross-side contrary the table means is a row here:
- *   - grant/allow/permit/authorize against revoke/deny/forbid: the eval's grant-vs-deny
- *     blind spot (grant/revoke and allow/deny were disjoint classes) is closed by the
- *     grant↔deny, permit↔deny and authorize↔deny rows. The four positive verbs are NOT
- *     synonyms to the table — "shall grant X" plus "shall not allow X" is two atoms, and
+ *   - grant/allow/permit/authorize against revoke/deny/forbid: every one of the twelve
+ *     cross-side pairs is a row. The eval's grant-vs-deny blind spot (grant/revoke and
+ *     allow/deny were disjoint classes) is closed by the grant↔deny, permit↔deny and
+ *     authorize↔deny rows; the rest are the cross-side block. The four positive verbs are
+ *     NOT synonyms to the table — "shall grant X" plus "shall not allow X" is two atoms, and
  *     the opposition-candidate tier demotes `verified` on it until the author commits the
- *     glossary merge (or an antonym, or a waiver).
+ *     glossary merge (or an antonym, or a waiver). Neither are the three negative ones:
+ *     "revoke X" plus "not deny X" is two atoms too.
+ *   - accept/approve against reject/decline: all four cross-side pairs are rows.
+ *   - seal/conceal against unseal/expose: three of the four. `conceal`↔`unseal` is NOT a row:
+ *     unsealing an envelope and keeping it out of sight are compatible, so the class's two
+ *     edges apart (via seal and expose) is not a contrary, and nothing relates them.
  *   - publish/extend share a class via retract (publish↔retract, extend↔retract): both
  *     are on the positive side, so they are never related to EACH OTHER — only each to
  *     `retract`. Kept because both pairs are eval-confirmed real-world conflicts.
@@ -109,6 +115,18 @@ export const SEED_ANTONYM_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['flood', 'drain'],
   ['energize', 'de_energize'],
   ['extend', 'retract'],
+  // --- cross-side contraries the class structure used to imply (spec 007 AC-2-1) ---
+  // Until the table related only its own rows, every positive member of a class opposed every
+  // negative one. That chaining is gone; these are the pairs it related that ARE contraries in
+  // requirements English, each written out so it is a relation the table states, not infers.
+  // (`conceal`/`unseal` is the one it related that is not: see the class notes above.)
+  ['approve', 'decline'],
+  ['grant', 'forbid'],
+  ['allow', 'forbid'],
+  ['allow', 'revoke'],
+  ['authorize', 'forbid'],
+  ['authorize', 'revoke'],
+  ['permit', 'revoke'],
 ]
 
 /**

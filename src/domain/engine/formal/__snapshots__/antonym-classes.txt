@@ -1,18 +1,18 @@
 accept	+	accept	decline,reject	
-accept	+	approve	reject	
-accept	-	decline	accept	
+accept	+	approve	decline,reject	
+accept	-	decline	accept,approve	
 accept	-	reject	accept,approve	
 activate	+	activate	deactivate	
 activate	-	deactivate	activate	
 add	+	add	remove	into,to
 add	-	remove	add	from
-allow	+	allow	deny	
-allow	+	authorize	deny	
-allow	+	grant	deny,revoke	
-allow	+	permit	deny,forbid	
+allow	+	allow	deny,forbid,revoke	
+allow	+	authorize	deny,forbid,revoke	
+allow	+	grant	deny,forbid,revoke	
+allow	+	permit	deny,forbid,revoke	
 allow	-	deny	allow,authorize,grant,permit	
-allow	-	forbid	permit	
-allow	-	revoke	grant	
+allow	-	forbid	allow,authorize,grant,permit	
+allow	-	revoke	allow,authorize,grant,permit	
 close	+	close	open	
 close	-	open	close	
 commit	+	commit	roll_back,rollback	

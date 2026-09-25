@@ -78,20 +78,26 @@ describe('I-1 — committed vocabulary never lifts what the raw wording already 
     return runCheck(doc as never, { semantic: { embedder: orthogonal } })
   }
   const ACCESS = { terms: [{ canonical: 'access', aliases: ['entry'] }] }
-  for (const [x, y, vocabulary] of [
-    ['grant access to the user', 'revoke entry from the user', ACCESS],
-    ['grant access to the portal', 'forbid entry to the portal', ACCESS],
-    ['grant access', 'not allow entry', ACCESS],
-    ['permit entry to the portal', 'revoke access to the portal', ACCESS],
+  // `proves`: the committed vocabulary lines the two objects up and a seed row relates the two
+  // verbs, so the solver decides the pair. `demotes`: no row relates the verbs (one side of a
+  // class) or the key keeps the objects apart, so the candidate tier must keep `verified` false.
+  // Either is at least what the raw wording earns; certifying is what I-1 forbids.
+  for (const [x, y, vocabulary, earns] of [
+    ['grant access to the user', 'revoke entry from the user', ACCESS, 'demotes'],
+    ['grant access to the portal', 'forbid entry to the portal', ACCESS, 'proves'],
+    ['grant access', 'not allow entry', ACCESS, 'demotes'],
+    ['permit entry to the portal', 'revoke access to the portal', ACCESS, 'proves'],
     [
       'show the report to the user',
       'hide the summary from the user',
       { terms: [{ canonical: 'report', aliases: ['summary'] }] },
+      'demotes',
     ],
     [
       'approve the bill',
       'decline the invoice',
       { terms: [{ canonical: 'invoice', aliases: ['bill'] }] },
+      'proves',
     ],
     [
       'give access to the user',
@@ -99,12 +105,22 @@ describe('I-1 — committed vocabulary never lifts what the raw wording already 
       {
         glossary: [{ canonical: 'grant access to the user', aliases: ['give access to the user'] }],
       },
+      'demotes',
     ],
   ] as const) {
-    it(`${x} / ${y} through ${JSON.stringify(vocabulary)} still demotes`, async () => {
+    it(`${x} / ${y} through ${JSON.stringify(vocabulary)} still ${earns}`, async () => {
       const report = await checkOf([`${BUTTON} ${x}.`, `${BUTTON} ${y}.`], vocabulary)
-      expect(report.findings.map((f) => f.code)).toContain('FND_OPPOSITION_CANDIDATE')
-      expect(report.verified).toBe(false)
+      const codes = report.findings.map((f) => f.code)
+      if (earns === 'proves') {
+        expect(
+          report.findings
+            .filter((f) => f.code === 'FND_CONTRADICTION')
+            .map((f) => f.requirementIds),
+        ).toEqual([[idOf(1), idOf(2)]])
+      } else {
+        expect(codes).toContain('FND_OPPOSITION_CANDIDATE')
+        expect(report.verified).toBe(false)
+      }
     })
   }
 

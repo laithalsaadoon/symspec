@@ -81,33 +81,32 @@ describe('the resolved seed index', () => {
   })
 
   it('resolves a shared member into ONE class, and relates only the pairs in it', () => {
-    // `accept↔reject`, `approve↔reject` and `accept↔decline` all touch the same two verbs. The
-    // signed union-find puts all four in one class — the key two contraries share — but the
-    // class asserts nothing by itself (spec 007 AC-2-1): each verb opposes exactly the verbs a
-    // pair names, so `approve` and `decline` are unrelated, and `accept` and `approve` are not
-    // synonyms.
-    expect(ANTONYM_INDEX.get('accept')).toEqual({
-      canonical: 'accept',
+    // `seal↔unseal`, `seal↔expose` and `expose↔conceal` all touch `seal`/`expose`. The signed
+    // union-find puts all four in one class — the key two contraries share — but the class
+    // asserts nothing by itself (spec 007 AC-2-1): each verb opposes exactly the verbs a pair
+    // names, so `conceal` and `unseal` are unrelated, and `seal` and `conceal` are not synonyms.
+    expect(ANTONYM_INDEX.get('seal')).toEqual({
+      canonical: 'conceal',
       negated: false,
-      opposes: ['decline', 'reject'],
+      opposes: ['expose', 'unseal'],
       governs: [],
     })
-    expect(ANTONYM_INDEX.get('approve')).toEqual({
-      canonical: 'accept',
+    expect(ANTONYM_INDEX.get('conceal')).toEqual({
+      canonical: 'conceal',
       negated: false,
-      opposes: ['reject'],
+      opposes: ['expose'],
       governs: [],
     })
-    expect(ANTONYM_INDEX.get('reject')).toEqual({
-      canonical: 'accept',
+    expect(ANTONYM_INDEX.get('expose')).toEqual({
+      canonical: 'conceal',
       negated: true,
-      opposes: ['accept', 'approve'],
+      opposes: ['conceal', 'seal'],
       governs: [],
     })
-    expect(ANTONYM_INDEX.get('decline')).toEqual({
-      canonical: 'accept',
+    expect(ANTONYM_INDEX.get('unseal')).toEqual({
+      canonical: 'conceal',
       negated: true,
-      opposes: ['accept'],
+      opposes: ['seal'],
       governs: [],
     })
   })
