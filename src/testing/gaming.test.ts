@@ -143,6 +143,31 @@ describe('the gaming registry', () => {
     }
   })
 
+  it('glossary-over-term writes the phrase its side names: the alias side the alias, the canonical side the canonical', () => {
+    // Both sides escape on term-bridged, so the matrix alone cannot tell a canonical cell that
+    // really writes the canonical from one that quietly writes the alias again. What the move
+    // types is the difference a cross-table fence has to close on BOTH sides.
+    const fixture = FIXTURES.find((f) => f.id === 'term-bridged')
+    expect(fixture).toBeDefined()
+    if (fixture === undefined) return
+    const doc = buildDoc(fixture.ops, MUTATE_OPTIONS)
+    const entry = doc.terms[0]
+    expect(entry).toBeDefined()
+    if (entry === undefined) return
+    const ctx = { fixture, doc, baselineCodes: [] }
+    for (const move of MOVES.filter((m) => m.id.startsWith('glossary-over-term@'))) {
+      const edit = move.edit(ctx)
+      expect(edit.kind, move.id).toBe('ops')
+      if (edit.kind !== 'ops') continue
+      const glossary = edit.ops.find((o) => o.op === 'glossary')
+      const alias = glossary !== undefined && 'alias' in glossary ? String(glossary.alias) : ''
+      const side = move.id.includes('-canonical') ? entry.canonical : (entry.aliases[0] ?? '')
+      const other = move.id.includes('-canonical') ? (entry.aliases[0] ?? '') : entry.canonical
+      expect(alias.toLowerCase(), move.id).toContain(side.toLowerCase())
+      expect(alias.toLowerCase(), move.id).not.toContain(other.toLowerCase())
+    }
+  })
+
   it('every KNOWN_ESCAPES row names a real pair, once, closed by a Story 4–7 AC the spec defines', () => {
     const fixtures = new Set(FIXTURES.map((f) => f.id))
     const pairs = KNOWN_ESCAPES.map((k) => `${k.fixture} × ${k.move}`)

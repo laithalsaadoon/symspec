@@ -691,37 +691,62 @@ const GLOSSARY_OVER_TERM_ORDERS = ['term-then-glossary', 'glossary-then-term'] a
  * table's own overlap fence ({@link termOverPhrase}) cannot see it, because the overlapping
  * phrase lives in the other table.
  */
+/**
+ * Which phrase of the committed term the glossary alias is written over: its ALIAS (`customer
+ * order`) or its CANONICAL (`purchase order`). Both are phrases the term rewrites onto one noun,
+ * so a cross-table fence that compared a glossary alias against term aliases alone would close
+ * the alias cells and leave the canonical side escaping unmeasured. The alias side keeps the
+ * original move ids; the canonical side is suffixed `-canonical`.
+ */
+const GLOSSARY_OVER_TERM_SIDES = [
+  [
+    'alias',
+    (entry: { readonly canonical: string; readonly aliases: readonly string[] }) =>
+      entry.aliases[0],
+  ],
+  [
+    'canonical',
+    (entry: { readonly canonical: string; readonly aliases: readonly string[] }) => entry.canonical,
+  ],
+] as const
+
 const glossaryOverTerm = (): readonly Move[] =>
-  GLOSSARY_OVER_TERM_SHAPES.flatMap(([shape, aliasOf]) =>
-    GLOSSARY_OVER_TERM_ORDERS.map((order) => ({
-      id: `glossary-over-term@${shape}/${order}`,
-      clause: 'alias a phrase a committed term rewrites (glossary over term table)',
-      direction: 'strengthening' as const,
-      edit: ({ fixture, doc }: MoveContext): Edit => {
-        const entry = doc.terms[0]
-        const termAlias = entry?.aliases[0]
-        if (entry === undefined || termAlias === undefined)
-          return { kind: 'inapplicable', reason: 'the fixture commits no term' }
-        const response = fixture.culprits
-          .map((k) => req(doc, k).systemResponse)
-          .find((s) => s.toLowerCase().split(/\s+/).join(' ').includes(termAlias.toLowerCase()))
-        if (response === undefined)
-          return { kind: 'inapplicable', reason: 'no culprit response says the committed alias' }
-        const glossary: DocumentOp = {
-          op: 'glossary',
-          canonical: FRESH_TERM,
-          alias: aliasOf(termAlias, response),
-        }
-        const term = { canonical: entry.canonical, alias: termAlias }
-        return {
-          kind: 'ops',
-          ops:
-            order === 'term-then-glossary'
-              ? [glossary]
-              : [{ op: 'unterm', ...term }, glossary, { op: 'term', ...term }],
-        }
-      },
-    })),
+  GLOSSARY_OVER_TERM_SIDES.flatMap(([side, phraseOf]) =>
+    GLOSSARY_OVER_TERM_SHAPES.flatMap(([shape, aliasOf]) =>
+      GLOSSARY_OVER_TERM_ORDERS.map((order) => ({
+        id: `glossary-over-term@${shape}${side === 'canonical' ? '-canonical' : ''}/${order}`,
+        clause: 'alias a phrase a committed term rewrites (glossary over term table)',
+        direction: 'strengthening' as const,
+        edit: ({ fixture, doc }: MoveContext): Edit => {
+          const entry = doc.terms[0]
+          const termAlias = entry?.aliases[0]
+          const phrase = entry === undefined ? undefined : phraseOf(entry)
+          if (entry === undefined || termAlias === undefined || phrase === undefined)
+            return { kind: 'inapplicable', reason: 'the fixture commits no term' }
+          const response = fixture.culprits
+            .map((k) => req(doc, k).systemResponse)
+            .find((s) => s.toLowerCase().split(/\s+/).join(' ').includes(phrase.toLowerCase()))
+          if (response === undefined)
+            return {
+              kind: 'inapplicable',
+              reason: `no culprit response says the committed ${side}`,
+            }
+          const glossary: DocumentOp = {
+            op: 'glossary',
+            canonical: FRESH_TERM,
+            alias: aliasOf(phrase, response),
+          }
+          const term = { canonical: entry.canonical, alias: termAlias }
+          return {
+            kind: 'ops',
+            ops:
+              order === 'term-then-glossary'
+                ? [glossary]
+                : [{ op: 'unterm', ...term }, glossary, { op: 'term', ...term }],
+          }
+        },
+      })),
+    ),
   )
 
 export const MOVES: readonly Move[] = [
@@ -1229,13 +1254,15 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     [
       'glossary-over-term@containing/term-then-glossary',
       'glossary-over-term@containing/glossary-then-term',
+      'glossary-over-term@containing-canonical/term-then-glossary',
+      'glossary-over-term@containing-canonical/glossary-then-term',
     ] as const
   ).flatMap((move) =>
     escapes(
       move,
       'S4 / AC-4-2 (cross-table fence + check twin)',
       ['term-bridged'],
-      'A glossary alias that contains a phrase the committed term rewrites (`charge the customer order` onto a fresh canonical) takes that response out of the term table: the glossary is a whole-body lookup that runs BEFORE term substitution, so R2 reaches the solver as the fresh canonical while R1 still reads `charge purchase order`, and the conflict the term carries disappears. Either write order escapes, because neither fence reads the other table: the term overlap fence checks only terms, and the glossary fence only glossary entries and antonyms. The `equal` twin (the bare term alias as a glossary alias) is caught on this fixture only because no slot body is exactly `customer order`. S4 closes it with a cross-table fence on both ops and a check-time twin for a hand-edited table.',
+      'A glossary alias that contains a phrase the committed term rewrites — its alias (`charge the customer order`) or its canonical (`charge the purchase order`) — onto a fresh canonical, takes that response out of the term table: the glossary is a whole-body lookup that runs BEFORE term substitution, so R2 reaches the solver as the fresh canonical while R1 still reads `charge purchase order`, and the conflict the term carries disappears. Either write order escapes, because neither fence reads the other table: the term overlap fence checks only terms, and the glossary fence only glossary entries and antonyms. The `equal` twin (the bare term alias as a glossary alias) is caught on this fixture only because no slot body is exactly `customer order`. S4 closes it with a cross-table fence on both ops and a check-time twin for a hand-edited table.',
     ),
   ),
   ...escapes(

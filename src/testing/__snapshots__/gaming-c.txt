@@ -17,6 +17,10 @@ numeric-conflict	glossary-over-term@equal/term-then-glossary	inapplicable
 numeric-conflict	glossary-over-term@equal/glossary-then-term	inapplicable
 numeric-conflict	glossary-over-term@containing/term-then-glossary	inapplicable
 numeric-conflict	glossary-over-term@containing/glossary-then-term	inapplicable
+numeric-conflict	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+numeric-conflict	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+numeric-conflict	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+numeric-conflict	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 numeric-conflict	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 numeric-conflict	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 numeric-conflict	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -58,6 +62,10 @@ temporal-conflict	glossary-over-term@equal/term-then-glossary	inapplicable
 temporal-conflict	glossary-over-term@equal/glossary-then-term	inapplicable
 temporal-conflict	glossary-over-term@containing/term-then-glossary	inapplicable
 temporal-conflict	glossary-over-term@containing/glossary-then-term	inapplicable
+temporal-conflict	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+temporal-conflict	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+temporal-conflict	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+temporal-conflict	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 temporal-conflict	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 temporal-conflict	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 temporal-conflict	delete-requirement@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]

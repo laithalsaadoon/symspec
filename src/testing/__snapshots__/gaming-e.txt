@@ -16,6 +16,10 @@ registered-contrary	glossary-over-term@equal/term-then-glossary	inapplicable
 registered-contrary	glossary-over-term@equal/glossary-then-term	inapplicable
 registered-contrary	glossary-over-term@containing/term-then-glossary	inapplicable
 registered-contrary	glossary-over-term@containing/glossary-then-term	inapplicable
+registered-contrary	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+registered-contrary	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+registered-contrary	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+registered-contrary	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 registered-contrary	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 registered-contrary	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 registered-contrary	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
