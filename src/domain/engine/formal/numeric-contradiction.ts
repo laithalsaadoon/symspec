@@ -179,24 +179,45 @@ export interface RequirementPredicates {
   readonly contextAtoms: readonly string[]
   readonly predicates: readonly NumericPredicate[]
   /**
-   * The actions the requirement's response performs with NO bound (`keep the door
-   * unlocked`), each keyed as a bound's quantity is (`numeric.ts` `occurrenceQuantity`), with
-   * the response text as evidence. Such a response asserts the quantity's occurrence literal
-   * and nothing else, and that is what makes two prohibitions on the action conflict: `shall
-   * not keep the door unlocked above 30 seconds` and `... below 40 seconds` are met together
-   * only by never keeping the door unlocked (see {@link boundFormula}). Absent means none.
+   * The actions the requirement's response performs, each keyed as a bound's quantity is, with
+   * the text after it as its qualifier and the response text as evidence: with no bound
+   * (`keep the door unlocked`, `numeric.ts` `actionOccurrences`), or with one, on each bound's
+   * quantity. Each asserts the quantity's occurrence literal, and that is what makes two
+   * prohibitions on the action conflict: `shall not keep the door unlocked above 30 seconds`
+   * and `... below 40 seconds` are met together only by never keeping the door unlocked (see
+   * {@link boundFormula}). A bound's own unit class asserts it through the bound; any other
+   * class, where prohibitions on the same action may sit (`run the pump at least 80%` against
+   * `not above 30 minutes`), only through this. Absent means none.
    */
-  readonly occurrences?: ReadonlyArray<{ readonly quantity: string; readonly sourceText: string }>
+  readonly occurrences?: ReadonlyArray<{
+    readonly quantity: string
+    readonly qualifier?: string
+    readonly sourceText: string
+  }>
 }
 
 /**
- * A requirement that performs the action on `quantity` with no bound: asserted in a solve as
- * `id → quantity#occurs`, the occurrence literal every bound obligation also asserts.
+ * A requirement that performs the action on `quantity` ({@link RequirementPredicates.occurrences}):
+ * asserted in a solve as `id → quantity#occurs`, the occurrence literal every bound obligation
+ * also asserts. Asserted in a cell only under the cell's own qualifier.
  */
 interface Occurrence {
   readonly id: string
   readonly quantity: string
+  readonly qualifier?: string
   readonly sourceText: string
+}
+
+/** The {@link Occurrence}s of one requirement's performance of `quantity`. */
+function occurrencesOn(rp: RequirementPredicates, quantity: string): Occurrence[] {
+  return (rp.occurrences ?? [])
+    .filter((o) => o.quantity === quantity)
+    .map((o) => ({
+      id: rp.id,
+      quantity,
+      ...(o.qualifier !== undefined ? { qualifier: o.qualifier } : {}),
+      sourceText: o.sourceText,
+    }))
 }
 
 /**
@@ -426,10 +447,10 @@ export interface ComparisonCell {
   /** The distinct requirement ids contributing a BOUND to the cell — always ≥2. */
   readonly distinctIds: ReadonlySet<string>
   /**
-   * The live requirements that perform the cell's action with no bound
-   * ({@link RequirementPredicates.occurrences}), when the cell holds a prohibition: the only
-   * bound a bare obligation can change the verdict of. Never counted toward the two
-   * contributors a cell needs, because a bare obligation conflicts with no one bound.
+   * The live requirements that perform the cell's action under the cell's qualifier and put no
+   * bound in the cell ({@link RequirementPredicates.occurrences}), when the cell holds a
+   * prohibition: the only bound a performance alone can change the verdict of. Never counted
+   * toward the two contributors a cell needs, because it conflicts with no one bound.
    */
   readonly occurrences: readonly Occurrence[]
 }
@@ -508,12 +529,14 @@ export function planComparisonCells(reqPreds: readonly RequirementPredicates[]):
     }
     for (const [key, g] of byQuantity) {
       const distinctIds = new Set(g.entries.map((e) => e.id))
+      // Text after an action this tier does not read keeps a performance out of every cell
+      // without that same text, as it keeps a bound: `keep the door unlocked when the level is
+      // high` may never happen.
+      const qualifier = g.entries[0]!.pred.qualifier ?? ''
       const occurrences = g.entries.some((e) => e.pred.negated === true)
         ? reqPreds.flatMap((rp) =>
-            liveIn(group, rp.contextAtoms)
-              ? (rp.occurrences ?? [])
-                  .filter((o) => o.quantity === g.quantity)
-                  .map((o) => ({ id: rp.id, quantity: o.quantity, sourceText: o.sourceText }))
+            liveIn(group, rp.contextAtoms) && !distinctIds.has(rp.id)
+              ? occurrencesOn(rp, g.quantity).filter((o) => (o.qualifier ?? '') === qualifier)
               : [],
           )
         : []
@@ -748,7 +771,7 @@ export async function analyzeNumericBounds(
       performers.length === 0
         ? ''
         : ` ${performers.map((o) => `Requirement ${o.id} does "${o.sourceText}"`).join(', ')}, ` +
-          'with no bound, so the action happens and every prohibition on it applies.'
+          'with no bound in this unit, so the action happens and every prohibition on it applies.'
     findings.set(findingKey, {
       code: 'FND_NUMERIC_CONTRADICTION',
       severity: 'error',
@@ -934,10 +957,11 @@ async function uncomparedPairs(
  *
  * So the candidates are exactly those two shapes: two prohibitions and an obligation; a
  * `!=` prohibition and two other bounds, one an obligation; and a `!=` prohibition, two other
- * prohibitions, and an obligation. The obligation that only forces the action may be a bare
- * one, a response that does the action with no bound (`keep the door unlocked`,
- * {@link RequirementPredicates.occurrences}); two prohibitions against one were certified,
- * since no bound of its own put it in any class. With intervals and `!=` on one variable, and
+ * prohibitions, and an obligation. The obligation that only forces the action may be a
+ * performance with no bound in the class ({@link RequirementPredicates.occurrences}): a bare
+ * one (`keep the door unlocked`, `... until the guard arrives`), or one bounded in another unit
+ * class (`run the pump at least 80%` against minutes); two prohibitions against either were
+ * certified, since nothing put it in their class. With intervals and `!=` on one variable, and
  * the obligation that forces the action, a minimal conflict needs no more members than that,
  * so no larger set is searched. A set whose members one cell asserted together (one qualifier,
  * one context group that makes them all live) was decided there, and is skipped.
@@ -962,13 +986,15 @@ async function uncomparedProhibitionSets(
       byClass.set(key, list)
     }
   }
-  // A bare obligation has no unit, so it forces the action on its quantity in every class.
-  const performersOf = (quantity: string): Occurrence[] =>
-    reqPreds.flatMap((rp) =>
-      (rp.occurrences ?? [])
-        .filter((o) => o.quantity === quantity)
-        .map((o) => ({ id: rp.id, quantity, sourceText: o.sourceText })),
+  // A performance forces the action on its quantity in every class: a bare one has no unit,
+  // and one bounded in another class does the action there as much as here. An obligation
+  // with a bound in THIS class is its own forcer, through that bound.
+  const performersOf = (entries: readonly Entry[]): Occurrence[] => {
+    const bound = new Set(entries.filter((e) => e.pred.negated !== true).map((e) => e.id))
+    return reqPreds.flatMap((rp) =>
+      bound.has(rp.id) ? [] : occurrencesOn(rp, entries[0]!.pred.quantity),
     )
+  }
 
   // A member that forces the action: a bound obligation, or a bare one.
   type Forcer = { readonly entry: Entry } | { readonly occurrence: Occurrence }
@@ -982,7 +1008,7 @@ async function uncomparedProhibitionSets(
     const prohibitions = entries.filter((e) => e.pred.negated === true)
     const forcers: Forcer[] = [
       ...entries.filter((e) => e.pred.negated !== true).map((entry) => ({ entry })),
-      ...performersOf(entries[0]!.pred.quantity).map((occurrence) => ({ occurrence })),
+      ...performersOf(entries).map((occurrence) => ({ occurrence })),
     ]
     if (prohibitions.length === 0 || forcers.length === 0) continue
     for (let i = 0; i < prohibitions.length; i += 1) {
@@ -1016,10 +1042,11 @@ async function uncomparedProhibitionSets(
     if (ids.length < 2) continue
     const key = JSON.stringify([set[0]!.pred.quantity, ids])
     if (out.has(key)) continue
-    // A bare obligation has no qualifier of its own: a cell with the prohibitions' asserts it.
+    // A cell asserts a performance only under its own qualifier, as it does a bound.
     const qualifier = set[0]!.pred.qualifier ?? ''
     const oneCell =
       set.every((e) => (e.pred.qualifier ?? '') === qualifier) &&
+      occurring.every((o) => (o.qualifier ?? '') === qualifier) &&
       groups.some((g) => ids.every((id) => liveIn(g, contextOf.get(id) ?? [])))
     if (oneCell) continue
     if (bounds.budget?.expired() === true) {

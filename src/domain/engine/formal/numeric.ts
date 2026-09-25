@@ -1298,25 +1298,47 @@ export function extractNumericPredicates(
   return negateResponse(text, preds, declined, claimed)
 }
 
+/** An action a response with no bound performs: its quantity key, and the text after it. */
+export interface ActionOccurrence {
+  readonly quantity: string
+  /** The text after the action, read as a bound's {@link NumericPredicate.qualifier} is. */
+  readonly qualifier?: string
+}
+
 /**
- * The quantity key of the action a response with NO bound performs, keyed exactly as a
- * bound's label is ({@link labelBefore} over the whole text, then {@link quantityKey}), or
- * `null` when the text names nothing.
+ * The actions a response with NO bound performs, each keyed by the rule a bound's subject is:
+ * {@link labelBefore} at the place a bound would stand, then {@link quantityKey}, with the text
+ * after that place as its qualifier by {@link qualifierAt}. Nothing marks where the action ends
+ * and the rest begins, so every word end is such a place, and each distinct key is kept once,
+ * with the shortest qualifier. The whole response is one of them, with no qualifier.
  *
- * `keep the door unlocked` does the action `shall not keep the door unlocked above 30
- * seconds` bounds only IF it happens ({@link NumericPredicate.negated}), so it asserts that
- * quantity's occurrence as a bound obligation does. The key matches only a label spelled
- * the same way, or unified by a committed glossary alias: any other wording is another key,
- * and asserts nothing about this one. The caller passes only a response it read no bound
- * out of, and never a prohibition's, which does not do its action.
+ * `keep the door unlocked` does the action `shall not keep the door unlocked above 30 seconds`
+ * bounds only IF it happens ({@link NumericPredicate.negated}), so it asserts that quantity's
+ * occurrence as a bound obligation does. So does `keep the door unlocked until the guard
+ * arrives`, whose subject is the same, and whose `until the guard arrives` is the qualifier a
+ * bound in that place would carry; keyed on the whole response, it named a quantity no
+ * prohibition bounds, and two opposed ones certified against it. A qualified occurrence is never
+ * asserted in a cell without that same qualifier (`numeric-contradiction.ts`), so a key this
+ * reads too short (`keep the door unlocked cover`) can only cost a disclosure. The caller passes
+ * only a response it read no bound out of, and never a prohibition's, which does not do its
+ * action.
  */
-export function occurrenceQuantity(
+export function actionOccurrences(
   text: string,
   systemName: string,
   quantityAliases?: ReadonlyMap<string, string>,
-): string | null {
-  const label = labelBefore(text, text.length)
-  return label === null ? null : quantityKey(systemName, label, quantityAliases)
+): ActionOccurrence[] {
+  const ends = [...text.matchAll(/\S+/gu)].map((m) => m.index + m[0].length)
+  const out = new Map<string, ActionOccurrence>()
+  for (const at of ends.reverse()) {
+    const label = labelBefore(text, at)
+    if (label === null) continue
+    const quantity = quantityKey(systemName, label, quantityAliases)
+    if (out.has(quantity)) continue
+    const qualifier = qualifierAt(text, at, at, undefined, 'resp', '')
+    out.set(quantity, qualifier === undefined ? { quantity } : { quantity, qualifier })
+  }
+  return [...out.values()]
 }
 
 /**

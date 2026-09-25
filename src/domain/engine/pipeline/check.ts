@@ -124,7 +124,7 @@ import {
   type GroupChecker,
   SolverBudgetExceededError,
 } from '../formal/needs-review.ts'
-import { extractNumericPredicates, occurrenceQuantity } from '../formal/numeric.ts'
+import { actionOccurrences, extractNumericPredicates } from '../formal/numeric.ts'
 import { analyzeNumericBounds } from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
 import { findRelationalUnchecked } from '../formal/relational.ts'
@@ -1466,22 +1466,35 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           negated,
         )
       }
-      // A response that does an action with no bound (`keep the door unlocked`) asserts its
-      // occurrence, which is what two opposed prohibitions on it (`shall not keep the door
-      // unlocked above 30 seconds`, `... below 40 seconds`) cannot both survive. Never a
-      // prohibition's: `shall not keep the door unlocked` does not do the action.
-      const occurrencesOf = (r: (typeof reqs)[number], bound: boolean) => {
+      // A response that does an action asserts its occurrence, which is what two opposed
+      // prohibitions on it (`shall not keep the door unlocked above 30 seconds`, `... below 40
+      // seconds`) cannot both survive: with no bound (`keep the door unlocked`, or `... until
+      // the guard arrives`), keyed as a bound's subject would be; and with one, on each bound's
+      // own quantity, whatever unit it is in (`run the pump at least 80%` runs the pump, and
+      // meets `not above 30 minutes` there). Never a prohibition's: `shall not keep the door
+      // unlocked` does not do the action.
+      const occurrencesOf = (
+        r: (typeof reqs)[number],
+        response: ReturnType<typeof extractNumericPredicates>,
+      ) => {
         const view = toEncodable(r)
-        if (bound || view.negated === true) return []
-        const quantity = occurrenceQuantity(view.systemResponse, r.systemName, quantityAliases)
-        return quantity === null ? [] : [{ quantity, sourceText: view.systemResponse.trim() }]
+        if (view.negated === true) return []
+        const sourceText = view.systemResponse.trim()
+        const actions =
+          response.length > 0
+            ? response.map((p) => ({
+                quantity: p.quantity,
+                ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
+              }))
+            : actionOccurrences(view.systemResponse, r.systemName, quantityAliases)
+        return actions.map((a) => ({ ...a, sourceText }))
       }
       const numericReqPreds = reqs.map((r) => {
         const response = responseBounds(r)
         return {
           id: r.id,
           contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
-          occurrences: occurrencesOf(r, response.length > 0),
+          occurrences: occurrencesOf(r, response),
           predicates: [
             ...response,
             ...(r.trigger !== undefined

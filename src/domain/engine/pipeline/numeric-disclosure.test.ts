@@ -327,6 +327,159 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
         expect(report.verified).toBe(false)
       })
 
+      it('DISCLOSES them against a bare obligation followed by text, whatever the words', async () => {
+        // `keep the door unlocked until the guard arrives` does the action. It was keyed on the
+        // WHOLE response, a quantity no prohibition bounds, so no cell or set saw a performer and
+        // the document certified once a relational waiver cleared the other demotion. Keyed as a
+        // bound's subject is, the trailing text is the performer's qualifier, which this tier
+        // does not read, so the set is disclosed and never proved.
+        for (const tail of [
+          'until the guard arrives',
+          'for the evacuees',
+          'while the alarm sounds',
+          'for 45 seconds',
+          'when the fire alarm sounds',
+        ]) {
+          const doc = manyDoc(
+            door('the badge is accepted', `keep the door unlocked ${tail}`),
+            door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+            door('the badge is accepted', 'keep the door unlocked below 40 seconds', true),
+          )
+          const report = await runCheck(doc as never, {})
+          expect(report.counts.error, tail).toBe(0)
+          expect(uncompared(report), tail).toEqual([[idAt(0), idAt(1), idAt(2)]])
+          expect(report.verified, tail).toBe(false)
+        }
+      })
+
+      it('DISCLOSES ubiquitous prohibitions against a triggered bare obligation with trailing text', async () => {
+        const doc = manyDoc(
+          {
+            systemName: 'door controller',
+            systemResponse: 'keep the door unlocked above 30 seconds',
+            negated: true,
+          },
+          door('the door is forced', 'keep the door unlocked above 30 seconds', true),
+          {
+            systemName: 'door controller',
+            systemResponse: 'keep the door unlocked below 40 seconds',
+            negated: true,
+          },
+          door('the badge is accepted', 'keep the door unlocked below 40 seconds', true),
+          door('the fire alarm sounds', 'keep the door unlocked until the alarm is reset'),
+          log('the fire alarm sounds'),
+        )
+        const report = await runCheck(doc as never, {})
+        expect(report.counts.error).toBe(0)
+        expect(uncompared(report)).toContainEqual([idAt(0), idAt(2), idAt(4)])
+        expect(report.verified).toBe(false)
+      })
+
+      it('does not read another action followed by text, or a room to meet, as a conflict', async () => {
+        for (const [response, low] of [
+          ['keep the door locked until the guard arrives', '40'],
+          ['keep the door unlocked until the guard arrives', '10'],
+        ] as const) {
+          const doc = manyDoc(
+            door('the badge is accepted', response),
+            door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+            door('the badge is accepted', `keep the door unlocked below ${low} seconds`, true),
+          )
+          const report = await runCheck(doc as never, {})
+          expect(contradictions(report), response).toEqual([])
+          expect(uncompared(report), response).toEqual([])
+        }
+      })
+    })
+
+    describe('an obligation bounded in another dimension does the action too', () => {
+      const pump = (systemResponse: string, trigger?: string, negated = false): ReqSpec => ({
+        systemName: 'pump controller',
+        ...(trigger !== undefined ? { trigger } : {}),
+        systemResponse,
+        negated,
+      })
+      const contradictions = (report: Awaited<ReturnType<typeof runCheck>>) =>
+        report.findings
+          .filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+          .map((f) => f.requirementIds)
+
+      it('PROVES time prohibitions against an obligation bounded in percent', async () => {
+        // `run the pump at least 80%` runs the pump, so `not above 30 minutes` and `not below 40
+        // minutes` cannot both hold. Only a bare obligation forced the action across unit
+        // classes, and 669c0e9's error on this document was gone.
+        const doc = manyDoc(
+          pump('run the pump above 30 minutes', undefined, true),
+          pump('run the pump below 40 minutes', undefined, true),
+          pump('run the pump at least 80%', 'the tank is low'),
+          pump('log the level', 'the tank is low'),
+        )
+        const report = await runCheck(doc as never, {})
+        expect(contradictions(report)).toEqual([[idAt(0), idAt(1), idAt(2)]])
+        const [finding] = report.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+        expect(finding?.message).toContain(
+          `Requirement ${idAt(2)} does "run the pump at least 80%"`,
+        )
+        expect(report.verified).toBe(false)
+      })
+
+      it('names a performer only when it has no bound in the proof’s own unit', async () => {
+        // An obligation bounded in minutes is in the cell through its bound, and the evidence
+        // lists it; it is not also a bare performer.
+        const doc = manyDoc(
+          pump('run the pump above 30 minutes', 'the tank is low', true),
+          pump('run the pump for at least 40 minutes', 'the tank is low'),
+        )
+        const report = await runCheck(doc as never, {})
+        expect(contradictions(report)).toEqual([[idAt(0), idAt(1)]])
+        const [finding] = report.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+        expect(finding?.message).not.toContain(' does "')
+      })
+
+      it('DISCLOSES them under three triggers, or behind the obligation’s trailing text', async () => {
+        for (const performer of [
+          'run the pump at least 80%',
+          'run the pump at least 80% after the tank fills',
+        ]) {
+          const doc = manyDoc(
+            pump('run the pump above 30 minutes', 'the tank is full', true),
+            pump('log the level', 'the tank is full'),
+            pump('run the pump below 40 minutes', 'the tank is empty', true),
+            pump('log the level', 'the tank is empty'),
+            pump(performer, 'the tank is low'),
+            pump('log the level', 'the tank is low'),
+          )
+          const report = await runCheck(doc as never, {})
+          expect(report.counts.error, performer).toBe(0)
+          expect(uncompared(report), performer).toEqual([[idAt(0), idAt(2), idAt(4)]])
+          expect(report.verified, performer).toBe(false)
+        }
+      })
+
+      it('does not read another action, or a room to meet, as a conflict', async () => {
+        for (const [performer, low] of [
+          ['run the fan at least 80%', '40'],
+          ['run the pump at least 80%', '10'],
+        ] as const) {
+          const doc = manyDoc(
+            pump('run the pump above 30 minutes', undefined, true),
+            pump(`run the pump below ${low} minutes`, undefined, true),
+            pump(performer, 'the tank is low'),
+            pump('log the level', 'the tank is low'),
+          )
+          const report = await runCheck(doc as never, {})
+          expect(contradictions(report), performer).toEqual([])
+          expect(uncompared(report), performer).toEqual([])
+        }
+      })
+    })
+
+    describe('an obligation with no bound does the action too (controls)', () => {
+      const contradictions = (report: Awaited<ReturnType<typeof runCheck>>) =>
+        report.findings
+          .filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+          .map((f) => f.requirementIds)
+
       it('does not read another action, a room to meet, or a prohibition as doing it', async () => {
         // The controls: `keep the door locked` is another action; `<= 30 s` and `>= 10 s`
         // leave room; and `shall not keep the door unlocked` does not do the action at all.
