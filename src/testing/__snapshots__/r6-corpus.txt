@@ -112,7 +112,10 @@
 "The controller shall keep 2 zones temperature above 20 °C."	{"r6":[["error",[26,27],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall keep ambient 22 temperature above 18 °C."	{"r6":[["error",[34,36],"Bare number \"22\" with no unit; specify unit (e.g., \"22 seconds\")"]]}
 "The controller shall keep axis 3 position within 5 mm."	{"r6":[]}
+"The controller shall keep disk 2 temperature below 5 GB."	{"r6":[["error",[31,32],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall keep disk 2 usage below 5 GB."	{"r6":[]}
+"The controller shall keep heater 80 on for at least 10 minutes."	{"r6":[["error",[33,35],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
+"The controller shall keep heater 80 running over 10 minutes."	{"r6":[["error",[33,35],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "The controller shall keep latency 500 for each request."	{"r6":[["error",[34,37],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
 "The controller shall keep latency above 500."	{"r6":[["error",[40,43],"Bare number \"500\" with no unit; specify unit (e.g., \"500 seconds\")"]]}
 "The controller shall keep latency below 100."	{"r6":[["error",[40,43],"Bare number \"100\" with no unit; specify unit (e.g., \"100 seconds\")"]]}
@@ -124,6 +127,7 @@
 "The controller shall keep link 2 below 100 Mbps."	{"r6":[["error",[31,32],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall keep link 2 throughput below 100 Mbps."	{"r6":[]}
 "The controller shall keep nominal 80 temperature below 90 °C."	{"r6":[["error",[34,36],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
+"The controller shall keep oven 180 temperature for at least 10 minutes."	{"r6":[["error",[31,34],"Bare number \"180\" with no unit; specify unit (e.g., \"180 seconds\")"]]}
 "The controller shall keep pump 3 below 5 bar."	{"r6":[["error",[31,32],"Bare number \"3\" with no unit; specify unit (e.g., \"3 seconds\")"],["error",[39,40],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
 "The controller shall keep pump 4 above 8 bar."	{"r6":[["error",[31,32],"Bare number \"4\" with no unit; specify unit (e.g., \"4 seconds\")"],["error",[39,40],"Bare number \"8\" with no unit; specify unit (e.g., \"8 seconds\")"]]}
 "The controller shall keep pump 50 delay below 10 seconds."	{"r6":[["error",[31,33],"Bare number \"50\" with no unit; specify unit (e.g., \"50 seconds\")"]]}
@@ -135,10 +139,12 @@
 "The controller shall keep setpoint 22 temperature above 18 °C."	{"r6":[["error",[35,37],"Bare number \"22\" with no unit; specify unit (e.g., \"22 seconds\")"]]}
 "The controller shall keep speed 3000 until shutdown."	{"r6":[["error",[32,36],"Bare number \"3000\" with no unit; specify unit (e.g., \"3000 seconds\")"]]}
 "The controller shall keep tank 2 volume below 500 L."	{"r6":[]}
+"The controller shall keep tank 80 full for at least 5 minutes."	{"r6":[["error",[31,33],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "The controller shall keep target 22 temperature above 18 °C."	{"r6":[["error",[33,35],"Bare number \"22\" with no unit; specify unit (e.g., \"22 seconds\")"]]}
 "The controller shall keep the fan 80 above 20 Hz."	{"r6":[["error",[34,36],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "The controller shall keep the fan 80 spinning above 20 Hz."	{"r6":[["error",[34,36],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "The controller shall keep the floor 20 during the night."	{"r6":[["error",[36,38],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
+"The controller shall keep the heater 80 constant above 20 °C."	{"r6":[["error",[37,39],"Bare number \"80\" with no unit; specify unit (e.g., \"80 seconds\")"]]}
 "The controller shall keep the pressure at most 5 bar."	{"r6":[["error",[47,48],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
 "The controller shall keep the pressure below 5 regardless of load."	{"r6":[["error",[45,46],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}
 "The controller shall keep the pump 50 running for at least 10 minutes."	{"r6":[["error",[35,37],"Bare number \"50\" with no unit; specify unit (e.g., \"50 seconds\")"]]}
@@ -161,10 +167,14 @@
 "The controller shall keep the throughput on links 1 and 2 above 500 Mbps."	{"unparsed":true,"r6":[["error",[50,51],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[56,57],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall keep the token valid for at most 30 minutes."	{"r6":[]}
 "The controller shall keep the user session alive for no less than 60 minutes."	{"r6":[]}
+"The controller shall keep the valve 30 open for at least 10 minutes."	{"r6":[["error",[36,38],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
+"The controller shall keep the valve 70 open for at least 10 minutes."	{"r6":[["error",[36,38],"Bare number \"70\" with no unit; specify unit (e.g., \"70 seconds\")"]]}
 "The controller shall keep the voltage 12 or higher."	{"unparsed":true,"r6":[["error",[38,40],"Bare number \"12\" with no unit; specify unit (e.g., \"12 seconds\")"]]}
 "The controller shall keep the zone 1 temperature above 20 °C."	{"r6":[]}
 "The controller shall keep the zone 20 warm."	{"r6":[["error",[35,37],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
+"The controller shall keep valve 30 open for at least 5 seconds."	{"r6":[["error",[32,34],"Bare number \"30\" with no unit; specify unit (e.g., \"30 seconds\")"]]}
 "The controller shall keep water 60 temperature above 50 °C."	{"r6":[["error",[32,34],"Bare number \"60\" with no unit; specify unit (e.g., \"60 seconds\")"]]}
+"The controller shall keep zone 1 latency above 20 °C."	{"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"]]}
 "The controller shall keep zone 1 temperature above 20 °C and zone 2 temperature below 5 °C."	{"unparsed":true,"r6":[["error",[31,32],"Bare number \"1\" with no unit; specify unit (e.g., \"1 seconds\")"],["error",[66,67],"Bare number \"2\" with no unit; specify unit (e.g., \"2 seconds\")"]]}
 "The controller shall limit current 20 at startup."	{"r6":[["error",[35,37],"Bare number \"20\" with no unit; specify unit (e.g., \"20 seconds\")"]]}
 "The controller shall maintain pressure 5 during startup."	{"r6":[["error",[39,40],"Bare number \"5\" with no unit; specify unit (e.g., \"5 seconds\")"]]}

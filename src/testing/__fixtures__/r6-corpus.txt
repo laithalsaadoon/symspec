@@ -369,3 +369,13 @@ The controller shall keep room 22 temperature above 18 °C.
 The controller shall keep the zone 1 temperature above 20 °C.
 The controller shall keep the tank 2 volume below 500 L.
 When zone 2 temperature is below 5 °C, the controller shall set the fan to 80.
+The controller shall keep the valve 30 open for at least 10 minutes.
+The controller shall keep the valve 70 open for at least 10 minutes.
+The controller shall keep valve 30 open for at least 5 seconds.
+The controller shall keep heater 80 running over 10 minutes.
+The controller shall keep heater 80 on for at least 10 minutes.
+The controller shall keep the heater 80 constant above 20 °C.
+The controller shall keep tank 80 full for at least 5 minutes.
+The controller shall keep oven 180 temperature for at least 10 minutes.
+The controller shall keep zone 1 latency above 20 °C.
+The controller shall keep disk 2 temperature below 5 GB.

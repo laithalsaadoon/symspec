@@ -142,6 +142,20 @@ describe('GTWR_R6 in a full check: a unitless amount keeps the requirement out',
     ['set the delay to 30 due to the fault', 'set the delay to 60 due to the fault', '30'],
     ['hold each item 30 before release', 'hold each item 60 before release', '30'],
     ['set zone 1 to 20', 'set zone 1 to 30', '20'],
+    // a numbered noun before the numeral, and a word after it that is not what the bound
+    // measures (the quantity-noun gate in identifierNumerals), or a quantity noun of another
+    // dimension than the bound's (the gate's dimension keying)
+    [
+      'keep the valve 30 open for at least 10 minutes',
+      'keep the valve 70 open for at least 10 minutes',
+      '30',
+    ],
+    ['keep tank 80 full for at least 5 minutes', 'keep tank 20 full for at least 5 minutes', '80'],
+    [
+      'keep oven 180 temperature for at least 10 minutes',
+      'keep oven 220 temperature for at least 10 minutes',
+      '180',
+    ],
   ] as const
 
   for (const [a, b, amount] of pairs) {
@@ -284,6 +298,15 @@ describe('GTWR_R6: a numeral naming which quantity a converted bound is on', () 
     // the last word does not name what the dimension measures
     ['keep the room 22 constant above 18 °C', ['22']],
     ['keep the pump 50 running over 10 minutes', ['50']],
+    // ... even after a numbered noun, where only the quantity-noun gate stands in the way
+    ['keep the valve 30 open for at least 10 minutes', ['30']],
+    ['keep heater 80 running over 10 minutes', ['80']],
+    ['keep the heater 80 constant above 20 °C', ['80']],
+    ['keep tank 80 full for at least 5 minutes', ['80']],
+    // the last word names what ANOTHER dimension measures than the bound's
+    ['keep oven 180 temperature for at least 10 minutes', ['180']],
+    ['keep zone 1 latency above 20 °C', ['1']],
+    ['keep disk 2 temperature below 5 GB', ['2']],
     // the word before the numeral is not a noun that numbers its instances: a verb or a
     // modifier stands there, and the numeral is the amount it sets
     ['target 5 latency below 10 ms', ['5']],
