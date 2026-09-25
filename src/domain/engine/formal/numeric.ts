@@ -628,28 +628,68 @@ const FINITE_VERB =
 
 /**
  * A response whose own verb asserts the clause it takes (`ensure that the response time is below
- * 200 milliseconds`, `verify the pressure is at most 5 bar`): the complement clause IS the
- * obligation, and its one finite verb is its copula, not a condition's. Closed on purpose: `report
- * that the level is above 5 meters` asserts a message, and `verify whether` asserts nothing, so
- * each keeps the {@link FINITE_VERB} reading.
+ * 200 milliseconds`, `verify the pressure is at most 5 bar`, `make sure that ...`, `see to it
+ * that ...`): the complement clause IS the obligation, and its one finite verb is its copula, not
+ * a condition's. Closed on purpose, because a verb that REPORTS its complement keeps the
+ * {@link FINITE_VERB} reading: `report that the level is above 5 meters` and `log that ...` each
+ * assert a message, and `verify whether` asserts nothing. The verbs that name a check or a
+ * guarantee may drop `that`; the rest (`require`, `enforce`, `maintain`, `assert`, `see to it`)
+ * take a complement only through it. An adverb from a closed list may stand before `that`
+ * (`ensure at all times that`, `verify, at all times, that`, `check continuously that`), but only
+ * one of those: `ensure the tank that is above 5 meters is drained` has no complementizer, and its
+ * `that` is a relative, and a noun that merely ends in `-ly` (`supply`) is no adverb.
  */
-const ASSERTING_COMPLEMENT =
-  /^\s*(?:ensure|verify|confirm|guarantee|assure)\s+(?:that\s+)?(?!(?:whether|if)(?![\p{L}\p{N}-]))/iu
+const ASSERTING_COMPLEMENT = (() => {
+  const adverb = String.raw`(?:always|also|still|further|additionally|continuously|continually|constantly|consistently|periodically|regularly|repeatedly|automatically|independently|at\s+all\s+times|at\s+any\s+time|in\s+all\s+cases|in\s+every\s+case)`
+  const beforeThat = String.raw`(?:[\s,]+${adverb}){0,2}[\s,]+that`
+  const notWhether = String.raw`(?!(?:whether|if)(?![\p{L}\p{N}-]))`
+  const optional = String.raw`(?:ensure|verify|confirm|guarantee|assure|check|validate|make\s+sure|make\s+certain)(?:${beforeThat})?`
+  const required = String.raw`(?:require|enforce|maintain|assert|see\s+to\s+it)${beforeThat}`
+  return new RegExp(String.raw`^\s*(?:${optional}|${required})[\s,]+${notWhether}`, 'iu')
+})()
 
-/** A relative pronoun: a clause inside the complement that picks WHICH thing, not the claim. */
+/**
+ * A relative pronoun: a clause inside the complement that picks WHICH thing, not the claim. The
+ * {@link WH_RELATIVE} ones may leave the complement's own copula outside them.
+ */
 const RELATIVE = /(?:^|[\s,;(])(?:who|whom|whose|which|that)(?![\p{L}\p{N}-])/iu
 
 /**
- * The {@link FINITE_VERB} matches in a response's `subject` that mark a nested clause: all of
- * them, except the one finite verb of an {@link ASSERTING_COMPLEMENT} with no relative pronoun
- * in it. A complement with two (`ensure that the pump is off and the level is above 5 meters`)
- * keeps both, because the tier cannot tell a conjunct from a condition.
+ * `which`, `who`, or `whom` with at least two words between it and the complement's one finite
+ * verb (`the latency which the client observes is below 200 milliseconds`): an object relative
+ * with a subject and a verb of its own, so the finite verb after it is the complement's. With
+ * fewer (`the tank which is above`, `which still is`) the verb is the relative clause's. `whose`
+ * always takes the next verb (`whose level is`), and `that` may open a second complement under a
+ * verb that reports it (`ensure that the display reports that the level is ...`), so neither
+ * ever leaves the verb to the complement.
  */
-function nestedClauseVerbs(subject: string): number {
-  const verbs = [...subject.matchAll(FINITE_VERB)].length
+const WH_RELATIVE = /(?:^|[\s,;(])(?:which|who|whom)(?![\p{L}\p{N}-])/giu
+
+/**
+ * The {@link FINITE_VERB} matches in a response's `subject` that mark a nested clause: all of
+ * them, except the one finite verb of an {@link ASSERTING_COMPLEMENT} whose relative pronouns, if
+ * any, are each a {@link WH_RELATIVE} with a subject and verb of its own before that verb, when
+ * no finite verb follows the bound (`rest`, the text after it: `... whose level is above 5 meters
+ * is drained` holds the complement's verb there). A complement with two (`ensure that the pump is
+ * off and the level is above 5 meters`) keeps both, because the tier cannot tell a conjunct from
+ * a condition.
+ */
+function nestedClauseVerbs(subject: string, rest: string): number {
+  const verbs = [...subject.matchAll(FINITE_VERB)]
   const complement = ASSERTING_COMPLEMENT.exec(subject)
-  if (complement === null || verbs !== 1) return verbs
-  return RELATIVE.test(subject.slice(complement[0].length)) ? verbs : 0
+  if (complement === null || verbs.length !== 1) return verbs.length
+  const clause = subject.slice(complement[0].length)
+  if (!RELATIVE.test(clause)) return 0
+  if ([...rest.matchAll(FINITE_VERB)].length > 0) return 1
+  const verbAt = verbs[0]!.index! - complement[0].length
+  const relatives = [...clause.matchAll(new RegExp(RELATIVE.source, 'giu'))]
+  const wh = [...clause.matchAll(WH_RELATIVE)]
+  if (wh.length !== relatives.length) return 1
+  const ownClause = wh.every((m) => {
+    const between = clause.slice(m.index! + m[0].length, verbAt)
+    return between.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length >= 2
+  })
+  return ownClause ? 0 : 1
 }
 
 /**
@@ -686,7 +726,7 @@ function qualifierAt(
     (m) => !(dimension === 'time' && governsBound(subject, m)),
   )
   if (condition !== undefined) return qualifierOf(text.slice(condition.index))
-  if (slot === 'resp' && nestedClauseVerbs(subject) > 0) return qualifierOf(text)
+  if (slot === 'resp' && nestedClauseVerbs(subject, text.slice(end)) > 0) return qualifierOf(text)
   return qualifierOf(text.slice(end))
 }
 
@@ -1296,6 +1336,40 @@ export function extractNumericPredicates(
   )
   if (!negated) return preds
   return negateResponse(text, preds, declined, claimed)
+}
+
+/**
+ * Whether a response of `systemName` MAY perform the action a bound on `quantity` (read from
+ * `label`) bounds, though no key of it is that quantity: the response is the same system's, and
+ * holds the label's words in order, articles aside. `immediately keep the door unlocked`, `also
+ * keep the door unlocked`, `continue to keep the door unlocked`, and `keep door unlocked` each
+ * hold `keep the door unlocked`, and each does it; {@link actionOccurrences} keys only a
+ * response's prefixes, so none of them was a performer, and two prohibitions that together
+ * forbid the action certified against it. This is a disclosure test only
+ * (`numeric-contradiction.ts` `uncomparedProhibitionSets`): a response it admits is never
+ * asserted in a cell or proved against, so admitting one that does not do the action costs a
+ * disclosure, and `keep the door locked` or `log the entry` is not admitted at all.
+ */
+export function mayPerform(
+  text: string,
+  systemName: string,
+  quantity: string,
+  label: string,
+): boolean {
+  if (!quantity.startsWith(quantityKey(systemName, ''))) return false
+  const words = (s: string) =>
+    s
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((w) => w !== '' && w !== 'the' && w !== 'a' && w !== 'an')
+  const want = words(label)
+  if (want.length === 0) return false
+  let i = 0
+  for (const w of words(text)) {
+    if (w === want[i]) i += 1
+    if (i === want.length) return true
+  }
+  return false
 }
 
 /** An action a response with no bound performs: its quantity key, and the text after it. */

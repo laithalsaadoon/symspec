@@ -1468,11 +1468,15 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       }
       // A response that does an action asserts its occurrence, which is what two opposed
       // prohibitions on it (`shall not keep the door unlocked above 30 seconds`, `... below 40
-      // seconds`) cannot both survive: with no bound (`keep the door unlocked`, or `... until
-      // the guard arrives`), keyed as a bound's subject would be; and with one, on each bound's
-      // own quantity, whatever unit it is in (`run the pump at least 80%` runs the pump, and
-      // meets `not above 30 minutes` there). Never a prohibition's: `shall not keep the door
-      // unlocked` does not do the action.
+      // seconds`) cannot both survive: at every place a bound could stand, keyed as that bound's
+      // subject would be, with the rest as its qualifier (`keep the door unlocked`, `... until
+      // the guard arrives`); and, with bounds, on each bound's own quantity, whatever unit it is
+      // in (`run the pump at least 80%` runs the pump, and meets `not above 30 minutes` there).
+      // A bound's quantity is not always the action: `keep the door unlocked when the level is
+      // above 5 meters` bounds `keep the door unlocked when the level`, and `... after at most 5
+      // seconds` a delay, while both keep the door unlocked, so a bound response keys its
+      // prefixes too. Its whole text, bound included, names no action, and is not one of them.
+      // Never a prohibition's: `shall not keep the door unlocked` does not do the action.
       const occurrencesOf = (
         r: (typeof reqs)[number],
         response: ReturnType<typeof extractNumericPredicates>,
@@ -1480,14 +1484,15 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         const view = toEncodable(r)
         if (view.negated === true) return []
         const sourceText = view.systemResponse.trim()
-        const actions =
-          response.length > 0
-            ? response.map((p) => ({
-                quantity: p.quantity,
-                ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
-              }))
-            : actionOccurrences(view.systemResponse, r.systemName, quantityAliases)
-        return actions.map((a) => ({ ...a, sourceText }))
+        const bound = response.map((p) => ({
+          quantity: p.quantity,
+          ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
+        }))
+        const keyed = new Set(bound.map((a) => a.quantity))
+        const prefixes = actionOccurrences(view.systemResponse, r.systemName, quantityAliases)
+          .filter((a) => !keyed.has(a.quantity))
+          .filter((a) => bound.length === 0 || a.qualifier !== undefined)
+        return [...bound, ...prefixes].map((a) => ({ ...a, sourceText }))
       }
       const numericReqPreds = reqs.map((r) => {
         const response = responseBounds(r)
@@ -1495,6 +1500,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           id: r.id,
           contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
           occurrences: occurrencesOf(r, response),
+          ...(toEncodable(r).negated === true
+            ? {}
+            : {
+                response: { systemName: r.systemName, text: toEncodable(r).systemResponse.trim() },
+              }),
           predicates: [
             ...response,
             ...(r.trigger !== undefined

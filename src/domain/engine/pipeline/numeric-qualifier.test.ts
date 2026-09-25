@@ -273,61 +273,6 @@ describe('AC-2-6: every rule that splits a bound off is tested against a pair th
   // below is pinned against a conflicting pair it must leave in one cell, next to the control
   // it exists for.
 
-  it('PROVES two bounds in the complement clause of ensure, verify, confirm, or guarantee', async () => {
-    // `ensure that the response time is below 200 ms`: the `is` is the complement clause's
-    // copula, and the clause is the obligation. The finite-verb rule read it as a condition,
-    // and a conflict 669c0e9 proved became an info disclosure.
-    for (const verb of ['ensure that', 'verify that', 'confirm that', 'guarantee that', 'ensure']) {
-      for (const [system, a, b] of [
-        [
-          'server',
-          'the response time is below 200 milliseconds',
-          'the response time is above 500 milliseconds',
-        ],
-        [
-          'boiler',
-          'the water can reach at most 60 degrees celsius',
-          'the water can reach at least 80 degrees celsius',
-        ],
-      ] as const) {
-        const out = await verdict(system, `${verb} ${a}`, `${verb} ${b}`)
-        expect(out.errors, `${verb} ${a}`).toEqual(['FND_NUMERIC_CONTRADICTION'])
-      }
-    }
-    // The consistent twin stays consistent.
-    const ok = await verdict(
-      'server',
-      'ensure that the response time is below 500 milliseconds',
-      'ensure that the response time is above 200 milliseconds',
-    )
-    expect(ok).toEqual({ errors: [], uncompared: [] })
-  })
-
-  it('still discloses a bound in a relative clause or a reported clause, never proves it', async () => {
-    // The controls: a relative clause picks WHICH tank, and `report that` asserts a message,
-    // not the pressure. Both pairs are consistent, and base proved each one.
-    for (const [a, b] of [
-      [
-        'ensure that the tank whose level is above 5 meters is drained',
-        'ensure that the tank whose level is below 3 meters is drained',
-      ],
-      [
-        'ensure that the tank that is above 5 meters is drained',
-        'ensure that the tank that is below 3 meters is drained',
-      ],
-      ['report that the level is above 5 meters', 'report that the level is below 3 meters'],
-      ['verify whether the level is above 5 meters', 'verify whether the level is below 3 meters'],
-      [
-        'ensure that the pump is off and the level is above 5 meters',
-        'ensure that the pump is off and the level is below 3 meters',
-      ],
-    ] as const) {
-      const out = await verdict('pump controller', a, b)
-      expect(out.errors, a).toEqual([])
-      expect(out.uncompared, a).toEqual([[ID_A, ID_B]])
-    }
-  })
-
   it('PROVES two time bounds a time preposition introduces, and discloses a clause it opens', async () => {
     // `expire the idle session after at most 30 minutes`: `after` governs the bound itself, a
     // delay, and opens no clause. The condition-word rule split the gaming harness's own

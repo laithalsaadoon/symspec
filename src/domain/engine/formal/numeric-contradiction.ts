@@ -135,6 +135,7 @@ import type { Z3Bool } from './encode.ts'
 import type { Evidence } from './finding.ts'
 import {
   type BoundRole,
+  mayPerform,
   type NumericPredicate,
   opposedComparators,
   RAW_UNIT_DIMENSION,
@@ -194,6 +195,13 @@ export interface RequirementPredicates {
     readonly qualifier?: string
     readonly sourceText: string
   }>
+  /**
+   * A non-negated response's system and text, for the one test that reads a response no key
+   * matched: whether it MAY do an action two prohibitions together forbid (`numeric.ts`
+   * `mayPerform`, {@link uncomparedProhibitionSets}). Never asserted in a cell. Absent for a
+   * prohibition, which does not do its action.
+   */
+  readonly response?: { readonly systemName: string; readonly text: string }
 }
 
 /**
@@ -206,6 +214,11 @@ interface Occurrence {
   readonly quantity: string
   readonly qualifier?: string
   readonly sourceText: string
+  /**
+   * A response no key of which is `quantity`, admitted because it holds the action's words
+   * (`numeric.ts` `mayPerform`): disclosed against, never asserted in a cell.
+   */
+  readonly loose?: true
 }
 
 /** The {@link Occurrence}s of one requirement's performance of `quantity`. */
@@ -996,6 +1009,24 @@ async function uncomparedProhibitionSets(
     )
   }
 
+  // The responses that may do the action on `pred`'s quantity though none is keyed on it.
+  const looseOf = (pred: NumericPredicate): Forcer[] =>
+    reqPreds.flatMap((rp) =>
+      rp.response !== undefined &&
+      mayPerform(rp.response.text, rp.response.systemName, pred.quantity, pred.label)
+        ? [
+            {
+              occurrence: {
+                id: rp.id,
+                quantity: pred.quantity,
+                sourceText: rp.response.text,
+                loose: true as const,
+              },
+            },
+          ]
+        : [],
+    )
+
   // A member that forces the action: a bound obligation, or a bare one.
   type Forcer = { readonly entry: Entry } | { readonly occurrence: Occurrence }
   type Candidate = { readonly entries: readonly Entry[]; readonly occurring: readonly Occurrence[] }
@@ -1006,10 +1037,16 @@ async function uncomparedProhibitionSets(
   const sets: Candidate[] = []
   for (const entries of byClass.values()) {
     const prohibitions = entries.filter((e) => e.pred.negated === true)
-    const forcers: Forcer[] = [
+    const keyed: Forcer[] = [
       ...entries.filter((e) => e.pred.negated !== true).map((entry) => ({ entry })),
       ...performersOf(entries).map((occurrence) => ({ occurrence })),
     ]
+    // With no keyed performer, a response that holds the action's words may still do it
+    // (`immediately keep the door unlocked`), and prohibitions that together forbid the action
+    // conflict with it if it does. A keyed performer already brings each such set to a cell
+    // or a disclosure.
+    const forcers: Forcer[] =
+      keyed.length > 0 || prohibitions.length === 0 ? keyed : looseOf(prohibitions[0]!.pred)
     if (prohibitions.length === 0 || forcers.length === 0) continue
     for (let i = 0; i < prohibitions.length; i += 1) {
       for (let j = i + 1; j < prohibitions.length; j += 1) {
@@ -1046,7 +1083,7 @@ async function uncomparedProhibitionSets(
     const qualifier = set[0]!.pred.qualifier ?? ''
     const oneCell =
       set.every((e) => (e.pred.qualifier ?? '') === qualifier) &&
-      occurring.every((o) => (o.qualifier ?? '') === qualifier) &&
+      occurring.every((o) => o.loose !== true && (o.qualifier ?? '') === qualifier) &&
       groups.some((g) => ids.every((id) => liveIn(g, contextOf.get(id) ?? [])))
     if (oneCell) continue
     if (bounds.budget?.expired() === true) {
@@ -1082,7 +1119,16 @@ async function uncomparedProhibitionSets(
         'their guards are never live in one context group or the text after their bounds ' +
         'differs. If they can all apply at once, change one so it no longer contradicts the ' +
         'others there; if they cannot, waive this finding. Then re-run `symspec check`. This ' +
-        'is a disclosure, not a verdict.',
+        'is a disclosure, not a verdict.' +
+        occurring
+          .filter((o) => o.loose === true)
+          .map(
+            (o) =>
+              ` Requirement ${o.id} ("${o.sourceText}") was not read as doing ` +
+              `"${set[0]!.pred.label}", but holds its words, so it may: if it does not, waive ` +
+              'this finding; if it does, the prohibitions forbid what it requires.',
+          )
+          .join(''),
     })
   }
   return [...out.values()]

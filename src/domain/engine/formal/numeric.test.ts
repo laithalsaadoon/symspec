@@ -8,7 +8,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { extractNumericPredicates, type PredicateSlot, RAW_UNIT_DIMENSION } from './numeric.ts'
+import {
+  extractNumericPredicates,
+  mayPerform,
+  type PredicateSlot,
+  RAW_UNIT_DIMENSION,
+} from './numeric.ts'
 
 describe('a numeric predicate is stamped with the slot it was read out of', () => {
   const SLOTS: readonly PredicateSlot[] = ['resp', 'trig', 'pre']
@@ -403,5 +408,37 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
     ])
     const [cjk] = extractNumericPredicates('keep the 温度 reading below 30 percent', 'hvac', 'resp')
     expect(cjk?.quantity).toBe('sys__hvac__qty__keep_the_温度_reading')
+  })
+})
+
+describe('a response that holds an action behind other words may perform it (spec 007 AC-2-6)', () => {
+  const [prohibition] = extractNumericPredicates(
+    'keep the door unlocked above 30 seconds',
+    'door controller',
+    'resp',
+    undefined,
+    true,
+  )
+  const may = (text: string, system = 'door controller') =>
+    mayPerform(text, system, prohibition!.quantity, prohibition!.label)
+
+  it('admits the action behind a leading word, or with an article dropped', () => {
+    for (const text of [
+      'keep the door unlocked',
+      'immediately keep the door unlocked',
+      'also keep the door unlocked',
+      'continue to keep the door unlocked',
+      'keep door unlocked',
+      'keep the door unlocked, then sound the buzzer',
+    ]) {
+      expect(may(text), text).toBe(true)
+    }
+  })
+
+  it('refuses another action, words out of order, and another system', () => {
+    expect(may('immediately keep the door locked')).toBe(false)
+    expect(may('log the entry')).toBe(false)
+    expect(may('unlocked the door keep')).toBe(false)
+    expect(may('immediately keep the door unlocked', 'gate controller')).toBe(false)
   })
 })

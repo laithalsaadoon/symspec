@@ -375,6 +375,111 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
         expect(report.verified).toBe(false)
       })
 
+      it('DISCLOSES them against an obligation whose bound lies after the action', async () => {
+        // A response WITH a bound performed only each bound's own quantity. When the bound
+        // sits in a condition clause, behind a time preposition, or on a later conjunct, that
+        // quantity is not the action (`keep the door unlocked when the level`, `... unlocked
+        // after`, `... then sound the buzzer`), so nothing performed `keep the door unlocked`
+        // and the document certified where the bare `when the level is high` was disclosed.
+        for (const response of [
+          'keep the door unlocked when the level is above 5 meters',
+          'keep the door unlocked until the level is above 5 meters',
+          'keep the door unlocked, then sound the buzzer for at most 5 seconds',
+          'keep the door unlocked after at most 5 seconds',
+        ]) {
+          const doc = manyDoc(
+            {
+              systemName: 'door controller',
+              systemResponse: 'keep the door unlocked above 30 seconds',
+              negated: true,
+            },
+            door('the door is forced', 'keep the door unlocked above 30 seconds', true),
+            {
+              systemName: 'door controller',
+              systemResponse: 'keep the door unlocked below 40 seconds',
+              negated: true,
+            },
+            door('the badge is accepted', 'keep the door unlocked below 40 seconds', true),
+            door('the fire alarm sounds', response),
+            log('the fire alarm sounds'),
+          )
+          const report = await runCheck(doc as never, {})
+          expect(report.counts.error, response).toBe(0)
+          expect(uncompared(report), response).toContainEqual([idAt(0), idAt(2), idAt(4)])
+          expect(
+            report.coverage.demotions.map((d) => d.reason),
+            response,
+          ).toContain('numeric-bounds-uncompared')
+          expect(report.verified, response).toBe(false)
+          // Keyed as a bound's subject, not only admitted by its words.
+          const messages = report.findings
+            .filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
+            .map((f) => f.message)
+            .join(' ')
+          expect(messages, response).not.toContain('was not read as doing')
+        }
+      })
+
+      it('DISCLOSES them against a response that holds the action behind other words', async () => {
+        // `immediately keep the door unlocked` does the action, and no prefix of it is the
+        // prohibitions' key; neither is `keep door unlocked`. Two opposed prohibitions that
+        // together forbid an action are disclosed against a response of the same system that
+        // holds the action's words in order, never proved, since the tier did not key it.
+        for (const response of [
+          'immediately keep the door unlocked',
+          'also keep the door unlocked',
+          'continue to keep the door unlocked',
+          'keep door unlocked',
+        ]) {
+          const doc = manyDoc(
+            {
+              systemName: 'door controller',
+              systemResponse: 'keep the door unlocked above 30 seconds',
+              negated: true,
+            },
+            door('the door is forced', 'keep the door unlocked above 30 seconds', true),
+            {
+              systemName: 'door controller',
+              systemResponse: 'keep the door unlocked below 40 seconds',
+              negated: true,
+            },
+            door('the badge is accepted', 'keep the door unlocked below 40 seconds', true),
+            door('the fire alarm sounds', response),
+            log('the fire alarm sounds'),
+            door('the door is forced', response),
+          )
+          const report = await runCheck(doc as never, {})
+          expect(report.counts.error, response).toBe(0)
+          expect(uncompared(report), response).toContainEqual([idAt(0), idAt(2), idAt(4)])
+          expect(
+            report.coverage.demotions.map((d) => d.reason),
+            response,
+          ).toContain('numeric-bounds-uncompared')
+          expect(report.verified, response).toBe(false)
+          const [finding] = report.findings.filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
+          expect(finding?.message, response).toContain('was not read as doing')
+        }
+      })
+
+      it('does not read another action behind other words, or another system, as doing it', async () => {
+        // The controls: `keep the door locked` is another action whatever precedes it, and the
+        // gate controller's response is not the door controller's.
+        for (const [systemName, response] of [
+          ['door controller', 'immediately keep the door locked'],
+          ['door controller', 'log the entry'],
+          ['gate controller', 'immediately keep the door unlocked'],
+        ] as const) {
+          const doc = manyDoc(
+            door('the badge is accepted', 'keep the door unlocked above 30 seconds', true),
+            door('the badge is accepted', 'keep the door unlocked below 40 seconds', true),
+            { systemName, trigger: 'the badge is accepted', systemResponse: response },
+          )
+          const report = await runCheck(doc as never, {})
+          expect(contradictions(report), response).toEqual([])
+          expect(uncompared(report), `${systemName}: ${response}`).toEqual([])
+        }
+      })
+
       it('does not read another action followed by text, or a room to meet, as a conflict', async () => {
         for (const [response, low] of [
           ['keep the door locked until the guard arrives', '40'],
@@ -454,6 +559,21 @@ describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed
           expect(uncompared(report), performer).toEqual([[idAt(0), idAt(2), idAt(4)]])
           expect(report.verified, performer).toBe(false)
         }
+      })
+
+      it('DISCLOSES them against a performer in another dimension behind other words', async () => {
+        const doc = manyDoc(
+          pump('run the pump above 30 minutes', undefined, true),
+          pump('run the pump above 30 minutes', 'the tank is full', true),
+          pump('run the pump below 40 minutes', undefined, true),
+          pump('run the pump below 40 minutes', 'the tank is empty', true),
+          pump('immediately run the pump at least 80%', 'the tank is low'),
+          pump('log the level', 'the tank is low'),
+        )
+        const report = await runCheck(doc as never, {})
+        expect(report.counts.error).toBe(0)
+        expect(uncompared(report)).toContainEqual([idAt(0), idAt(2), idAt(4)])
+        expect(report.verified).toBe(false)
       })
 
       it('does not read another action, or a room to meet, as a conflict', async () => {
