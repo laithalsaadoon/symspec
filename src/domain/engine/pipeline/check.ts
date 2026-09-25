@@ -48,6 +48,10 @@
  * runs a conservative leading-negator scan ("not …", "never …", "do/does
  * not …") and strips it — but the schema flag wins: if `negated` is already
  * set, the stored text is trusted as-is (positive) and no scan is applied.
+ * "not only …" is not a negator here, exactly as it is not one in the parse's
+ * `extractNegation`: "shall not only X but also Y" obliges both halves (spec 007
+ * AC-2-3), and the parse stores it `negated: false` with "not only" kept in the
+ * response, which this scan must not then re-negate.
  * Either way the atomizer receives positive text + a polarity flag, restoring
  * the same atom-polarity discipline (same atom, opposite polarity) the parse
  * tier established.
@@ -721,8 +725,11 @@ function docAntonymIndex(doc: Doc): ReadonlyMap<string, AntonymEntry> | undefine
   }
 }
 
-/** Conservative leading-negator scan for stored response text (see header). */
-const LEADING_NEGATOR = /^(?:do(?:es)?\s+not|not|never)\s+/i
+/**
+ * Conservative leading-negator scan for stored response text (see header). `not only`
+ * opens "not only X but also Y", a positive obligation, so it is not a negator.
+ */
+const LEADING_NEGATOR = /^(?:(?:do(?:es)?\s+)?not(?!\s+only\b)|never)\s+/i
 
 /**
  * Project a stored requirement into the encodable view, resolving negation.
