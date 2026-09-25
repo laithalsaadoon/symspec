@@ -138,8 +138,9 @@ export interface Fixture {
   readonly seeded: string
   readonly ops: readonly DocumentOp[]
   /**
-   * The two requirement keys the defect is between. Moves that edit ONE requirement edit
-   * `culprits[1]`; moves that edit both edit both.
+   * The two requirement keys the defect is between. A move that edits ONE requirement is
+   * registered once per culprit ({@link oneSided}), because which side survives decides the
+   * outcome: deleting `AUD-R2` leaves an uncovered document, deleting `AUD-R1` a clean one.
    */
   readonly culprits: readonly [string, string]
   readonly signal: Signal
@@ -495,26 +496,38 @@ const DECOYS: readonly (readonly [string, string])[] = [
   ['DECOY-3', 'archive the report'],
 ]
 
-export const MOVES: readonly Move[] = [
-  {
-    id: 'rename-system',
-    clause: 'rename a system',
-    direction: 'weakening',
-    edit: ({ fixture, doc }) => {
-      const b = req(doc, fixture.culprits[1])
-      return {
-        kind: 'ops',
-        ops: [
-          {
-            op: 'update',
-            ref: fixture.culprits[1],
-            attr: 'systemName',
-            value: `${b.systemName} unit`,
-          },
-        ],
-      }
+/** Which culprit a one-sided move edits, as it appears in the move id. */
+const SIDES = [
+  ['first', 0],
+  ['second', 1],
+] as const
+
+/**
+ * A move that edits ONE culprit, registered once per side as `<id>@first` / `<id>@second`.
+ * Picking a side would leave the other one unmeasured, and the side is exactly what an agent
+ * chooses: whichever deletion or rewrite reaches the clean verdict.
+ */
+const oneSided = (
+  id: string,
+  clause: string,
+  direction: Direction,
+  edit: (target: Requirement, key: string, ctx: MoveContext) => Edit,
+): readonly Move[] =>
+  SIDES.map(([side, i]) => ({
+    id: `${id}@${side}`,
+    clause,
+    direction,
+    edit: (ctx: MoveContext) => {
+      const key = ctx.fixture.culprits[i]
+      return edit(req(ctx.doc, key), key, ctx)
     },
-  },
+  }))
+
+export const MOVES: readonly Move[] = [
+  ...oneSided('rename-system', 'rename a system', 'weakening', (r, key) => ({
+    kind: 'ops',
+    ops: [{ op: 'update', ref: key, attr: 'systemName', value: `${r.systemName} unit` }],
+  })),
   {
     id: 'split-system',
     clause: 'split a system into two parents (two names; part-of parents need AC-4-1)',
@@ -582,44 +595,33 @@ export const MOVES: readonly Move[] = [
             })),
           },
   },
-  {
-    id: 'delete-requirement',
-    clause: 'delete a requirement',
-    direction: 'weakening',
-    edit: ({ fixture }) => ({ kind: 'ops', ops: [{ op: 'delete', ref: fixture.culprits[1] }] }),
-  },
-  {
-    id: 'flip-negated',
-    clause: 'flip `negated`',
-    direction: 'weakening',
-    edit: ({ fixture, doc }) => {
-      const b = req(doc, fixture.culprits[1])
-      return { kind: 'ops', ops: readd(b, { negated: !b.negated }) }
-    },
-  },
-  {
-    id: 'condition-into-response',
-    clause: 'move a condition into the response text',
-    direction: 'weakening',
-    edit: ({ fixture, doc }) => {
-      const target = fixture.culprits
-        .map((k) => req(doc, k))
-        .reverse()
-        .find((r) => guardOf(r) !== undefined)
-      const guard = target === undefined ? undefined : guardOf(target)
-      if (target === undefined || guard === undefined)
-        return { kind: 'inapplicable', reason: 'neither culprit carries a condition' }
+  ...oneSided('delete-requirement', 'delete a requirement', 'weakening', (_r, key) => ({
+    kind: 'ops',
+    ops: [{ op: 'delete', ref: key }],
+  })),
+  ...oneSided('flip-negated', 'flip `negated`', 'weakening', (r) => ({
+    kind: 'ops',
+    ops: readd(r, { negated: !r.negated }),
+  })),
+  ...oneSided(
+    'condition-into-response',
+    'move a condition into the response text',
+    'weakening',
+    (r) => {
+      const guard = guardOf(r)
+      if (guard === undefined)
+        return { kind: 'inapplicable', reason: 'this culprit carries no condition' }
       return {
         kind: 'ops',
-        ops: readd(target, {
+        ops: readd(r, {
           patternType: 'ubiquitous',
           trigger: undefined,
           preCondition: undefined,
-          systemResponse: `${target.systemResponse} ${guard.word} ${guard.text}`,
+          systemResponse: `${r.systemResponse} ${guard.word} ${guard.text}`,
         }),
       }
     },
-  },
+  ),
   {
     id: 'add-decoys',
     clause: 'add decoy requirements',
@@ -638,19 +640,16 @@ export const MOVES: readonly Move[] = [
       }
     },
   },
-  {
-    id: 'shall-to-should',
-    clause: 'change `shall` to `should` (re-parse the edited sentence)',
-    direction: 'weakening',
-    edit: ({ fixture, doc }) => {
-      const b = req(doc, fixture.culprits[1])
-      return {
-        kind: 'reparse',
-        ref: fixture.culprits[1],
-        sentence: b.sentence.replace(/\bshall\b/, 'should'),
-      }
-    },
-  },
+  ...oneSided(
+    'shall-to-should',
+    'change `shall` to `should` (re-parse the edited sentence)',
+    'weakening',
+    (r, key) => ({
+      kind: 'reparse',
+      ref: key,
+      sentence: r.sentence.replace(/\bshall\b/, 'should'),
+    }),
+  ),
   {
     id: 'link-culprits',
     clause: 'op coverage: trace edges between the two culprits',
@@ -882,14 +881,23 @@ export const NOT_APPLICABLE_YET: readonly PendingMove[] = [
  * target against the registries, so the list here cannot drift from the AC it implements.
  */
 export const AC_8_2: readonly { readonly clause: string; readonly moves: readonly string[] }[] = [
-  { clause: 'rename a system', moves: ['rename-system'] },
+  { clause: 'rename a system', moves: ['rename-system@first', 'rename-system@second'] },
   { clause: 'alias two contraries', moves: ['alias-contraries-glossary', 'alias-contraries-term'] },
   { clause: 'waive by code', moves: ['waive-by-code'] },
-  { clause: 'delete a requirement', moves: ['delete-requirement'] },
-  { clause: 'flip `negated`', moves: ['flip-negated'] },
-  { clause: 'move a condition into the response text', moves: ['condition-into-response'] },
+  {
+    clause: 'delete a requirement',
+    moves: ['delete-requirement@first', 'delete-requirement@second'],
+  },
+  { clause: 'flip `negated`', moves: ['flip-negated@first', 'flip-negated@second'] },
+  {
+    clause: 'move a condition into the response text',
+    moves: ['condition-into-response@first', 'condition-into-response@second'],
+  },
   { clause: 'add decoy requirements', moves: ['add-decoys'] },
-  { clause: 'change `shall` to `should`', moves: ['shall-to-should'] },
+  {
+    clause: 'change `shall` to `should`',
+    moves: ['shall-to-should@first', 'shall-to-should@second'],
+  },
   { clause: 'split a system into two parents', moves: ['split-system'] },
   { clause: 'edit `intent`', moves: ['edit-intent'] },
   { clause: 'edit `policy`', moves: ['edit-policy'] },
@@ -966,7 +974,21 @@ export interface KnownEscape {
  */
 export const KNOWN_ESCAPES: readonly KnownEscape[] = [
   ...escapes(
-    'delete-requirement',
+    'delete-requirement@first',
+    'AC-5-2',
+    [
+      'feature-interaction',
+      'one-trigger-contradiction',
+      'contrary-pair',
+      'numeric-conflict',
+      'temporal-conflict',
+      'glossary-bridged',
+      'term-bridged',
+    ],
+    'Deleting one side of a conflict leaves a consistent document. Nothing records that the deleted requirement stood for an intent item, so its disappearance is not a finding; `FND_INTENT_UNCOVERED` makes it one. On temporal-conflict this side escapes where the other does not: deleting `AUD-R1` leaves `AUD-R2` and `AUD-R3`, which share a trigger: a consistent, fully compared document.',
+  ),
+  ...escapes(
+    'delete-requirement@second',
     'AC-5-2',
     [
       'feature-interaction',
@@ -976,7 +998,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'glossary-bridged',
       'term-bridged',
     ],
-    'Deleting one side of a conflict leaves a consistent document. Nothing records that the deleted requirement stood for an intent item, so its disappearance is not a finding; `FND_INTENT_UNCOVERED` makes it one.',
+    'The same deletion from the other side. On temporal-conflict it is caught only because deleting `AUD-R2` leaves `AUD-R1` uncovered — a coverage accident, not a defence, which is why the `@first` row exists.',
   ),
   ...escapes(
     'waive-by-code',
@@ -991,11 +1013,13 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     ],
     'A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable.',
   ),
-  ...escapes(
-    'flip-negated',
-    'AC-5-9',
-    ['contrary-pair', 'temporal-conflict', 'glossary-bridged', 'term-bridged'],
-    "Flipping one requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `refine` certificate.",
+  ...(['flip-negated@first', 'flip-negated@second'] as const).flatMap((move) =>
+    escapes(
+      move,
+      'AC-5-9',
+      ['contrary-pair', 'temporal-conflict', 'glossary-bridged', 'term-bridged'],
+      "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `refine` certificate.",
+    ),
   ),
   ...escapes(
     'alias-contraries-glossary',
@@ -1044,9 +1068,16 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
 export const OP_COVERAGE: Readonly<
   Record<OpVerb, { readonly moves: readonly string[] } | { readonly reason: string }>
 > = {
-  add: { moves: ['add-decoys', 'flip-negated', 'condition-into-response', 'shall-to-should'] },
-  update: { moves: ['rename-system', 'split-system', 'rebind-effect'] },
-  delete: { moves: ['delete-requirement', 'flip-negated', 'shall-to-should'] },
+  add: {
+    moves: [
+      'add-decoys',
+      'flip-negated@second',
+      'condition-into-response@second',
+      'shall-to-should@second',
+    ],
+  },
+  update: { moves: ['rename-system@second', 'split-system', 'rebind-effect'] },
+  delete: { moves: ['delete-requirement@second', 'flip-negated@second', 'shall-to-should@second'] },
   derive: { moves: ['link-culprits'] },
   satisfy: { moves: ['link-culprits'] },
   verify: { moves: ['link-culprits'] },
@@ -1074,7 +1105,7 @@ export const OP_COVERAGE: Readonly<
   state: { moves: ['release-frame'] },
   unstate: { moves: ['unstate'] },
   'state-initial': { moves: ['vacuous-initial'] },
-  classify: { moves: ['declassify-constraint', 'flip-negated'] },
+  classify: { moves: ['declassify-constraint', 'flip-negated@second'] },
   term: { moves: ['alias-contraries-term'] },
   unterm: { moves: ['unterm'] },
 }
@@ -1175,10 +1206,17 @@ const applyEdit = async (edit: Edit, doc: RequirementsDocument): Promise<Applied
       ])
       // The parse normalizes the modal, so the re-added requirement may be identical in every
       // slot — which is the property under test: whether the tool reads the edited sentence as
-      // the same obligation. `changed` is true because the author DID type a different sentence.
+      // the same obligation. So the moved DOCUMENT cannot show the move happened, and `changed`
+      // is measured on the INPUT instead: did the author type a different sentence at all.
       return 'kind' in moved
         ? moved
-        : { kind: 'check', doc: moved.doc, knobs: ARMED, embedder: 'orthogonal', changed: true }
+        : {
+            kind: 'check',
+            doc: moved.doc,
+            knobs: ARMED,
+            embedder: 'orthogonal',
+            changed: edit.sentence !== req(doc, edit.ref).sentence,
+          }
     }
     case 'ops': {
       const moved = fold(doc, edit.ops)

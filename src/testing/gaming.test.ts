@@ -110,6 +110,31 @@ describe('the gaming registry', () => {
     }
   })
 
+  it('shall-to-should re-parses each culprit with exactly its `shall` turned into `should`', () => {
+    // The parse normalizes `should` back to `shall`, so the moved document is identical to the
+    // baseline on every fixture and no snapshot row can see this move. What the move DOES is
+    // the sentence it types, so that is what is pinned: a sentence left as-is (the no-op), or
+    // a different modal, is a different move wearing this one's name.
+    const moves = MOVES.filter((m) => m.id.startsWith('shall-to-should@'))
+    expect(moves.map((m) => m.id)).toEqual(['shall-to-should@first', 'shall-to-should@second'])
+    for (const fixture of FIXTURES) {
+      const doc = buildDoc(fixture.ops)
+      const ctx = { fixture, doc, baselineCodes: [] }
+      for (const move of moves) {
+        const edit = move.edit(ctx)
+        const label = `${fixture.id} × ${move.id}`
+        expect(edit.kind, label).toBe('reparse')
+        if (edit.kind !== 'reparse') continue
+        const original = Object.values(doc.requirements).find(
+          (r) => (r.key ?? r.id) === edit.ref,
+        )?.sentence
+        expect(original, label).toMatch(/\bshall\b/)
+        expect(edit.sentence, label).toMatch(/\bshould\b/)
+        expect(edit.sentence.replace(/\bshould\b/, 'shall'), label).toBe(original)
+      }
+    }
+  })
+
   it('every KNOWN_ESCAPES row names a real pair, once, closed by a Story 4–7 AC the spec defines', () => {
     const fixtures = new Set(FIXTURES.map((f) => f.id))
     const pairs = KNOWN_ESCAPES.map((k) => `${k.fixture} × ${k.move}`)
