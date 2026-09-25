@@ -8,8 +8,10 @@
  * error on a unitless amount admits a setpoint no tier compares, so "set the fan to 80" beside
  * "set the fan to 20" reaches `verified: true`.
  *
- * Two readings relax the rule, and both come from the numeric tier rather than from R6:
+ * The readings that relax the rule all come from the numeric tier rather than from R6:
  *   - a unit the numeric tier converts (`DIMENSIONS`) is a unit;
+ *   - a digit run inside a number that tier reads with such a unit is part of that number
+ *     (`1` in `1,500 ms`);
  *   - a numeral inside the quantity subject of a bound that tier reads with a converted unit,
  *     between a noun whose instances are numbered and the noun naming what the bound
  *     measures (`zone 1 temperature`), names WHICH quantity it is.
@@ -248,6 +250,75 @@ describe('GTWR_R6: a unit the numeric tier converts is never a missing unit', ()
   it('a spelling no dimension lists is still missing a unit', () => {
     expect(r6Numerals(ubiquitous('keep the pressure at most 5 bar'))).toEqual(['5'])
     expect(r6Numerals(ubiquitous('keep the concentration below 5 ppm'))).toEqual(['5'])
+  })
+})
+
+describe('GTWR_R6: a number the numeric tier reads with a converted unit carries it whole', () => {
+  // The numeric tier's NUMBER token reads `1,500 ms` as 1500 ms. R6's digit run stops at the
+  // comma, so without the tier's number spans it reads `1` against `,500 ms` and calls a
+  // correctly united bound a bare number.
+  it.each([
+    ['respond within 1,500 ms'],
+    ['respond within 12,345.5 ms'],
+    ['keep the queue delay below 1,000,000 ms'],
+    ['keep zone 1 temperature below 1,000 °C'],
+  ])('"%s": no R6 finding', (response) => {
+    expect(r6Numerals(ubiquitous(response))).toEqual([])
+  })
+
+  it('reads the number through the stored negation, flag or leading negator', () => {
+    expect(r6Numerals({ ...ubiquitous('respond within 1,500 ms'), negated: true })).toEqual([])
+    expect(r6Numerals(ubiquitous('not respond within 1,500 ms'))).toEqual([])
+    // `never ` is longer than the number's tail after its first digit run (`,500`), so a span
+    // left at the unstripped offset no longer covers the `1`
+    expect(r6Numerals(ubiquitous('never respond within 1,500 ms'))).toEqual([])
+  })
+
+  it('reads a guard slot at its own offset', () => {
+    expect(
+      r6Numerals({
+        patternType: 'event-driven',
+        systemName: 'gateway',
+        trigger: 'the queue delay is above 1,500 ms',
+        systemResponse: 'shed load',
+      }),
+    ).toEqual([])
+  })
+
+  it.each([
+    // no bound: nothing the tier reads, so every digit run is a bare number
+    ['set the fan to 1,500', ['1', '500']],
+    // a bound whose unit the tier does not convert
+    ['keep the pressure below 1,500 bar', ['1', '500']],
+    // a decimal comma, which the tier's NUMBER token refuses to read at all
+    ['respond within 1,5 ms', ['1']],
+    // a toleranced value, which the tier declines as a bound
+    ['respond within 1,500 ms ± 5 ms', ['1']],
+  ] as const)('"%s": R6 errors on %j', (response, numerals) => {
+    expect(r6Numerals(ubiquitous(response))).toEqual(numerals)
+  })
+
+  it('in a full check both sides are admitted, and a real clash on them is proved', async () => {
+    const gateway = (systemResponse: string): Slots => ({
+      patternType: 'event-driven',
+      systemName: 'api gateway',
+      trigger: 'the request arrives',
+      systemResponse,
+    })
+    const consistent = await checkPair(
+      gateway('respond within 1,500 ms'),
+      gateway('respond within 2,000 ms'),
+    )
+    const codes = consistent.findings.map((f) => f.code)
+    expect(consistent.counts.error, JSON.stringify(consistent.findings)).toBe(0)
+    expect(codes).not.toContain('GTWR_R6_MISSING_UNITS')
+    expect(codes).not.toContain('FND_EXCLUDED_FROM_FORMAL')
+
+    const clash = await checkPair(
+      gateway('respond within 1,500 ms'),
+      gateway('respond in at least 2,000 ms'),
+    )
+    expect(clash.findings.map((f) => f.code)).toContain('FND_NUMERIC_CONTRADICTION')
   })
 })
 

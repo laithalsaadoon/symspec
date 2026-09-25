@@ -13,7 +13,13 @@
 
 import { renderSentenceSlots, type SlotOffsets } from '../core/render.ts'
 import type { Requirement } from '../core/schema.ts'
-import { opensConvertedUnit, type PredicateSlot, requirementBounds } from '../formal/numeric.ts'
+import {
+  opensConvertedUnit,
+  type PredicateSlot,
+  RAW_UNIT_DIMENSION,
+  requirementBounds,
+  type SubjectBound,
+} from '../formal/numeric.ts'
 import { KW } from '../parse/tier1.ts'
 
 export interface GtWRFinding {
@@ -499,7 +505,7 @@ function checkR6MissingUnits(
   // module-level /g regex shared across calls.
   R6_BARE_NUMBER.lastIndex = 0
   const matches = getMatches(sentence, R6_BARE_NUMBER)
-  let identifiers: ReadonlyArray<readonly [number, number]> | undefined
+  let spans: BoundSpans | undefined
   for (const match of matches) {
     // Skip numbers that are part of a standard's name (e.g. "RFC 9457",
     // "HTTP 401") — those are identifiers, not units-less quantities.
@@ -512,8 +518,11 @@ function checkR6MissingUnits(
     const end = match.index + matched.length
     // A unit the numeric tier converts is a unit (see opensConvertedUnit).
     if (opensConvertedUnit(sentence.slice(end))) continue
-    identifiers ??= identifierNumerals(requirement, sentence)
-    if (identifiers.some(([s, e]) => s === match.index && e === end)) continue
+    spans ??= boundSpans(requirement, sentence)
+    // A digit run inside a number that tier read with such a unit is part of that number:
+    // `1` in `1,500 ms`, where this pattern stops at the thousands separator.
+    if (spans.unitNumbers.some(([s, e]) => s <= match.index && end <= e)) continue
+    if (spans.identifiers.some(([s, e]) => s === match.index && e === end)) continue
     findings.push({
       code: 'GTWR_R6_MISSING_UNITS',
       severity: 'error',
@@ -533,7 +542,7 @@ function slotStart(offsets: SlotOffsets, slot: PredicateSlot): number | undefine
 /**
  * The nouns that name what a converted dimension MEASURES — the word a bound's subject has
  * to end in for a numeral before it to be read as naming which one ({@link
- * identifierNumerals}). Keyed by the numeric tier's `DIMENSIONS` names. Closed and deliberately short: a
+ * identifierNumeral}). Keyed by the numeric tier's `DIMENSIONS` names. Closed and deliberately short: a
  * noun left out keeps its numeral an R6 error, which is base behaviour, while a word let in
  * that does not name the measured quantity (`running`, `constant`, `spinning`) would read a
  * setpoint as a label.
@@ -561,7 +570,7 @@ const quantityNoun = (dimension: string, word: string): boolean =>
 
 /**
  * The nouns whose instances are told apart by a number — the word that has to stand directly
- * before a numeral for {@link identifierNumerals} to read it as naming WHICH one (`zone 1`,
+ * before a numeral for {@link identifierNumeral} to read it as naming WHICH one (`zone 1`,
  * `link 2`, `disk 2`).
  *
  * Closed and fail-closed: a noun left out keeps its numeral an R6 error, which is base
@@ -572,7 +581,7 @@ const quantityNoun = (dimension: string, word: string): boolean =>
  * noun that is also a common verb (`pump`, `scale`, `drive`, `queue`, `stage`: `pump 50
  * volume` delivers 50), since a response's verb need not be its first word (`immediately
  * pump 50 volume`). `link` is the one exception, pinned by spec 007's B8 reproducer, and
- * {@link identifierNumerals} still refuses it as a response's first word.
+ * {@link identifierNumeral} still refuses it as a response's first word.
  */
 export const R6_NUMBERED_NOUNS: readonly string[] = [
   'axis',
@@ -608,7 +617,8 @@ export const R6_NUMBERED_NOUNS: readonly string[] = [
 const NUMBERED_NOUNS: ReadonlySet<string> = new Set(R6_NUMBERED_NOUNS)
 
 /**
- * The sentence spans of the numerals R6 reads as IDENTIFIERS, not amounts: `1` in "hold
+ * The sentence span of the numeral R6 reads as an IDENTIFIER, not an amount, in one bound
+ * placed at `start` (its slot's offset in `sentence`): `1` in "hold
  * zone 1 temperature above 20 degrees celsius", `2` in "keep link 2 throughput below 100
  * Mbps" (spec 007 AC-2-6: "no error for any of them").
  *
@@ -633,28 +643,49 @@ const NUMBERED_NOUNS: ReadonlySet<string> = new Set(R6_NUMBERED_NOUNS)
  *     verb. A verb or a modifier there (`target 5 latency`, `apply 30 delay`, `keep
  *     setpoint 22 temperature`) makes the numeral the amount it sets, with the measured noun
  *     standing in for a unit.
- *
- * Only a sentence that IS this requirement's rendering is read, because the spans come
- * from its slots; any other sentence keeps every numeral a finding.
  */
-function identifierNumerals(
-  requirement: Requirement,
+function identifierNumeral(
   sentence: string,
-): ReadonlyArray<readonly [number, number]> {
+  start: number,
+  { predicate, subjectWords }: SubjectBound,
+): readonly [number, number] | undefined {
+  const [before, numeral, last] = subjectWords.slice(-3).map(([s, e]) => [start + s, start + e])
+  if (before === undefined || numeral === undefined || last === undefined) return undefined
+  if (!quantityNoun(predicate.dimension, sentence.slice(last[0], last[1]))) return undefined
+  if (!NUMBERED_NOUNS.has(sentence.slice(before[0], before[1]).toLowerCase())) return undefined
+  if (predicate.slot === 'resp' && subjectWords.length === 3) return undefined
+  return [numeral[0]!, numeral[1]!]
+}
+
+/** What R6 reads off the bounds the numeric tier extracts from the requirement it lints. */
+interface BoundSpans {
+  /** Sentence spans of the numbers read with a unit that tier converts (`1,500` in `1,500 ms`). */
+  readonly unitNumbers: ReadonlyArray<readonly [number, number]>
+  /** Sentence spans of the numerals that name which quantity a bound is on ({@link identifierNumeral}). */
+  readonly identifiers: ReadonlyArray<readonly [number, number]>
+}
+
+/**
+ * The bounds {@link requirementBounds} reads out of `requirement` (the one function `check`
+ * hands the decide tier its predicates from), placed in `sentence`. Only a sentence that IS
+ * this requirement's rendering is read, because the spans come from its slots; any other
+ * sentence has none, and keeps every numeral a finding.
+ */
+function boundSpans(requirement: Requirement, sentence: string): BoundSpans {
   const { sentence: rendered, offsets } = renderSentenceSlots(requirement)
-  if (rendered !== sentence) return []
-  const out: Array<readonly [number, number]> = []
-  for (const { predicate, subjectWords } of requirementBounds(requirement)) {
-    const start = slotStart(offsets, predicate.slot)
+  if (rendered !== sentence) return { unitNumbers: [], identifiers: [] }
+  const unitNumbers: Array<readonly [number, number]> = []
+  const identifiers: Array<readonly [number, number]> = []
+  for (const bound of requirementBounds(requirement)) {
+    const start = slotStart(offsets, bound.predicate.slot)
     if (start === undefined) continue
-    const [before, numeral, last] = subjectWords.slice(-3).map(([s, e]) => [start + s, start + e])
-    if (before === undefined || numeral === undefined || last === undefined) continue
-    if (!quantityNoun(predicate.dimension, sentence.slice(last[0], last[1]))) continue
-    if (!NUMBERED_NOUNS.has(sentence.slice(before[0], before[1]).toLowerCase())) continue
-    if (predicate.slot === 'resp' && subjectWords.length === 3) continue
-    out.push([numeral[0]!, numeral[1]!])
+    const { dimension } = bound.predicate
+    if (dimension === '' || dimension === RAW_UNIT_DIMENSION) continue
+    unitNumbers.push([start + bound.numberSpan[0], start + bound.numberSpan[1]])
+    const identifier = identifierNumeral(sentence, start, bound)
+    if (identifier !== undefined) identifiers.push(identifier)
   }
-  return out
+  return { unitNumbers, identifiers }
 }
 
 // ============================================================================

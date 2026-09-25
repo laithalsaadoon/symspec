@@ -379,3 +379,12 @@ The controller shall keep tank 80 full for at least 5 minutes.
 The controller shall keep oven 180 temperature for at least 10 minutes.
 The controller shall keep zone 1 latency above 20 °C.
 The controller shall keep disk 2 temperature below 5 GB.
+When the request arrives, the api gateway shall respond within 1,500 ms.
+When the request arrives, the api gateway shall respond within 2,000 ms.
+The controller shall respond within 12,345.5 ms.
+The controller shall keep the queue delay below 1,000,000 ms.
+The controller shall not respond within 1,500 ms.
+The controller shall respond within 1,500 ms ± 5 ms.
+The controller shall respond within 1,5 ms.
+The controller shall keep the pressure below 1,500 bar.
+The controller shall set the fan to 1,500.

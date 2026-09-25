@@ -947,13 +947,15 @@ export function extractNumericPredicates(
 }
 
 /**
- * A bound {@link extractNumericPredicates} reads, with where its quantity subject sits.
- * `subjectWords` are offsets into the text the bound was read from.
+ * A bound {@link extractNumericPredicates} reads, with where its quantity subject and its
+ * number sit. Both are offsets into the text the bound was read from.
  */
 export interface SubjectBound {
   readonly predicate: NumericPredicate
   /** `[start, end)` of each word of `predicate.label`, in order. */
   readonly subjectWords: ReadonlyArray<readonly [number, number]>
+  /** `[start, end)` of the number the bound's value was read from (`1,500` in `1,500 ms`). */
+  readonly numberSpan: readonly [number, number]
 }
 
 /** {@link extractNumericPredicates}, keeping each bound's subject word spans. */
@@ -1073,6 +1075,10 @@ function readBounds(
           sourceText: text.slice(labelEnd, end).trim(),
         },
         subjectWords: subject.words,
+        numberSpan: [
+          idx + phrase.length + m[0].length - m[1]!.length,
+          idx + phrase.length + m[0].length,
+        ],
       })
     }
   }
@@ -1126,8 +1132,8 @@ function dedupe(bounds: SubjectBound[]): SubjectBound[] {
  * asks the same function which numerals sit inside a bound's subject, so the two can never
  * disagree about which bounds a requirement carries.
  *
- * `subjectWords` are offsets into the STORED slot text (`r.systemResponse`, `r.trigger`,
- * `r.preCondition`), so a stripped leading negator is added back.
+ * `subjectWords` and `numberSpan` are offsets into the STORED slot text (`r.systemResponse`,
+ * `r.trigger`, `r.preCondition`), so a stripped leading negator is added back.
  */
 export function requirementBounds(
   r: ReqView,
@@ -1144,6 +1150,7 @@ export function requirementBounds(
   ).map((b) => ({
     ...b,
     subjectWords: b.subjectWords.map(([start, end]) => [start + shift, end + shift] as const),
+    numberSpan: [b.numberSpan[0] + shift, b.numberSpan[1] + shift] as const,
   }))
   return [
     ...response,
