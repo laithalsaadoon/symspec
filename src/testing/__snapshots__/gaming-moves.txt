@@ -5,6 +5,11 @@ registered-caught	strengthening	alias-contraries-glossary@forward
 registered-caught	strengthening	alias-contraries-glossary@reverse	
 registered-escapes-known-gap	strengthening	alias-contraries-term@forward	AC-4-6
 registered-escapes-known-gap	strengthening	alias-contraries-term@reverse	AC-4-6
+registered-caught	strengthening	term-over-phrase@inside-canonical	
+registered-caught	strengthening	term-over-phrase@equal-canonical	
+registered-caught	strengthening	term-over-phrase@around-canonical	
+registered-caught	strengthening	term-over-phrase@straddle-canonical	
+registered-caught	strengthening	term-over-phrase@straddle-alias	
 registered-escapes-known-gap	weakening	waive-by-code	AC-5-6
 registered-escapes-known-gap	weakening	delete-requirement@first	AC-5-2
 registered-escapes-known-gap	weakening	delete-requirement@second	AC-5-2

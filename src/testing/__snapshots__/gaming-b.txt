@@ -9,6 +9,11 @@ one-trigger-contradiction	alias-contraries-glossary@forward	inapplicable
 one-trigger-contradiction	alias-contraries-glossary@reverse	inapplicable
 one-trigger-contradiction	alias-contraries-term@forward	inapplicable
 one-trigger-contradiction	alias-contraries-term@reverse	inapplicable
+one-trigger-contradiction	term-over-phrase@inside-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@equal-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@around-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@straddle-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@straddle-alias	inapplicable
 one-trigger-contradiction	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -41,6 +46,11 @@ contrary-pair	alias-contraries-glossary@forward	refused glossary:ERR_USAGE
 contrary-pair	alias-contraries-glossary@reverse	refused glossary:ERR_USAGE
 contrary-pair	alias-contraries-term@forward	refused term:ERR_USAGE
 contrary-pair	alias-contraries-term@reverse	refused term:ERR_USAGE
+contrary-pair	term-over-phrase@inside-canonical	inapplicable
+contrary-pair	term-over-phrase@equal-canonical	inapplicable
+contrary-pair	term-over-phrase@around-canonical	inapplicable
+contrary-pair	term-over-phrase@straddle-canonical	inapplicable
+contrary-pair	term-over-phrase@straddle-alias	inapplicable
 contrary-pair	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]

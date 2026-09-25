@@ -8,6 +8,11 @@ numeric-conflict	alias-contraries-glossary@forward	exit 1 verified=true signal=f
 numeric-conflict	alias-contraries-glossary@reverse	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
 numeric-conflict	alias-contraries-term@forward	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
 numeric-conflict	alias-contraries-term@reverse	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	term-over-phrase@inside-canonical	inapplicable
+numeric-conflict	term-over-phrase@equal-canonical	inapplicable
+numeric-conflict	term-over-phrase@around-canonical	inapplicable
+numeric-conflict	term-over-phrase@straddle-canonical	inapplicable
+numeric-conflict	term-over-phrase@straddle-alias	inapplicable
 numeric-conflict	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 numeric-conflict	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 numeric-conflict	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -40,6 +45,11 @@ temporal-conflict	alias-contraries-glossary@forward	inapplicable
 temporal-conflict	alias-contraries-glossary@reverse	inapplicable
 temporal-conflict	alias-contraries-term@forward	inapplicable
 temporal-conflict	alias-contraries-term@reverse	inapplicable
+temporal-conflict	term-over-phrase@inside-canonical	inapplicable
+temporal-conflict	term-over-phrase@equal-canonical	inapplicable
+temporal-conflict	term-over-phrase@around-canonical	inapplicable
+temporal-conflict	term-over-phrase@straddle-canonical	inapplicable
+temporal-conflict	term-over-phrase@straddle-alias	inapplicable
 temporal-conflict	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 temporal-conflict	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 temporal-conflict	delete-requirement@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]

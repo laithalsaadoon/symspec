@@ -590,6 +590,76 @@ const aliasBothWays = (
     },
   }))
 
+/**
+ * Where a new term alias sits against a phrase the table already reads, as it appears in the
+ * move id `term-over-phrase@<shape>`. `pre` is every word before that phrase in the culprit
+ * response that says it, so each shape is a phrase that really occurs in the document. The
+ * whole prefix rather than one word, because `normalize` strips a LEADING article: an alias
+ * `the customer` is keyed `customer`, which sits inside the committed alias instead of
+ * straddling it.
+ */
+const TERM_OVERLAPS = [
+  ['inside-canonical', 'canonical', (phrase: readonly string[]) => phrase.slice(0, 1)],
+  ['equal-canonical', 'canonical', (phrase: readonly string[]) => phrase],
+  [
+    'around-canonical',
+    'canonical',
+    (phrase: readonly string[], pre: readonly string[]) => [...pre, ...phrase],
+  ],
+  [
+    'straddle-canonical',
+    'canonical',
+    (phrase: readonly string[], pre: readonly string[]) => [...pre, ...phrase.slice(0, 1)],
+  ],
+  [
+    'straddle-alias',
+    'alias',
+    (phrase: readonly string[], pre: readonly string[]) => [...pre, ...phrase.slice(0, 1)],
+  ],
+] as const
+
+/** The fresh canonical every `term-over-phrase` move points at: a noun no fixture uses. */
+const FRESH_TERM = 'ledger entry'
+
+/**
+ * A NEW term entry whose alias overlaps a phrase of the culprits' committed term, one move per
+ * {@link TERM_OVERLAPS} shape. An alias only identifies phrases, so under I-1 it cannot remove a
+ * finding. But the table is a one-pass, longest-first substitution over whole tokens: an alias
+ * that overlaps a committed phrase rewrites that phrase's occurrences while the committed
+ * phrase's own aliases still rewrite to it, so two phrases the table says are one noun come
+ * out different, and a conflict that rests on them is lost. `alias-contraries-term@reverse`
+ * reaches the same split from the canonical's side, which is the half `apply` refused first.
+ */
+const termOverPhrase = (): readonly Move[] =>
+  TERM_OVERLAPS.map(([shape, side, aliasOf]) => ({
+    id: `term-over-phrase@${shape}`,
+    clause: 'alias a phrase that overlaps a committed term (term table)',
+    direction: 'strengthening' as const,
+    edit: ({ fixture, doc }: MoveContext): Edit => {
+      const entry = doc.terms[0]
+      const committed = side === 'canonical' ? entry?.canonical : entry?.aliases[0]
+      if (committed === undefined)
+        return { kind: 'inapplicable', reason: 'the fixture commits no term' }
+      const words = (s: string) =>
+        s
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((w) => w.length > 0)
+      const phrase = words(committed)
+      // The words before the committed phrase in the culprit response that says it.
+      const pre = fixture.culprits
+        .map((k) => words(req(doc, k).systemResponse))
+        .map((ws) => ws.slice(0, Math.max(0, ws.indexOf(phrase[0] ?? ''))))
+        .find((ws) => ws.length > 0)
+      if (pre === undefined)
+        return { kind: 'inapplicable', reason: `no culprit response says the committed ${side}` }
+      return {
+        kind: 'ops',
+        ops: [{ op: 'term', canonical: FRESH_TERM, alias: aliasOf(phrase, pre).join(' ') }],
+      }
+    },
+  }))
+
 export const MOVES: readonly Move[] = [
   ...oneSided('rename-system', 'rename a system', 'weakening', (r, key) => ({
     kind: 'ops',
@@ -616,6 +686,7 @@ export const MOVES: readonly Move[] = [
   ...aliasBothWays('term', 'alias two contraries (term table)', (doc, a, b) =>
     doc.terms.some((t) => t.canonical === a && t.aliases.includes(b)),
   ),
+  ...termOverPhrase(),
   {
     id: 'waive-by-code',
     clause: 'waive by code',
@@ -1164,7 +1235,13 @@ export const OP_COVERAGE: Readonly<
   unstate: { moves: ['unstate'] },
   'state-initial': { moves: ['vacuous-initial'] },
   classify: { moves: ['declassify-constraint', 'flip-negated@second'] },
-  term: { moves: ['alias-contraries-term@forward', 'alias-contraries-term@reverse'] },
+  term: {
+    moves: [
+      'alias-contraries-term@forward',
+      'alias-contraries-term@reverse',
+      'term-over-phrase@inside-canonical',
+    ],
+  },
   unterm: { moves: ['unterm'] },
 }
 

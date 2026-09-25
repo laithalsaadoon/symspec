@@ -9,6 +9,11 @@ glossary-bridged	alias-contraries-glossary@forward	inapplicable
 glossary-bridged	alias-contraries-glossary@reverse	refused glossary:ERR_USAGE
 glossary-bridged	alias-contraries-term@forward	refused term:ERR_USAGE
 glossary-bridged	alias-contraries-term@reverse	refused term:ERR_USAGE
+glossary-bridged	term-over-phrase@inside-canonical	inapplicable
+glossary-bridged	term-over-phrase@equal-canonical	inapplicable
+glossary-bridged	term-over-phrase@around-canonical	inapplicable
+glossary-bridged	term-over-phrase@straddle-canonical	inapplicable
+glossary-bridged	term-over-phrase@straddle-alias	inapplicable
 glossary-bridged	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 glossary-bridged	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 glossary-bridged	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -39,8 +44,13 @@ term-bridged	rename-system@second	exit 3 verified=false signal=gone errors=[] de
 term-bridged	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
 term-bridged	alias-contraries-glossary@forward	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 term-bridged	alias-contraries-glossary@reverse	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-term-bridged	alias-contraries-term@forward	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	alias-contraries-term@forward	refused term:ERR_USAGE
 term-bridged	alias-contraries-term@reverse	refused term:ERR_USAGE
+term-bridged	term-over-phrase@inside-canonical	refused term:ERR_USAGE
+term-bridged	term-over-phrase@equal-canonical	refused term:ERR_USAGE
+term-bridged	term-over-phrase@around-canonical	refused term:ERR_USAGE
+term-bridged	term-over-phrase@straddle-canonical	refused term:ERR_USAGE
+term-bridged	term-over-phrase@straddle-alias	refused term:ERR_USAGE
 term-bridged	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]

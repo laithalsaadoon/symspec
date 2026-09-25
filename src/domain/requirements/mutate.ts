@@ -834,14 +834,21 @@ const applyTerm = (
     )
   }
 
-  // One-hop in TOKEN space: the substitution never re-reads what it wrote, so a canonical
-  // containing a committed alias would leave the table's meaning ambiguous.
+  // One-hop in TOKEN space. The substitution scans left to right, takes the LONGEST alias at each
+  // position, writes its canonical and continues after it (`substituteTerms` in the atomizer).
+  // That is a congruence, so two phrases the table calls one noun come out as one atom in every
+  // body, exactly when NO alias overlaps another phrase of the table: not inside it, not equal
+  // to it, not around it, and not straddling one of its edges. An alias that overlaps a
+  // canonical rewrites the canonical's own occurrences while the canonical's aliases still
+  // rewrite TO it; an alias that overlaps another alias wins or loses the longest-first race
+  // depending on the words around it. Either way two phrases the table merged come out
+  // different, and a conflict resting on them is gone. Two canonicals may overlap freely,
+  // because a canonical is never matched.
   // Split on EITHER separator. `normalizeHead` is the atomizer's `normalize` in production
   // (underscore-joined), and a bare trim in a caller that has no engine — so a check that split
   // only on `_` would be silently inert for the second, which is the shape a test would then
   // fail to reach.
   const tokensOf = (key: string) => key.split(/[\s_]+/).filter((t) => t.length > 0)
-  const canonicalTokens = tokensOf(canonicalKey)
   const contains = (haystack: readonly string[], needle: readonly string[]): boolean => {
     if (needle.length === 0 || needle.length > haystack.length) return false
     for (let i = 0; i + needle.length <= haystack.length; i++) {
@@ -849,27 +856,63 @@ const applyTerm = (
     }
     return false
   }
+  // A proper suffix of `x` is a proper prefix of `y`: the two would straddle in a body.
+  const straddles = (x: readonly string[], y: readonly string[]): boolean => {
+    for (let k = 1; k < Math.min(x.length, y.length); k++) {
+      if (y.slice(0, k).every((t, i) => x[x.length - k + i] === t)) return true
+    }
+    return false
+  }
+  // How `x` sits against `y`, worded for the refusal; `undefined` when they share no span.
+  const overlap = (x: string, y: string): string | undefined => {
+    const [xs, ys] = [tokensOf(x), tokensOf(y)]
+    if (xs.length === ys.length && contains(xs, ys)) return 'is'
+    if (contains(xs, ys)) return 'contains'
+    if (contains(ys, xs)) return 'sits inside'
+    if (straddles(xs, ys) || straddles(ys, xs)) return 'overlaps an edge of'
+    return undefined
+  }
+  const ambiguity = [
+    'Term substitution is a single pass that takes the longest alias at each position and',
+    'continues after the tokens it wrote, so an alias overlapping another phrase of the table',
+    "rewrites some of that phrase's occurrences and not others — two phrases the table calls one",
+    'noun would reach the solver as two.',
+  ]
+
   const committedAliases = [
     ...document.terms.flatMap((e) => e.aliases.map((a) => norm(a))),
     aliasKey,
   ]
-  const swallowed = committedAliases.find(
-    (a) =>
-      a !== canonicalKey &&
-      contains(
-        canonicalTokens,
-        a.split('_').filter((t) => t.length > 0),
-      ),
-  )
-  if (swallowed !== undefined) {
+  for (const a of committedAliases) {
+    const relation = a === canonicalKey ? undefined : overlap(canonicalKey, a)
+    if (relation === undefined) continue
     return fail(
       'ERR_USAGE',
-      `The canonical "${canonical}" contains the committed term alias "${swallowed.replace(/_/g, ' ')}", so the table would be ambiguous.`,
+      `The canonical "${canonical}" ${relation} the committed term alias "${a.replace(/_/g, ' ')}", so the table would be ambiguous.`,
+      [...ambiguity, 'Reword the canonical so it does not overlap an alias.'],
+    )
+  }
+
+  // The same rule from the alias's side: the new alias against every canonical (its own
+  // included) and every other alias. Refusing only a canonical that swallows an alias left this
+  // half open — `term invoice purchase` split "purchase order" from its committed alias.
+  const phrases = [
+    ...document.terms.map((e) => ['canonical', norm(e.canonical)] as const),
+    ['canonical', canonicalKey] as const,
+    ...document.terms.flatMap((e) =>
+      e.aliases.map((a) => ['alias', norm(a)] as const).filter(([, a]) => a !== aliasKey),
+    ),
+  ]
+  for (const [role, p] of phrases) {
+    const relation = overlap(aliasKey, p)
+    if (relation === undefined) continue
+    const shown = p.replace(/_/g, ' ')
+    return fail(
+      'ERR_USAGE',
+      `The alias "${alias}" ${relation} the committed term ${role} "${shown}", so the table would be ambiguous.`,
       [
-        'Term substitution is a single pass that continues after the tokens it wrote, so the alias',
-        'inside this canonical would not be rewritten again — and a reader expecting it to be would',
-        'predict a different atom.',
-        'Reword the canonical so it does not contain another alias.',
+        ...ambiguity,
+        `Name the whole noun instead: an alias of "${shown}" itself, or a phrase that shares no word with it at an edge.`,
       ],
     )
   }

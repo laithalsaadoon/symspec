@@ -7,6 +7,11 @@ registered-contrary	alias-contraries-glossary@forward	refused glossary:ERR_USAGE
 registered-contrary	alias-contraries-glossary@reverse	refused glossary:ERR_USAGE
 registered-contrary	alias-contraries-term@forward	CLEAN verified=true signal=gone errors=[] demotions=[]
 registered-contrary	alias-contraries-term@reverse	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	term-over-phrase@inside-canonical	inapplicable
+registered-contrary	term-over-phrase@equal-canonical	inapplicable
+registered-contrary	term-over-phrase@around-canonical	inapplicable
+registered-contrary	term-over-phrase@straddle-canonical	inapplicable
+registered-contrary	term-over-phrase@straddle-alias	inapplicable
 registered-contrary	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
 registered-contrary	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 registered-contrary	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
