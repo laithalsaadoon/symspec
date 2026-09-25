@@ -345,3 +345,27 @@ While zone 2 temperature is below 5 degrees celsius, the controller shall close 
 {"patternType":"ubiquitous","systemName":"pump 3 controller","systemResponse":"hold pump 3 bearing temperature below 80 degrees celsius"}
 {"patternType":"ubiquitous","systemName":"refrigeration controller","systemResponse":"hold zone 1 temperature above 20 degrees celsius"}
 {"patternType":"ubiquitous","systemName":"refrigeration controller","systemResponse":"hold zone 2 temperature below 5 degrees celsius"}
+The encoder shall target 5 latency below 10 ms.
+While streaming, the encoder shall target 8 latency below 10 ms.
+When the alarm sounds, the controller shall apply 30 delay below 60 seconds.
+When the alarm sounds, the controller shall apply 90 delay below 60 seconds.
+The pump shall deliver 50 volume below 500 L.
+The pump shall deliver 20 volume below 500 L.
+The controller shall keep setpoint 22 temperature above 18 °C.
+The controller shall keep setpoint 16 temperature above 18 °C.
+The cache shall allocate 512 memory below 1 GB.
+The controller shall hold max 80 temperature below 90 °C.
+The controller shall use 30 timeout below 60 seconds.
+The controller shall add 5 delay within 10 seconds.
+The controller shall keep target 22 temperature above 18 °C.
+When the fan reaches 80 temperature above 20 °C, the controller shall stop.
+The system shall pump 50 volume below 500 L.
+The controller shall scale 1 load below 5 kg.
+The controller shall keep ambient 22 temperature above 18 °C.
+The controller shall keep nominal 80 temperature below 90 °C.
+The controller shall hold peak 80 temperature below 90 °C.
+The controller shall keep water 60 temperature above 50 °C.
+The controller shall keep room 22 temperature above 18 °C.
+The controller shall keep the zone 1 temperature above 20 °C.
+The controller shall keep the tank 2 volume below 500 L.
+When zone 2 temperature is below 5 °C, the controller shall set the fan to 80.
