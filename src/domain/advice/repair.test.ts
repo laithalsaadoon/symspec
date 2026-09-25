@@ -435,6 +435,11 @@ describe('a pair demotion repair is scoped to its own pair', () => {
     ['opposite-polarity-near-duplicate', 'FND_SIMILAR_SEMANTIC', 'merge'],
     ['open-opposition-candidate', 'FND_OPPOSITION_CANDIDATE', OPPOSITION_MESSAGE],
     ['quantity-alias-candidate', 'FND_QUANTITY_ALIAS_CANDIDATE', QUANTITY_ALIAS_MESSAGE],
+    // The two reviewed-waiver discharges. Their op used to carry a ref only for a ONE-id
+    // demotion, and a pair always has two, so the op was a document-wide waiver: one honest
+    // triage of the siren pair then silenced a later, genuinely conflicting infusion pair.
+    ['relational-reasoning-not-attempted', 'FND_RELATIONAL_UNCHECKED', 'relational'],
+    ['numeric-bounds-uncompared', 'FND_NUMERIC_UNCOMPARED', 'uncompared'],
   ]
 
   it.each(PAIRS)('%s: applying the op leaves an untriaged pair demoting', (reason, code, msg) => {

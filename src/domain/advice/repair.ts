@@ -233,15 +233,15 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // that attempts it. The only mechanical discharge is a reviewed waiver, which
       // is legitimate here (unlike for a coverage FACT) because the author can
       // genuinely hand-verify the aggregate. So: waive, with the reason slot left
-      // for the agent to fill from its own verification.
+      // for the agent to fill from its own verification. Scoped to this demotion's
+      // requirements ({@link scopedWaive}), never document-wide.
       return {
-        ops: [
-          {
-            op: 'waive',
-            code: 'FND_RELATIONAL_UNCHECKED',
-            reason: 'hand-verified: <the aggregate/relational constraint you checked>',
-          } satisfies DocumentOp,
-        ],
+        ops: scopedWaive(
+          demotion,
+          context,
+          'FND_RELATIONAL_UNCHECKED',
+          'hand-verified: <the aggregate/relational constraint you checked>',
+        ),
         commands: [`symspec check ${context.docPath}`],
       }
 
@@ -250,16 +250,14 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // temperature sense, unit) the sentences do not fix. No command decides it for the
       // author. The honest primary repair is to restate the bounds, which needs the
       // requirements read first; the reviewed waiver is the fallback for a pair the
-      // author has checked is consistent.
+      // author has checked is consistent — scoped to that pair ({@link scopedWaive}).
       return {
-        ops: [
-          {
-            op: 'waive',
-            code: 'FND_NUMERIC_UNCOMPARED',
-            reason: 'reviewed: <why these bounds are consistent>',
-            ...(demotion.requirementIds.length === 1 ? { ref: demotion.requirementIds[0] } : {}),
-          } satisfies DocumentOp,
-        ],
+        ops: scopedWaive(
+          demotion,
+          context,
+          'FND_NUMERIC_UNCOMPARED',
+          'reviewed: <why these bounds are consistent>',
+        ),
         commands: [
           ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
           `symspec check ${context.docPath}`,
@@ -412,19 +410,58 @@ const scopeFor = (finding: CheckFinding, sameCode: readonly CheckFinding[]): str
  * That is the honest shape: mechanically applicable where the choice is safe, prose
  * where a human or agent has to decide.
  */
+/**
+ * The finding of `code` that raised `demotion`: the one naming exactly its ids, else one
+ * sharing an id. One that merely shares an id belongs to another pair, so the exact match wins.
+ */
+const raisingFinding = (
+  demotion: CoverageDemotion,
+  sameCode: readonly CheckFinding[],
+): CheckFinding | undefined => {
+  const ids = new Set(demotion.requirementIds)
+  return (
+    sameCode.find(
+      (f) => f.requirementIds.length === ids.size && f.requirementIds.every((id) => ids.has(id)),
+    ) ?? sameCode.find((f) => f.requirementIds.some((id) => ids.has(id)))
+  )
+}
+
+/**
+ * The reviewed-waiver op for a demotion whose only mechanical discharge is a waiver of `code`,
+ * scoped to ONE of the demotion's requirements and never document-wide.
+ *
+ * `check` suppresses a finding under a scoped waiver when the finding names the ref, and under
+ * an unscoped one ALWAYS. So a code-only waiver for a pair demotion discharges every finding of
+ * that code, including pairs added later that nobody triaged: one honest review of "sound the
+ * siren within 2 seconds" / "for at least 30 seconds" then certified "complete the infusion
+ * within 30 minutes" / "for at least 60 minutes". The ref is picked by {@link scopeFor}, which
+ * keeps the blast radius to this demotion's own finding where the ids allow. With no id to scope
+ * to, there is no op: a waiver that cannot be scoped is the document-wide one this rules out.
+ */
+const scopedWaive = (
+  demotion: CoverageDemotion,
+  context: RepairContext,
+  code: string,
+  reason: string,
+): DocumentOp[] => {
+  const sameCode = context.findings.filter((f) => f.code === code)
+  const finding = raisingFinding(demotion, sameCode)
+  const ref =
+    finding !== undefined
+      ? scopeFor(finding, sameCode)
+      : [...demotion.requirementIds].sort().reverse()[0]
+  return ref === undefined ? [] : [{ op: 'waive', code, reason, ref } satisfies DocumentOp]
+}
+
 const fromFindingMessage = (
   demotion: CoverageDemotion,
   context: RepairContext,
   code: string,
 ): Repair => {
-  const ids = new Set(demotion.requirementIds)
   const sameCode = context.findings.filter((f) => f.code === code)
   // The finding that raised THIS demotion names exactly its ids; one that merely shares an
   // id belongs to another pair, and reading its message would hand out the wrong merge.
-  const finding =
-    sameCode.find(
-      (f) => f.requirementIds.length === ids.size && f.requirementIds.every((id) => ids.has(id)),
-    ) ?? sameCode.find((f) => f.requirementIds.some((id) => ids.has(id)))
+  const finding = raisingFinding(demotion, sameCode)
   if (finding === undefined) return NO_REPAIR
 
   // The always-safe discharge, as a real op, scoped to one requirement the finding names —
