@@ -150,6 +150,8 @@ export const toEngineDoc = (document: RequirementsDocument): Doc => {
         reason: w.reason,
         ...(w.requirementId !== undefined ? { requirementId: w.requirementId } : {}),
         ...(w.requirementIds !== undefined ? { requirementIds: [...w.requirementIds] } : {}),
+        // Only a hash that matched survives the filter above, so a present hash IS a binding.
+        ...(w.contentHash !== undefined ? { textBound: true } : {}),
       })),
     terms: document.terms.map((t) => ({ canonical: t.canonical, aliases: [...t.aliases] })),
   }

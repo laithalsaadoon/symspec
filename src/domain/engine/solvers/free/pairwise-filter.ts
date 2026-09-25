@@ -27,6 +27,7 @@
  * redundancy candidate.
  */
 
+import { normalizeScope } from '../../formal/atomize.ts'
 import type { CandidatePair, ReqView } from '../types.ts'
 import { detectExactDuplicates } from './duplicates.ts'
 
@@ -88,8 +89,9 @@ export function emitCandidatePairs(
       const b = reqs[j]!
 
       // Skip pairs that span different systems — they can't directly
-      // subsume/redundantly-restate each other at the system-behavior level.
-      if (a.systemName !== b.systemName) continue
+      // subsume/redundantly-restate each other at the system-behavior level. "Different" is
+      // the atoms' scope, so two spellings of one system ("Pump" / "pump") are one system.
+      if (normalizeScope(a.systemName) !== normalizeScope(b.systemName)) continue
 
       // Rule 1: same trigger, different response → subsumption/redundancy
       // candidate (AC-4-5 decides which, or neither, via the SMT check).

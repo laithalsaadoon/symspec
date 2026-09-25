@@ -355,13 +355,31 @@ export function encode(req: EncodableRequirement, atomize: Atomize): EncodedRequ
   const body: Formula =
     contextLits.length === 0 ? responseFormula : implies(and(contextLits), responseFormula)
 
+  // A response that names a phrase of a glossary entry naming two contraries links that phrase to
+  // the entry's action, `phrase ↔ entry` (see `glossaryEntryAtom`), under this requirement's own
+  // guard AND its context — exactly where the response itself is asserted. A link that held
+  // outside the context would let a rule whose trigger never fires still force its phrase through
+  // the entry, and name it in a conflict it takes no part in. Outside `body`, which the
+  // subsumption and vacuity tiers compare as the requirement's behaviour.
+  const link =
+    response.entry === undefined
+      ? undefined
+      : and([
+          implies(atom(response.atom), atom(response.entry)),
+          implies(atom(response.entry), atom(response.atom)),
+        ])
+  const guarded =
+    link === undefined
+      ? body
+      : and([body, contextLits.length === 0 ? link : implies(and(contextLits), link)])
+
   return {
     id: req.id,
     guard: req.id,
     pattern: req.patternType,
     atoms,
     body,
-    formula: implies(atom(req.id), body),
+    formula: implies(atom(req.id), guarded),
   }
 }
 

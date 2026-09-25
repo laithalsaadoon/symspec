@@ -27,7 +27,7 @@
  * a fabricated constraint.
  */
 
-import { type AtomKind, normalize } from './atomize.ts'
+import { type AtomKind, normalize, normalizeScope } from './atomize.ts'
 import type { NumericComparator } from './encode.ts'
 
 /**
@@ -641,7 +641,10 @@ function quantityKey(
   label: string,
   quantityAliases?: ReadonlyMap<string, string>,
 ): string {
-  const sys = systemName.trim().toLowerCase().replace(/\s+/g, '_')
+  // The ATOM scope, so two bounds share a quantity exactly when their responses share a system:
+  // "access-controller" and "access controller" are one system to every atom, and were two
+  // quantities to a key that only lower-cased and joined spaces.
+  const sys = normalizeScope(systemName)
   // Canonicalize the label through the alias map first (keyed on the same
   // `normalize` form the glossary index uses), then fall through to the
   // existing atom-style normalization so a non-aliased label keys exactly as

@@ -87,6 +87,7 @@ import { type AntonymEntry, buildAntonymIndexWithDoc } from '../formal/antonyms.
 import {
   areContrary,
   contraryPairs,
+  glossaryContraries,
   glossaryIndex,
   makeAtomize,
   normalize,
@@ -421,6 +422,12 @@ export interface CoverageDemotion {
     // or split an atom the document already shares, and a rewrite is the route instead) or by
     // waiving the finding (declared distinct) — the finding is the triage record.
     | 'opposite-polarity-near-duplicate'
+    // A committed glossary entry names two CONTRARIES as one action ("open the door" with alias
+    // "close the door"). With the antonym table's ¬(A ∧ B) that entry makes both actions
+    // impossible, which no requirement is checked against, so the atomizer keeps each contrary
+    // phrase on its own atom (where the axiom still relates it) and this demotes over every
+    // requirement whose response the entry names. Discharged by removing the contrary alias.
+    | 'contrary-glossary-alias'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
   action: string
@@ -654,12 +661,58 @@ const COVERAGE_GAP_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
  * the scoped requirements.
  */
 function isWaived(f: CheckFinding, w: Waiver): boolean {
+  if (PAIR_BOUND_CODES.has(f.code) && (w.requirementIds === undefined || w.textBound !== true)) {
+    return false
+  }
+  return reachesFinding(f, w)
+}
+
+/** The scope test alone: the code matches and every scope the waiver carries holds. */
+function reachesFinding(f: CheckFinding, w: Waiver): boolean {
   if (f.code !== w.code) return false
   if (w.requirementIds !== undefined && !namesExactly(f.requirementIds, w.requirementIds)) {
     return false
   }
   if (w.requirementId === undefined) return true
   return f.requirementIds.includes(w.requirementId)
+}
+
+/**
+ * Codes a waiver discharges only over EXACTLY the finding's requirement set and only while it is
+ * bound to their current text (`textBound`, set at the boundary from a matching content hash).
+ *
+ * An opposition candidate is often a pair a base build PROVED (spec 007, demote-not-prove C3): the
+ * preposition-variant rule demotes what base proved by dropping a preposition. A waiver by code, or
+ * by one requirement, reaches every candidate that names it — including ones created after the
+ * triage, over pairs nobody read — and would turn that base proof into `verified: true`. Such a
+ * waiver (a legacy one, or one hand-written) is kept in the document but not applied, and the
+ * candidate's demotion says so.
+ */
+const PAIR_BOUND_CODES: ReadonlySet<string> = new Set<FndCode>(['FND_OPPOSITION_CANDIDATE'])
+
+/** Waivers that reach `f` by scope but are not applied to it, because its code is pair-bound. */
+function unappliedWaivers(f: CheckFinding, waivers: readonly Waiver[]): Waiver[] {
+  if (!PAIR_BOUND_CODES.has(f.code)) return []
+  return waivers.filter((w) => reachesFinding(f, w) && !isWaived(f, w))
+}
+
+/** The demotion-action sentence naming the waivers {@link unappliedWaivers} found, if any. */
+function unappliedNote(unapplied: readonly Waiver[]): string {
+  if (unapplied.length === 0) return ''
+  const scopes = unapplied.map((w) =>
+    w.requirementIds !== undefined
+      ? `the one over ${w.requirementIds.join(' and ')}, whose content hash is missing or no longer matches`
+      : w.requirementId !== undefined
+        ? `the one scoped to ${w.requirementId} alone`
+        : 'the document-wide one',
+  )
+  const one = unapplied.length === 1
+  return (
+    ` ${one ? 'A waiver' : `${unapplied.length} waivers`} of ${unapplied[0]!.code} ` +
+    `${one ? 'reaches' : 'reach'} this pair but ${one ? 'was' : 'were'} not applied (${scopes.join('; ')}): ` +
+    'a candidate is discharged only by a waiver over exactly its requirements, bound to their ' +
+    'current text, so a waiver by code or by one requirement never certifies a pair nobody read.'
+  )
 }
 
 const SEVERITY_RANK: Record<CheckSeverity, number> = { error: 0, warn: 1, info: 2 }
@@ -1324,9 +1377,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         }
       }
       // Spec 007 AC-2-1: a contrary axiom compares two atoms exactly as the old rename's one shared
-      // atom did, so each side's atom counts the other side's owners as partners. Same-side
-      // members need no credit: they are already one atom. Read from a snapshot so the credit is
-      // one hop.
+      // atom did, so each side's atom counts the other side's owners as partners. Two members of
+      // one side get no credit: nothing relates them, so nothing compared them. Read from a
+      // snapshot so the credit is one hop.
       const contraryOwners = contraryPairs(encoded.flatMap((e) => e.atoms)).map(
         ([a, b]) => [a, b, [...(atomOwners.get(a) ?? [])], [...(atomOwners.get(b) ?? [])]] as const,
       )
@@ -1627,8 +1680,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // topical-relatedness floor; the structure is the signal. Never a verdict.
       const opposition =
         options.semantic !== undefined
-          ? await findOppositionCandidates(included, options.semantic.embedder, {
+          ? // The ENCODABLE rows through the pipeline's own atomizer, so the shape is also read
+            // off the body every solver tier reads: after the committed glossary and terms.
+            await findOppositionCandidates(encodable, options.semantic.embedder, {
               glossary: glossaryIndex(doc.glossary),
+              atomize: pipelineAtomize(doc),
               ...(docAntonymIndex(doc) !== undefined
                 ? { antonyms: docAntonymIndex(doc) as ReadonlyMap<string, AntonymEntry> }
                 : {}),
@@ -2035,7 +2091,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         action:
           'Two co-active opposed numeric bounds landed on different quantity keys. If they ' +
           'constrain one physical quantity, commit the `symspec glossary add` alias from the ' +
-          "finding's message so the numeric tier compares them; otherwise waive it. Then re-run `symspec check`.",
+          "finding's message so the numeric tier compares them; otherwise apply this demotion's " +
+          'repair waiver, which is scoped to exactly this pair as currently written. Then re-run ' +
+          '`symspec check`.',
       })
     }
     // Relational/aggregate blind spot: the pairwise same-quantity numeric tier
@@ -2090,18 +2148,65 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
             : "If they are the same, rewrite one to use the other's words: no glossary merge is " +
               'offered, because every merge of these phrasings aliases a phrase to its own ' +
               'opposite or splits an atom the document already shares. ') +
-          'If they are genuinely distinct, waive FND_SIMILAR_SEMANTIC for the pair. Then re-run ' +
+          "If they are genuinely distinct, apply this demotion's repair waiver, which is scoped " +
+          'to exactly this pair as currently written. Then re-run ' +
           '`symspec check`.',
+      })
+    }
+    // A glossary entry naming two contraries as one action: its consequence (neither action ever
+    // happens) is not decided. The atomizer keeps the contraries apart and links each requirement's
+    // phrase to the entry under its own guard, so a conflict still takes two requirements; one
+    // requirement demanding either action is impossible alone, and no tier reports that.
+    const glossaryEntries = new Map(doc.glossary.map((e) => [normalize(e.canonical), e]))
+    for (const entry of glossaryContraries(
+      glossaryIndex(doc.glossary),
+      docAntonymIndex(doc),
+      termIndex(doc.terms ?? []),
+    )) {
+      const phrases = new Set(entry.phrases)
+      const ids = requirements
+        .filter((r) => phrases.has(normalize(r.systemResponse)))
+        .map((r) => r.id)
+        .sort()
+      if (ids.length === 0) continue
+      const stored = glossaryEntries.get(entry.canonical)
+      const spelled = (phrase: string) =>
+        stored?.aliases.find((a) => normalize(a) === phrase) ?? phrase.replace(/_/g, ' ')
+      const canonical = stored?.canonical ?? entry.canonical.replace(/_/g, ' ')
+      const removals = [...new Set(entry.contraries.flat())]
+        .filter((phrase) => phrase !== entry.canonical)
+        .map((phrase) => `\`symspec glossary "${canonical}" "${spelled(phrase)}" --remove\``)
+      demotions.push({
+        reason: 'contrary-glossary-alias',
+        requirementIds: ids,
+        action:
+          `The glossary entry "${canonical}" names contraries as one action (` +
+          entry.contraries
+            .map(([p, q]) => `"${p.replace(/_/g, ' ')}" / "${q.replace(/_/g, ' ')}"`)
+            .join(', ') +
+          '). The antonym table says the two cannot both happen, so an entry saying they are ' +
+          'one action says neither ever happens. The formal tier keeps each contrary phrase on ' +
+          'its own atom and links it to the entry, so two requirements the entry puts at odds ' +
+          'are still compared, but a requirement above that demands either action is impossible ' +
+          'on its own, and nothing reports that. ' +
+          'If they are two actions, remove the alias that names the opposite one: ' +
+          `${removals.join(' or ')}. Then re-run \`symspec check\`.`,
       })
     }
     for (const f of openOppositionFindings) {
       demotions.push({
         reason: 'open-opposition-candidate',
         requirementIds: [...f.requirementIds],
+        // The waiver named here is the exact-pair one the repair carries: a candidate is often
+        // a pair a base build PROVED, so a document-wide or one-requirement waiver would
+        // certify every other candidate it reaches, none of which anyone triaged.
         action:
-          'Triage this opposition candidate: commit `symspec antonym add <a> <b>` if the verbs are ' +
-          'opposites, `symspec glossary add "<a>" "<b>"` if synonyms, or waive it ' +
-          `(\`symspec waive add FND_OPPOSITION_CANDIDATE --reason "…"\`) if neither. See the finding's message for the exact verbs.`,
+          `Triage the opposition candidate over ${f.requirementIds.join(' and ')}: make the pair ` +
+          "provable with the edit the finding's message names (the rewrite, `symspec antonym add` " +
+          'if the verbs are opposites, or `symspec glossary add` if synonyms), or, if the two do ' +
+          "not conflict, apply this demotion's repair waiver, which is scoped to exactly these " +
+          'requirements as currently written. Then re-run `symspec check`.' +
+          unappliedNote(unappliedWaivers(f, waivers)),
       })
     }
     if (inconclusive) {

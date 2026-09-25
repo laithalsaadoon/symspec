@@ -240,9 +240,9 @@ describe('applying the plan leaves a SOUND glossary index', () => {
   /**
    * The canonical names the AUTHOR'S wording, not the internal atom spelling.
    *
-   * An atom spelling is not an author's phrase — `atomize` names an antonym-class response
-   * after its side of the class, so "grant access" arrives on `..._resp__allow_access`, a
-   * spelling the document never contains. Picking by atom position would put a canonical in the glossary
+   * An atom spelling is not an author's phrase — `atomize` folds case and de-inflects the
+   * head, so "Grants access" arrives on `..._resp__grant_access`, a spelling the
+   * document never contains. Picking by atom position would put a canonical in the glossary
    * that the author cannot find in their own spec, which is the same defect class as reading
    * an antonym-class canonical out as a verb head. The pin stays on the phrase so no future
    * atom spelling can reintroduce that.
@@ -1230,5 +1230,38 @@ describe('the re-derived shape check agrees with the engine original', () => {
   it('pairs a 3sg `-zes` verb with its de- opposite', () => {
     expect(oppositionShape(normalize('energizes the coil'))).toEqual(['energize', 'the_coil'])
     expect(isNegatingPrefixPair('de_energize', 'energize')).toBe(true)
+  })
+})
+
+describe('a class spans exactly the spellings of one system the atoms read as one scope', () => {
+  // `nodesOf` keyed a node's system by `normalize(systemName)`, which strips a leading article, so
+  // "The Gateway" and "Gateway" were one system to the plan while their atoms are two scopes
+  // (`sys__the_gateway__…`, `sys__gateway__…`: in a system NAME the article is part of the
+  // identifier). The plan proposed a class across two systems the solver never compares.
+  const table = {
+    'issue a session token': [1, 0.05],
+    'issue a login credential': [1, 0.08],
+  } as const
+  const opsAcross = async (a: string, b: string) =>
+    (
+      await buildGlossaryPlan(
+        toEngineDoc(
+          docOf([
+            req(a, 'issue a session token', 'the user signs in'),
+            req(b, 'issue a login credential', 'the user signs in'),
+          ]),
+        ),
+        tableEmbedder(table),
+      )
+    ).ops.length
+
+  it('proposes one class across two spellings of one scope', async () => {
+    expect(await opsAcross('Gateway', 'gateway')).toBe(1)
+    expect(await opsAcross('access controller', 'Access-Controller')).toBe(1)
+  })
+
+  it('and none across two scopes, however `normalize` reads them', async () => {
+    expect(await opsAcross('The Gateway', 'Gateway')).toBe(0)
+    expect(await opsAcross('pump controller', 'valve controller')).toBe(0)
   })
 })

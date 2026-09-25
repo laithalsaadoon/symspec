@@ -55,7 +55,7 @@
  * pair for consistency.
  */
 
-import { normalize } from '../engine/formal/atomize.ts'
+import { normalize, normalizeScope } from '../engine/formal/atomize.ts'
 import { cosine, type Embedder } from '../engine/formal/embed.ts'
 import { ACRONYM_PATTERN, COMMON_ACRONYMS } from '../engine/lint/gtwr.ts'
 import type { RequirementsDocument } from '../requirements/document.ts'
@@ -250,7 +250,8 @@ export const runTerminology = async (
 
   const keys = committedKeysOf(document)
 
-  // Sites per (system, key). Scoped by `systemName` for the reason every other semantic
+  // Sites per (system, key). Scoped by the system's atom scope (`normalizeScope`, so two
+  // spellings of one system are one group) for the reason every other semantic
   // comparison in this tool is: two systems may legitimately use one word for two things,
   // and their atoms never collide because the scope is in the atom name.
   const groups = new Map<string, { readonly key: CommittedKey; readonly sites: Site[] }>()
@@ -258,7 +259,7 @@ export const runTerminology = async (
     const bodyTokens = normalize(r.slotText).split('_')
     for (const key of keys) {
       if (!containsTokens(bodyTokens, key.tokens)) continue
-      const groupId = `${r.systemName}␟${key.phrase}`
+      const groupId = `${normalizeScope(r.systemName)}␟${key.phrase}`
       const group = groups.get(groupId) ?? { key, sites: [] }
       group.sites.push({ requirementId: r.id, slotText: r.slotText })
       groups.set(groupId, group)

@@ -19,32 +19,33 @@
  *     real-world blind spot), and grows only by an explicit edit to this seed
  *     set (AC-4-12) or the doc-committed `antonym add` path. A bulk dictionary
  *     import was evaluated (2026-07) and rejected: WordNet's 477 verb-antonym
- *     pairs cover only 13 of the 32 pairs this table needs, contain odd
+ *     pairs covered only 13 of the 32 pairs the table held then, contain odd
  *     polarity cycles that break the signed union-find, and merge classes this
  *     table deliberately keeps apart — curation IS the architecture here.
- *   - A contrary requires the (de-inflected) leading verbs to sit on opposite
- *     sides of one class AND the object remainder to be identical after
- *     normalization + the antonym-hit preposition drop (see atomize.ts): "grant
- *     access" is a contrary of "revoke access" but not of "revoke permission".
+ *   - A contrary requires the (de-inflected) leading verbs to be one seeded or
+ *     committed pair AND the object remainder to be identical after
+ *     normalization, or identical once the first place preposition, when the verb's own row governs
+ *     it, is marked out ({@link GOVERNED_PREPOSITIONS}):
+ *     "grant access" is a contrary of "revoke access" but not of "revoke permission".
  *
- * Shared-member semantics (why a signed union-find, not a flat pair map):
+ * Shared-member semantics (why a signed union-find, and why it is not a synonym table):
  *   Some seed pairs share a member — `accept↔reject`, `approve↔reject`, and
  *   `accept↔decline` all touch `accept`/`reject`. We treat each pair as an
- *   edge between opposite polarity SIDES and compute signed classes: `accept`,
- *   `approve` (positive) and `reject`, `decline` (negative) form one class named
- *   after its lexicographically smallest member (`accept`). Every positive-side
- *   atom is a contrary of every negative-side atom over the same remainder, so
- *   the deliberate class merges below keep working.
+ *   edge between opposite polarity SIDES and 2-colour the connected components:
+ *   `accept`, `approve` (positive) and `reject`, `decline` (negative) form one
+ *   class named after its lexicographically smallest member (`accept`). The class
+ *   is BOOKKEEPING — it names the opposition key two contraries share, and its
+ *   2-colouring is the write-time consistency check — never a relation by itself.
  *
- * Same-side members are ONE atom: every member on one polarity side of a class
- * resolves to that side's lexicographically smallest member (`approve` → `accept`,
- * `rollback` → `roll_back`, `grant` → `allow`). That is the table's deliberate
- * merge, not a side effect: the authorization verbs are interchangeable in the
- * EARS response idiom, and `roll back`/`rollback` are one verb spelled two ways.
- * An equality is a strengthening move (spec 007 I-1), so the merge can only add
- * findings; AC-2-1 retires only the cross-side rename `A ≡ ¬B`. Split, "shall
- * grant X" plus "shall not allow X" was two unrelated atoms and a clean
- * `verified: true` over a real conflict, with no finding pointing at it.
+ * Only a seeded or committed PAIR relates two verbs (spec 007 AC-2-1). Two contrary
+ * axioms `¬(A ∧ C)` and `¬(B ∧ C)` do not entail `A ≡ B`, so members on one side of a
+ * class stay DISTINCT atoms (`publish` and `extend` are two actions that each retract
+ * opposes), and two members on opposite sides are contraries only when a pair joins them
+ * directly ({@link AntonymEntry.opposes}): `conceal` and `unseal` meet only through
+ * `seal`/`expose`, so nothing relates them. Reading synonymy off the table was a
+ * fabrication that grew with every committed pair — committing `hold↔release` beside
+ * the seed `quarantine↔release` made "hold the order" and "shall not quarantine the
+ * order" an error-severity FND_CONTRADICTION.
  */
 
 /**
@@ -60,18 +61,23 @@
  * class → canonical map is snapshot-tested so any edit that silently merges or
  * re-canonicalizes classes fails loudly.
  *
- * Deliberate class merges (adversarial-eval driven, each a judgment call):
- *   - grant/allow/permit/authorize share ONE positive authorization side
- *     against revoke/deny/forbid (via grant↔deny, permit↔deny, authorize↔deny):
- *     in the EARS response idiom these are interchangeable authorization verbs
- *     over an identical object remainder, so each positive verb is a contrary of
- *     each negative one, and the remainder-must-match rule bounds the risk. The
- *     eval's grant-vs-deny blind spot (grant/revoke and allow/deny were disjoint
- *     classes) is closed by exactly this merge.
- *   - publish/extend share a class via retract (publish↔retract,
- *     extend↔retract): both are on the positive side, so they are never related
- *     to EACH OTHER — only each to `retract`. Kept because both pairs are
- *     eval-confirmed real-world conflicts.
+ * Shared classes (adversarial-eval driven, each a judgment call). A class relates
+ * exactly its listed pairs, so each cross-side contrary the table means is a row here:
+ *   - grant/allow/permit/authorize against revoke/deny/forbid: every one of the twelve
+ *     cross-side pairs is a row. The eval's grant-vs-deny blind spot (grant/revoke and
+ *     allow/deny were disjoint classes) is closed by the grant↔deny, permit↔deny and
+ *     authorize↔deny rows; the rest are the cross-side block. The four positive verbs are
+ *     NOT synonyms to the table — "shall grant X" plus "shall not allow X" is two atoms, and
+ *     the opposition-candidate tier demotes `verified` on it until the author commits the
+ *     glossary merge (or an antonym, or a waiver). Neither are the three negative ones:
+ *     "revoke X" plus "not deny X" is two atoms too.
+ *   - accept/approve against reject/decline: all four cross-side pairs are rows.
+ *   - seal/conceal against unseal/expose: three of the four. `conceal`↔`unseal` is NOT a row:
+ *     unsealing an envelope and keeping it out of sight are compatible, so the class's two
+ *     edges apart (via seal and expose) is not a contrary, and nothing relates them.
+ *   - publish/extend share a class via retract (publish↔retract, extend↔retract): both
+ *     are on the positive side, so they are never related to EACH OTHER — only each to
+ *     `retract`. Kept because both pairs are eval-confirmed real-world conflicts.
  *   - The accept/approve/reject/decline class is deliberately NOT merged into
  *     the authorization class (proposal-acceptance ≠ access-authorization).
  */
@@ -109,7 +115,164 @@ export const SEED_ANTONYM_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ['flood', 'drain'],
   ['energize', 'de_energize'],
   ['extend', 'retract'],
+  // --- cross-side contraries the class structure used to imply (spec 007 AC-2-1) ---
+  // Until the table related only its own rows, every positive member of a class opposed every
+  // negative one. That chaining is gone; these are the pairs it related that ARE contraries in
+  // requirements English, each written out so it is a relation the table states, not infers.
+  // (`conceal`/`unseal` is the one it related that is not: see the class notes above.)
+  ['approve', 'decline'],
+  ['grant', 'forbid'],
+  ['allow', 'forbid'],
+  ['allow', 'revoke'],
+  ['authorize', 'forbid'],
+  ['authorize', 'revoke'],
+  ['permit', 'revoke'],
 ]
+
+/**
+ * Which place a governed preposition introduces. Every row names one `place` — where the act is
+ * done, or the place it removes its object from — except `quarantine`/`release`, which name two:
+ * the `place` the object is held ("quarantine the file into the vault", "release the file from
+ * the vault") and the `outside` it is cut off from and returned to ("quarantine the host from the
+ * network", "release the host to the network"). A mark meets only a mark for the same place, so
+ * "quarantine the file into the vault" and "release the file to the vault", which both put the file
+ * there, are not contraries.
+ */
+export type GovernedPlace = 'place' | 'outside'
+
+/** The goal prepositions a verb that puts its object somewhere names the place with. */
+const GOAL = ['into', 'onto', 'to'] as const
+
+/**
+ * The verbs of a row whose contrary removes its object FROM the place, and deny/forbid, which take
+ * their place as grant does ("deny access to the server"): the goals.
+ */
+const PUTTERS = [
+  'add',
+  'allow',
+  'authorize',
+  'commit',
+  'connect',
+  'deny',
+  'engage',
+  'expose',
+  'extend',
+  'forbid',
+  'grant',
+  'include',
+  'insert',
+  'permit',
+  'publish',
+  'show',
+] as const
+
+/**
+ * The verbs that remove their object FROM the place: `from`. One of them, `revoke`, also takes
+ * `to`. Not `suspend`: its one contrary, `resume`, names the place only with a locative, which no
+ * verb governs, so a `from` after suspend meets no contrary's mark and would be dead.
+ */
+const REMOVERS = [
+  'conceal',
+  'disconnect',
+  'disengage',
+  'exclude',
+  'hide',
+  'remove',
+  'retract',
+  'revoke',
+  'roll_back',
+  'rollback',
+  'seal',
+  'withdraw',
+] as const
+
+/** `preps` as governed prepositions for one place ({@link GovernedPlace}; `place` by default). */
+const places = (
+  preps: readonly string[],
+  place: GovernedPlace = 'place',
+): ReadonlyArray<readonly [string, GovernedPlace]> => preps.map((p) => [p, place] as const)
+
+/**
+ * The prepositions a seed verb GOVERNS: the ones that introduce the place its act is done at, to
+ * or from, where the verb, not the preposition, carries the direction. "show the alarm to the
+ * display" and "hide the alarm from the display" name one place, so the governed preposition is
+ * marked out of a further opposition KEY and the two are contraries (atomize.ts
+ * `governedReadings`). Nothing is ever dropped from the atom body.
+ *
+ * A closed, curated table in the same category as the seed pairs. The rule: a verb lists every
+ * preposition ordinary requirements English uses to introduce that place, when a contrary it has
+ * a ROW with may name the same place with a different one. Applied row by row:
+ *
+ *   - A verb that puts its object into, onto or to the place against a contrary that removes it
+ *     FROM there ({@link PUTTERS}: grant/revoke, show/hide, publish/retract, add/remove,
+ *     commit/roll back, …) governs the {@link GOAL}s, and deny/forbid, which take the place as
+ *     grant does ("deny access to the server" / "grant access into the server"), govern them too.
+ *   - A verb that removes its object from the place ({@link REMOVERS}) governs `from`.
+ *   - `revoke`, the remover of a right, governs `to`, which names the place of the right as it
+ *     does after grant: "revoke access to the server" / "grant access into the server". The other
+ *     removers' `to` is a direction ("remove the item to the trash", "withdraw the funds to the
+ *     account", "roll back the change to the checkpoint") or not English ("hide the report to the
+ *     user"), so they do not take it.
+ *   - connect/engage govern `with` ("connect the cable with the socket" / "disconnect it from the
+ *     socket").
+ *   - quarantine/release name two places ({@link GovernedPlace}): the place the object is held
+ *     (quarantine: the goals; release: `from`) and the outside (quarantine: `from`; release: the
+ *     goals, "release the host to the network").
+ *
+ * Deliberately NOT listed, because the preposition carries direction or names something other
+ * than the place the contrary acts on:
+ *   - `from` after any verb that does not remove its object from the place ("connect calls FROM
+ *     the number" is incoming calls, and "disconnect calls TO the number" outgoing ones; "allow
+ *     calls to" / "deny calls from"; "accept the bid from the vendor" names the sender).
+ *   - a goal after a remover other than revoke ("withdraw the card into the tray",
+ *     "remove the item to the trash", "roll back the change to the checkpoint"), or after a
+ *     same-place verb, where it names a direction, a target value, or the object's own complement
+ *     ("open the door to the garden", "raise the level to 5", "enable transfers to the account").
+ *   - `of` after drain, which is overwhelmingly possessive ("drain the tank of the pump").
+ *   - a locative (`at`, `in`, `inside`, `on`, `within`) after any verb: each names a time as
+ *     readily as a place ("start the pump at ten" / "stop the pump in ten" are 10:00 and ten
+ *     minutes on; "start the pump in time" / "stop the pump on time" are early enough and
+ *     punctually; "start the pump within 5 seconds" / "stop the pump inside 5 seconds" are two
+ *     deadlines), and which one it names is a guess about the phrase after it. So two DIFFERENT
+ *     locatives are never one key; the SAME locative on both sides is one literal remainder, an
+ *     exact atom, and needs no mark.
+ * An unlisted preposition keeps its place in every key, so it can only miss a contrary, never
+ * invent one; the opposition-candidate tier demotes `verified` over every such pair whose
+ * remainders are equal once their prepositions are removed (semantic.ts `prepositionVariant`).
+ *
+ * The set is per VERB ({@link AntonymEntry.governs}), never the union over its class. `connect`
+ * governs `to` and `disconnect` governs `from`; a class-wide union let `connect` drop `from` as
+ * well, so "connect calls FROM the number" (incoming calls allowed) and "disconnect calls TO the
+ * number" (outgoing calls cut) shared one key and were an error-severity FND_CONTRADICTION on a
+ * consistent document. Two remainders that are identical word for word need no mark at all:
+ * every response also keeps the key of its literal remainder.
+ *
+ * A verb only a DOCUMENT pairs governs nothing. A committed row says two verbs are contraries; it
+ * says nothing about which of them puts and which removes, so any preposition it would govern is a
+ * guess, and a guess may not create a proof (spec 007 demote-not-prove C1). Such a pair is a
+ * contrary over identical remainders, and the opposition-candidate tier demotes on the same pair
+ * written with different prepositions ("admit the student to the school" / "expel the student from
+ * the school"), naming the rewording that makes it provable.
+ */
+export const GOVERNED_PREPOSITIONS: ReadonlyMap<
+  string,
+  ReadonlyMap<string, GovernedPlace>
+> = (() => {
+  const table = new Map<string, Array<readonly [string, GovernedPlace]>>()
+  const add = (
+    verbs: readonly string[],
+    entries: ReadonlyArray<readonly [string, GovernedPlace]>,
+  ) => {
+    for (const verb of verbs) table.set(verb, [...(table.get(verb) ?? []), ...entries])
+  }
+  add(PUTTERS, places(GOAL))
+  add(REMOVERS, places(['from']))
+  add(['revoke'], places(['to']))
+  add(['connect', 'engage'], places(['with']))
+  add(['quarantine'], [...places(GOAL), ...places(['from'], 'outside')])
+  add(['release'], [...places(['from']), ...places(GOAL, 'outside')])
+  return new Map([...table].map(([verb, entries]) => [verb, new Map(entries)]))
+})()
 
 /** A resolved antonym-class membership for one verb. */
 export interface AntonymEntry {
@@ -121,11 +284,24 @@ export interface AntonymEntry {
   /** True when this verb sits on the OPPOSITE polarity side of `canonical`. */
   negated: boolean
   /**
-   * The lexicographically-smallest member on THIS verb's polarity side — the head of the atom it
-   * resolves to, so every same-side member of a class is one atom (`approve` → `accept`). Equal to
-   * `canonical` on the positive side.
+   * The verbs a seeded or committed pair opposes to this one DIRECTLY, sorted and deduplicated.
+   * The only relation the table asserts: an atom led by this verb is a contrary of an atom led
+   * by one of these over the same key, and of nothing else in the class (spec 007 AC-2-1).
    */
-  side: string
+  opposes: readonly string[]
+  /**
+   * The prepositions THIS verb governs ({@link GOVERNED_PREPOSITIONS}), sorted: the ones that
+   * introduce a place its act is done at, to or from, which its governed opposition keys mark
+   * out. Per verb, never the class's union — a preposition only its contrary governs carries
+   * direction after it.
+   */
+  governs: readonly string[]
+  /**
+   * The subset of {@link governs} that introduces the OUTSIDE rather than the place the object is
+   * held ({@link GovernedPlace}), sorted; empty for every verb but quarantine/release. Marked
+   * apart, so it meets only another verb's outside preposition.
+   */
+  outside: readonly string[]
 }
 
 /**
@@ -134,6 +310,8 @@ export interface AntonymEntry {
  * Pure and deterministic. Treats the pairs as an undirected graph whose edges
  * flip polarity, 2-colours each connected component by BFS, then re-bases each
  * component so its lexicographically-smallest member is the positive canonical.
+ * Each entry keeps its own edges ({@link AntonymEntry.opposes}): the component names
+ * the key, and only an edge relates two verbs.
  *
  * Throws if the pairs contain an odd (inconsistent) polarity cycle — impossible
  * for the fixed seeds, but a guard against a future edit that would make
@@ -189,8 +367,14 @@ export function buildAntonymIndex(
     const canonical = [...members].sort()[0] as string
     // Re-base sign relative to the canonical (which we pin to positive).
     const negated = (sign.get(verb) as boolean) !== (sign.get(canonical) as boolean)
-    const side = members.filter((m) => sign.get(m) === sign.get(verb)).sort()[0] as string
-    index.set(verb, { canonical, negated, side })
+    const opposes = [...new Set(adj.get(verb) ?? [])].sort()
+    const places = [...(GOVERNED_PREPOSITIONS.get(verb) ?? [])]
+    const governs = places.map(([p]) => p).sort()
+    const outside = places
+      .filter(([, place]) => place === 'outside')
+      .map(([p]) => p)
+      .sort()
+    index.set(verb, { canonical, negated, opposes, governs, outside })
   }
   return index
 }

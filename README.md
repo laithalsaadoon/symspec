@@ -146,15 +146,16 @@ message: Requirements 778c1db4…, 99c274ba… cannot all hold: under a reachabl
 evidence:
   atomTable:
     - atom: sys__auth_service__guard__user_submits_valid_credentials  negated: false
-    - atom: sys__auth_service__resp__allow_access                     negated: true
-    - atom: sys__auth_service__resp__allow_access                     negated: false
+    - atom: sys__auth_service__resp__grant_access                     negated: true
+    - atom: sys__auth_service__resp__grant_access                     negated: false
   core: [778c1db4…, 99c274ba…]
 ```
 
 The exit code is 1. Both culprits are named, and the `atomTable` shows what was compared: one
-response atom, asserted at both polarities. The atom is named `allow_access` because `grant`,
-`allow`, `permit` and `authorize` sit on one side of a seed antonym class, and one side is one
-atom. You can audit that against the English instead of taking the tool's word for it. No language model is involved in this verdict. If you rewrite the
+response atom, asserted at both polarities. The atom is named `grant_access` after the verb you
+wrote: the antonym table relates verbs only by the pairs it lists, so it never renames `grant` to
+`allow` or any other member of its class. You can audit that against the English instead of
+taking the tool's word for it. No language model is involved in this verdict. If you rewrite the
 second requirement as *shall deny access*, the contradiction still holds: `grant` and `deny` are a
 seed antonym pair, so their atoms are contraries that cannot both hold, and the row for `deny`
 carries the `opposition` key that relates them. *Shall not grant* plus *shall not deny* is not a
