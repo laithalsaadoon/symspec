@@ -148,4 +148,15 @@ describe('two verifier repros after the lexicon change', () => {
     expect(unread.map((f) => f.requirementIds)).toEqual([[ID_B]])
     expect(report.verified).toBe(false)
   })
+
+  it('`more than or equal to` is one lower bound, so its genuine conflict is proved', async () => {
+    // Read through the `equal to` entry it was `=` on the odd key `keep_the_latency_more_than_or`,
+    // so this real conflict (>= 200 against < 100) was only disclosed, never compared.
+    const report = await gateway(
+      'keep the latency more than or equal to 200 ms',
+      'keep the latency less than 100 ms',
+    )
+    const proved = report.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
+    expect(proved.map((f) => [...f.requirementIds].sort())).toEqual([[ID_A, ID_B]])
+  })
 })

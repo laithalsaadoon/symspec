@@ -561,6 +561,8 @@ export const COMPARATOR_LEXICON: ReadonlyArray<{
   { phrase: 'a minimum of', comparator: '>=' },
   { phrase: 'less than or equal to', comparator: '<=' },
   { phrase: 'greater than or equal to', comparator: '>=' },
+  { phrase: 'more than or equal to', comparator: '>=' },
+  { phrase: 'fewer than or equal to', comparator: '<=' },
   { phrase: 'less than', comparator: '<' },
   { phrase: 'fewer than', comparator: '<' },
   { phrase: 'greater than', comparator: '>' },

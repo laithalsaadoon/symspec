@@ -627,6 +627,8 @@ describe('every comparator phrase, alone, yields exactly its comparator', () => 
     ['a minimum of', '>='],
     ['less than or equal to', '<='],
     ['greater than or equal to', '>='],
+    ['more than or equal to', '>='],
+    ['fewer than or equal to', '<='],
     ['less than', '<'],
     ['fewer than', '<'],
     ['greater than', '>'],
