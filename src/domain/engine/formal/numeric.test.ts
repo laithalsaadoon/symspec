@@ -553,6 +553,26 @@ describe('a bound is read with its role and its whole subject (spec 007 AC-2-6)'
     const [cjk] = extractNumericPredicates('keep the 温度 reading below 30 percent', 'hvac', 'resp')
     expect(cjk?.quantity).toBe('sys__hvac__qty__keep_the_温度_reading')
   })
+
+  it('keeps a digit separator inside its number in the quantity key', () => {
+    // `1,500` and `1.500` are 1500 and 1.5 to this tier's own NUMBER reader, so the subjects
+    // `zone 1,500 door` and `zone 1.500 door` name two zones. Deleting the separator keyed both
+    // `zone_1_500_door`, one Real, and two zones' bounds were one proved conflict.
+    const key = (text: string) => extractNumericPredicates(text, 'plant', 'resp')[0]?.quantity
+    const comma = key('keep the zone 1,500 door unlocked for at most 30 seconds')
+    const dot = key('keep the zone 1.500 door unlocked for at most 30 seconds')
+    expect(comma).toBe('sys__plant__qty__keep_the_zone_1,500_door_unlocked')
+    expect(dot).toBe('sys__plant__qty__keep_the_zone_1.500_door_unlocked')
+    expect(key('keep the zone 1500 door unlocked for at most 30 seconds')).toBe(
+      'sys__plant__qty__keep_the_zone_1500_door_unlocked',
+    )
+    // The negative guard: no key deletes the separator.
+    for (const k of [comma, dot]) expect(k).not.toContain('1_500')
+    // A `,` or `.` that is not between two digits is still punctuation.
+    expect(key('keep the zone 1, door unlocked for at most 30 seconds')).toBe(
+      'sys__plant__qty__keep_the_zone_1_door_unlocked',
+    )
+  })
 })
 
 describe('a response that holds an action behind other words may perform it (spec 007 AC-2-6)', () => {

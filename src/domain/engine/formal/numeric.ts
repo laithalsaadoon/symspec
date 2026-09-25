@@ -27,7 +27,7 @@
  * a fabricated constraint.
  */
 
-import { type AtomKind, normalize } from './atomize.ts'
+import { type AtomKind, DIGIT_SEPARATOR, normalize } from './atomize.ts'
 import type { NumericComparator } from './encode.ts'
 
 /**
@@ -1239,10 +1239,18 @@ function quantityKey(
     .trim()
     .toLowerCase()
     .replace(/^the\s+/, '')
-    .replace(/[^\p{L}\p{N}]+/gu, '_')
+    .replace(KEY_PUNCTUATION, '_')
     .replace(/^_+|_+$/g, '')
   return `sys__${sys}__qty__${q}`
 }
+
+/**
+ * What {@link quantityKey} folds to `_`: every run of characters that are neither letters nor
+ * digits, except a {@link DIGIT_SEPARATOR}, which stays inside its number. `zone 1,500 door` and
+ * `zone 1.500 door` are zones 1500 and 1.5 to this tier's own NUMBER reader; with the separator
+ * deleted both keyed `zone_1_500_door`, one Real, and two zones' bounds were one proved conflict.
+ */
+const KEY_PUNCTUATION = new RegExp(String.raw`(?:(?!${DIGIT_SEPARATOR})[^\p{L}\p{N}])+`, 'gu')
 
 /**
  * Candidate quantity label: the noun-ish phrase that owns the numeric bound —
