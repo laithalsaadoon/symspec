@@ -821,3 +821,53 @@ describe('AC-2-6: a bound is read through negation, role, and the whole subject'
     expect(found.map((f) => f.requirementIds)).toEqual([[ID_A, ID_B]])
   })
 })
+
+describe('AC-2-6 / AC-3-2: bounds the tier never asserted together are disclosed, not certified', () => {
+  const server = (trigger: string, systemResponse: string): ReqSpec => ({
+    systemName: 'server',
+    trigger,
+    systemResponse,
+  })
+  const uncompared = (report: Awaited<ReturnType<typeof runCheck>>) =>
+    report.findings.filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED').map((f) => f.requirementIds)
+
+  it('DISCLOSES opposed bounds under two guards no context group makes both live', async () => {
+    // A request can arrive while the cache misses, and then `<= 30 ms` and `>= 50 ms`
+    // conflict. Each trigger is its own context group, so the two bounds were never asserted
+    // in one solver call, and with a second requirement per trigger sharing every atom the
+    // document certified. The propositional twin of this shape demotes with
+    // `conditional-conflict-unchecked` (AC-3-2).
+    const doc = manyDoc(
+      server('the request arrives', 'respond within 30 ms'),
+      server('the request arrives', 'record the timestamp'),
+      server('the cache misses', 'respond in at least 50 ms'),
+      server('the cache misses', 'record the timestamp'),
+    )
+    const report = await runCheck(doc as never, {})
+    expect(report.counts.error).toBe(0)
+    expect(uncompared(report)).toEqual([[idAt(0), idAt(2)]])
+    expect(report.coverage.demotions.map((d) => d.reason)).toContain('numeric-bounds-uncompared')
+    expect(report.verified).toBe(false)
+  })
+
+  it('does not disclose two guarded bounds that hold together, or two guards themselves', async () => {
+    // The controls. `<= 30 ms` and `>= 10 ms` co-hold, so their contexts overlapping changes
+    // nothing. And a guard bound is a condition, not an obligation: `above 5` and `below 3`
+    // in two triggers are where each requirement applies, never a pair to reconcile.
+    const consistent = manyDoc(
+      server('the request arrives', 'respond within 30 ms'),
+      server('the cache misses', 'respond in at least 10 ms'),
+    )
+    expect(uncompared(await runCheck(consistent as never, {}))).toEqual([])
+    const vent = (trigger: string, systemResponse: string): ReqSpec => ({
+      systemName: 'vent controller',
+      trigger,
+      systemResponse,
+    })
+    const guards = manyDoc(
+      vent('the temperature is above 5 degrees celsius', 'open the vent'),
+      vent('the temperature is below 3 degrees celsius', 'close the damper'),
+    )
+    expect(uncompared(await runCheck(guards as never, {}))).toEqual([])
+  })
+})

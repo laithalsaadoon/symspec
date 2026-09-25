@@ -338,25 +338,31 @@ async function solveUnder(
 ): Promise<{ unsat: boolean; core: string[] }> {
   const live = new Set(ids)
   const solver = new ctx.Solver()
-  // AC-1-7: bound this solve. A timeout returns `unknown`, which is not `unsat`.
-  if (bounds.timeoutMs !== undefined) solver.set('timeout', bounds.timeoutMs)
-  // Assert each predicate implied by its requirement guard, so the unsat core
-  // is exactly the set of requirement ids whose predicates cannot co-hold.
-  for (const { id, pred } of entries) {
-    if (!live.has(id)) continue
-    solver.add(ctx.Implies(ctx.Bool.const(id), boundFormula(ctx, pred, reading, marked)))
+  try {
+    // AC-1-7: bound this solve. A timeout returns `unknown`, which is not `unsat`.
+    if (bounds.timeoutMs !== undefined) solver.set('timeout', bounds.timeoutMs)
+    // Assert each predicate implied by its requirement guard, so the unsat core
+    // is exactly the set of requirement ids whose predicates cannot co-hold.
+    for (const { id, pred } of entries) {
+      if (!live.has(id)) continue
+      solver.add(ctx.Implies(ctx.Bool.const(id), boundFormula(ctx, pred, reading, marked)))
+    }
+    const guards = [...live].sort().map((id) => ctx.Bool.const(id))
+    if ((await solver.check(...guards)) !== 'unsat') return { unsat: false, core: [] }
+    // Z3 renders a symbol whose text is not a legal SMT-LIB2 *simple* symbol
+    // (e.g. a UUID starting with a digit) as a `|...|`-quoted symbol, so the
+    // core member comes back quoted; strip the delimiters before matching.
+    const core: string[] = []
+    for (const c of solver.unsatCore()) {
+      const name = c.toString().replace(/^\|(.*)\|$/, '$1')
+      if (live.has(name)) core.push(name)
+    }
+    return { unsat: true, core }
+  } finally {
+    // Released eagerly rather than at garbage collection: this tier runs several solves per
+    // cell and per disclosed pair, and the WASM heap is a fixed 2 GiB for the whole process.
+    solver.release()
   }
-  const guards = [...live].sort().map((id) => ctx.Bool.const(id))
-  if ((await solver.check(...guards)) !== 'unsat') return { unsat: false, core: [] }
-  // Z3 renders a symbol whose text is not a legal SMT-LIB2 *simple* symbol
-  // (e.g. a UUID starting with a digit) as a `|...|`-quoted symbol, so the
-  // core member comes back quoted; strip the delimiters before matching.
-  const core: string[] = []
-  for (const c of solver.unsatCore()) {
-    const name = c.toString().replace(/^\|(.*)\|$/, '$1')
-    if (live.has(name)) core.push(name)
-  }
-  return { unsat: true, core }
 }
 
 /** Whether `ids` is unsatisfiable under EVERY reading, with the union of the cores. */
@@ -676,8 +682,8 @@ export async function analyzeNumericBounds(
     })
   }
 
-  for (const f of uncomparedUnitPairs(reqPreds)) {
-    const findingKey = JSON.stringify(['units', f.requirementIds])
+  for (const f of await uncomparedPairs(ctx, reqPreds, bounds)) {
+    const findingKey = JSON.stringify(['pairs', f.requirementIds])
     if (!uncompared.has(findingKey)) uncompared.set(findingKey, f)
   }
 
@@ -685,61 +691,136 @@ export async function analyzeNumericBounds(
 }
 
 /**
- * Co-live pairs of opposed bounds on ONE quantity whose units no conversion relates:
- * at least one is a unit no dimension recognizes or no unit at all, and the two unit
- * classes differ. The partition keeps them apart (AC-2-5: `90 days` never meets `1
- * year`, `50%` never meets `0.9`), which is the prover's safe direction; this is the
- * discloser's, because `at least 400 days` against `at most 1 year` is a conflict the
- * partition hides, and `at least 50%` against `at most 0.9` turns on whether the bare
- * number is a ratio. Solver-free: opposition is the whole test, as in the propose-only
- * quantity-alias tier.
+ * Pairs of bounds on ONE quantity that no cell asserted together, and that could conflict
+ * if they were. Two shapes, each a deletion by a partition the prover is right to make and
+ * a run is not entitled to certify over
+ * (`.erpaval/solutions/architecture/a-finer-key-is-not-uniformly-safer.md`):
  *
- * A pair on two RECOGNIZED dimensions (`10 m` against `30 seconds`) is not reported:
- * those are two quantities, not one quantity in two units.
+ *   - UNITS. Co-live or not, the two bounds are in unit classes no conversion relates: at
+ *     least one is a unit no dimension recognizes or no unit at all. The partition keeps them
+ *     apart (AC-2-5: `90 days` never meets `1 year`, `50%` never meets `0.9`), and `at least
+ *     400 days` against `at most 1 year` is a conflict it hides, while `at least 50%` against
+ *     `at most 0.9` turns on whether the bare number is a ratio. Opposition is the whole
+ *     test, as in the propose-only quantity-alias tier. A pair on two RECOGNIZED dimensions
+ *     (`10 m` against `30 seconds`) is two quantities, not one in two units, and is skipped.
+ *   - CONTEXTS. Two RESPONSE bounds in one unit class under guards no planned context group
+ *     makes both live (`liveIn`, the one co-liveness definition): `When the request arrives,
+ *     … respond within 30 ms` and `When the cache misses, … respond in at least 50 ms`. The
+ *     solver asserts each context on its own, so it never asked whether the two hold at once;
+ *     if the guards can co-occur, they conflict there. The numeric twin of AC-3-2's
+ *     `conditional-conflict-unchecked`. The pair is disclosed only when asserting the two
+ *     together is unsatisfiable under some reading, so a guarded pair that co-holds anyway
+ *     (`<= 30 ms`, `>= 10 ms`) costs nothing. A GUARD bound is a condition on where its
+ *     requirement applies, not an obligation, so two guards are never such a pair.
+ *
+ * Two prohibitions are never reported: not doing the action satisfies both.
+ *
+ * Each solver call is checked against the whole-run budget before it starts, like a cell;
+ * a truncated sweep records itself, and the pipeline demotes for it.
  */
-function uncomparedUnitPairs(
+async function uncomparedPairs(
+  ctx: Z3Context,
   reqPreds: readonly RequirementPredicates[],
-): NumericUncomparedFinding[] {
-  const out = new Map<string, NumericUncomparedFinding>()
+  bounds: SolverBounds,
+): Promise<NumericUncomparedFinding[]> {
+  const groups = planGroups(reqPreds.map((rp) => rp.contextAtoms))
+  const coLive = (x: RequirementPredicates, y: RequirementPredicates) =>
+    groups.some((g) => liveIn(g, x.contextAtoms) && liveIn(g, y.contextAtoms))
   const recognized = (p: NumericPredicate) =>
     p.dimension !== RAW_UNIT_DIMENSION && p.dimension !== ''
-  for (const group of planGroups(reqPreds.map((rp) => rp.contextAtoms))) {
-    const live: Entry[] = []
-    for (const rp of reqPreds) {
-      if (!liveIn(group, rp.contextAtoms)) continue
-      for (const pred of rp.predicates) live.push({ id: rp.id, pred })
-    }
-    for (let i = 0; i < live.length; i += 1) {
-      for (let j = i + 1; j < live.length; j += 1) {
-        const a = live[i]!
-        const b = live[j]!
-        if (a.id === b.id || a.pred.quantity !== b.pred.quantity) continue
-        if (unitClassOf(a.pred) === unitClassOf(b.pred)) continue
-        // Two recognized dimensions that differ are two quantities, not one in two units.
-        if (recognized(a.pred) && recognized(b.pred)) continue
-        if (!opposedComparators(a.pred.comparator, b.pred.comparator)) continue
-        // Two prohibitions never conflict: not doing the action satisfies both.
-        if (a.pred.negated === true && b.pred.negated === true) continue
-        const ids = [a.id, b.id].sort()
-        const key = JSON.stringify([a.pred.quantity, ids])
-        if (out.has(key)) continue
-        const unitOf = (p: NumericPredicate) => (p.baseUnit === '' ? 'no unit' : `"${p.baseUnit}"`)
-        out.set(key, {
-          code: 'FND_NUMERIC_UNCOMPARED',
-          severity: 'info',
-          requirementIds: ids,
-          message:
-            `Requirements ${ids.join(', ')} place opposed numeric bounds on "${a.pred.label}" ` +
-            `(${a.pred.sourceText} vs ${b.pred.sourceText}) in units the numeric tier cannot ` +
-            `convert between (${unitOf(a.pred)} and ${unitOf(b.pred)}), so it never compared them. ` +
-            'Restate both in one unit it recognizes (see `symspec manifest` for the unit ' +
-            'table) so any conflict is proved, or waive this finding if they are consistent. ' +
-            'This is a disclosure, not a verdict.',
-        })
+
+  type Candidate = { readonly a: Entry; readonly b: Entry; readonly shape: 'units' | 'contexts' }
+  const candidates: Candidate[] = []
+  for (let i = 0; i < reqPreds.length; i += 1) {
+    for (let j = i + 1; j < reqPreds.length; j += 1) {
+      const x = reqPreds[i]!
+      const y = reqPreds[j]!
+      if (x.id === y.id) continue
+      const together = coLive(x, y)
+      for (const pa of x.predicates) {
+        for (const pb of y.predicates) {
+          if (pa.quantity !== pb.quantity) continue
+          if (pa.negated === true && pb.negated === true) continue
+          const a = { id: x.id, pred: pa }
+          const b = { id: y.id, pred: pb }
+          if (unitClassOf(pa) !== unitClassOf(pb)) {
+            if (recognized(pa) && recognized(pb)) continue
+            if (!opposedComparators(pa.comparator, pb.comparator)) continue
+            candidates.push({ a, b, shape: 'units' })
+            continue
+          }
+          // Co-live in one unit class: a cell asserted the two together and decided them.
+          if (together) continue
+          if (pa.slot !== 'resp' || pb.slot !== 'resp') continue
+          candidates.push({ a, b, shape: 'contexts' })
+        }
       }
     }
   }
+
+  const out = new Map<string, NumericUncomparedFinding>()
+  for (let index = 0; index < candidates.length; index += 1) {
+    const { a, b, shape } = candidates[index]!
+    const ids = [a.id, b.id].sort()
+    const key = JSON.stringify([a.pred.quantity, ids])
+    if (out.has(key)) continue
+    if (shape === 'contexts') {
+      if (bounds.budget?.expired() === true) {
+        bounds.budget.truncate('numeric-contradiction', candidates.length - index)
+        break
+      }
+      if (!(await conflictTogether(ctx, [a, b], bounds))) continue
+    }
+    const pair = `(${a.pred.sourceText} vs ${b.pred.sourceText})`
+    const unitOf = (p: NumericPredicate) => (p.baseUnit === '' ? 'no unit' : `"${p.baseUnit}"`)
+    out.set(key, {
+      code: 'FND_NUMERIC_UNCOMPARED',
+      severity: 'info',
+      requirementIds: ids,
+      message:
+        shape === 'units'
+          ? `Requirements ${ids.join(', ')} place opposed numeric bounds on "${a.pred.label}" ` +
+            `${pair} in units the numeric tier cannot convert between (${unitOf(a.pred)} and ` +
+            `${unitOf(b.pred)}), so it never compared them. Restate both in one unit it ` +
+            'recognizes so any conflict is proved, or waive this finding if they are ' +
+            'consistent. This is a disclosure, not a verdict.'
+          : `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
+            'that conflict if both apply at once, under guards no context group the numeric ' +
+            'tier checked asserts together, so it never compared them. If the two contexts ' +
+            'can hold at once, change one requirement so it no longer contradicts the other ' +
+            'there; if they cannot, waive this finding. Then re-run `symspec check`. This is a ' +
+            'disclosure, not a verdict.',
+    })
+  }
   return [...out.values()]
+}
+
+/**
+ * Whether `entries`, asserted together, are unsatisfiable under ANY reading — the proof
+ * readings and every disclosure reading that applies to them. A disclosure's test: a pair
+ * that conflicts under no reading needs no one's attention.
+ */
+async function conflictTogether(
+  ctx: Z3Context,
+  entries: readonly Entry[],
+  bounds: SolverBounds,
+): Promise<boolean> {
+  const ids = [...new Set(entries.map((e) => e.id))].sort()
+  const marked = markedRoles(entries)
+  const hasDifference = entries.some((e) => e.pred.difference !== undefined)
+  const hasCalendar = entries.some((e) => e.pred.days !== undefined)
+  const readings: Reading[] = [
+    SPLIT_ABSOLUTE,
+    ...(hasDifference ? [SPLIT_DIFFERENCE] : []),
+    ...(marked.length >= 2 ? [MERGED_ABSOLUTE] : []),
+    ...(marked.length >= 2 && hasDifference ? [MERGED_DIFFERENCE] : []),
+    ...(hasCalendar ? [SPLIT_NOMINAL] : []),
+    ...(marked.length >= 2 && hasCalendar ? [MERGED_NOMINAL] : []),
+  ]
+  for (const reading of readings) {
+    if ((await solveUnder(ctx, entries, ids, reading, marked, bounds)).unsat) return true
+  }
+  return false
 }
 
 /**
