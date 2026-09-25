@@ -1,0 +1,38 @@
+registered-caught	weakening	rename-system@first	
+registered-caught	weakening	rename-system@second	
+registered-caught	weakening	split-system	
+registered-escapes-known-gap	strengthening	alias-contraries-glossary@forward	AC-4-6
+registered-escapes-known-gap	strengthening	alias-contraries-glossary@reverse	AC-4-6
+registered-escapes-known-gap	strengthening	alias-contraries-term@forward	AC-4-6
+registered-escapes-known-gap	strengthening	alias-contraries-term@reverse	AC-4-6,AC-4-2
+registered-escapes-known-gap	weakening	waive-by-code	AC-5-6
+registered-escapes-known-gap	weakening	delete-requirement@first	AC-5-2
+registered-escapes-known-gap	weakening	delete-requirement@second	AC-5-2
+registered-escapes-known-gap	weakening	flip-negated@first	AC-5-9
+registered-escapes-known-gap	weakening	flip-negated@second	AC-5-9
+registered-caught	weakening	condition-into-response@first	
+registered-caught	weakening	condition-into-response@second	
+registered-caught	strengthening	add-decoys	
+registered-caught	weakening	shall-to-should@first	
+registered-caught	weakening	shall-to-should@second	
+registered-caught	strengthening	link-culprits	
+registered-escapes-known-gap	weakening	unglossary	AC-5-7
+registered-caught	weakening	unantonym	
+registered-escapes-known-gap	weakening	unterm	AC-5-7
+registered-caught	weakening	declassify-constraint	
+registered-escapes-known-gap	weakening	rebind-effect	AC-5-9
+registered-caught	weakening	vacuous-initial	
+registered-caught	weakening	release-frame	
+registered-caught	weakening	unstate	
+registered-caught	run-weakening	embedding-stub	
+registered-caught	run-weakening	semantic-off	
+registered-caught	run-weakening	solver-budget-1ms	
+registered-caught	run-weakening	solver-timeout-1ms	
+registered-caught	run-weakening	temporal-bound-1	
+registered-caught	run-weakening	temporal-off	
+not-applicable-yet	weakening	edit-intent	AC-5-2
+not-applicable-yet	weakening	edit-policy	AC-5-2
+not-applicable-yet	weakening	refine-exceeds-conflict	AC-5-3
+not-applicable-yet	weakening	yield-against-policy	AC-5-3
+not-applicable-yet	weakening	untraced-assumption	AC-5-5
+not-applicable-yet	weakening	weakening-derived	AC-5-2

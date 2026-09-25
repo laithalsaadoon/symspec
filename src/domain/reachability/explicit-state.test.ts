@@ -774,7 +774,11 @@ describe('many distinct free sets under the state cap are cross-checked, not wit
   })
 
   it('the tier reports the shut-valve pairs proof PROVED with the cross-check AGREEING', async () => {
-    const result = (await run(PAIRS('shut'))).results[0]
+    // An explicit per-query budget, not the 2000 ms default. The claim is that the cross-check
+    // AGREES with a proof, and Spacer needs the default's whole margin here: measured 3.1 s for
+    // this case alone, and UNKNOWN under full-suite CPU contention on a 16-core box, which made
+    // the assertion a load detector. 20 s is the budget the neighbouring case already measured.
+    const result = (await run(PAIRS('shut'), { timeoutMs: 20_000 })).results[0]
     expect(result?.verdict).toBe('PROVED')
     expect(result?.crossCheck).toEqual({ status: 'agrees', states: PAIRS_STATES })
   })

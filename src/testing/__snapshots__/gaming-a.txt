@@ -1,0 +1,67 @@
+feature-interaction	(baseline)	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
+state-invariant	(baseline)	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+feature-interaction	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	alias-contraries-glossary@forward	inapplicable
+feature-interaction	alias-contraries-glossary@reverse	inapplicable
+feature-interaction	alias-contraries-term@forward	inapplicable
+feature-interaction	alias-contraries-term@reverse	inapplicable
+feature-interaction	waive-by-code	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+feature-interaction	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+feature-interaction	flip-negated@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	flip-negated@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	add-decoys	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,uncovered-requirement]
+feature-interaction	shall-to-should@first	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	shall-to-should@second	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	link-culprits	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	unglossary	inapplicable
+feature-interaction	unantonym	inapplicable
+feature-interaction	unterm	inapplicable
+feature-interaction	declassify-constraint	inapplicable
+feature-interaction	rebind-effect	inapplicable
+feature-interaction	vacuous-initial	inapplicable
+feature-interaction	release-frame	inapplicable
+feature-interaction	unstate	inapplicable
+feature-interaction	embedding-stub	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,run-weakened,uncovered-requirement]
+feature-interaction	semantic-off	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,semantic-tier-skipped,uncovered-requirement]
+feature-interaction	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+feature-interaction	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+feature-interaction	temporal-bound-1	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	temporal-off	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
+state-invariant	rename-system@first	exit 1 verified=false signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[uncovered-requirement]
+state-invariant	rename-system@second	exit 1 verified=false signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[uncovered-requirement]
+state-invariant	split-system	exit 1 verified=false signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[no-decide-tier-comparison,uncovered-requirement]
+state-invariant	alias-contraries-glossary@forward	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	alias-contraries-glossary@reverse	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	alias-contraries-term@forward	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	alias-contraries-term@reverse	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	waive-by-code	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	delete-requirement@first	exit 3 verified=false signal=gone errors=[] demotions=[reachability-not-checked]
+state-invariant	delete-requirement@second	exit 3 verified=false signal=gone errors=[] demotions=[reachability-not-checked]
+state-invariant	flip-negated@first	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	flip-negated@second	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	condition-into-response@first	exit 1 verified=false signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[uncovered-requirement]
+state-invariant	condition-into-response@second	exit 1 verified=false signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[uncovered-requirement]
+state-invariant	add-decoys	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	link-culprits	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	unglossary	inapplicable
+state-invariant	unantonym	inapplicable
+state-invariant	unterm	inapplicable
+state-invariant	declassify-constraint	exit 3 verified=false signal=gone errors=[] demotions=[reachability-not-checked]
+state-invariant	rebind-effect	CLEAN verified=true signal=gone errors=[] demotions=[]
+state-invariant	vacuous-initial	exit 1 verified=false signal=gone errors=[FND_REACHABILITY_VACUOUS_INITIAL] demotions=[reachability-vacuous-initial-state]
+state-invariant	release-frame	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	unstate	refused unstate:ERR_USAGE
+state-invariant	embedding-stub	exit 1 verified=false signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[run-weakened]
+state-invariant	semantic-off	exit 1 verified=false signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[semantic-tier-skipped]
+state-invariant	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+state-invariant	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+state-invariant	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	temporal-off	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
