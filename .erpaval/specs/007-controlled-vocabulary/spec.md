@@ -68,7 +68,7 @@ and the classification is data, not prose:
 | class | can do | examples | policy |
 |---|---|---|---|
 | `strengthening` | only add findings | add a requirement, alias two names, commit a contrary axiom, add a state constraint | free |
-| `weakening` | remove findings | refine a requirement, assume something about the environment, declare two names distinct when merging them would add findings, delete or re-bind a requirement, waive a formal finding | admitted only with a certificate the kernel checks (Story 5); otherwise the obligation stays open |
+| `weakening` | remove findings | narrow a requirement, assume something about the environment, declare two names distinct when merging them would add findings, delete or re-bind a requirement, waive a formal finding | admitted only with a certificate the kernel checks (Story 5); otherwise the obligation stays open |
 | `run-weakening` | remove findings for one run | `--semantic=false`, the embedding stub, a budget below the pinned config, a low `--temporal-bound` | demotes and is disclosed in `data.run` |
 
 The argument that makes this sound: in the logic the decide tier uses, adding constraints or
@@ -435,7 +435,7 @@ the test goes red.
 
 AC-5-3
 Dependencies: AC-5-2, AC-6-2
-Event-driven: When a `refine` op names a requirement `R`, a guard expression `carveOut` over the
+Event-driven: When a `narrow` op names a requirement `R`, a guard expression `carveOut` over the
 vocabulary, the requirements `R` yields to, and the `FND_UNREALIZABLE` witness it resolves, the
 kernel shall admit it only when all of the following hold:
 1. the refined obligation is `R`'s obligation restricted to `¬carveOut`, and nothing else changed;
@@ -453,7 +453,7 @@ Sabotage: skip condition 2; carve-out `true` is admitted and the test goes red.
 AC-5-4
 Dependencies: AC-5-3
 Unwanted behavior: If the conflicting requirements' levels are equal, or `policy` does not order
-them, then no `refine` shall be admissible. The obligation shall stay open as `FND_UNREALIZABLE`
+them, then no `narrow` shall be admissible. The obligation shall stay open as `FND_UNREALIZABLE`
 with reason `policy-silent`, and the finding shall carry a proposed policy rule (propose-only)
 that would order every conflict of that shape.
 
@@ -483,8 +483,9 @@ Dependencies: AC-4-4, AC-5-1, AC-5-2
 Ubiquitous: `vocab distinct` shall be `conditional`. symspec shall compute the findings that
 would exist if the two symbols were aliased, and when that set is larger, admit the op only with
 an intent item or declared vocabulary fact that distinguishes the two (different part-of parents,
-or intent naming both). Otherwise it reports `FND_DISTINCTION_UNSUPPORTED` and the pair stays
-merged for checking.
+or intent naming both). Otherwise it reports `FND_DISTINCTION_UNSUPPORTED` (warn, demoting),
+whose evidence is the conflict signals of the merged counterfactual run; the main report stays
+on the declared partition, so nothing is fabricated.
 Reproducer: "door controller" / "door control unit" with the door/train conflict split across the
 two names.
 Sabotage: classify `distinct` as always free; the reproducer goes red.
@@ -499,7 +500,7 @@ reads as "no delta" and the test goes red.
 
 AC-5-9
 Dependencies: AC-5-8
-Unwanted behavior: If a requirement's binding changed since the baseline without a `refine`
+Unwanted behavior: If a requirement's binding changed since the baseline without a `narrow`
 certificate, and the change removed a finding, then `check` shall report `FND_SEMANTIC_DRIFT`
 (error).
 Sabotage: compare rendered English instead of the binding; a re-binding fixture goes red.
@@ -525,7 +526,7 @@ additionally be checked by the explicit-state search of AC-1-5 when the model is
 AC-5-13
 Dependencies: AC-5-2
 Ubiquitous: `symspec init --split` shall write `intent` and `policy` as separate files, and
-`symspec install` shall generate a CODEOWNERS stanza for those two files only. The published scope
+`symspec install` shall generate a CODEOWNERS stanza for those two files and `symspec.config.json`, which pins the gate. The published scope
 shall state what the gate guarantees: any change to intent or policy is detected against the
 baseline, and every weakening in the spec is admitted by a re-checked certificate or not at all.
 
@@ -533,7 +534,7 @@ AC-5-14
 Dependencies: AC-5-2, AC-5-3
 Event-driven: When `import` brings in an `intent` that is itself a symspec document, symspec shall
 treat it as the parent spec and check that the child refines it. Every parent obligation shall be
-entailed by the child, or narrowed only by a `refine` certificate the kernel admits against the
+entailed by the child, or narrowed only by a `narrow` certificate the kernel admits against the
 parent's own policy. A child that drops or weakens a parent obligation without a certificate
 shall report `FND_INTENT_NOT_REFINED` (error). The check shall apply level by level, so a
 guarantee proved at one level holds against every ancestor.
@@ -581,7 +582,7 @@ Sabotage: quantify the inputs existentially instead of universally; the reproduc
 AC-6-3
 Dependencies: AC-6-2, AC-5-2
 Ubiquitous: `FND_UNREALIZABLE` shall carry the witness and offer three discharges, each checked
-rather than trusted: a `refine` op whose certificate passes AC-5-3; an environment assumption
+rather than trusted: a `narrow` op whose certificate passes AC-5-3; an environment assumption
 admitted under AC-5-5; or a strengthening that removes the witness state from the reachable set
 (for example an interlock requirement). The finding shall not offer a waiver.
 
@@ -655,7 +656,7 @@ Dependencies: AC-8-1
 Ubiquitous: The registered moves shall include at least: rename a system; alias two contraries;
 waive by code; delete a requirement; flip `negated`; move a condition into the response text;
 add decoy requirements; change `shall` to `should`; split a system into two parents; edit
-`intent`; edit `policy`; submit a `refine` whose carve-out exceeds the conflict region; yield
+`intent`; edit `policy`; submit a `narrow` whose carve-out exceeds the conflict region; yield
 against the policy order; add an untraced environment assumption; add a `derived` requirement
 that weakens; run with the embedding stub, `--semantic=false`, a one-millisecond budget, and
 `--temporal-bound 1`. A new op shall not merge without a registered move or a written reason it
@@ -682,7 +683,7 @@ Each phase keeps `pnpm check` green, and its gate must be observed red before it
 4. **Typed-atom plan slices 10–14,** extended from `attr`/`cmp` to the six vocabulary kinds.
 5. **Story 6 and Story 7:** the single semantics, one-step realizability, the state-model
    obligations, the BFS cross-check, and the obligation ledger.
-6. **The certificate kernel:** `refine`, the policy-silent case, certified environment
+6. **The certificate kernel:** `narrow`, the policy-silent case, certified environment
    assumptions, re-checking, the kernel boundary, and parent-refinement on import
    (AC-5-3 to 5-5, 5-11, 5-12, 5-14). Until this
    lands, a weakening move has no admission path, so its obligation stays open. That is the safe
@@ -717,3 +718,20 @@ Settled with the owner on 2026-09-24.
 - **Policy granularity:** one criticality level per intent item plus a yield order between
   levels. Conflicts inside one level stay `policy-silent` (AC-5-4). Finer policy, such as rules per
   system or per mode, is not in scope.
+
+### Phase 3 decisions (2026-09-25)
+
+The Phase 3 plan (`phase3-plan.md`, section 12) lists 26 spec gaps with proposed resolutions; all
+are accepted. The five decisions it left open:
+
+- **D1** Disclosure codes that mean "not compared" (`FND_NUMERIC_UNCOMPARED`,
+  `FND_RELATIONAL_UNCHECKED`, and their siblings) are never waivable. A waiver there is an
+  uncheckable claim by the author; the discharge is rewording into a form the solver compares.
+- **D2** An owner's legitimate change to intent or policy is re-pinned through `config.anchors` in
+  the CODEOWNED config, which turns `FND_INTENT_CHANGED` into info `FND_ANCHOR_REPINNED`.
+- **D3** The document format bumps to v4; `import` migrates.
+- **D4** Legacy documents lose the waiver discharge for opposition candidates; they rewrite or opt
+  into a vocabulary.
+- **D5** CODEOWNERS covers `symspec.config.json` as well as intent and policy (AC-5-13 amended).
+- The Phase 6 certificate op is named `narrow`, because `refine` is an existing edge verb (G1).
+
