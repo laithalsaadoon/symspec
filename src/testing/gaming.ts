@@ -22,7 +22,7 @@
  *   from a fixture to an op stream, a re-parse, or a run-setting change — the same three
  *   channels an agent has. Each carries its I-1 direction as DATA.
  * - {@link NOT_APPLICABLE_YET}: the AC-8-2 moves whose target does not exist yet (intent,
- *   policy, `refine` certificates, environment assumptions, `derived`). Enumerated in code so
+ *   policy, `narrow` certificates, environment assumptions, `derived`). Enumerated in code so
  *   AC-8-2's list is complete here and a later story has a row to promote.
  * - {@link KNOWN_ESCAPES}: every (fixture, move) pair that reaches a clean verdict today, with
  *   the AC that closes it. The gate is that this table is EXACT, in both directions.
@@ -861,7 +861,7 @@ export const NOT_APPLICABLE_YET: readonly PendingMove[] = [
   { id: 'edit-policy', clause: 'edit `policy`', direction: 'weakening', needs: 'AC-5-2' },
   {
     id: 'refine-exceeds-conflict',
-    clause: 'submit a `refine` whose carve-out exceeds the conflict region',
+    clause: 'submit a `narrow` whose carve-out exceeds the conflict region',
     direction: 'weakening',
     needs: 'AC-5-3',
   },
@@ -920,7 +920,7 @@ export const AC_8_2: readonly { readonly clause: string; readonly moves: readonl
   { clause: 'edit `intent`', moves: ['edit-intent'] },
   { clause: 'edit `policy`', moves: ['edit-policy'] },
   {
-    clause: 'submit a `refine` whose carve-out exceeds the conflict region',
+    clause: 'submit a `narrow` whose carve-out exceeds the conflict region',
     moves: ['refine-exceeds-conflict'],
   },
   { clause: 'yield against the policy order', moves: ['yield-against-policy'] },
@@ -1036,7 +1036,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       move,
       'AC-5-9',
       ['contrary-pair', 'temporal-conflict', 'glossary-bridged', 'term-bridged'],
-      "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `refine` certificate.",
+      "Flipping either requirement's polarity removes the conflict by changing what the requirement means. Nothing compares the binding to a baseline, so the re-binding is invisible; `FND_SEMANTIC_DRIFT` reports a binding change that removed a finding without a `narrow` certificate.",
     ),
   ),
   ...(['alias-contraries-glossary@forward', 'alias-contraries-glossary@reverse'] as const).flatMap(
@@ -1078,7 +1078,7 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
     'rebind-effect',
     'AC-5-9',
     ['state-invariant'],
-    'Rewriting the effect so it never writes the forbidden value discharges the violation while the sentence still says "open the valve". The binding changed and removed a finding with no `refine` certificate (`FND_SEMANTIC_DRIFT`); AC-6-6 separately flags the effect as no longer the rendering of its sentence.',
+    'Rewriting the effect so it never writes the forbidden value discharges the violation while the sentence still says "open the valve". The binding changed and removed a finding with no `narrow` certificate (`FND_SEMANTIC_DRIFT`); AC-6-6 separately flags the effect as no longer the rendering of its sentence.',
   ),
 ]
 
