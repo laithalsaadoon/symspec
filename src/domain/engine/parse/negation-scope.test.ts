@@ -47,6 +47,15 @@ describe('AC-2-3: a negation the stored response still carries does not set `neg
       ', under no circumstances, be forwarded',
     ],
     ['The gateway shall, under load, not drop requests.', ', under load, not drop requests'],
+    [
+      'The gateway shall be notified of requests with no-reply headers.',
+      'be notified of requests with no-reply headers',
+    ],
+    ['Users shall send a no-reply email.', 'send a no-reply email'],
+    ['Users shall perform a no-op.', 'perform a no-op'],
+    ['Users shall return a not-found error.', 'return a not-found error'],
+    ['Users shall set the no-cache header.', 'set the no-cache header'],
+    ['Users shall see a never-ending list.', 'see a never-ending list'],
   ])('on the Tier-2 path, the negator stays in the text and the flag clears — %s', async (line, response) => {
     const r = await ok(line)
     expect(r.tier).toBe(2)

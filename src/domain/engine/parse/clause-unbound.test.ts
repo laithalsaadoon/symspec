@@ -343,13 +343,24 @@ describe('AC-2-2 controls: a line that drops no marker keeps its base parse', ()
     expect((await stored(line)).slots.systemName).toBe(systemName)
   })
 
+  // D1 compares WORD tokens, and a hyphen splits words, so a marker glued to its neighbour by a
+  // hyphen is still a marker. When it is dropped, the line is refused: a loud refusal of a noun
+  // compound ('Until-dates') is accepted by decision, a silent drop of a hyphen-joined condition
+  // ('Until-reset, the pump shall not run.') is not.
   it.each([
-    ['Until-dates shall be required.', 'dates'],
-    ['The until-date field shall be required.', 'date field'],
-    ['Unless-clauses shall be flagged.', 'clauses'],
-    ['Except-list entries shall be skipped.', 'list entries'],
-  ] as const)('a hyphenated compound is not the marker word — %s', async (line, systemName) => {
-    expect((await stored(line)).slots.systemName).toBe(systemName)
+    'Until-dates shall be required.',
+    'The until-date field shall be required.',
+    'Unless-clauses shall be flagged.',
+    'Except-list entries shall be skipped.',
+    'Until-reset, the pump shall not run.',
+    'Until\u2011reset, the pump shall not run.',
+    'Unless-armed, the press shall start.',
+    'Before-startup, the pump shall prime.',
+    'In-case of fire, the door shall unlock.',
+    'Only-if armed, the press shall start.',
+    'Provided-that the door is closed, the press shall start.',
+  ])('a dropped marker joined by a hyphen is still refused — %s', async (line) => {
+    await refused(line)
   })
 
   it.each([

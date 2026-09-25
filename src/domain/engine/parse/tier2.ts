@@ -369,7 +369,11 @@ function responseScopeNegators(tokens: readonly WinkToken[], modalIdx: number): 
     if (!runStartsHere) continue
     let start = i
     while (start > 0 && tokens[start - 1]!.negationFlag) start--
-    negators.push(start - 1)
+    // The negator is the nearest WORD before the run: wink splits `no-reply` into no / - / reply,
+    // so the token just before the flagged `reply` is the hyphen, not the negator it was keyed on.
+    let negator = start - 1
+    while (negator > modalIdx && tokens[negator]!.pos === 'PUNCT') negator--
+    negators.push(negator)
   }
   return negators
 }

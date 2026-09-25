@@ -69,7 +69,9 @@ const DETERMINERS: ReadonlySet<string> = new Set([
 /** What ends a label or tag left of the clause: a bracket, or a colon or semicolon after it. */
 const LABEL_END = /[()[\]{}:;]/
 /** A character that joins two words into one (`Until-dates`, `until_x`, `unless's`). */
-const JOINER = /[-‑_']/u
+// A hyphen is NOT a joiner: D1 compares word tokens and `wordsOf` splits on it, so `Until-reset`
+// holds the whole word `until`. Only an underscore or apostrophe glues a marker into one token.
+const JOINER = /[_']/u
 const ALNUM = /[\p{L}\p{N}]/u
 
 interface Word {
@@ -168,12 +170,14 @@ function markerAt(
   return marker.every((m, k) => {
     const w = words[i + k]
     if (w === undefined || w.lower !== m || covered[i + k]) return false
-    if (k > 0 && text.slice(words[i + k - 1]!.end, w.start).trim() !== '') return false
+    // The words of a multi-word marker are adjacent: whitespace or a hyphen between them
+    // (`In case`, `In-case`, `Only-if`), never other text.
+    if (k > 0 && !/^[\s\-\u2011]*$/u.test(text.slice(words[i + k - 1]!.end, w.start))) return false
     return isWhole(text, w)
   })
 }
 
-/** A word not joined to a neighbour by a hyphen, underscore or apostrophe (`Until-dates`). */
+/** A word not joined to a neighbour by an underscore or apostrophe (`until_date`, `Unless'`). */
 const isWhole = (text: string, w: Word): boolean =>
   !(JOINER.test(text[w.start - 1] ?? '') && ALNUM.test(text[w.start - 2] ?? '')) &&
   !(JOINER.test(text[w.end] ?? '') && ALNUM.test(text[w.end + 1] ?? ''))
