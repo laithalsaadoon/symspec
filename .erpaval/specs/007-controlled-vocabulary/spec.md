@@ -68,7 +68,7 @@ and the classification is data, not prose:
 | class | can do | examples | policy |
 |---|---|---|---|
 | `strengthening` | only add findings | add a requirement, alias two names, commit a contrary axiom, add a state constraint | free |
-| `weakening` | remove findings | refine a requirement, assume something about the environment, declare two names distinct when merging them would add findings, delete or re-bind a requirement, waive a formal finding | admitted only with a certificate the kernel checks (Story 5); otherwise the obligation stays open |
+| `weakening` | remove findings | narrow a requirement, assume something about the environment, declare two names distinct when merging them would add findings, delete or re-bind a requirement, waive a formal finding | admitted only with a certificate the kernel checks (Story 5); otherwise the obligation stays open |
 | `run-weakening` | remove findings for one run | `--semantic=false`, the embedding stub, a budget below the pinned config, a low `--temporal-bound` | demotes and is disclosed in `data.run` |
 
 The argument that makes this sound: in the logic the decide tier uses, adding constraints or
@@ -453,7 +453,7 @@ Sabotage: skip condition 2; carve-out `true` is admitted and the test goes red.
 AC-5-4
 Dependencies: AC-5-3
 Unwanted behavior: If the conflicting requirements' levels are equal, or `policy` does not order
-them, then no `refine` shall be admissible. The obligation shall stay open as `FND_UNREALIZABLE`
+them, then no `narrow` shall be admissible. The obligation shall stay open as `FND_UNREALIZABLE`
 with reason `policy-silent`, and the finding shall carry a proposed policy rule (propose-only)
 that would order every conflict of that shape.
 
@@ -500,7 +500,7 @@ reads as "no delta" and the test goes red.
 
 AC-5-9
 Dependencies: AC-5-8
-Unwanted behavior: If a requirement's binding changed since the baseline without a `refine`
+Unwanted behavior: If a requirement's binding changed since the baseline without a `narrow`
 certificate, and the change removed a finding, then `check` shall report `FND_SEMANTIC_DRIFT`
 (error).
 Sabotage: compare rendered English instead of the binding; a re-binding fixture goes red.
@@ -656,7 +656,7 @@ Dependencies: AC-8-1
 Ubiquitous: The registered moves shall include at least: rename a system; alias two contraries;
 waive by code; delete a requirement; flip `negated`; move a condition into the response text;
 add decoy requirements; change `shall` to `should`; split a system into two parents; edit
-`intent`; edit `policy`; submit a `refine` whose carve-out exceeds the conflict region; yield
+`intent`; edit `policy`; submit a `narrow` whose carve-out exceeds the conflict region; yield
 against the policy order; add an untraced environment assumption; add a `derived` requirement
 that weakens; run with the embedding stub, `--semantic=false`, a one-millisecond budget, and
 `--temporal-bound 1`. A new op shall not merge without a registered move or a written reason it
@@ -683,7 +683,7 @@ Each phase keeps `pnpm check` green, and its gate must be observed red before it
 4. **Typed-atom plan slices 10–14,** extended from `attr`/`cmp` to the six vocabulary kinds.
 5. **Story 6 and Story 7:** the single semantics, one-step realizability, the state-model
    obligations, the BFS cross-check, and the obligation ledger.
-6. **The certificate kernel:** `refine`, the policy-silent case, certified environment
+6. **The certificate kernel:** `narrow`, the policy-silent case, certified environment
    assumptions, re-checking, the kernel boundary, and parent-refinement on import
    (AC-5-3 to 5-5, 5-11, 5-12, 5-14). Until this
    lands, a weakening move has no admission path, so its obligation stays open. That is the safe
