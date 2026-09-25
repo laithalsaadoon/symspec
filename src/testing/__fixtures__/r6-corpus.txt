@@ -1,0 +1,347 @@
+(1) The password store shall be encrypted at rest.
+(1) Unless the guard door is closed, the press controller shall start the press.
+(P1) Unless the guard door is closed the press controller shall start the press.
+REQ-042:  “THE_SERVICEright_DOUBLE shall log.
+REQ-14: the api shall paginate every list response
+The api gateway shall accept 30 per second.
+The api gateway shall keep latency 500 for each request.
+The api gateway shall keep response time 200 at most.
+The api gateway shall respond between 1 and 5 seconds.
+The api gateway shall respond with latency 500 and log the request.
+The api gateway shall respond within 1 to 5.
+The api gateway shall respond within 10-20 ms.
+The api gateway shall respond within 500 and log the request.
+The api gateway shall respond within 500 once the request arrives.
+The archive service shall store 1 record.
+The archive service shall store 42 records.
+The arm shall travel at most 3 foot.
+The arm shall travel at most 3 inches.
+The auth service shall expire the user session in no less than 60 minutes.
+The auth service shall keep the token valid for at most 30 minutes.
+The auth service shall keep the user session alive for no less than 60 minutes.
+The backup service shall complete the snapshot within 2 h.
+The backup service shall complete the snapshot within 2 hrs.
+The backup service shall complete the snapshot within 30 min.
+The backup service shall complete the snapshot within 30 mins.
+The backup service shall complete the snapshot within 90 sec.
+The backup service shall retain the snapshot for at least 60 min.
+The cache shall hold at most 5 B.
+The cache shall hold at most 5 GiB.
+The cache shall hold at most 5 MB.
+The cache shall hold at most 64 bytes.
+The client shall use delay/30 for each request.
+The client shall use delay:30 for each request.
+The client shall use retries.5 for each request.
+The client shall use timeout-30 for each request.
+The client shall use timeout:30 for each request.
+The client shall use timeout:60 for each request.
+The console shall also type 30 characters.
+The controller shall always page 30 operators.
+The controller shall cap each page 20 during export.
+The controller shall cap each page 50 during export.
+The controller shall complete the infusion within 30 minutes.
+The controller shall complete the infusion within at most 30 minutes.
+The controller shall expire the idle session after at most 30 minutes.
+The controller shall expire the user session in no less than 60 minutes.
+The controller shall hold channel 2 at 75.
+The controller shall hold each item 30 before release.
+The controller shall hold each item 60 before release.
+The controller shall hold job 3 timeout below 5 seconds.
+The controller shall hold pressure 5 until the test ends.
+The controller shall hold pump 3 bearing temperature below 80 °C.
+The controller shall hold the channel 2 above 75.
+The controller shall hold the fan 80 flat.
+The controller shall hold the room 22 steady.
+The controller shall hold the stage 3 during startup.
+The controller shall hold the tank 80 before the refill.
+The controller shall hold the tank 80.
+The controller shall hold the temperature 20.
+The controller shall hold the temperature at 20 throughout the night.
+The controller shall hold the temperature in zones 1 and 2 above 20 degrees celsius.
+The controller shall hold the zone 1 and zone 2 temperatures above.
+The controller shall hold the zone 20 during the night.
+The controller shall hold the zones 1 and 2 above 20 degrees celsius.
+The controller shall hold zone 1 above 20 degrees celsius.
+The controller shall hold zone 1 above 20 °C.
+The controller shall hold zone 1 air temperature above 20 degrees celsius.
+The controller shall hold zone 1 at 20 degrees celsius.
+The controller shall hold zone 1 temp above 20 °C.
+The controller shall hold zone 1 temperature above 20 celsius.
+The controller shall hold zone 1 temperature above 20 degC.
+The controller shall hold zone 1 temperature above 20 degrees c.
+The controller shall hold zone 1 temperature above 20 degrees celsius and set the fan to 80.
+The controller shall hold zone 1 temperature above 20 degrees celsius.
+The controller shall hold zone 1 temperature above 20 °C.
+The controller shall hold zone 1 temperature above 20 ℃.
+The controller shall hold zone 1 temperature above 290 kelvin.
+The controller shall hold zone 1 temperature above 68 fahrenheit.
+The controller shall hold zone 1 temperature not above 20 degrees celsius.
+The controller shall hold zone 1 temperatures above 20 °C.
+The controller shall hold zone 2 at 5 degrees celsius.
+The controller shall hold zone 2 below 5 degrees celsius.
+The controller shall hold zone 2 temperature below 5 degrees celsius.
+The controller shall hold zones 1 and 2.
+The controller shall immediately pump 20 before the refill.
+The controller shall immediately pump 50 barrels.
+The controller shall immediately pump 50.
+The controller shall keep 2 zones temperature above 20 °C.
+The controller shall keep axis 3 position within 5 mm.
+The controller shall keep disk 2 usage below 5 GB.
+The controller shall keep latency 500 for each request.
+The controller shall keep latency above 500.
+The controller shall keep latency below 100.
+The controller shall keep level 5 or lower.
+The controller shall keep level 9 or higher.
+The controller shall keep link 1 above 500 Mbps.
+The controller shall keep link 1 latency below 5 ms.
+The controller shall keep link 1 throughput above 500 Mbps.
+The controller shall keep link 2 below 100 Mbps.
+The controller shall keep link 2 throughput below 100 Mbps.
+The controller shall keep pump 3 below 5 bar.
+The controller shall keep pump 4 above 8 bar.
+The controller shall keep pump 50 delay below 10 seconds.
+The controller shall keep radio 2 frequency above 80 kHz.
+The controller shall keep response time 200 at most.
+The controller shall keep scale 1 load below 5 kg.
+The controller shall keep speed 3000 until shutdown.
+The controller shall keep tank 2 volume below 500 L.
+The controller shall keep the fan 80 above 20 Hz.
+The controller shall keep the fan 80 spinning above 20 Hz.
+The controller shall keep the floor 20 during the night.
+The controller shall keep the pressure at most 5 bar.
+The controller shall keep the pressure below 5 regardless of load.
+The controller shall keep the pump 50 running for at least 10 minutes.
+The controller shall keep the pump 50 running over 10 minutes.
+The controller shall keep the reading below 1,500 ms.
+The controller shall keep the room 18 constant.
+The controller shall keep the room 22 constant above 18 °C.
+The controller shall keep the room 22 constant.
+The controller shall keep the room 22 degrees celsius constant.
+The controller shall keep the room 22 during the day.
+The controller shall keep the room 22 overnight.
+The controller shall keep the room 22.
+The controller shall keep the room at 22 temperature above 18 °C.
+The controller shall keep the tank 40 full.
+The controller shall keep the tank 80 full.
+The controller shall keep the temperature 20 during the night.
+The controller shall keep the temperature 30 during the night.
+The controller shall keep the temperature at 20 all night.
+The controller shall keep the throughput on links 1 and 2 above 500 Mbps.
+The controller shall keep the token valid for at most 30 minutes.
+The controller shall keep the user session alive for no less than 60 minutes.
+The controller shall keep the voltage 12 or higher.
+The controller shall keep the zone 20 warm.
+The controller shall keep zone 1 temperature above 20 °C and zone 2 temperature below 5 °C.
+The controller shall limit current 20 at startup.
+The controller shall maintain pressure 5 during startup.
+The controller shall maintain temperature 20 while idle.
+The controller shall maintain temperature 30 while idle.
+The controller shall not hold zone 1 temperature above 20 degrees celsius during defrost.
+The controller shall not hold zone 1 temperature above 20 degrees celsius.
+The controller shall only pump 50 during startup.
+The controller shall only pump 50.
+The controller shall open the valve 30 wide.
+The controller shall pause intake 30 before resuming.
+The controller shall pause intake 5 before resuming.
+The controller shall reach temperature 60 within 5 minutes.
+The controller shall remain open 30 after the alarm.
+The controller shall respond in no less than 2000 ms.
+The controller shall respond over 3000 ms.
+The controller shall respond within 1 second.
+The controller shall respond within 2 seconds.
+The controller shall respond within 500 once the request arrives.
+The controller shall retry within 30 every hour.
+The controller shall rotate the motor 300 turns.
+The controller shall run the fan 80 nonstop.
+The controller shall run the infusion for at least 60 minutes.
+The controller shall run the motor 3000 while loaded.
+The controller shall run the motor 3000.
+The controller shall run the pump 50 during startup.
+The controller shall run the pump 50 hot.
+The controller shall set channel 2 to 75.
+The controller shall set channel 5 to 40 during startup.
+The controller shall set delay 200 and log the event.
+The controller shall set delay 500 and log the event.
+The controller shall set fan 2 to 20.
+The controller shall set fan 2 to 80.
+The controller shall set line 240 during startup.
+The controller shall set line 240.
+The controller shall set pump 3 speed to 50 within 5 seconds.
+The controller shall set pump 3 to 50 during startup.
+The controller shall set the delay 30 per the manual.
+The controller shall set the delay 30 when the alarm sounds.
+The controller shall set the delay to 1 immediately.
+The controller shall set the delay to 1 throughout the night.
+The controller shall set the delay to 30 except during startup.
+The controller shall set the delay to 30 prior to the restart.
+The controller shall set the delay to 30 since the last restart.
+The controller shall set the delay to 30 via the console.
+The controller shall set the delay to 30 whenever the alarm sounds.
+The controller shall set the delay to 30 without exception.
+The controller shall set the delay to 60 upon restart.
+The controller shall set the fan 50 low.
+The controller shall set the fan 50 using the panel.
+The controller shall set the fan 50 while idle.
+The controller shall set the fan 50.
+The controller shall set the fan speed to 80 net.
+The controller shall set the fan speed to 80 tops.
+The controller shall set the fan to 20 within 5 seconds.
+The controller shall set the fan to 20, 5 seconds after the alarm.
+The controller shall set the fan to 80 a day.
+The controller shall set the fan to 80 and keep zone 1 temperature above 20 °C.
+The controller shall set the fan to 80 before the zone temperature rises above 20 degrees celsius.
+The controller shall set the fan to 80 sometimes.
+The controller shall set the fan to 80 while the zone temperature is above 20 degrees celsius.
+The controller shall set the fan to 80 within 5 seconds.
+The controller shall set the fan to 80.
+The controller shall set the fans 50 during startup.
+The controller shall set the gate 45 during startup.
+The controller shall set the gate 45.
+The controller shall set the heater to 80 temperature above 20 °C.
+The controller shall set the level to 3 or 4 seconds later.
+The controller shall set the mode to 1 whereupon the alarm clears.
+The controller shall set the output to 20 to 30 seconds.
+The controller shall set the pressure to 5 always.
+The controller shall set the pressure to 5 beforehand.
+The controller shall set the pressure to 5 every cycle.
+The controller shall set the pressure to 5 immediately.
+The controller shall set the pressure to 5 whilst idle.
+The controller shall set the setpoint 22 and hold it.
+The controller shall set the step 5 during calibration.
+The controller shall set the step 5.
+The controller shall set the tier 30 during startup.
+The controller shall set the type 5 during startup.
+The controller shall set the valve 30 during startup.
+The controller shall set the valve 30 immediately.
+The controller shall set the valve 30 open.
+The controller shall set the valve 30.
+The controller shall set the valve 70 before the restart.
+The controller shall set the valve 70 open.
+The controller shall set the valve to 40, 10 seconds after the purge starts.
+The controller shall set tier 2 to 100 when the alarm sounds.
+The controller shall set tier 2 to 100.
+The controller shall set valve 1 to 40.
+The controller shall set valve 2 to 30 before the restart.
+The controller shall set zone 1 and 20 while idle.
+The controller shall set zone 1 temperature to 20.
+The controller shall set zone 1 through 20.
+The controller shall set zone 1 to 20 while idle.
+The controller shall set zones 1 and 2 to 20 while idle.
+The controller shall sound the siren after at least 10 seconds.
+The controller shall travel for at least 10 mm.
+The controller shall travel within 5 mm.
+The dispatcher shall hold zones 1 and 2 above 5 degrees celsius.
+The door controller shall remain open 30 after the alarm.
+The heater shall maintain temperature 20 while idle.
+The link shall carry at least 10 Kbps.
+The link shall carry at least 10 MB/s.
+The link shall carry at least 10 Tbps.
+The link shall carry at least 10 bit/s.
+The link shall carry at least 10 kbit/s.
+The monitor shall keep the concentration below 5 ppm.
+The monitor shall keep the illuminance above 300 lux.
+The monitor shall raise an alarm for beds 3 and 4 within 2 seconds.
+The motor driver shall limit current 20 at startup.
+The network controller shall keep link 2 throughput below 100 Mbps.
+The oven shall reach temperature 60 within 5 minutes.
+The parser shall accept version 2.
+The parser shall read version 2 records.
+The power supply shall keep the voltage 12 or higher.
+The printer shall pause each page 30 during warmup.
+The pump 3 shall start within 5 seconds.
+The pump controller shall keep the flow at most 5 widgets.
+The pump controller shall keep the pressure at most 5 bar.
+The pump shall deliver 30 gpm.
+The pump shall deliver 30 ml per hour plus or minus 2 ml per hour.
+The pump shall deliver 30 ml per hour.
+The pump shall maintain pressure 5 during startup.
+The radio shall transmit above 80 hertz.
+The radio shall transmit above 80 kHz.
+The refrigeration controller shall hold the temperature in zones 1 and 2 above 20 degrees celsius.
+The refrigeration controller shall hold the temperature of zones 1 and 2 above 20 degrees celsius.
+The refrigeration controller shall hold the zones 1 and 2 above 20 degrees celsius.
+The refrigeration controller shall hold zone 1 temperature above 20 degrees celsius.
+The router shall forward IPv4 packets.
+The router shall keep the throughput on links 1 and 2 above 500 Mbps.
+The scale shall read at most 5 KG.
+The scale shall read at most 5 mg.
+The scheduler shall reserve each slot 30 during peak hours.
+The scheduler shall retry the job at most 3 times.
+The scheduler shall retry the job at most 3.
+The server shall hold release 30 during rollout.
+The server shall limit each row 30 during import.
+The server shall set the region 30 during rollout.
+The server shall wait delay 30 before reconnecting.
+The station controller shall route traffic to tier-2 within 5 seconds.
+The station controller shall start pump #3 within 5 seconds.
+The station controller shall start pump 3 within 5 seconds.
+The station controller shall start pump-3 within 5 seconds.
+The system shall set the delay 30 when the alarm sounds.
+The tank shall hold at most 5 ML.
+The test rig shall hold pressure 5 until the test ends.
+The timer shall fire within 5 us.
+The timer shall fire within 500 ns.
+The vehicle controller shall comply with ISO 26262.
+Unless the door is shut, PLC_1 shall stop.
+Unless the door is shut, the press #3 shall stop.
+Unless the door is shut, the press controller v2.1 shall stop.
+Until\u2011reset, the pump shall not run.
+When a transient error occurs, the scheduler shall retry the job up to 3 times.
+When an infusion is started, the infusion pump shall complete the infusion within at most 30 minutes.
+When an infusion is started, the infusion pump shall run the infusion for at least 60 minutes.
+When pump 3 starts, the controller shall open the valve.
+When the alarm sounds, the controller shall set the delay to 30 upon restart.
+When the alarm sounds, the controller shall set the fan to 80, 5 seconds after the alarm.
+When the alarm sounds, the controller shall set the valve 30 before the restart.
+When the alarm sounds, the controller shall set zone 1 to 20 before the restart.
+When the alarm sounds, the controller shall set zone 1 to 25 before the restart.
+When the alarm sounds, the system shall set the delay 30 before the restart.
+When the alarm sounds, the system shall set the delay 60 before the restart.
+When the batch arrives, the conveyor shall hold each item 30 before release.
+When the batch starts, the scheduler shall finish within 2.25 seconds.
+When the clinician starts an infusion, the infusion pump shall complete the infusion within 30 minutes.
+When the clinician starts an infusion, the infusion pump shall run the infusion for at least 60 minutes.
+When the export starts, the server shall cap each page 50 during export.
+When the fault clears, the controller shall set the delay to 30 due to the fault.
+When the load rises, the controller shall hold the motor 3000 steady.
+When the load rises, the controller shall set fan 2 to 80.
+When the night starts, the controller shall hold zone 1 at 20 degrees celsius.
+When the night starts, the controller shall keep the room 22 constant.
+When the night starts, the controller shall keep the tank 80 full.
+When the night starts, the controller shall set zone 1 to 20.
+When the night starts, the controller shall set zone 1 to 30.
+When the pump starts, the controller shall keep the pump 50 running.
+When the purge starts, the controller shall set the valve 30 open.
+When the purge starts, the controller shall set valve 1 to 40 during the purge.
+When the queue fills, the broker shall pause intake 30 before resuming.
+When the queue holds 50, the dispatcher shall pause intake.
+When the request arrives, the api gateway shall respond within 1.5 seconds.
+When the request arrives, the api gateway shall respond within 1500 ms.
+When the request arrives, the api gateway shall respond within 400 ms to 600 ms.
+When the request arrives, the api gateway shall respond within 500 ms plus or minus 50 ms.
+When the request arrives, the api gateway shall respond within 500 ms.
+When the request arrives, the api gateway shall respond within 500.
+When the system is idle, the controller shall keep the temperature 20 during the night.
+When the tank is low, the controller shall immediately pump 50 before the refill.
+When the tank pumps 50, the dispatcher shall pause intake.
+When the temperature is below 3 degrees celsius, the controller shall log the event.
+When the temperature is below 3 degrees celsius, the vent controller shall close the vent.
+When zone 1 temperature exceeds 20 degrees celsius, the controller shall open the vent.
+When zone 1 temperature exceeds 20, the controller shall open the vent.
+When zone 1 temperature is above 20 °C, the controller shall set the fan to 80.
+While the flush latency is above 500 ms, the controller shall log the event.
+While the temperature is above 5 degrees celsius, the controller shall log the event.
+While the temperature is above 5 degrees celsius, when the temperature is below 3 degrees celsius, the vent controller shall log the fault.
+While zone 2 temperature is below 5 degrees celsius, the controller shall close the vent.
+{"patternType":"event-driven","systemName":"controller","trigger":"zone 1 temperature exceeds 20 degrees celsius","preCondition":"zone 2 temperature is below 5 degrees celsius","systemResponse":"open the vent"}
+{"patternType":"event-driven","systemName":"controller","trigger":"zone 1 temperature exceeds 20 degrees celsius","systemResponse":"set the fan to 80"}
+{"patternType":"state-driven","systemName":"controller","preCondition":"zone 2 temperature is below 5 degrees celsius","systemResponse":"close the vent"}
+{"patternType":"ubiquitous","systemName":"controller","systemResponse":"hold zone 1 temperature above 20 degrees celsius and set the fan to 80"}
+{"patternType":"ubiquitous","systemName":"controller","systemResponse":"hold zone 1 temperature above 20 degrees celsius","negated":true}
+{"patternType":"ubiquitous","systemName":"controller","systemResponse":"not hold zone 1 temperature above 20 degrees celsius during defrost"}
+{"patternType":"ubiquitous","systemName":"controller","systemResponse":"not hold zone 1 temperature above 20 degrees celsius"}
+{"patternType":"ubiquitous","systemName":"network controller","systemResponse":"keep link 1 throughput above 500 Mbps"}
+{"patternType":"ubiquitous","systemName":"network controller","systemResponse":"keep link 2 throughput below 100 Mbps"}
+{"patternType":"ubiquitous","systemName":"pump 3 controller","systemResponse":"hold pump 3 bearing temperature below 80 degrees celsius"}
+{"patternType":"ubiquitous","systemName":"refrigeration controller","systemResponse":"hold zone 1 temperature above 20 degrees celsius"}
+{"patternType":"ubiquitous","systemName":"refrigeration controller","systemResponse":"hold zone 2 temperature below 5 degrees celsius"}
