@@ -489,9 +489,11 @@ export type OpVerb = (typeof OP_VERBS)[number]
  * What each one means is stated over D, the verdict-bearing set, which is defined by the
  * signal classes (`app/runtime/signal-classes.ts`) and published beside this table in the
  * manifest: `strengthening` only adds constraints, so it can DISPLACE a reported member of D
- * (a new overlapping conflict takes an old one's place in the report) but never remove one;
- * `weakening` can remove one; and `conditional` is decided per instance by symspec. A label is therefore an UPPER BOUND on
- * what the verb can do, and the gaming gate MEASURES it (G-D) rather than trusting it.
+ * (a new conflict takes an old one's place in the report, as far as the reporting granularity of
+ * the tier that emits it reaches: `DISPLACEMENT` in the signal classes) but never remove one;
+ * `weakening` can remove one; and `conditional` is decided per instance by symspec. A label is
+ * therefore an UPPER BOUND on what the verb can do, and the gaming gate MEASURES it (G-D) rather
+ * than trusting it.
  *
  * `run-weakening` is deliberately absent. A run knob (`--semantic=false`, a low budget) is not
  * an op, so it has no row here; it is disclosed on the run as `run-weakened`.
@@ -511,7 +513,7 @@ export type OpDirection = (typeof OP_DIRECTIONS)[number]
 export const OP_DIRECTION = {
   add: {
     direction: 'strengthening',
-    why: 'Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). A new conflict through a requirement that is already in one can DISPLACE the reported core, because the formal tier reports one minimal core per overlapping set (measured: `overlapping-contrary` × `add-negation`); an equivalent requirement under a lower id re-keys the verdict onto itself, which the identity map reads as the same member. It can discharge coverage demotions, and with an explicit `id` the FND_DANGLING_REFERENCE of an edge that names that id; both are outside D.',
+    why: 'Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). A new conflict can DISPLACE a reported one, as far as the reporting granularity of the tier that reports it reaches. The propositional contradiction tier enumerates disjoint cores, so an overlapping FND_CONTRADICTION displaces (measured: `overlapping-contrary` × `add-negation`). The numeric tier reports one core per (quantity, base unit, context group) cell, so any FND_NUMERIC_CONTRADICTION in the same cell displaces, sharing a requirement or not (measured: `numeric-bystander` × `add-bound-past-bystander`, a bound that conflicts with a culprit and a bystander). The temporal tier reports one joint core, so any FND_TEMPORAL_CONTRADICTION displaces (measured: `temporal-conflict` × `add-bystander-negation`). An equivalent requirement under a lower id re-keys a verdict onto itself, which the identity map reads as the same member. It can discharge coverage demotions, and with an explicit `id` the FND_DANGLING_REFERENCE of an edge that names that id; both are outside D.',
   },
   update: {
     direction: 'weakening',
@@ -546,8 +548,8 @@ export const OP_DIRECTION = {
     why: 'Identifies two phrases as one atom. An equality cannot make an unsatisfiable set satisfiable, but it can REFUTE a conflict signal: aliasing the two sides of an open opposition candidate says they are one action, so the candidate and its demotion go away and nothing replaces them (measured: `opposition-candidate` × `alias-contraries-glossary`, a clean run over fill and drain). The fold refuses an alias only over committed contraries, and it cannot see an embedding-proposed pair. The table is also a one-pass lookup that runs before term substitution, so an alias over a phrase the term table rewrites removes the verdict the term carried (`term-bridged` × `glossary-over-term`).',
   },
   antonym: {
-    direction: 'strengthening',
-    why: 'Commits a contrary axiom, which only adds constraints, so no conflict goes away. A new conflict through a requirement that is already in one can DISPLACE the reported core, because the formal tier reports one minimal core per overlapping set (measured: `overlapping-contrary` × `contrary-to-bystander`). The fold refuses a pair the committed tables make inconsistent.',
+    direction: 'weakening',
+    why: "Commits a contrary axiom, and it is also the answer to an open opposition candidate: declaring the candidate's own two verbs contraries discharges the candidate, and nothing need replace it. With one side negated (fill the tank, and never drain it) the pair is then provably consistent, the demotion goes and the run can verify (measured: `opposition-negated` × `antonym-over-candidate`, a clean run). Under two different triggers the candidate becomes `conditional-conflict-unchecked`, a different member of D (measured: `opposition-split` × `antonym-over-candidate`). The verb cannot tell a true contrary from two synonyms declared contraries, and a wrong one hides a real conflict. The fold refuses a pair the committed tables make inconsistent.",
   },
   waive: {
     direction: 'weakening',

@@ -16,11 +16,13 @@
 
 import { describe, expect, it } from 'vitest'
 import { GTWR_CODES } from '../../domain/engine/lint/codes.ts'
+import { OP_DIRECTION } from '../../domain/requirements/ops.ts'
 import { allCodes } from './catalog.ts'
 import {
   DEMOTION_CLASS,
   DEMOTION_CLASSES,
   DIRECTION_MEANING,
+  DISPLACEMENT,
   dCovers,
   dDisplaced,
   dIdentityStatement,
@@ -364,26 +366,91 @@ describe('D, the verdict-bearing set', () => {
     ])
   })
 
-  it('tells a displaced member from a removed one', () => {
-    const cycle = (ids: readonly string[]) =>
-      ({ kind: 'finding', name: 'FND_CYCLE', class: 'structural', requirementIds: ids }) as const
-    // The trace tier reports A → B → C → A where it used to report A → C → A.
+  it("tells a displaced member from a removed one, at each tier's reporting granularity", () => {
+    const member = (name: string, ids: readonly string[], cell?: string) =>
+      ({
+        kind: 'finding',
+        name,
+        class: name === 'FND_CYCLE' ? 'structural' : 'verdict',
+        requirementIds: ids,
+        ...(cell !== undefined ? { cell } : {}),
+      }) as const
+    // The granularity is data, one row per tier that reports a representative.
+    expect(
+      Object.fromEntries(Object.entries(DISPLACEMENT).map(([code, row]) => [code, row.by])),
+    ).toEqual({
+      FND_CONTRADICTION: 'overlap',
+      FND_NUMERIC_CONTRADICTION: 'cell',
+      FND_TEMPORAL_CONTRADICTION: 'code',
+      FND_CYCLE: 'overlap',
+    })
+
+    // overlap: the trace tier reports A → B → C → A where it used to report A → C → A, and the
+    // propositional tier (OVL-R1,OVL-R3) where it reported (OVL-R1,OVL-R2).
+    const cycle = (ids: readonly string[]) => member('FND_CYCLE', ids)
     expect(dDisplaced(cycle(['a', 'c']), [cycle(['a', 'b', 'c'])])).toBe(true)
     expect(dDisplaced(cycle(['p', 'q', 'r']), [cycle(['p', 'r', 'x'])])).toBe(true)
-    // Nothing of the same code overlaps: removed.
     expect(dDisplaced(cycle(['a', 'c']), [cycle(['x', 'y'])])).toBe(false)
     expect(dDisplaced(cycle(['a', 'c']), [])).toBe(false)
+    const core = (ids: readonly string[]) => member('FND_CONTRADICTION', ids)
+    expect(dDisplaced(core(['r1', 'r2']), [core(['r1', 'r3'])])).toBe(true)
+    // The propositional tier enumerates disjoint cores, so a disjoint one never took its place.
+    expect(dDisplaced(core(['r1', 'r2']), [core(['r3', 'r4'])])).toBe(false)
+
+    // cell: the numeric tier reports one core per cell, so a DISJOINT core in the same cell
+    // displaces (the (C,D) that replaced (A,B)), and one in another cell does not.
+    const minutes = JSON.stringify(['expire the session after', ['minute']])
+    const bytes = JSON.stringify(['keep the file', ['byte']])
+    const numeric = (ids: readonly string[], cell?: string) =>
+      member('FND_NUMERIC_CONTRADICTION', ids, cell)
+    expect(dDisplaced(numeric(['a', 'b'], minutes), [numeric(['c', 'd'], minutes)])).toBe(true)
+    expect(dDisplaced(numeric(['a', 'b'], minutes), [numeric(['c', 'd'], bytes)])).toBe(false)
+    expect(dDisplaced(numeric(['a', 'b'], minutes), [numeric(['a', 'b'], bytes)])).toBe(false)
+    // A member with no cell named is displaced by nothing: the gate cannot place it.
+    expect(dDisplaced(numeric(['a', 'b']), [numeric(['a', 'b'])])).toBe(false)
+
+    // code: the temporal tier reports one joint core, so any temporal core displaces.
+    const temporal = (ids: readonly string[]) => member('FND_TEMPORAL_CONTRADICTION', ids)
+    expect(dDisplaced(temporal(['r1', 'r2']), [temporal(['n', 'r3'])])).toBe(true)
+    expect(dDisplaced(temporal(['r1', 'r2']), [])).toBe(false)
+
     // A different code over the same requirements does not take its place.
-    expect(
-      dDisplaced(cycle(['a', 'c']), [
+    expect(dDisplaced(cycle(['a', 'c']), [core(['a', 'c'])])).toBe(false)
+    // A code with no row is displaced by nothing, however much the after-set overlaps it.
+    const violated = member('FND_REACHABILITY_VIOLATED', ['s'])
+    expect(dDisplaced(violated, [violated])).toBe(false)
+    // Nor is a demotion: no tier reports a conflict signal as one representative of several.
+    const signal = {
+      kind: 'demotion',
+      name: 'open-opposition-candidate',
+      class: 'conflict-signal',
+      requirementIds: ['a', 'b'],
+    } as const
+    expect(dDisplaced(signal, [{ ...signal, requirementIds: ['a', 'c'] }])).toBe(false)
+  })
+
+  it("reads a numeric finding's cell from its evidence, and no other finding's", () => {
+    const d = verdictBearingOf({
+      findings: [
         {
-          kind: 'finding',
-          name: 'FND_CONTRADICTION',
-          class: 'verdict',
-          requirementIds: ['a', 'c'],
+          code: 'FND_NUMERIC_CONTRADICTION',
+          severity: 'error',
+          requirementIds: ['b', 'a'],
+          evidence: {
+            numeric: {
+              quantity: 'expire the session after',
+              predicates: [{ unit: 'minute' }, { unit: 'minute' }],
+            },
+          },
         },
-      ]),
-    ).toBe(false)
+        { code: 'FND_CONTRADICTION', severity: 'error', requirementIds: ['a', 'b'] },
+      ],
+      coverage: { demotions: [] },
+    })
+    expect(d.map((m) => m.cell)).toEqual([
+      JSON.stringify(['expire the session after', ['minute']]),
+      undefined,
+    ])
   })
 
   it('publishes the identity maps and the displacement bound, never the stale "only ADD" claim', () => {
@@ -395,5 +462,25 @@ describe('D, the verdict-bearing set', () => {
     expect(DIRECTION_MEANING.strengthening).not.toMatch(/can only ADD/i)
     // And the identity paragraph names its maps without counting them.
     expect(dIdentityStatement()).not.toMatch(/\b(two|three|\d+) identity maps\b/i)
+  })
+
+  it('states the displacement bound per tier, from the table, never the one-core-per-overlap claim', () => {
+    for (const [code, row] of Object.entries(DISPLACEMENT)) {
+      expect(DIRECTION_MEANING.strengthening).toContain(`\`${code}\``)
+      expect(DIRECTION_MEANING.strengthening).toContain(row.reports)
+    }
+    // The negative guards: the meaning and the `add` why used to say the formal and temporal
+    // tiers report one core per set of OVERLAPPING conflicts. The numeric tier reports one per
+    // cell and the temporal tier one per document, and a disjoint core took the report on both.
+    const stale =
+      /(formal and temporal tiers|formal tier) reports? (ONE )?(one )?minimal core per (set of )?overlapping/i
+    expect(DIRECTION_MEANING.strengthening).not.toMatch(stale)
+    expect(OP_DIRECTION.add.why).not.toMatch(stale)
+    expect(OP_DIRECTION.add.why).toMatch(/same cell/)
+    expect(OP_DIRECTION.add.why).toMatch(/one joint core/)
+    // `antonym` is weakening, and its why no longer claims a contrary axiom removes nothing.
+    expect(OP_DIRECTION.antonym.direction).toBe('weakening')
+    expect(OP_DIRECTION.antonym.why).not.toMatch(/no conflict goes away/)
+    expect(OP_DIRECTION.antonym.why).toMatch(/opposition candidate/)
   })
 })

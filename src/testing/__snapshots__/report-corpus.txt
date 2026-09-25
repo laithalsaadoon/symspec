@@ -27,6 +27,7 @@ gaming-control/derives-cycle	exit=0	verified=true	findings=FND_LEAF_UNVERIFIABLE
 gaming-control/glossary-bridged	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[] FND_REDUNDANCY/warn[GLO-R1,GLO-R2]	demotions=-
 gaming-control/one-trigger-contradiction	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming-control/opposition-candidate	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
+gaming-control/opposition-negated	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[OPN-R2]	demotions=-
 gaming-control/overlapping-contrary	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming-control/registered-contrary	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming-control/state-invariant	exit=0	verified=true	findings=FND_REACHABILITY_PROVED/info[VALVE-SHUT]	demotions=-
@@ -38,9 +39,12 @@ gaming/dangling-target	exit=1	verified=true	findings=FND_CONTRADICTION/error[DNG
 gaming/derives-cycle	exit=1	verified=true	findings=FND_CYCLE/error[CYC-A,CYC-C] FND_LEAF_UNVERIFIABLE/warn[CYC-B] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R5_INDEFINITE_ARTICLE/warn[CYC-A] GTWR_R5_INDEFINITE_ARTICLE/warn[CYC-B] GTWR_R5_INDEFINITE_ARTICLE/warn[CYC-C]	demotions=-
 gaming/feature-interaction	exit=3	verified=false	findings=FND_NO_PAIRS_CHECKED/info[DOOR-R1,DOOR-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[DOOR-R2]	demotions=conditional-conflict-unchecked[DOOR-R1,DOOR-R2] no-decide-tier-comparison[DOOR-R1,DOOR-R2] uncovered-requirement[DOOR-R1] uncovered-requirement[DOOR-R2]
 gaming/glossary-bridged	exit=1	verified=true	findings=FND_CONTRADICTION/error[GLO-R1,GLO-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[GLO-R2]	demotions=-
+gaming/numeric-bystander	exit=1	verified=false	findings=FND_NUMERIC_CONTRADICTION/error[NBY-R1,NBY-R2] FND_REACHABILITY_NOT_CHECKED/info[] FND_SIMILAR_UNUNIFIED/info[NBY-R1,NBY-R3] GTWR_R33_MISSING_TOLERANCE/warn[NBY-R1] GTWR_R33_MISSING_TOLERANCE/warn[NBY-R2] GTWR_R33_MISSING_TOLERANCE/warn[NBY-R3] GTWR_R35_TEMPORAL/info[NBY-R1] GTWR_R35_TEMPORAL/info[NBY-R2] GTWR_R35_TEMPORAL/info[NBY-R3]	demotions=uncovered-requirement[NBY-R3]
 gaming/numeric-conflict	exit=1	verified=true	findings=FND_NUMERIC_CONTRADICTION/error[NUM-R1,NUM-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R33_MISSING_TOLERANCE/warn[NUM-R1] GTWR_R33_MISSING_TOLERANCE/warn[NUM-R2] GTWR_R35_TEMPORAL/info[NUM-R1] GTWR_R35_TEMPORAL/info[NUM-R2]	demotions=-
 gaming/one-trigger-contradiction	exit=1	verified=true	findings=FND_CONTRADICTION/error[ORD-R1,ORD-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[ORD-R2]	demotions=-
 gaming/opposition-candidate	exit=3	verified=false	findings=FND_OPPOSITION_CANDIDATE/info[OPP-R1,OPP-R2] FND_REACHABILITY_NOT_CHECKED/info[]	demotions=open-opposition-candidate[OPP-R1,OPP-R2]
+gaming/opposition-negated	exit=3	verified=false	findings=FND_OPPOSITION_CANDIDATE/info[OPN-R1,OPN-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[OPN-R2]	demotions=open-opposition-candidate[OPN-R1,OPN-R2]
+gaming/opposition-split	exit=3	verified=false	findings=FND_OPPOSITION_CANDIDATE/info[OPS-R1,OPS-R2] FND_REACHABILITY_NOT_CHECKED/info[]	demotions=no-decide-tier-comparison[OPS-R1,OPS-R2] open-opposition-candidate[OPS-R1,OPS-R2] uncovered-requirement[OPS-R1] uncovered-requirement[OPS-R2]
 gaming/overlapping-contrary	exit=1	verified=true	findings=FND_CONTRADICTION/error[OVL-R1,OVL-R2] FND_REACHABILITY_NOT_CHECKED/info[] FND_VACUITY/warn[OVL-R3]	demotions=-
 gaming/registered-contrary	exit=1	verified=true	findings=FND_CONTRADICTION/error[REG-R1,REG-R2] FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming/state-invariant	exit=1	verified=true	findings=FND_REACHABILITY_VIOLATED/error[VALVE-SHUT]	demotions=-

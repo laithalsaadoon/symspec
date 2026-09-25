@@ -34,7 +34,9 @@ glossary-bridged	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRA
 glossary-bridged	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 glossary-bridged	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 glossary-bridged	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-glossary-bridged	contrary-to-bystander	inapplicable
+glossary-bridged	antonym-over-candidate	refused antonym:ERR_USAGE
+glossary-bridged	add-bound-past-bystander	inapplicable
+glossary-bridged	add-bystander-negation	inapplicable
 glossary-bridged	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
 glossary-bridged	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
 glossary-bridged	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
@@ -86,7 +88,9 @@ term-bridged	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICT
 term-bridged	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 term-bridged	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 term-bridged	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-term-bridged	contrary-to-bystander	inapplicable
+term-bridged	antonym-over-candidate	inapplicable
+term-bridged	add-bound-past-bystander	inapplicable
+term-bridged	add-bystander-negation	inapplicable
 term-bridged	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
 term-bridged	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
 term-bridged	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]

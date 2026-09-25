@@ -230,9 +230,12 @@ describe('the gaming registry', () => {
     expect(direction('add-decoys')).toBe('strengthening')
     expect(direction('link-culprits')).toBe('strengthening')
     expect(direction('add-negation')).toBe('strengthening')
-    expect(direction('contrary-to-bystander')).toBe('strengthening')
+    expect(direction('add-bound-past-bystander')).toBe('strengthening')
+    expect(direction('add-bystander-negation')).toBe('strengthening')
     expect(direction('branch-into-cycle')).toBe('strengthening')
-    // An alias is weakening: it can refute an opposition candidate outright.
+    // An alias and a contrary axiom are weakening: each can discharge an opposition candidate
+    // with nothing in its place.
+    expect(direction('antonym-over-candidate')).toBe('weakening')
     expect(direction('alias-contraries-glossary@forward')).toBe('weakening')
     expect(direction('alias-contraries-term@forward')).toBe('weakening')
     expect(direction('delete-requirement@first')).toBe('weakening')

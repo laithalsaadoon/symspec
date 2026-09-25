@@ -34,7 +34,9 @@ overlapping-contrary	add-decoys	exit 1 verified=true signal=fires errors=[FND_CO
 overlapping-contrary	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 overlapping-contrary	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 overlapping-contrary	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-overlapping-contrary	contrary-to-bystander	exit 1 verified=false signal=gone errors=[FND_CONTRADICTION] demotions=[open-opposition-candidate]
+overlapping-contrary	antonym-over-candidate	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	add-bound-past-bystander	inapplicable
+overlapping-contrary	add-bystander-negation	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
 overlapping-contrary	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
 overlapping-contrary	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
 overlapping-contrary	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
@@ -86,7 +88,9 @@ opposition-candidate	add-decoys	exit 3 verified=false signal=fires errors=[] dem
 opposition-candidate	shall-to-should@first	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
 opposition-candidate	shall-to-should@second	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
 opposition-candidate	link-culprits	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
-opposition-candidate	contrary-to-bystander	inapplicable
+opposition-candidate	antonym-over-candidate	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+opposition-candidate	add-bound-past-bystander	inapplicable
+opposition-candidate	add-bystander-negation	inapplicable
 opposition-candidate	add-negation	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[open-opposition-candidate]
 opposition-candidate	add-equivalent@exact	exit 1 verified=false signal=fires errors=[FND_EXACT_DUPLICATE] demotions=[open-opposition-candidate]
 opposition-candidate	add-equivalent@case	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]

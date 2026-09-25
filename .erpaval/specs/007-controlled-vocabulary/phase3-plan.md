@@ -358,12 +358,21 @@ precedent):
 A verb's direction says what it CAN do to D:
 
 - `strengthening`: it only adds constraints, so no conflict the document carries goes away. It
-  can DISPLACE a reported member of D, and nothing else: the formal and temporal tiers report one
-  minimal core per set of overlapping conflicts, and the trace tier one cycle per depth-first
-  back edge, so a new member can take an overlapping old one's place in the report (measured in
-  S2: `overlapping-contrary` × `add-negation` and × `contrary-to-bystander`, `derives-cycle` ×
-  `branch-into-cycle`). Reporting every minimal core and every elementary cycle is an engine
-  edit, outside Phase 3.
+  can DISPLACE a reported member of D, and nothing else, as far as the reporting granularity of
+  the tier that emits it reaches. Displacement is defined per tier, as data (`DISPLACEMENT` in
+  `app/runtime/signal-classes.ts`): the propositional contradiction tier enumerates disjoint cores,
+  so an overlapping FND_CONTRADICTION displaces (measured in S2: `overlapping-contrary` ×
+  `add-negation`); the numeric tier reports one core per (quantity, baseUnit, group) cell, so an
+  FND_NUMERIC_CONTRADICTION in the SAME CELL displaces, sharing a requirement or not
+  (`numeric-bystander` × `add-bound-past-bystander`); the temporal tier reports one joint core, so
+  ANY FND_TEMPORAL_CONTRADICTION displaces (`temporal-conflict` × `add-bystander-negation`); and
+  the trace tier reports one cycle per depth-first back edge, so an overlapping FND_CYCLE displaces
+  (`derives-cycle` × `branch-into-cycle`). No other member of D is displaced by anything. The
+  report names a numeric cell by the quantity and base unit in the finding's evidence and not its
+  context group, so the gate compares those two. Reporting every minimal core and every elementary
+  cycle is an engine edit, outside Phase 3; the numeric and temporal one-core reporting is pinned
+  in `testing/recorded-gaps.test.ts`, owned by AC-7-1 (the obligation ledger lists every
+  obligation).
 - `weakening`: it can remove a member of D.
 - `conditional`: symspec decides the effect per instance, either with a counterfactual on every
   run or with baseline drift attribution.
@@ -390,13 +399,13 @@ overlapping member of the same code after the move fails G-D whether or not it i
 
 | verb | direction | why |
 |---|---|---|
-| add | strengthening | adds constraints; the decide logic is monotone under added constraints (I-1). Can displace a reported core (measured in S2: `add-negation`); an equivalent requirement under a lower id re-keys it, which the equivalence identity map reads as the same member (`add-equivalent`) |
+| add | strengthening | adds constraints; the decide logic is monotone under added constraints (I-1). Can displace a reported core at its tier's granularity (3.1): an overlapping propositional core (`add-negation`), any core in the same numeric cell (`numeric-bystander` × `add-bound-past-bystander`), any temporal core (`temporal-conflict` × `add-bystander-negation`); an equivalent requirement under a lower id re-keys it, which the equivalence identity map reads as the same member (`add-equivalent`) |
 | update | weakening | a slot, `negated`, pattern, stateEffect or stateConstraint change rebinds; metadata attributes are outside the binding |
 | delete | weakening | |
 | derive, satisfy, verify, refine (EDGE) | strengthening | trace graph only; can add FND_CYCLE, and can displace a reported cycle (measured in S2: `derives-cycle` × `branch-into-cycle`) |
 | remove-edge | weakening | can remove FND_CYCLE (structural) |
 | glossary | weakening | measured in S2: an alias over an open opposition candidate removes the candidate and nothing replaces it (`opposition-candidate` × `alias-contraries-glossary`, a clean run over fill/drain); the one-pass table also loses the verdict a term carried (`term-bridged` × `glossary-over-term`). Contrary- and numeral-destroying merges refused (S4); refused in v4 |
-| antonym | strengthening | re-validates the vocabulary (V1, V-OPP) before committing; can displace a reported core (measured in S2: `overlapping-contrary` × `contrary-to-bystander`) |
+| antonym | weakening | measured in S2: an antonym over an open opposition candidate's own verbs discharges it and nothing need replace it. With one side negated the pair is then provably consistent and the run is clean (`opposition-negated` × `antonym-over-candidate`); under split triggers the candidate becomes `conditional-conflict-unchecked`, a different member (`opposition-split` × `antonym-over-candidate`). A wrong antonym (two synonyms declared contraries) hides a real conflict. Re-validates the vocabulary (V1, V-OPP) before committing |
 | waive | weakening | |
 | unwaive | weakening | measured in S2: a waived blocking GtWR lint re-admits its requirement to the solver, so removing the waiver removes the verdicts it was part of (`waived-blocking-lint` × `unwaive`) |
 | unglossary | weakening | refused in v4 |

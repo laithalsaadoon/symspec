@@ -540,10 +540,73 @@ const codeList = (codes: readonly string[]): string => codes.map((c) => `\`${c}\
 export const dIdentityStatement = (): string =>
   `A member of D is its code or demotion reason over the requirements it names, compared under these identity maps. A \`conflict-signal\` demotion is kept by a \`verdict\` finding that names every requirement it named: the proof is the same conflict, seen. And requirements the same report states equivalent (${codeList(EQUIVALENCE_CODES)}) count as one: an equivalent pair makes two overlapping conflicts, and the formal tier reports one representative of them.`
 
-/** What each op direction claims about D. */
+/**
+ * How far a new member of D can take a lost one's place in the report. A tier that reports ONE
+ * representative where several conflicts exist can hand a strengthening edit's new conflict the
+ * report while the old one is still in the document, and how far that reaches is the tier's
+ * reporting granularity:
+ *
+ * - `overlap`: the tier reports conflicts that share no requirement separately, so only a new
+ *   member over an overlapping set of requirements can take an old one's place.
+ * - `cell`: the tier reports one member per comparison cell, so any new member in the same cell
+ *   can, whether or not it shares a requirement.
+ * - `code`: the tier reports one member for the whole document, so any new member of the code can.
+ */
+export type DisplacementGranularity = 'overlap' | 'cell' | 'code'
+
+interface DisplacementRow {
+  readonly by: DisplacementGranularity
+  /** The tier, and what it reports, as the clause {@link DIRECTION_MEANING} publishes. */
+  readonly reports: string
+}
+
+/**
+ * Every code a new member can DISPLACE, keyed by the tier's reporting granularity. A member of D
+ * whose code has no row here is displaced by nothing: a loss of one is a removal.
+ *
+ * Only the numeric tier's `cell` needs the report to say where a member sits, and the report
+ * names a numeric finding's cell by the quantity and base unit in its `evidence.numeric`
+ * ({@link DMember.cell}). The context group, the cell's third coordinate, is not in the report,
+ * so the gate compares the two the report carries: coarser than the tier's cell by the group.
+ *
+ * Reporting every core instead of one per granularity is an engine change, out of Phase 3; the
+ * numeric and temporal halves are pinned in `testing/recorded-gaps.test.ts`.
+ */
+export const DISPLACEMENT = {
+  FND_CONTRADICTION: {
+    by: 'overlap',
+    reports:
+      'the propositional contradiction tier enumerates pairwise-disjoint minimal cores in each context group, so a new member of the same code over an overlapping set of requirements displaces',
+  },
+  FND_NUMERIC_CONTRADICTION: {
+    by: 'cell',
+    reports:
+      'the numeric tier proves each (quantity, base unit, context group) cell once and reports one minimized core per cell, so a new member of the same code in the SAME CELL displaces, whether or not it shares a requirement',
+  },
+  FND_TEMPORAL_CONTRADICTION: {
+    by: 'code',
+    reports:
+      'the temporal tier makes one joint check over the whole document and reports one minimized core, so ANY new member of the same code displaces',
+  },
+  FND_CYCLE: {
+    by: 'overlap',
+    reports:
+      'the trace tier reports the cycle each depth-first back edge closes, so a new member of the same code over an overlapping set of requirements displaces',
+  },
+} as const satisfies Partial<Record<FindingKey, DisplacementRow>>
+
+const displacementOf = (code: string): DisplacementRow | undefined =>
+  code in DISPLACEMENT ? DISPLACEMENT[code as keyof typeof DISPLACEMENT] : undefined
+
+/** What each op direction claims about D. The `strengthening` bound is built from {@link DISPLACEMENT}. */
 export const DIRECTION_MEANING = {
-  strengthening:
-    'The verb only adds constraints, so no conflict the document carries goes away. What it can do to the REPORT is DISPLACE a member of D: the formal and temporal tiers report one minimal core per set of overlapping conflicts, and the trace tier one cycle per depth-first back edge, so a new member can take the place of an overlapping old one of the same code. That is the only loss the label allows. The gaming gate lists every measured displacement, and fails on any loss that is not one.',
+  strengthening: `The verb only adds constraints, so no conflict the document carries goes away. What it can do to the REPORT is DISPLACE a member of D, as far as the reporting granularity of the tier that emits it reaches: ${Object.entries(
+    DISPLACEMENT,
+  )
+    .map(([code, row]) => `for \`${code}\`, ${row.reports}`)
+    .join(
+      '; ',
+    )}. A numeric finding names its cell by the quantity and base unit in its evidence, and not its context group, so that pair is the cell compared. No other member of D is displaced by anything. That is the only loss the label allows. The gaming gate lists every measured displacement, and fails on any loss that is not one.`,
   conditional:
     'symspec decides the effect per instance, with a counterfactual run or baseline drift attribution.',
   weakening: 'The verb can remove a member of D.',
@@ -555,6 +618,11 @@ export interface DMember {
   readonly name: string
   readonly class: FindingClass | DemotionClass
   readonly requirementIds: readonly string[]
+  /**
+   * The comparison cell a `cell`-granular finding ({@link DISPLACEMENT}) sits in, as the report
+   * names it: its evidence's quantity and base units. Absent on every other member.
+   */
+  readonly cell?: string
 }
 
 /** A {@link DMember} whose class has been widened to a string, as a consumer outside this
@@ -567,6 +635,12 @@ export interface ReportView {
     readonly code: string
     readonly severity: string
     readonly requirementIds: readonly string[]
+    readonly evidence?: {
+      readonly numeric?: {
+        readonly quantity: string
+        readonly predicates: readonly { readonly unit: string }[]
+      }
+    }
   }[]
   readonly coverage: {
     readonly demotions: readonly {
@@ -576,6 +650,16 @@ export interface ReportView {
   }
 }
 
+/** The numeric cell a finding's evidence names: its quantity and its sorted base units. */
+const cellOf = (f: ReportView['findings'][number]): string | undefined => {
+  const numeric = f.evidence?.numeric
+  if (displacementOf(f.code)?.by !== 'cell' || numeric === undefined) return undefined
+  return JSON.stringify([
+    numeric.quantity,
+    [...new Set(numeric.predicates.map((p) => p.unit))].sort(),
+  ])
+}
+
 const inClasses = (classes: readonly string[], cls: string | undefined): boolean =>
   cls !== undefined && classes.includes(cls)
 
@@ -583,6 +667,7 @@ const inClasses = (classes: readonly string[], cls: string | undefined): boolean
 export const verdictBearingOf = (report: ReportView): readonly DMember[] => [
   ...report.findings.flatMap((f): DMember[] => {
     const cls = findingClassOf(f.code)
+    const cell = cellOf(f)
     return f.severity === VERDICT_BEARING.findingSeverity &&
       cls !== undefined &&
       inClasses(VERDICT_BEARING.findingClasses, cls)
@@ -592,6 +677,7 @@ export const verdictBearingOf = (report: ReportView): readonly DMember[] => [
             name: f.code,
             class: cls,
             requirementIds: [...f.requirementIds].sort(),
+            ...(cell !== undefined ? { cell } : {}),
           },
         ]
       : []
@@ -683,17 +769,23 @@ export const dCovers = (
 
 /**
  * Whether a member of D that a move lost was DISPLACED rather than removed: the after-set holds a
- * member of the same kind and code over an overlapping set of requirements. This is the only loss
- * {@link DIRECTION_MEANING}'s `strengthening` row allows, and the gaming gate holds every loss a
- * strengthening move shows to it.
+ * member of the same kind and code that the code's tier could have reported in its place, at the
+ * granularity {@link DISPLACEMENT} records for it. A code with no row is displaced by nothing.
+ * This is the only loss {@link DIRECTION_MEANING}'s `strengthening` row allows, and the gaming gate
+ * holds every loss a strengthening move shows to it.
  */
-export const dDisplaced = (member: DMemberLike, after: readonly DMemberLike[]): boolean =>
-  after.some(
+export const dDisplaced = (member: DMemberLike, after: readonly DMemberLike[]): boolean => {
+  const by = member.kind === 'finding' ? displacementOf(member.name)?.by : undefined
+  if (by === undefined) return false
+  return after.some(
     (m) =>
       m.kind === member.kind &&
       m.name === member.name &&
-      m.requirementIds.some((id) => member.requirementIds.includes(id)),
+      (by === 'code' ||
+        (by === 'cell' && member.cell !== undefined && m.cell === member.cell) ||
+        (by === 'overlap' && m.requirementIds.some((id) => member.requirementIds.includes(id)))),
   )
+}
 
 // ---------------------------------------------------------------------------
 // The manifest projections

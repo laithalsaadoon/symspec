@@ -30,7 +30,9 @@ registered-caught	strengthening	add-decoys
 registered-caught	weakening	shall-to-should@first	
 registered-caught	weakening	shall-to-should@second	
 registered-caught	strengthening	link-culprits	
-registered-caught	strengthening	contrary-to-bystander	
+registered-escapes-known-gap	weakening	antonym-over-candidate	AC-5-9 (drift on the conflict signal a contrary axiom discharged; F1 resolved-by-unification must not excuse it)
+registered-caught	strengthening	add-bound-past-bystander	
+registered-caught	strengthening	add-bystander-negation	
 registered-caught	strengthening	add-negation	
 registered-caught	strengthening	add-equivalent@exact	
 registered-caught	strengthening	add-equivalent@case	

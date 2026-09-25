@@ -187,8 +187,9 @@ export interface Fixture {
  * laid out as a v4-shaped UUID.
  *
  * Derived, not minted, because the engine's reported representatives depend on id ORDER. The
- * formal tier feeds the solver in ascending id order and reports one minimal core per overlapping
- * set, and the trace tier's cycle search visits requirements in document order. With random ids,
+ * solver tiers are fed in ascending id order and each reports one core where several compete
+ * (per overlapping set, per numeric cell, per temporal run: `DISPLACEMENT` in the signal classes),
+ * and the trace tier's cycle search visits requirements in document order. With random ids,
  * a (fixture, move) cell whose report names one representative of several would change between
  * runs, and a gate that pins that report exactly would be a coin toss.
  */
@@ -523,6 +524,73 @@ const oppositionOps = (r2Response: string): readonly DocumentOp[] => [
   }),
 ]
 
+/**
+ * Fill and drain again, with `OPN-R2` NEGATED: the tank is filled and never drained under one
+ * trigger. The semantic tier still proposes the pair (an opposition candidate is polarity-blind),
+ * and whether it conflicts turns on what the verbs mean: as contraries the pair is consistent (fill
+ * implies not drain), and as synonyms it is a contradiction. So an antonym over the candidate's own
+ * verbs discharges the candidate and puts nothing in its place, which is what `antonym` is
+ * labelled `weakening` for: a wrong one (two synonyms declared contraries) hides a real conflict.
+ */
+const oppositionNegatedOps = (r2Response: string): readonly DocumentOp[] => [
+  add('OPN-R1', {
+    trigger: 'the level sensor reports low',
+    systemName: 'pump controller',
+    systemResponse: 'fill the tank',
+  }),
+  add('OPN-R2', {
+    trigger: 'the level sensor reports low',
+    systemName: 'pump controller',
+    systemResponse: r2Response,
+    negated: true,
+  }),
+]
+
+/**
+ * Fill and drain under two DIFFERENT triggers, the other route an antonym over a candidate's own
+ * verbs takes: the contrary axiom turns the opposition candidate into a conflict under guards the
+ * string-atom tier never asserts together, so `open-opposition-candidate` becomes
+ * `conditional-conflict-unchecked`. That is a different member of D, and nothing proves it.
+ */
+const oppositionSplitOps = (r2Response: string): readonly DocumentOp[] => [
+  add('OPS-R1', {
+    trigger: 'the level sensor reports low',
+    systemName: 'pump controller',
+    systemResponse: 'fill the tank',
+  }),
+  add('OPS-R2', {
+    trigger: 'the level sensor reports high',
+    systemName: 'pump controller',
+    systemResponse: r2Response,
+  }),
+]
+
+/**
+ * A numeric conflict beside a BYSTANDER bound in the same cell: `NBY-R1` expires the session after
+ * at most 30 minutes, `NBY-R2` after at least 45, and `NBY-R3` after at most 60, which conflicts
+ * with neither. The numeric tier reports ONE minimized core per (quantity, base unit, context
+ * group) cell, so a bound added under a lower id that conflicts with the culprit AND the bystander
+ * can make the reported core a pair disjoint from the seeded one, while the seeded one is still in
+ * the document. The ids are fixed, in the order of the CLI reproducer.
+ */
+const numericBystanderOps = (r2Bound: string): readonly DocumentOp[] => [
+  add('NBY-R1', {
+    id: 'aaaaaaaa-0000-4000-8000-000000000001',
+    systemName: 'session service',
+    systemResponse: 'expire the session after at most 30 minutes',
+  }),
+  add('NBY-R2', {
+    id: 'aaaaaaaa-0000-4000-8000-000000000002',
+    systemName: 'session service',
+    systemResponse: `expire the session after at least ${r2Bound} minutes`,
+  }),
+  add('NBY-R3', {
+    id: 'aaaaaaaa-0000-4000-8000-000000000003',
+    systemName: 'session service',
+    systemResponse: 'expire the session after at most 60 minutes',
+  }),
+]
+
 export const FIXTURES: readonly Fixture[] = [
   {
     id: 'feature-interaction',
@@ -660,6 +728,46 @@ export const FIXTURES: readonly Fixture[] = [
     control: { ops: oppositionOps('log the level') },
     near: [['fill the tank', 'drain the tank']],
   },
+  {
+    id: 'opposition-negated',
+    seeded:
+      'Under one trigger, R1 fills the tank and R2 must never drain it. No table relates fill and drain, so the semantic tier proposes the pair (FND_OPPOSITION_CANDIDATE) and demotes `open-opposition-candidate`; whether the two conflict depends on whether the verbs are contraries or synonyms, which only the author knows.',
+    ops: oppositionNegatedOps('drain the tank'),
+    culprits: ['OPN-R1', 'OPN-R2'],
+    signal: { demotion: 'open-opposition-candidate', names: ['OPN-R1', 'OPN-R2'] },
+    control: { ops: oppositionNegatedOps('log the level') },
+    near: [['fill the tank', 'drain the tank']],
+  },
+  {
+    id: 'opposition-split',
+    seeded:
+      'R1 fills the tank when the level sensor reports low, and R2 drains it when the sensor reports high. No table relates fill and drain, so the semantic tier proposes the pair (FND_OPPOSITION_CANDIDATE) and demotes `open-opposition-candidate`.',
+    ops: oppositionSplitOps('drain the tank'),
+    culprits: ['OPS-R1', 'OPS-R2'],
+    signal: { demotion: 'open-opposition-candidate', names: ['OPS-R1', 'OPS-R2'] },
+    control: {
+      none:
+        'Two requirements under different triggers are never co-asserted by the string-atom tier, ' +
+        'so any consistent twin is demoted uncovered too. A clean verdict needs one-step ' +
+        'realizability (AC-6-2) to DECIDE the pair.',
+    },
+    near: [['fill the tank', 'drain the tank']],
+  },
+  {
+    id: 'numeric-bystander',
+    seeded:
+      'R1 expires a session within 30 minutes; R2 not before 45. No duration satisfies both. R3 expires it within 60 minutes, which conflicts with neither, so R3 is a bystander in the same numeric cell. A satisfiable bound is not counted as a comparison, so R3 is demoted uncovered and no run of this fixture is clean: it measures directions, not escapes.',
+    ops: numericBystanderOps('45'),
+    culprits: ['NBY-R1', 'NBY-R2'],
+    signal: { code: 'FND_NUMERIC_CONTRADICTION', names: ['NBY-R1', 'NBY-R2'] },
+    control: {
+      none:
+        'A numeric set the solver decides SATISFIABLE is not counted as a comparison, the ' +
+        '`numeric-conflict` reason: the consistent twin (at most 30 / at least 20 / at most 60) ' +
+        'is demoted uncovered. The obligation ledger (AC-7-1) is what counts a decided numeric ' +
+        'obligation.',
+    },
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -673,8 +781,9 @@ export const FIXTURES: readonly Fixture[] = [
  * An op move's direction is the JOIN of `OP_DIRECTION` over the verbs it emits
  * ({@link cellDirection}), so relabelling a verb in `ops.ts` relabels every move that uses it
  * and G-D re-measures the claim. A `strengthening` move can lose a member of D only by
- * displacing it with an overlapping one of the same code; every such loss is listed in
- * {@link KNOWN_NONMONOTONE}, and a loss that is not a displacement fails the gate outright.
+ * displacing it with one of the same code, as far as the reporting tier's granularity reaches
+ * (`DISPLACEMENT` in the signal classes); every such loss is listed in {@link KNOWN_NONMONOTONE},
+ * and a loss that is not a displacement fails the gate outright.
  */
 export type Direction = OpDirection | 'run-weakening'
 
@@ -754,6 +863,14 @@ const guardOf = (r: Requirement): { readonly word: string; readonly text: string
     return { word: r.patternType === 'unwanted-behavior' ? 'if' : 'when', text: r.trigger }
   return undefined
 }
+
+/** A requirement's response verb: the first word of its response, lowercased. */
+const headOf = (r: Requirement): string =>
+  r.systemResponse.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
+
+/** Requirements in key order, so a move that picks one picks the same one on every run. */
+const byKey = (x: Requirement, y: Requirement): number =>
+  (x.key ?? x.id) < (y.key ?? y.id) ? -1 : 1
 
 const DECOYS: readonly (readonly [string, string])[] = [
   ['DECOY-1', 'emit the report'],
@@ -1116,31 +1233,86 @@ export const MOVES: readonly Move[] = [
     },
   },
   {
-    id: 'contrary-to-bystander',
+    id: 'antonym-over-candidate',
     clause:
-      "op coverage (`antonym`): commit a contrary between a culprit's verb and a bystander's, under one trigger",
-    // A bystander shares the first culprit's guard and system and is neither culprit. The antonym
-    // makes a SECOND conflict through that culprit, which is all a contrary axiom can do.
+      "op coverage (`antonym`): commit the two culprits' own verbs as contraries, over the pair they head",
+    // What an agent types to discharge an opposition candidate: the finding's own suggestion.
+    edit: ({ fixture, doc }) => {
+      const [a, b] = fixture.culprits.map((k) => headOf(req(doc, k)))
+      if (a === undefined || b === undefined || a === b)
+        return { kind: 'inapplicable', reason: 'the two culprits share one verb' }
+      if (doc.antonyms.some((p) => (p.a === a && p.b === b) || (p.a === b && p.b === a)))
+        return { kind: 'inapplicable', reason: 'the antonym is already committed' }
+      return { kind: 'ops', ops: [{ op: 'antonym', a, b }] }
+    },
+  },
+  {
+    id: 'add-bound-past-bystander',
+    clause:
+      "op coverage (`add`): add a lower bound past every upper bound in the first culprit's numeric cell, under the lowest id",
+    // The added bound conflicts with the first culprit AND with a bystander's upper bound, so the
+    // cell holds a second core disjoint from the seeded one. Its id sorts first in the solver order.
     edit: ({ fixture, doc }) => {
       const a = req(doc, fixture.culprits[0])
+      const upper = /\bat most (\d+) (\w+)$/
+      const own = upper.exec(a.systemResponse)
+      if (own === null)
+        return { kind: 'inapplicable', reason: 'the first culprit states no upper bound' }
       const culpritIds = new Set(fixture.culprits.map((k) => req(doc, k).id))
-      const headOf = (r: Requirement) =>
-        r.systemResponse.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
+      const uppers = Object.values(doc.requirements).flatMap((r) => {
+        const m = r.systemName === a.systemName ? upper.exec(r.systemResponse) : null
+        return m !== null && m[2] === own[2] ? [{ id: r.id, value: Number(m[1]) }] : []
+      })
+      if (!uppers.some((u) => !culpritIds.has(u.id)))
+        return {
+          kind: 'inapplicable',
+          reason: "no bystander bounds the first culprit's quantity from above",
+        }
+      const past = Math.max(...uppers.map((u) => u.value)) + 30
+      return {
+        kind: 'ops',
+        ops: [
+          addOf(a, {
+            key: 'BND-1',
+            id: '00000000-0000-4000-8000-000000000009',
+            systemResponse: a.systemResponse.replace(upper, `at least ${past} ${own[2]}`),
+          }),
+        ],
+      }
+    },
+  },
+  {
+    id: 'add-bystander-negation',
+    clause:
+      'op coverage (`add`): add the ubiquitous negation of a bystander, a second conflict disjoint from the seeded one, under the lowest id',
+    edit: ({ fixture, doc }) => {
+      const culprits = fixture.culprits.map((k) => req(doc, k))
+      const system = culprits[0]?.systemName
       const bystander = Object.values(doc.requirements)
         .filter(
           (r) =>
-            !culpritIds.has(r.id) &&
-            r.systemName === a.systemName &&
-            guardOf(r)?.text === guardOf(a)?.text &&
-            headOf(r) !== headOf(a),
+            r.systemName === system &&
+            culprits.every((c) => c.id !== r.id && c.systemResponse !== r.systemResponse),
         )
-        .sort((x, y) => ((x.key ?? x.id) < (y.key ?? y.id) ? -1 : 1))[0]
+        .sort(byKey)[0]
       if (bystander === undefined)
         return {
           kind: 'inapplicable',
-          reason: "no other requirement shares the first culprit's guard and system",
+          reason: "no other requirement shares the culprits' system with a response of its own",
         }
-      return { kind: 'ops', ops: [{ op: 'antonym', a: headOf(a), b: headOf(bystander) }] }
+      return {
+        kind: 'ops',
+        ops: [
+          addOf(bystander, {
+            key: 'NEG-BY',
+            id: '00000000-0000-4000-8000-000000000004',
+            patternType: 'ubiquitous',
+            trigger: undefined,
+            preCondition: undefined,
+            negated: !bystander.negated,
+          }),
+        ],
+      }
     },
   },
   {
@@ -1180,7 +1352,6 @@ export const MOVES: readonly Move[] = [
     // A branch is a requirement with a derives edge IN from a node that has a second derives
     // target, and no derives edge OUT. The edge goes from the branch to that second target.
     edit: ({ doc }) => {
-      const byKey = (x: Requirement, y: Requirement) => ((x.key ?? x.id) < (y.key ?? y.id) ? -1 : 1)
       for (const parent of Object.values(doc.requirements).sort(byKey)) {
         const targets = parent.derives.filter((t) => doc.requirements[t] !== undefined)
         for (const t of targets) {
@@ -1588,6 +1759,8 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'dangling-target',
       'overlapping-contrary',
       'opposition-candidate',
+      'opposition-negated',
+      'opposition-split',
     ],
     'Deleting one side of a conflict leaves a consistent document. Nothing records that the deleted requirement stood for an intent item, so its disappearance is not a finding; `FND_INTENT_UNCOVERED` makes it one. On temporal-conflict this side escapes where the other does not: deleting `AUD-R1` leaves `AUD-R2` and `AUD-R3`, which share a trigger: a consistent, fully compared document.',
   ),
@@ -1605,6 +1778,8 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'waived-blocking-lint',
       'overlapping-contrary',
       'opposition-candidate',
+      'opposition-negated',
+      'opposition-split',
     ],
     'The same deletion from the other side. On temporal-conflict it is caught only because deleting `AUD-R2` leaves `AUD-R1` uncovered — a coverage accident, not a defence, which is why the `@first` row exists. On dangling-target it is caught only because the dangling edge on `DNG-R1` survives the deletion.',
   ),
@@ -1679,6 +1854,12 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       ),
   ),
   ...escapes(
+    'antonym-over-candidate',
+    'AC-5-9 (drift on the conflict signal a contrary axiom discharged; F1 resolved-by-unification must not excuse it)',
+    ['opposition-negated'],
+    'Committing fill/drain as contraries answers the opposition candidate the semantic tier raised over OPN-R1 and OPN-R2. With OPN-R2 negated, "fill the tank" and "never drain it" are then provably consistent, so the demotion goes, nothing replaces it, and the run verifies. That is right if fill and drain are opposites and hides a contradiction if they are synonyms, and nothing checks which. `antonym` is labelled weakening for this reason, so the resolution is not the strengthening-direction unification F1 excuses; AC-5-9 reports the removed conflict signal as drift once a baseline exists.',
+  ),
+  ...escapes(
     'unglossary',
     'AC-5-7',
     ['glossary-bridged'],
@@ -1730,11 +1911,20 @@ const CLOSED_BY_EVERY_CORE =
   'AC-5-1 (engine: report every minimal core, not one per overlapping set; a followup)'
 
 /**
+ * The `closedBy` of a core the numeric or temporal tier displaced: those tiers report one core per
+ * cell and one for the document, and the obligation ledger is what lists every obligation. The
+ * one-core reporting is pinned in `recorded-gaps.test.ts`.
+ */
+const CLOSED_BY_LEDGER =
+  'AC-7-1 (the obligation ledger lists every obligation, not one core per cell or per document)'
+
+/**
  * Every strengthening move that is measured to lose a member of D. EXACT: an unlisted loss
  * fails the gate, and so does a row that no longer loses what it lists (I-5).
  *
  * Every row is a DISPLACEMENT: the engine reports one representative where several members of D
- * overlap, and the move made a new one the representative. The conflict it lost is still in the
+ * compete for one report (overlapping cores, one numeric cell, the temporal tier's one joint
+ * core), and the move made a new one the representative. The conflict it lost is still in the
  * document. That is the one loss the `strengthening` label allows (`DIRECTION_MEANING`), and the
  * gate checks it on every loss, listed or not ({@link GateFailures.nonDisplacingLoss}): a move
  * that removes a member outright is mislabelled, and a row here cannot excuse it. None of these
@@ -1757,15 +1947,22 @@ export const KNOWN_NONMONOTONE: readonly KnownNonmonotone[] = [
       move: 'add-negation',
       lost,
       closedBy: CLOSED_BY_EVERY_CORE,
-      why: 'The added negation of the first culprit makes a second conflict through it, under the lowest id in the document. The formal and temporal tiers report ONE minimal core per set of overlapping conflicts, and the id-sorted solver order hands them the new one, so the seeded conflict is still in the document and no longer in the report. The run still exits 1 on the new core, which overlaps the old one (G-D checks that every loss is such a displacement).',
+      why: "The added negation of the first culprit makes a second conflict through it, under the lowest id in the document. The propositional tier enumerates disjoint cores, so it reports one of two overlapping conflicts, and the temporal tier reports one joint core; the id-sorted solver order hands each the new one, so the seeded conflict is still in the document and no longer in the report. The run still exits 1 on the new core (G-D checks that every loss is a displacement at the reporting tier's granularity).",
     }),
   ),
   {
-    fixture: 'overlapping-contrary',
-    move: 'contrary-to-bystander',
-    lost: ['FND_CONTRADICTION(OVL-R1,OVL-R2)'],
-    closedBy: CLOSED_BY_EVERY_CORE,
-    why: 'Committing grant/withhold makes a second contradiction through OVL-R1 (grant against the bystander that withholds). The formal tier reports one minimal core per overlapping set, so FND_CONTRADICTION(OVL-R1,OVL-R3) is reported and the grant/revoke contradiction, still in the document, is not.',
+    fixture: 'numeric-bystander',
+    move: 'add-bound-past-bystander',
+    lost: ['FND_NUMERIC_CONTRADICTION(NBY-R1,NBY-R2)'],
+    closedBy: CLOSED_BY_LEDGER,
+    why: 'The added bound (at least 90 minutes, under the lowest id) conflicts with NBY-R1 (at most 30) and with the bystander NBY-R3 (at most 60). The numeric tier proves the whole cell once and minimizes once, and the id-sorted solver order hands it the new pair, so FND_NUMERIC_CONTRADICTION(BND-1,NBY-R3) is reported and the seeded (NBY-R1,NBY-R2), still in the document, is not. The two share no requirement; they share the cell, which is what the numeric tier reports one core per.',
+  },
+  {
+    fixture: 'temporal-conflict',
+    move: 'add-bystander-negation',
+    lost: ['FND_TEMPORAL_CONTRADICTION(AUD-R1,AUD-R2)'],
+    closedBy: CLOSED_BY_LEDGER,
+    why: 'The added requirement never raises the alarm, against the bystander AUD-R3 that raises it after a disk write failure: a second temporal conflict that shares no requirement with the seeded one. The temporal tier makes one joint check over the whole document and reports one minimized core, and the new one is it. The propositional tier enumerates disjoint cores, so FND_CONTRADICTION(AUD-R1,AUD-R2) is still reported beside the new one, and the run still exits 1.',
   },
   {
     fixture: 'derives-cycle',
@@ -1826,6 +2023,8 @@ export const OP_COVERAGE: Readonly<
       'add-negation',
       'add-equivalent@exact',
       'add-equivalent@case',
+      'add-bound-past-bystander',
+      'add-bystander-negation',
       'flip-negated@second',
       'condition-into-response@second',
       'shall-to-should@second',
@@ -1845,7 +2044,7 @@ export const OP_COVERAGE: Readonly<
       'either; it is `link-culprits` inverted.',
   },
   glossary: { moves: ['alias-contraries-glossary@forward', 'alias-contraries-glossary@reverse'] },
-  antonym: { moves: ['contrary-to-bystander'] },
+  antonym: { moves: ['antonym-over-candidate'] },
   waive: { moves: ['waive-by-code'] },
   unwaive: { moves: ['unwaive'] },
   unglossary: { moves: ['unglossary'] },
@@ -2067,6 +2266,8 @@ export interface DMemberView {
   readonly name: string
   readonly class: string
   readonly requirementIds: readonly string[]
+  /** The comparison cell a cell-granular finding sits in, as the report names it. */
+  readonly cell?: string
 }
 
 /** The D projection and its identity maps, injected by the shard. */
@@ -2081,7 +2282,7 @@ export interface VerdictBearing {
     after: readonly DMemberView[],
     equivalences: readonly (readonly string[])[],
   ) => boolean
-  /** Whether a lost member was displaced by an overlapping member of the same code. */
+  /** Whether a lost member was displaced by a member of the same code, at its tier's granularity. */
   readonly displaced: (member: DMemberView, after: readonly DMemberView[]) => boolean
 }
 
@@ -2333,7 +2534,8 @@ export interface GateFailures {
   readonly staleNonmonotone: readonly string[]
   /**
    * G-D: a strengthening move that REMOVED a member of D, listed or not: no member of the same
-   * code over an overlapping set of requirements took its place. Displacement is the only loss
+   * code took its place at the granularity its tier reports (overlapping requirements, the same
+   * numeric cell, or anywhere for the temporal tier's one joint core). Displacement is the only loss
    * the `strengthening` label allows, so a removal means the verb is mislabelled, and no table
    * row can excuse it.
    */
@@ -2458,7 +2660,8 @@ export const SHARDS: Readonly<Record<string, readonly string[]>> = {
   e: ['registered-contrary'],
   f: ['waived-blocking-lint', 'dangling-target'],
   g: ['overlapping-contrary', 'opposition-candidate'],
-  h: ['derives-cycle'],
+  h: ['derives-cycle', 'numeric-bystander'],
+  i: ['opposition-negated', 'opposition-split'],
 }
 
 /**

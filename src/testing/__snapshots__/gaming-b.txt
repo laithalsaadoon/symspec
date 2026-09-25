@@ -34,7 +34,9 @@ one-trigger-contradiction	add-decoys	exit 1 verified=true signal=fires errors=[F
 one-trigger-contradiction	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 one-trigger-contradiction	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 one-trigger-contradiction	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-one-trigger-contradiction	contrary-to-bystander	inapplicable
+one-trigger-contradiction	antonym-over-candidate	inapplicable
+one-trigger-contradiction	add-bound-past-bystander	inapplicable
+one-trigger-contradiction	add-bystander-negation	inapplicable
 one-trigger-contradiction	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
 one-trigger-contradiction	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
 one-trigger-contradiction	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
@@ -86,7 +88,9 @@ contrary-pair	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADIC
 contrary-pair	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 contrary-pair	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 contrary-pair	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-contrary-pair	contrary-to-bystander	inapplicable
+contrary-pair	antonym-over-candidate	inapplicable
+contrary-pair	add-bound-past-bystander	inapplicable
+contrary-pair	add-bystander-negation	inapplicable
 contrary-pair	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
 contrary-pair	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
 contrary-pair	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]

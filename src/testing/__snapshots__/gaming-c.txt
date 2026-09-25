@@ -33,7 +33,9 @@ numeric-conflict	add-decoys	exit 1 verified=true signal=fires errors=[FND_NUMERI
 numeric-conflict	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
 numeric-conflict	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
 numeric-conflict	link-culprits	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
-numeric-conflict	contrary-to-bystander	inapplicable
+numeric-conflict	antonym-over-candidate	inapplicable
+numeric-conflict	add-bound-past-bystander	inapplicable
+numeric-conflict	add-bystander-negation	inapplicable
 numeric-conflict	add-negation	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_NUMERIC_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
 numeric-conflict	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_EXACT_DUPLICATE,FND_NUMERIC_CONTRADICTION] demotions=[]
 numeric-conflict	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
@@ -85,7 +87,9 @@ temporal-conflict	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTR
 temporal-conflict	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
 temporal-conflict	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
 temporal-conflict	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
-temporal-conflict	contrary-to-bystander	inapplicable
+temporal-conflict	antonym-over-candidate	inapplicable
+temporal-conflict	add-bound-past-bystander	inapplicable
+temporal-conflict	add-bystander-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
 temporal-conflict	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
 temporal-conflict	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE,FND_TEMPORAL_CONTRADICTION] demotions=[]
 temporal-conflict	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
