@@ -330,4 +330,194 @@ describe('AC-2-6: every rule that splits a bound off is tested against a pair th
     expect(clause.errors).toEqual([])
     expect(clause.uncompared).toEqual([[ID_A, ID_B]])
   })
+
+  it('PROVES two bounds on a kept measure whose prepositional phrase names a span, not a clause', async () => {
+    // `keep the delay before the retry below 5 seconds`: `before the retry` names which delay,
+    // and `keep` takes the bound as its complement. The condition-word rule read every such
+    // preposition as opening a clause around the bound, and a conflict 669c0e9 proved became a
+    // disclosure. `bar` and `mA` are no units the lint knows (GTWR R6), which is not this tier's
+    // verdict, so only the tier's own codes are compared.
+    for (const [system, a, b] of [
+      [
+        'retry controller',
+        'keep the delay before the retry below 5 seconds',
+        'keep the delay before the retry above 10 seconds',
+      ],
+      [
+        'calibration monitor',
+        'keep the time since the last calibration below 30 days',
+        'keep the time since the last calibration above 60 days',
+      ],
+      [
+        'boiler controller',
+        'keep the pressure during startup below 5 bar',
+        'keep the pressure during startup above 8 bar',
+      ],
+      [
+        'shutdown timer',
+        'keep the time until shutdown above 30 seconds',
+        'keep the time until shutdown below 10 seconds',
+      ],
+      [
+        'alarm',
+        'keep the time after the alarm below 5 seconds',
+        'keep the time after the alarm above 10 seconds',
+      ],
+      [
+        'charger',
+        'keep the current during charging below 500 mA',
+        'keep the current during charging above 800 mA',
+      ],
+    ] as const) {
+      const out = await verdict(system, a, b)
+      expect(
+        out.errors.filter((code) => code.startsWith('FND_')),
+        a,
+      ).toEqual(['FND_NUMERIC_CONTRADICTION'])
+    }
+    // The controls, each the same shape with one property changed, each a consistent pair: a
+    // verb that needs no bound, an object that is no measure (`the drain open` has its
+    // complement), a measure the bound's unit does not measure, a comparator that is the
+    // phrase's own verb, and a phrase that holds a verb.
+    for (const [system, a, b] of [
+      [
+        'drain controller',
+        'open the drain during a flood above 5 meters',
+        'open the drain during a flood below 3 meters',
+      ],
+      [
+        'recorder',
+        'record the level during a flood above 5 meters',
+        'record the level during a flood below 3 meters',
+      ],
+      [
+        'heater',
+        'maintain the temperature after the water above 60 degrees celsius',
+        'maintain the temperature after the water below 40 degrees celsius',
+      ],
+      [
+        'pump',
+        'keep the level until the tanks go below 3 meters',
+        'keep the level until the tanks go above 5 meters',
+      ],
+      [
+        'drain controller',
+        'keep the drain open during a flood above 5 meters',
+        'keep the drain open during a flood below 3 meters',
+      ],
+      [
+        'heater',
+        'keep the temperature during a flood above 5 meters',
+        'keep the temperature during a flood below 3 meters',
+      ],
+      [
+        'heater',
+        'keep the temperature upon the water exceeding 60 degrees celsius',
+        'keep the temperature upon the water not exceeding 40 degrees celsius',
+      ],
+      [
+        'heater',
+        'keep the temperature before the water rises above 60 degrees celsius',
+        'keep the temperature before the water rises below 40 degrees celsius',
+      ],
+    ] as const) {
+      const out = await verdict(system, a, b)
+      expect(out.errors, a).toEqual([])
+      expect(out.uncompared, a).toEqual([[ID_A, ID_B]])
+    }
+  })
+
+  it('PROVES two bounds whose subject holds a condition word used as a modifier', async () => {
+    // After an article, `following` and `provided` modify the noun (`the following events`); a
+    // connective never follows one. The condition-word rule split each off into its own clause.
+    for (const [system, a, b] of [
+      [
+        'archiver',
+        'retain the following events for at most 30 days',
+        'retain the following events for at least 60 days',
+      ],
+      [
+        'archiver',
+        'store the provided data for at most 30 days',
+        'store the provided data for at least 60 days',
+      ],
+      // `the instant` read as a connective would leave `keep` with no object.
+      ['meter', 'keep the instant current below 500 mA', 'keep the instant current above 800 mA'],
+    ] as const) {
+      const out = await verdict(system, a, b)
+      expect(
+        out.errors.filter((code) => code.startsWith('FND_')),
+        a,
+      ).toEqual(['FND_NUMERIC_CONTRADICTION'])
+    }
+    // The control: after a verb with an object, `the instant` opens a clause.
+    const clause = await verdict(
+      'drain controller',
+      'open the drain the instant the level rises above 5 meters',
+      'open the drain the instant the level rises below 3 meters',
+    )
+    expect(clause.errors).toEqual([])
+    expect(clause.uncompared).toEqual([[ID_A, ID_B]])
+  })
+
+  it('PROVES two bounds whose subject holds a month or a numbered noun spelled like a modal', async () => {
+    // `May` mid-sentence is the month, and a modal is never followed by a number: `can 3` is a
+    // container. The finite-verb rule read each as a nested clause's verb.
+    for (const [system, a, b] of [
+      [
+        'archiver',
+        'retain logs from May for at most 30 days',
+        'retain logs from May for at least 60 days',
+      ],
+      ['filler', 'fill can 3 with at most 2 liters', 'fill can 3 with at least 3 liters'],
+    ] as const) {
+      const out = await verdict(system, a, b)
+      expect(
+        out.errors.filter((code) => code.startsWith('FND_')),
+        a,
+      ).toEqual(['FND_NUMERIC_CONTRADICTION'])
+    }
+    // The control: a lowercase modal before a verb still opens a clause.
+    const clause = await verdict(
+      'archiver',
+      'retain logs whose size may grow for at most 30 days',
+      'retain logs whose size may grow for at least 60 days',
+    )
+    expect(clause.errors).toEqual([])
+    expect(clause.uncompared).toEqual([[ID_A, ID_B]])
+  })
+
+  it('DISCLOSES a bound after a nested clause that ends in a participle, whose bound it may be', async () => {
+    // `keep the temperature where the sensor is mounted below 20 degrees celsius` bounds the
+    // temperature, and 669c0e9 proved it; `keep the temperature where the water is heated above
+    // 60 degrees celsius` bounds the water inside the clause, and its pair is consistent. The two
+    // differ only in which participle, and no rule this tier holds tells `mounted` from `heated`,
+    // so both are disclosed and neither is proved (spec 007 N4: undecidable, disclosed).
+    for (const [system, a, b] of [
+      [
+        'heater',
+        'keep the temperature where the sensor is mounted below 20 degrees celsius',
+        'keep the temperature where the sensor is mounted above 30 degrees celsius',
+      ],
+      [
+        'heater',
+        'keep the temperature where the water is heated above 60 degrees celsius',
+        'keep the temperature where the water is heated below 40 degrees celsius',
+      ],
+      [
+        'cooler',
+        'keep the temperature of the room that is occupied below 20 degrees celsius',
+        'keep the temperature of the room that is occupied above 30 degrees celsius',
+      ],
+      [
+        'heater',
+        'keep the temperature of the water that is heated above 60 degrees celsius',
+        'keep the temperature of the water that is heated below 40 degrees celsius',
+      ],
+    ] as const) {
+      const out = await verdict(system, a, b)
+      expect(out.errors, a).toEqual([])
+      expect(out.uncompared, a).toEqual([[ID_A, ID_B]])
+    }
+  })
 })

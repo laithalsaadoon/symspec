@@ -128,6 +128,43 @@ describe('AC-2-6: a complement-clause copula is not a condition', () => {
       )
       expect(out.errors, relative).toEqual(['FND_NUMERIC_CONTRADICTION'])
     }
+    // Every closed relative clause, whatever its pronoun or verb count, and a trailing condition
+    // clause after the bound, which the tier reads as the bound's qualifier. Each pair is one
+    // 669c0e9 proved, and the relative-clause rule only disclosed.
+    for (const [system, a, b] of [
+      [
+        'server',
+        'ensure that the latency which the client observes is below 200 milliseconds when the load is high',
+        'ensure that the latency which the client observes is above 500 milliseconds when the load is high',
+      ],
+      [
+        'server',
+        'ensure that the latency that the client observes is below 200 milliseconds',
+        'ensure that the latency that the client observes is above 500 milliseconds',
+      ],
+      [
+        'gateway',
+        'ensure that the percentage of requests that fail is below 1 percent',
+        'ensure that the percentage of requests that fail is above 5 percent',
+      ],
+      [
+        'gateway',
+        'ensure that the latency of requests that the gateway forwards is below 200 milliseconds',
+        'ensure that the latency of requests that the gateway forwards is above 500 milliseconds',
+      ],
+      [
+        'panel',
+        'ensure that the number of alarms that are active is below 3',
+        'ensure that the number of alarms that are active is above 5',
+      ],
+    ] as const) {
+      const out = await verdict(system, a, b)
+      // A count with no unit also draws the unit lint (GTWR R6), which is not this tier's verdict.
+      expect(
+        out.errors.filter((code) => code.startsWith('FND_')),
+        a,
+      ).toEqual(['FND_NUMERIC_CONTRADICTION'])
+    }
     // The consistent twin stays consistent.
     const ok = await verdict(
       'server',
@@ -192,6 +229,42 @@ describe('AC-2-6: a complement-clause copula is not a condition', () => {
       [
         'ensure that the pump is off and the level is above 5 meters',
         'ensure that the pump is off and the level is below 3 meters',
+      ],
+      // A clause after the noun it completes, not a relative: `the warning that ...` is followed
+      // by the complement's own verb, which is no condition.
+      [
+        'ensure that the warning that the level is above 5 meters appears',
+        'ensure that the warning that the level is below 3 meters appears',
+      ],
+      // A `that` clause completing its noun has a subject and no gap: no relative closes.
+      [
+        'ensure that the reports that the latency is below 200 milliseconds',
+        'ensure that the reports that the latency is above 500 milliseconds',
+      ],
+      // Nor one with a pronoun subject, whose noun's own verb follows the bound.
+      [
+        'ensure that the warning that it is above 5 meters appears',
+        'ensure that the warning that it is below 3 meters appears',
+      ],
+      // A second complement after a verb, whatever its subject.
+      [
+        'ensure that the display reports that it is above 5 meters',
+        'ensure that the display reports that it is below 3 meters',
+      ],
+      // A second complement under a pronoun-like subject that reports it.
+      [
+        'ensure that each confirms that the level is above 5 meters',
+        'ensure that each confirms that the level is below 3 meters',
+      ],
+      // A trailing condition with no subject of its own, before the complement's own verb.
+      [
+        'ensure that the heater which the operator can set above 50 degrees celsius when needed is off',
+        'ensure that the heater which the operator can set below 30 degrees celsius when needed is off',
+      ],
+      // A conjunct after a relative clause's verb.
+      [
+        'ensure that the pump which runs is off and the level is above 5 meters',
+        'ensure that the pump which runs is off and the level is below 3 meters',
       ],
     ] as const) {
       const out = await verdict('pump controller', a, b)
