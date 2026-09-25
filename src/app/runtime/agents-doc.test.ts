@@ -111,7 +111,9 @@ describe('all 88 codes are projected, in all three families', () => {
 
   it('publishes severity, tier, class AND waivability for the FND_* family, where they decide the response', () => {
     const rendered = doc()
-    expect(rendered).toContain('| Code | Severity | Tier | Class | Waivable | Meaning |')
+    expect(rendered).toContain(
+      `| Code | Severity | Tier | Class | ${currentManifest().signalClasses.waivability.enforced ? 'Waivable' : 'Waivable (not enforced)'} | Meaning |`,
+    )
     // Spot-check the shape on the code an agent most often has to act on.
     expect(rendered).toContain('| `FND_CONTRADICTION` | error | formal | verdict | never |')
     // And the honest dual severity, uncollapsed.

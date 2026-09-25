@@ -510,7 +510,7 @@ export type OpDirection = (typeof OP_DIRECTIONS)[number]
 export const OP_DIRECTION = {
   add: {
     direction: 'strengthening',
-    why: 'Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). It can discharge coverage demotions, which are outside D.',
+    why: 'Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). It can discharge coverage demotions, and with an explicit `id` the FND_DANGLING_REFERENCE of an edge that names that id; both are outside D.',
   },
   update: {
     direction: 'weakening',
@@ -553,8 +553,8 @@ export const OP_DIRECTION = {
     why: 'Suppresses a finding. A waiver removes what the report shows without changing what the document says.',
   },
   unwaive: {
-    direction: 'strengthening',
-    why: 'Removes a waiver, which can only reinstate a finding the waiver was hiding.',
+    direction: 'weakening',
+    why: 'Removes a waiver. That can reinstate a finding the waiver hid, but a waived error-severity GtWR lint is what re-admits its requirement to the solver (AC-3-7), so removing that waiver takes the requirement out again and every verdict it was part of disappears.',
   },
   unglossary: {
     direction: 'weakening',

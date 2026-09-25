@@ -23,6 +23,7 @@ one-trigger-contradiction	glossary-over-term@equal-canonical/glossary-then-term	
 one-trigger-contradiction	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 one-trigger-contradiction	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 one-trigger-contradiction	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+one-trigger-contradiction	unwaive	inapplicable
 one-trigger-contradiction	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	flip-negated@first	exit 1 verified=false signal=gone errors=[FND_EXACT_DUPLICATE] demotions=[no-decide-tier-comparison]
@@ -33,6 +34,7 @@ one-trigger-contradiction	add-decoys	exit 1 verified=true signal=fires errors=[F
 one-trigger-contradiction	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 one-trigger-contradiction	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 one-trigger-contradiction	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	supply-dangling-target	inapplicable
 one-trigger-contradiction	unglossary	inapplicable
 one-trigger-contradiction	unantonym	inapplicable
 one-trigger-contradiction	unterm	inapplicable
@@ -68,6 +70,7 @@ contrary-pair	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 contrary-pair	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 contrary-pair	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 contrary-pair	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	unwaive	inapplicable
 contrary-pair	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -78,6 +81,7 @@ contrary-pair	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADIC
 contrary-pair	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 contrary-pair	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 contrary-pair	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	supply-dangling-target	inapplicable
 contrary-pair	unglossary	inapplicable
 contrary-pair	unantonym	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 contrary-pair	unterm	inapplicable

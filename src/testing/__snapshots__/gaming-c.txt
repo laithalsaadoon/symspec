@@ -22,6 +22,7 @@ numeric-conflict	glossary-over-term@equal-canonical/glossary-then-term	inapplica
 numeric-conflict	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 numeric-conflict	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 numeric-conflict	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+numeric-conflict	unwaive	inapplicable
 numeric-conflict	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 numeric-conflict	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
 numeric-conflict	flip-negated@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
@@ -32,6 +33,7 @@ numeric-conflict	add-decoys	exit 1 verified=true signal=fires errors=[FND_NUMERI
 numeric-conflict	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
 numeric-conflict	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
 numeric-conflict	link-culprits	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	supply-dangling-target	inapplicable
 numeric-conflict	unglossary	inapplicable
 numeric-conflict	unantonym	inapplicable
 numeric-conflict	unterm	inapplicable
@@ -67,6 +69,7 @@ temporal-conflict	glossary-over-term@equal-canonical/glossary-then-term	inapplic
 temporal-conflict	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 temporal-conflict	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 temporal-conflict	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+temporal-conflict	unwaive	inapplicable
 temporal-conflict	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 temporal-conflict	delete-requirement@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
 temporal-conflict	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -77,6 +80,7 @@ temporal-conflict	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTR
 temporal-conflict	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
 temporal-conflict	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
 temporal-conflict	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	supply-dangling-target	inapplicable
 temporal-conflict	unglossary	inapplicable
 temporal-conflict	unantonym	inapplicable
 temporal-conflict	unterm	inapplicable

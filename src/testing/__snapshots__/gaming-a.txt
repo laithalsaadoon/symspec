@@ -22,6 +22,7 @@ feature-interaction	glossary-over-term@equal-canonical/glossary-then-term	inappl
 feature-interaction	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 feature-interaction	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 feature-interaction	waive-by-code	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	unwaive	inapplicable
 feature-interaction	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 feature-interaction	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
 feature-interaction	flip-negated@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
@@ -32,6 +33,7 @@ feature-interaction	add-decoys	exit 3 verified=false signal=fires errors=[] demo
 feature-interaction	shall-to-should@first	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
 feature-interaction	shall-to-should@second	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
 feature-interaction	link-culprits	exit 3 verified=false signal=fires errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
+feature-interaction	supply-dangling-target	inapplicable
 feature-interaction	unglossary	inapplicable
 feature-interaction	unantonym	inapplicable
 feature-interaction	unterm	inapplicable
@@ -67,6 +69,7 @@ state-invariant	glossary-over-term@equal-canonical/glossary-then-term	inapplicab
 state-invariant	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 state-invariant	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 state-invariant	waive-by-code	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	unwaive	inapplicable
 state-invariant	delete-requirement@first	exit 3 verified=false signal=gone errors=[] demotions=[reachability-not-checked]
 state-invariant	delete-requirement@second	exit 3 verified=false signal=gone errors=[] demotions=[reachability-not-checked]
 state-invariant	flip-negated@first	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
@@ -77,6 +80,7 @@ state-invariant	add-decoys	exit 1 verified=true signal=fires errors=[FND_REACHAB
 state-invariant	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
 state-invariant	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
 state-invariant	link-culprits	exit 1 verified=true signal=fires errors=[FND_REACHABILITY_VIOLATED] demotions=[]
+state-invariant	supply-dangling-target	inapplicable
 state-invariant	unglossary	inapplicable
 state-invariant	unantonym	inapplicable
 state-invariant	unterm	inapplicable

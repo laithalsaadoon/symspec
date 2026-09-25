@@ -389,7 +389,7 @@ requirements, and a symbol merge may rename evidence. The exceptions are listed 
 | glossary | strengthening | contrary- and numeral-destroying merges refused (S4); refused in v4 |
 | antonym | strengthening | re-validates the vocabulary (V1, V-OPP) before committing |
 | waive | weakening | |
-| unwaive | strengthening | |
+| unwaive | weakening | measured in S2: a waived blocking GtWR lint re-admits its requirement to the solver, so removing the waiver removes the verdicts it was part of (`waived-blocking-lint` × `unwaive`) |
 | unglossary | weakening | refused in v4 |
 | unantonym | weakening | |
 | state, unstate, state-initial | weakening | a redeclaration can release a frame or change the initial state |

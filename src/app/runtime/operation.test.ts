@@ -311,6 +311,7 @@ describe('buildManifest() — projection (b)', () => {
         verbs: [{ verb: 'add', direction: 'strengthening', why: 'adds a constraint' }],
       },
       signalClasses: {
+        waivability: { enforced: false, statement: 'not enforced' },
         findingClasses: [
           { class: 'verdict', meaning: 'proved', waivable: 'never', verdictBearing: true },
         ],

@@ -64,6 +64,7 @@ import { descriptionOf, ERR_CLASSES, tagOf } from '../../ports/errors.ts'
 import {
   type FindingClass,
   findingClassOf,
+  WAIVABILITY_ENFORCED,
   type Waivability,
   waivabilityOf,
 } from './signal-classes.ts'
@@ -110,6 +111,12 @@ export interface CodeEntry {
    * requirements and their current text) or `never`. `null` for an `ERR_*`.
    */
   readonly waivable: Waivability | null
+  /**
+   * Whether this build ENFORCES {@link waivable} (`WAIVABILITY_ENFORCED` in
+   * `./signal-classes.ts`). `false` means the column is policy only: `waive` still accepts a
+   * `never` code. `null` for an `ERR_*`.
+   */
+  readonly waivableEnforced: boolean | null
   /** The full single-sourced catalog text, verbatim. The manifest's own bytes. */
   readonly description: string
   /** `description` minus the severity prefix and the `Suggestion:` tail. */
@@ -375,10 +382,14 @@ export const GTWR_SEVERITY_NOTE =
  * code the catalog publishes and the class table does not know — which `signal-classes.test.ts`
  * rules out.
  */
-const classColumns = (code: string): Pick<CodeEntry, 'class' | 'waivable'> => ({
-  class: findingClassOf(code) ?? null,
-  waivable: waivabilityOf(code) ?? null,
-})
+const classColumns = (code: string): Pick<CodeEntry, 'class' | 'waivable' | 'waivableEnforced'> => {
+  const waivable = waivabilityOf(code) ?? null
+  return {
+    class: findingClassOf(code) ?? null,
+    waivable,
+    waivableEnforced: waivable === null ? null : WAIVABILITY_ENFORCED,
+  }
+}
 
 /** The `ERR_*` rows. Severity is `null`: an operational failure has an EXIT
  * CODE (always 2), not a finding severity. */
@@ -392,6 +403,7 @@ const errRows = (): readonly CodeEntry[] =>
       tier: null,
       class: null,
       waivable: null,
+      waivableEnforced: null,
       description,
       ...projectionsOf(description),
     }

@@ -23,6 +23,7 @@ glossary-bridged	glossary-over-term@equal-canonical/glossary-then-term	inapplica
 glossary-bridged	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 glossary-bridged	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 glossary-bridged	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	unwaive	inapplicable
 glossary-bridged	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 glossary-bridged	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
 glossary-bridged	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -33,6 +34,7 @@ glossary-bridged	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRA
 glossary-bridged	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 glossary-bridged	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 glossary-bridged	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	supply-dangling-target	inapplicable
 glossary-bridged	unglossary	CLEAN verified=true signal=gone errors=[] demotions=[]
 glossary-bridged	unantonym	inapplicable
 glossary-bridged	unterm	inapplicable
@@ -68,6 +70,7 @@ term-bridged	glossary-over-term@equal-canonical/glossary-then-term	exit 1 verifi
 term-bridged	glossary-over-term@containing-canonical/term-then-glossary	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	glossary-over-term@containing-canonical/glossary-then-term	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	unwaive	inapplicable
 term-bridged	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
 term-bridged	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -78,6 +81,7 @@ term-bridged	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICT
 term-bridged	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 term-bridged	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 term-bridged	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	supply-dangling-target	inapplicable
 term-bridged	unglossary	inapplicable
 term-bridged	unantonym	inapplicable
 term-bridged	unterm	CLEAN verified=true signal=gone errors=[] demotions=[]

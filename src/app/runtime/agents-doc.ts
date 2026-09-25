@@ -84,10 +84,14 @@ const exitTable = (manifest: Manifest): string =>
  * three, with severity replaced by a footnote, because GtWR severity is decided PER FINDING
  * and a column of `—` would be read as "no severity" rather than "contextual".
  */
-const codeTable = (rows: readonly CodeEntry[], family: 'ERR' | 'FND' | 'GTWR'): string => {
+const codeTable = (
+  rows: readonly CodeEntry[],
+  family: 'ERR' | 'FND' | 'GTWR',
+  waivableHeader = 'Waivable',
+): string => {
   if (family === 'FND') {
     return [
-      '| Code | Severity | Tier | Class | Waivable | Meaning |',
+      `| Code | Severity | Tier | Class | ${waivableHeader} | Meaning |`,
       '|---|---|---|---|---|---|',
       ...rows.map(
         (r) =>
@@ -116,11 +120,20 @@ const directionsSection = (manifest: Manifest): string =>
     ),
   ].join('\n')
 
+/**
+ * The `waivable` column's header. While the build does not enforce the column, the header says
+ * so in every table that carries it, so no row reads `never` as a present-tense refusal.
+ */
+const waivableHeader = (manifest: Manifest): string =>
+  manifest.signalClasses.waivability.enforced ? 'Waivable' : 'Waivable (not enforced)'
+
 /** The finding classes and the demotion reasons, projected from the manifest. */
 const classesSection = (manifest: Manifest): string => {
-  const { findingClasses, demotionClasses, demotions } = manifest.signalClasses
+  const { findingClasses, demotionClasses, demotions, waivability } = manifest.signalClasses
   return [
-    '| Finding class | Waivable | In D | Meaning |',
+    waivability.statement,
+    '',
+    `| Finding class | ${waivableHeader(manifest)} | In D | Meaning |`,
     '|---|---|---|---|',
     ...findingClasses.map(
       (c) =>
@@ -263,7 +276,9 @@ ${codeTable(err, 'ERR')}
 A finding inside a **successful** \`check\`. Only \`error\` severity gates the exit code, and
 an error-severity finding also excludes its requirement from the formal tier.
 
-${codeTable(fnd, 'FND')}
+${manifest.signalClasses.waivability.statement}
+
+${codeTable(fnd, 'FND', waivableHeader(manifest))}
 
 ## Lint rule codes (\`GTWR_*\`)
 

@@ -1,0 +1,98 @@
+waived-blocking-lint	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+waived-blocking-lint	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+dangling-target	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]
+dangling-target	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+waived-blocking-lint	rename-system@first	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
+waived-blocking-lint	rename-system@second	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
+waived-blocking-lint	split-system	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison]
+waived-blocking-lint	alias-contraries-glossary@forward	inapplicable
+waived-blocking-lint	alias-contraries-glossary@reverse	inapplicable
+waived-blocking-lint	alias-contraries-term@forward	inapplicable
+waived-blocking-lint	alias-contraries-term@reverse	inapplicable
+waived-blocking-lint	term-over-phrase@inside-canonical	inapplicable
+waived-blocking-lint	term-over-phrase@equal-canonical	inapplicable
+waived-blocking-lint	term-over-phrase@around-canonical	inapplicable
+waived-blocking-lint	term-over-phrase@straddle-canonical	inapplicable
+waived-blocking-lint	term-over-phrase@straddle-alias	inapplicable
+waived-blocking-lint	glossary-over-term@equal/term-then-glossary	inapplicable
+waived-blocking-lint	glossary-over-term@equal/glossary-then-term	inapplicable
+waived-blocking-lint	glossary-over-term@containing/term-then-glossary	inapplicable
+waived-blocking-lint	glossary-over-term@containing/glossary-then-term	inapplicable
+waived-blocking-lint	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+waived-blocking-lint	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+waived-blocking-lint	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+waived-blocking-lint	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+waived-blocking-lint	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+waived-blocking-lint	unwaive	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison]
+waived-blocking-lint	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+waived-blocking-lint	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+waived-blocking-lint	flip-negated@first	exit 1 verified=false signal=gone errors=[FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
+waived-blocking-lint	flip-negated@second	exit 1 verified=false signal=gone errors=[FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
+waived-blocking-lint	condition-into-response@first	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
+waived-blocking-lint	condition-into-response@second	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
+waived-blocking-lint	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+waived-blocking-lint	shall-to-should@first	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
+waived-blocking-lint	shall-to-should@second	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
+waived-blocking-lint	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+waived-blocking-lint	supply-dangling-target	inapplicable
+waived-blocking-lint	unglossary	inapplicable
+waived-blocking-lint	unantonym	inapplicable
+waived-blocking-lint	unterm	inapplicable
+waived-blocking-lint	declassify-constraint	inapplicable
+waived-blocking-lint	rebind-effect	inapplicable
+waived-blocking-lint	vacuous-initial	inapplicable
+waived-blocking-lint	release-frame	inapplicable
+waived-blocking-lint	unstate	inapplicable
+waived-blocking-lint	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
+waived-blocking-lint	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+waived-blocking-lint	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+waived-blocking-lint	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+waived-blocking-lint	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+waived-blocking-lint	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+dangling-target	rename-system@first	exit 1 verified=false signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[no-decide-tier-comparison,uncovered-requirement]
+dangling-target	rename-system@second	exit 1 verified=false signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[no-decide-tier-comparison,uncovered-requirement]
+dangling-target	split-system	exit 1 verified=false signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[no-decide-tier-comparison,uncovered-requirement]
+dangling-target	alias-contraries-glossary@forward	inapplicable
+dangling-target	alias-contraries-glossary@reverse	inapplicable
+dangling-target	alias-contraries-term@forward	inapplicable
+dangling-target	alias-contraries-term@reverse	inapplicable
+dangling-target	term-over-phrase@inside-canonical	inapplicable
+dangling-target	term-over-phrase@equal-canonical	inapplicable
+dangling-target	term-over-phrase@around-canonical	inapplicable
+dangling-target	term-over-phrase@straddle-canonical	inapplicable
+dangling-target	term-over-phrase@straddle-alias	inapplicable
+dangling-target	glossary-over-term@equal/term-then-glossary	inapplicable
+dangling-target	glossary-over-term@equal/glossary-then-term	inapplicable
+dangling-target	glossary-over-term@containing/term-then-glossary	inapplicable
+dangling-target	glossary-over-term@containing/glossary-then-term	inapplicable
+dangling-target	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+dangling-target	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+dangling-target	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+dangling-target	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+dangling-target	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+dangling-target	unwaive	inapplicable
+dangling-target	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+dangling-target	delete-requirement@second	exit 1 verified=true signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[]
+dangling-target	flip-negated@first	exit 1 verified=false signal=gone errors=[FND_EXACT_DUPLICATE] demotions=[no-decide-tier-comparison]
+dangling-target	flip-negated@second	exit 1 verified=false signal=gone errors=[FND_DANGLING_REFERENCE,FND_EXACT_DUPLICATE] demotions=[no-decide-tier-comparison]
+dangling-target	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+dangling-target	condition-into-response@second	exit 1 verified=false signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[no-decide-tier-comparison,uncovered-requirement]
+dangling-target	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]
+dangling-target	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+dangling-target	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]
+dangling-target	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]
+dangling-target	supply-dangling-target	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+dangling-target	unglossary	inapplicable
+dangling-target	unantonym	inapplicable
+dangling-target	unterm	inapplicable
+dangling-target	declassify-constraint	inapplicable
+dangling-target	rebind-effect	inapplicable
+dangling-target	vacuous-initial	inapplicable
+dangling-target	release-frame	inapplicable
+dangling-target	unstate	inapplicable
+dangling-target	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[run-weakened]
+dangling-target	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[semantic-tier-skipped]
+dangling-target	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+dangling-target	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+dangling-target	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]
+dangling-target	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]

@@ -92,6 +92,9 @@ describe('FINDING_CLASS', () => {
       'FND_SIMILAR_UNUNIFIED',
     ])
     expect(membersOf('hygiene')).toEqual([
+      // A dangling edge is an obligation, not a fact about a graph that exists: `add` with the
+      // missing id discharges it, and `add` is strengthening, so it cannot be in D.
+      'FND_DANGLING_REFERENCE',
       'FND_EXCLUDED_FROM_FORMAL',
       'FND_MISSING_PRECONDITION',
       'FND_MISSING_TRIGGER',
@@ -108,7 +111,6 @@ describe('FINDING_CLASS', () => {
     ])
     expect(membersOf('structural')).toEqual([
       'FND_CYCLE',
-      'FND_DANGLING_REFERENCE',
       'FND_LEAF_UNVERIFIABLE',
       'FND_MISSING_TRACE_LINK',
       'FND_ORPHAN',

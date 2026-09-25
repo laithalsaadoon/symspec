@@ -22,13 +22,16 @@ fabrication/same-object-opposed-verbs	exit=0	verified=true	findings=FND_REACHABI
 fabrication/same-object-opposed-verbs-opposite-polarity	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[ffffffff-0000-4000-8000-000000000010]	demotions=-
 fabrication/symbolic-threshold-split	exit=3	verified=false	findings=FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R33_MISSING_TOLERANCE/warn[ffffffff-0000-4000-8000-000000000009] GTWR_R33_MISSING_TOLERANCE/warn[ffffffff-0000-4000-8000-000000000010]	demotions=conditional-conflict-unchecked[ffffffff-0000-4000-8000-000000000009,ffffffff-0000-4000-8000-000000000010] uncovered-requirement[ffffffff-0000-4000-8000-000000000009] uncovered-requirement[ffffffff-0000-4000-8000-000000000010]
 gaming-control/contrary-pair	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
+gaming-control/dangling-target	exit=0	verified=true	findings=FND_LEAF_UNVERIFIABLE/warn[DNG-R3] FND_ORPHAN/warn[DNG-R2] FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming-control/glossary-bridged	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[] FND_REDUNDANCY/warn[GLO-R1,GLO-R2]	demotions=-
 gaming-control/one-trigger-contradiction	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming-control/registered-contrary	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming-control/state-invariant	exit=0	verified=true	findings=FND_REACHABILITY_PROVED/info[VALVE-SHUT]	demotions=-
 gaming-control/temporal-conflict	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
 gaming-control/term-bridged	exit=0	verified=true	findings=FND_REACHABILITY_NOT_CHECKED/info[] FND_REDUNDANCY/warn[TRM-R1,TRM-R2]	demotions=-
+gaming-control/waived-blocking-lint	exit=0	verified=true	findings=FND_AMBIGUOUS_VAGUE/info[WBL-R1] FND_AMBIGUOUS_VAGUE/info[WBL-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R1] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R2]	demotions=-
 gaming/contrary-pair	exit=1	verified=true	findings=FND_CONTRADICTION/error[CTR-R1,CTR-R2] FND_REACHABILITY_NOT_CHECKED/info[]	demotions=-
+gaming/dangling-target	exit=1	verified=true	findings=FND_CONTRADICTION/error[DNG-R1,DNG-R2] FND_DANGLING_REFERENCE/error[DNG-R1] FND_ORPHAN/warn[DNG-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[DNG-R2]	demotions=-
 gaming/feature-interaction	exit=3	verified=false	findings=FND_NO_PAIRS_CHECKED/info[DOOR-R1,DOOR-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[DOOR-R2]	demotions=conditional-conflict-unchecked[DOOR-R1,DOOR-R2] no-decide-tier-comparison[DOOR-R1,DOOR-R2] uncovered-requirement[DOOR-R1] uncovered-requirement[DOOR-R2]
 gaming/glossary-bridged	exit=1	verified=true	findings=FND_CONTRADICTION/error[GLO-R1,GLO-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[GLO-R2]	demotions=-
 gaming/numeric-conflict	exit=1	verified=true	findings=FND_NUMERIC_CONTRADICTION/error[NUM-R1,NUM-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R33_MISSING_TOLERANCE/warn[NUM-R1] GTWR_R33_MISSING_TOLERANCE/warn[NUM-R2] GTWR_R35_TEMPORAL/info[NUM-R1] GTWR_R35_TEMPORAL/info[NUM-R2]	demotions=-
@@ -37,3 +40,4 @@ gaming/registered-contrary	exit=1	verified=true	findings=FND_CONTRADICTION/error
 gaming/state-invariant	exit=1	verified=true	findings=FND_REACHABILITY_VIOLATED/error[VALVE-SHUT]	demotions=-
 gaming/temporal-conflict	exit=1	verified=true	findings=FND_CONTRADICTION/error[AUD-R1,AUD-R2] FND_REACHABILITY_NOT_CHECKED/info[] FND_TEMPORAL_CONTRADICTION/error[AUD-R1,AUD-R2] FND_VACUITY/warn[AUD-R3] GTWR_R16_NEGATION/warn[AUD-R1]	demotions=-
 gaming/term-bridged	exit=1	verified=true	findings=FND_CONTRADICTION/error[TRM-R1,TRM-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[TRM-R2]	demotions=-
+gaming/waived-blocking-lint	exit=1	verified=true	findings=FND_AMBIGUOUS_VAGUE/info[WBL-R1] FND_AMBIGUOUS_VAGUE/info[WBL-R2] FND_CONTRADICTION/error[WBL-R1,WBL-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[WBL-R2] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R1] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R2]	demotions=-

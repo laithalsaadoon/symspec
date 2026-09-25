@@ -17,7 +17,8 @@
  *   proves the tool saw THAT defect, and — where one exists — a CONTROL: the consistent twin
  *   that reaches a clean verdict under the same run settings. The control is what shows the
  *   fixture can discriminate. Without it, "no move escaped" could mean only that the rest of
- *   the document was dirty.
+ *   the document was dirty. A fixture that exists to measure a direction label (G-D) may
+ *   carry a second, named defect, and says so in its `seeded` prose (`dangling-target`).
  * - {@link MOVES}: every gaming move expressible on today's document format, each a function
  *   from a fixture to an op stream, a re-parse, or a run-setting change — the same three
  *   channels an agent has. A move's I-1 direction is DERIVED from the op verbs it emits
@@ -81,6 +82,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { parseLine } from '../domain/engine/parse/result.ts'
 import {
   emptyDocument,
+  RELATIONS,
   type Requirement,
   type RequirementsDocument,
 } from '../domain/requirements/document.ts'
@@ -350,6 +352,63 @@ const termOps = (r2Negated: boolean): readonly DocumentOp[] => [
   { op: 'term', canonical: 'purchase order', alias: 'customer order' },
 ]
 
+/**
+ * A contradiction whose two sides each carry an ERROR-severity GtWR lint (`timely manner`,
+ * GTWR_R7_VAGUE), waived over exactly that requirement. A blocking lint keeps a requirement
+ * from the solver (AC-3-7), and a waiver on it RE-ADMITS the requirement, so the contradiction
+ * is decided only because of the waivers. That is the shape that measures `unwaive`: removing
+ * the waiver takes the requirement out of the solver again, and the verdict it was part of
+ * disappears.
+ */
+const waivedLintOps = (r2Response: string, r2Negated: boolean): readonly DocumentOp[] => [
+  add('WBL-R1', {
+    trigger: 'the operator submits the order',
+    systemName: 'order service',
+    systemResponse: 'record the order in a timely manner',
+  }),
+  add('WBL-R2', {
+    trigger: 'the operator submits the order',
+    systemName: 'order service',
+    systemResponse: r2Response,
+    negated: r2Negated,
+  }),
+  ...(['WBL-R1', 'WBL-R2'] as const).map(
+    (key): DocumentOp => ({
+      op: 'waive',
+      code: 'GTWR_R7_VAGUE',
+      refs: [key],
+      reason: 'the service level agreement defines the deadline',
+    }),
+  ),
+]
+
+/**
+ * A contradiction beside a DANGLING trace edge: `DNG-R1` derives from `DNG-R3`, which is then
+ * deleted (`delete` leaves inbound edges dangling by design). `add` accepts an explicit `id`, so
+ * re-adding a requirement under the missing UUID discharges FND_DANGLING_REFERENCE with one
+ * strengthening op. `withTarget` keeps `DNG-R3`, which is the consistent twin's shape.
+ */
+const danglingOps = (r2Negated: boolean, withTarget: boolean): readonly DocumentOp[] => [
+  add('DNG-R1', {
+    trigger: 'the operator submits the order',
+    systemName: 'order service',
+    systemResponse: 'record the order',
+  }),
+  add('DNG-R2', {
+    trigger: 'the operator submits the order',
+    systemName: 'order service',
+    systemResponse: r2Negated ? 'record the order' : 'acknowledge the order',
+    negated: r2Negated,
+  }),
+  add('DNG-R3', {
+    trigger: 'the operator submits the order',
+    systemName: 'order service',
+    systemResponse: 'archive the order',
+  }),
+  { op: 'derive', from: 'DNG-R1', to: 'DNG-R3' },
+  ...(withTarget ? [] : [{ op: 'delete', ref: 'DNG-R3' } as const]),
+]
+
 export const FIXTURES: readonly Fixture[] = [
   {
     id: 'feature-interaction',
@@ -440,6 +499,24 @@ export const FIXTURES: readonly Fixture[] = [
     culprits: ['TRM-R1', 'TRM-R2'],
     signal: { code: 'FND_CONTRADICTION', names: ['TRM-R1', 'TRM-R2'] },
     control: { ops: termOps(false) },
+  },
+  {
+    id: 'waived-blocking-lint',
+    seeded:
+      'Under one trigger, R1 records the order and R2 forbids recording it. Both say "in a timely manner" (GTWR_R7_VAGUE, blocking), and each lint is waived over its own requirement, which is what puts the pair in front of the solver.',
+    ops: waivedLintOps('record the order in a timely manner', true),
+    culprits: ['WBL-R1', 'WBL-R2'],
+    signal: { code: 'FND_CONTRADICTION', names: ['WBL-R1', 'WBL-R2'] },
+    control: { ops: waivedLintOps('acknowledge the order in a timely manner', false) },
+  },
+  {
+    id: 'dangling-target',
+    seeded:
+      'Under one trigger, R1 records the order and R2 forbids recording it; R1 also carries a derives edge to a requirement that was deleted, so the edge dangles (FND_DANGLING_REFERENCE). The dangling edge is what measures `add` with an explicit `id`, and it makes every run of this fixture exit 1, so the fixture measures directions and not escapes.',
+    ops: danglingOps(true, false),
+    culprits: ['DNG-R1', 'DNG-R2'],
+    signal: { code: 'FND_CONTRADICTION', names: ['DNG-R1', 'DNG-R2'] },
+    control: { ops: danglingOps(false, true) },
   },
 ]
 
@@ -800,6 +877,22 @@ export const MOVES: readonly Move[] = [
             })),
           },
   },
+  {
+    id: 'unwaive',
+    clause: 'op coverage: remove the committed waivers',
+    edit: ({ doc }) =>
+      doc.waivers.length === 0
+        ? { kind: 'inapplicable', reason: 'the fixture commits no waiver' }
+        : {
+            kind: 'ops',
+            ops: doc.waivers.map((w) => ({
+              op: 'unwaive' as const,
+              code: w.code,
+              ...(w.requirementId !== undefined ? { ref: w.requirementId } : {}),
+              ...(w.requirementIds !== undefined ? { refs: [...w.requirementIds] } : {}),
+            })),
+          },
+  },
   ...oneSided('delete-requirement', 'delete a requirement', (_r, key) => ({
     kind: 'ops',
     ops: [{ op: 'delete', ref: key }],
@@ -861,6 +954,34 @@ export const MOVES: readonly Move[] = [
           { op: 'verify', from, to },
           { op: 'refine', from, to },
         ],
+      }
+    },
+  },
+  {
+    id: 'supply-dangling-target',
+    clause:
+      'op coverage (`add` with an explicit `id`): re-add a requirement under a dangling edge target',
+    edit: ({ fixture, doc }) => {
+      const missing = [
+        ...new Set(
+          Object.values(doc.requirements).flatMap((r) =>
+            RELATIONS.flatMap((rel) => r[rel].filter((t) => doc.requirements[t] === undefined)),
+          ),
+        ),
+      ].sort()
+      if (missing.length === 0)
+        return { kind: 'inapplicable', reason: 'no edge in the fixture dangles' }
+      const a = req(doc, fixture.culprits[0])
+      return {
+        kind: 'ops',
+        ops: missing.map((id, i) => ({
+          ...add(`SUPPLIED-${i + 1}`, {
+            ...(a.trigger !== undefined ? { trigger: a.trigger } : {}),
+            systemName: a.systemName,
+            systemResponse: 'archive the order',
+          }),
+          id,
+        })),
       }
     },
   },
@@ -1219,6 +1340,8 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'temporal-conflict',
       'glossary-bridged',
       'term-bridged',
+      'waived-blocking-lint',
+      'dangling-target',
     ],
     'Deleting one side of a conflict leaves a consistent document. Nothing records that the deleted requirement stood for an intent item, so its disappearance is not a finding; `FND_INTENT_UNCOVERED` makes it one. On temporal-conflict this side escapes where the other does not: deleting `AUD-R1` leaves `AUD-R2` and `AUD-R3`, which share a trigger: a consistent, fully compared document.',
   ),
@@ -1233,8 +1356,9 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'numeric-conflict',
       'glossary-bridged',
       'term-bridged',
+      'waived-blocking-lint',
     ],
-    'The same deletion from the other side. On temporal-conflict it is caught only because deleting `AUD-R2` leaves `AUD-R1` uncovered — a coverage accident, not a defence, which is why the `@first` row exists.',
+    'The same deletion from the other side. On temporal-conflict it is caught only because deleting `AUD-R2` leaves `AUD-R1` uncovered — a coverage accident, not a defence, which is why the `@first` row exists. On dangling-target it is caught only because the dangling edge on `DNG-R1` survives the deletion.',
   ),
   ...escapes(
     'waive-by-code',
@@ -1247,6 +1371,8 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'temporal-conflict',
       'glossary-bridged',
       'term-bridged',
+      'waived-blocking-lint',
+      'dangling-target',
     ],
     'A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable.',
   ),
@@ -1409,6 +1535,7 @@ export const OP_COVERAGE: Readonly<
   add: {
     moves: [
       'add-decoys',
+      'supply-dangling-target',
       'flip-negated@second',
       'condition-into-response@second',
       'shall-to-should@second',
@@ -1433,11 +1560,7 @@ export const OP_COVERAGE: Readonly<
       'so it can only add findings. `unantonym` is its weakening inverse, and is registered.',
   },
   waive: { moves: ['waive-by-code'] },
-  unwaive: {
-    reason:
-      'Removes a waiver, which can only reinstate a finding the waiver hid (strengthening). ' +
-      '`waive` is the weakening direction, and is registered.',
-  },
+  unwaive: { moves: ['unwaive'] },
   unglossary: { moves: ['unglossary'] },
   unantonym: { moves: ['unantonym'] },
   state: { moves: ['release-frame'] },
@@ -1986,8 +2109,7 @@ export const renderMatrix = (matrix: Matrix): string => {
 /**
  * The fixtures each shard file runs. One file per shard so vitest's worker pool runs them in
  * parallel: every cell is a full `check` (a few hundred ms each, the state-model fixture the
- * heaviest), and one file would serialize all of them. Measured on a 16-core devbox: ~14 s of
- * test time across the four shards, ~6 s wall. `gaming.test.ts` asserts this partitions
+ * heaviest), and one file would serialize all of them. `gaming.test.ts` asserts this partitions
  * {@link FIXTURES} exactly and that every shard has its file.
  */
 export const SHARDS: Readonly<Record<string, readonly string[]>> = {
@@ -1996,6 +2118,7 @@ export const SHARDS: Readonly<Record<string, readonly string[]>> = {
   c: ['numeric-conflict', 'temporal-conflict'],
   d: ['glossary-bridged', 'term-bridged'],
   e: ['registered-contrary'],
+  f: ['waived-blocking-lint', 'dangling-target'],
 }
 
 /**

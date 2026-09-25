@@ -738,7 +738,7 @@ D, the verdict-bearing set, is every error-severity finding of class `verdict` o
 
 | Verb | Direction | Why |
 |---|---|---|
-| `add` | strengthening | Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). It can discharge coverage demotions, which are outside D. |
+| `add` | strengthening | Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). It can discharge coverage demotions, and with an explicit `id` the FND_DANGLING_REFERENCE of an edge that names that id; both are outside D. |
 | `update` | weakening | Rewriting a slot, `negated`, the pattern, `stateEffect` or `stateConstraint` changes what the requirement MEANS, so it can remove a conflict the old wording carried. Metadata attributes change nothing a tier reads, but the verb is labelled by what it can do. |
 | `delete` | weakening | Removes a requirement, and with it every finding and demotion that named it. Deleting one side of a conflict leaves a consistent document. |
 | `derive` | strengthening | Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and never removes a verdict. |
@@ -749,7 +749,7 @@ D, the verdict-bearing set, is every error-severity finding of class `verdict` o
 | `glossary` | strengthening | Identifies two phrases as one atom, and an added equality cannot make an unsatisfiable set satisfiable (I-1). The fold refuses an alias of two committed contraries; the measured exceptions to the bound are listed in the gaming gate. |
 | `antonym` | strengthening | Commits a contrary axiom, which only adds constraints, so it can only add conflicts. The fold refuses a pair the committed tables make inconsistent. |
 | `waive` | weakening | Suppresses a finding. A waiver removes what the report shows without changing what the document says. |
-| `unwaive` | strengthening | Removes a waiver, which can only reinstate a finding the waiver was hiding. |
+| `unwaive` | weakening | Removes a waiver. That can reinstate a finding the waiver hid, but a waived error-severity GtWR lint is what re-admits its requirement to the solver (AC-3-7), so removing that waiver takes the requirement out again and every verdict it was part of disappears. |
 | `unglossary` | weakening | Splits two phrases the glossary made one atom, so a conflict that rested on the alias disappears. |
 | `unantonym` | weakening | Removes a contrary axiom, so a conflict that rested on the two phrases being contraries disappears. |
 | `state` | weakening | Declares or REDECLARES a state variable. A redeclaration can release a frame, widen a range, or change the initial state, and each can remove a reachability violation. |
@@ -764,12 +764,14 @@ D, the verdict-bearing set, is every error-severity finding of class `verdict` o
 A class is decided per code, by meaning, not by tier or severity. Waivability is derived from
 the class.
 
-| Finding class | Waivable | In D | Meaning |
+Waivability is published policy, NOT enforced by this build: `waive` still commits a waiver on a `never` code, and `check` still suppresses the finding it names. Do not read `never` as a guarantee that `verified: true` excludes a waived finding.
+
+| Finding class | Waivable (not enforced) | In D | Meaning |
 |---|---|---|---|
 | `verdict` | never | yes | The document is inconsistent, or a declared constraint is violated, and the tool proved it. Discharged only by changing what the document says. |
 | `disclosure` | never | no | "I did not decide": a comparison was not attempted, not finished, or holds only under an assumption. It claims nothing about the document either way. |
 | `triage` | never | no | A propose-side candidate: two phrases or numbers that may be one thing, or may conflict. Discharged by committing the table entry the finding proposes, or by rewording. |
-| `hygiene` | never | no | An obligation the document has not met (a requirement no tier could read, a slot its pattern needs). Discharged by supplying what is missing. |
+| `hygiene` | never | no | An obligation the document has not met (a requirement no tier could read, a slot its pattern needs, an edge target that does not exist). Discharged by supplying what is missing. |
 | `wording` | scoped | no | A wording defect a reviewer can accept: a GtWR rule, an ambiguity, a duplicate spelling, a term used two ways. It says nothing about consistency. |
 | `structural` | scoped | yes | A fact about the trace graph (an orphan, a cycle, a missing link), not about what any requirement means. |
 | `anchor` | never | no | A change to something the loop may not change from inside: intent, policy, the pinned configuration, or the baseline binding. |
@@ -847,9 +849,11 @@ one.
 A finding inside a **successful** `check`. Only `error` severity gates the exit code, and
 an error-severity finding also excludes its requirement from the formal tier.
 
-| Code | Severity | Tier | Class | Waivable | Meaning |
+Waivability is published policy, NOT enforced by this build: `waive` still commits a waiver on a `never` code, and `check` still suppresses the finding it names. Do not read `never` as a guarantee that `verified: true` excludes a waived finding.
+
+| Code | Severity | Tier | Class | Waivable (not enforced) | Meaning |
 |---|---|---|---|---|---|
-| `FND_DANGLING_REFERENCE` | error | structural | structural | scoped | an edge targets a nonexistent requirement UUID. |
+| `FND_DANGLING_REFERENCE` | error | structural | hygiene | never | an edge targets a nonexistent requirement UUID. |
 | `FND_MISSING_TRIGGER` | error | structural | hygiene | never | an event-driven / unwanted-behavior requirement has no trigger. |
 | `FND_MISSING_PRECONDITION` | error | structural | hygiene | never | a state-driven / optional-feature requirement has no precondition. |
 | `FND_CYCLE` | error | structural | structural | scoped | a cycle in `derives`/`refines` (canonical-rotation deduplicated). |

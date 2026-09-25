@@ -55,7 +55,7 @@ export const FINDING_CLASS_MEANING = {
   triage:
     'A propose-side candidate: two phrases or numbers that may be one thing, or may conflict. Discharged by committing the table entry the finding proposes, or by rewording.',
   hygiene:
-    'An obligation the document has not met (a requirement no tier could read, a slot its pattern needs). Discharged by supplying what is missing.',
+    'An obligation the document has not met (a requirement no tier could read, a slot its pattern needs, an edge target that does not exist). Discharged by supplying what is missing.',
   wording:
     'A wording defect a reviewer can accept: a GtWR rule, an ambiguity, a duplicate spelling, a term used two ways. It says nothing about consistency.',
   structural:
@@ -97,8 +97,8 @@ interface FindingClassRow {
  */
 export const FINDING_CLASS = {
   FND_DANGLING_REFERENCE: {
-    class: 'structural',
-    why: 'An edge names a requirement that does not exist: a fact about the trace graph.',
+    class: 'hygiene',
+    why: 'An edge names a requirement that does not exist: an obligation, discharged by supplying the target (an `add` with that `id`) or by removing the edge. Not structural, because `add` discharges it and `add` is strengthening.',
   },
   FND_MISSING_TRIGGER: {
     class: 'hygiene',
@@ -282,6 +282,25 @@ export const findingClassOf = (code: string): FindingClass | undefined => {
 
 /** `scoped`: waivable only over named requirements and their current text. `never`: not at all. */
 export type Waivability = 'scoped' | 'never'
+
+/**
+ * Whether this build ENFORCES {@link WAIVABILITY}: whether `waive` refuses a `never` code and
+ * `check` ignores a stored waiver on one.
+ *
+ * `false` on this build. The column is the policy the classes imply, and it is published so an
+ * agent can read it now, but `waive FND_CONTRADICTION` still commits and still suppresses the
+ * finding. The slice that enforces it (S3, AC-5-6) flips this constant, and
+ * `app/operations/waivability.test.ts` holds the constant to what the fold and `check` do, in
+ * both directions. Every surface that publishes the column publishes this beside it
+ * ({@link waivabilityStatement}), so a `never` is never read as a guarantee it is not.
+ */
+export const WAIVABILITY_ENFORCED: boolean = false
+
+/** The sentence every surface publishes beside the `waivable` column. */
+export const waivabilityStatement = (): string =>
+  WAIVABILITY_ENFORCED
+    ? 'Waivability is enforced: `waive` refuses a `never` code, and `check` ignores a stored waiver on one.'
+    : 'Waivability is published policy, NOT enforced by this build: `waive` still commits a waiver on a `never` code, and `check` still suppresses the finding it names. Do not read `never` as a guarantee that `verified: true` excludes a waived finding.'
 
 /**
  * Which classes a waiver may suppress.
@@ -484,6 +503,8 @@ export const DEMOTION_CLASS = {
  * Coverage demotions, disclosures, wording and hygiene are OUTSIDE D. That exclusion is why
  * `add` is strengthening although it discharges `uncovered-requirement`: coverage going away
  * is the point of adding requirements, and a decoy that buys coverage is a separate problem.
+ * It is also why FND_DANGLING_REFERENCE is `hygiene` and not `structural`: an `add` with the
+ * missing `id` discharges it, and the gaming gate measures that (`supply-dangling-target`).
  */
 export const VERDICT_BEARING = {
   findingSeverity: 'error',
@@ -610,6 +631,7 @@ export const manifestOpDirections = (): ManifestOpDirections => ({
 
 /** Both class tables as the manifest publishes them, every row with its reason. */
 export const manifestSignalClasses = (): ManifestSignalClasses => ({
+  waivability: { enforced: WAIVABILITY_ENFORCED, statement: waivabilityStatement() },
   findingClasses: FINDING_CLASSES.map((cls) => ({
     class: cls,
     meaning: FINDING_CLASS_MEANING[cls],

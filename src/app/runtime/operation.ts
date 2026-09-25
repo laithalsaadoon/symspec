@@ -424,6 +424,8 @@ export interface ManifestOpDirections {
 
 /** The signal-class tables as the manifest publishes them. */
 export interface ManifestSignalClasses {
+  /** Whether the `waivable` columns below are enforced on this build, and the sentence saying so. */
+  readonly waivability: { readonly enforced: boolean; readonly statement: string }
   readonly findingClasses: readonly {
     readonly class: string
     readonly meaning: string
