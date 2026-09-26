@@ -10,8 +10,9 @@
  *
  * ## What "the same verdicts, less what the author merged" means
  *
- * A use is one place the engine reads a key: a slot's atom, a bound's quantity. Three partitions
- * of the uses are compared:
+ * A use is one place the engine reads a key: a slot's atom, a requirement's system scope (which
+ * every per-system tier pairs on, so a system split that shares no atom still shows), a bound's
+ * quantity. Three partitions of the uses are compared:
  *
  * - O, by the key the engine reads on the ORIGINAL document;
  * - D, by the class the vocabulary DECLARES the use's phrase to be in (its system's class and its
@@ -35,7 +36,9 @@
  *   none added, and no class holds two contraries;
  * - the occurrences a response hands the numeric tier on a key some bound is on are the same
  *   records on the same classes;
- * - the guard implications are the same implications, their atoms mapped onto classes.
+ * - the guard implications are the same implications, their atoms mapped onto classes;
+ * - every tier that reads a slot's WORDS beyond its atom (lint, the propose and disclosure tiers)
+ *   reads the same thing, less what the declaration implies (`readers.ts`, invariant V-READ).
  *
  * Any difference is a refusal that names the phrases involved.
  */
@@ -46,6 +49,7 @@ import {
   areContrary,
   glossaryIndex,
   makeAtomize,
+  normalizeScope,
   type Opposition,
   termIndex,
 } from '../engine/formal/atomize.ts'
@@ -59,6 +63,7 @@ import {
 } from '../engine/formal/numeric.ts'
 import type { Requirement } from '../requirements/document.ts'
 import { viewOf } from './keys.ts'
+import { compareText, readText, type TextReading } from './readers.ts'
 
 /** The slot a probe reads: the one its phrase sits in, as the encoder names it. */
 export type ProbeSlot = 'resp' | 'trig' | 'pre'
@@ -104,7 +109,10 @@ interface BoundUse {
 
 /** What the engine reads in a set of units. */
 export interface Reading {
-  /** Keyed `<unit>\0<kind>`: `resp`, `trig`, `pre`, or `entry` (a glossary entry's link atom). */
+  /**
+   * Keyed `<unit>\0<kind>`: `resp`, `trig`, `pre`, `entry` (a glossary entry's link atom), or
+   * `sys`, the system's atom scope, which every per-system tier pairs on.
+   */
   readonly atoms: ReadonlyMap<string, AtomUse>
   /** Keyed `<unit>\0<index>` for a bound, `<unit>` for a label probe. */
   readonly bounds: ReadonlyMap<string, BoundUse>
@@ -113,6 +121,8 @@ export interface Reading {
   /** Per unit, every occurrence as `[quantity key, qualifier]`. */
   readonly occurrences: ReadonlyMap<string, readonly (readonly [string, string])[]>
   readonly bridges: readonly { readonly id: string; readonly formula: unknown }[]
+  /** What the text readers read on the document's requirements (`readers.ts`). */
+  readonly text: TextReading
 }
 
 const SEP = '\u0000'
@@ -146,6 +156,11 @@ export const readOutcome = (
     const view = viewOf(unit.requirement)
     const encodable = toEncodable(view)
     if (unit.slot === undefined) whole.push(encodable)
+    atoms.set(`${unit.id}${SEP}sys`, {
+      atom: `${SEP}scope ${normalizeScope(view.systemName)}`,
+      negated: false,
+      text: view.systemName,
+    })
     for (const row of encode(encodable, atomize).atoms) {
       if (unit.slot !== undefined && row.kind !== unit.slot) continue
       atoms.set(`${unit.id}${SEP}${row.kind}`, {
@@ -202,12 +217,16 @@ export const readOutcome = (
     id: b.bridgeId,
     formula: b.formula,
   }))
-  return { atoms, bounds, boundCount, occurrences, bridges }
+  const text = readText(
+    units.filter((u) => u.slot === undefined).map((u) => u.requirement),
+    tables,
+  )
+  return { atoms, bounds, boundCount, occurrences, bridges, text }
 }
 
 /** A difference between two readings: the invariant it breaks, in words, and the phrases involved. */
 export interface Mismatch {
-  readonly invariant: 'V1' | 'V-OPP' | 'V-NUM'
+  readonly invariant: 'V1' | 'V-OPP' | 'V-NUM' | 'V-READ'
   readonly detail: string
   readonly phrases: readonly string[]
 }
@@ -501,5 +520,19 @@ export const compareOutcome = (
       }
     }
   }
+
+  // The text readers: every tier that reads a slot's words, beyond its atom.
+  const sideOf = (side: 'before' | 'after') => (side === 'before' ? before : after)
+  const text = compareText(before.text, after.text, {
+    atom: (side, unit, kind) => sideOf(side).atoms.get(`${unit}${SEP}${kind}`)?.atom,
+    boundKeys: (side, unit) => {
+      const reading = sideOf(side)
+      const n = reading.boundCount.get(unit) ?? 0
+      return Array.from({ length: n }, (_, i) => reading.bounds.get(`${unit}${SEP}${i}`)?.key ?? '')
+    },
+    classOf: atomJoin.classOf,
+    textOf: (unit) => before.atoms.get(`${unit}${SEP}resp`)?.text ?? unit,
+  })
+  if (text !== undefined) return { invariant: 'V-READ', ...text }
   return undefined
 }

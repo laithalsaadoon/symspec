@@ -20,12 +20,13 @@
  * | V-REF | a merge or distinct record names declared symbols |
  * | V-DISTINCT | no merge unites a pair stated distinct |
  * | V-FROZEN | the glossary and terms digest equals the one taken when the vocabulary was adopted |
+ * | V-READ | every tier that reads a slot's words (lint, the propose and disclosure tiers, `readers.ts`) reads the projection as it reads the original, less what the declaration implies |
  *
  * ## Two halves: the record, and the outcome
  *
  * The RECORD checks (V1's ownership, V2, V-KIND, V-STATE, V-PARENT, V-REF, V-DISTINCT, V-FROZEN)
  * are about the vocabulary as written, and need no engine. The OUTCOME checks (V1's atoms, V-OPP,
- * V-NUM) are about what the engine would read: the validator builds the projection a vocabulary
+ * V-NUM, V-READ) are about what the engine would read: the validator builds the projection a vocabulary
  * gives (`projection.ts`, the same function the engine is handed), reads the original and the
  * projected document with the engine's own readers, and admits the vocabulary only when the two
  * readings differ by exactly what the declaration merges (`outcome.ts`). It never predicts a hazard
@@ -79,6 +80,7 @@ export const INVARIANT_IDS = [
   'V-REF',
   'V-DISTINCT',
   'V-FROZEN',
+  'V-READ',
 ] as const
 export type InvariantId = (typeof INVARIANT_IDS)[number]
 
@@ -494,7 +496,10 @@ const measureOf =
     const systemClass = new Map<string, string>()
     for (const r of Object.values(doc.requirements)) {
       const system = resolvePhrase(index, ['system'], r.systemName)
-      if (!('unresolved' in system)) systemClass.set(r.id, rep(system.id))
+      if (!('unresolved' in system)) {
+        systemClass.set(r.id, rep(system.id))
+        slotClass.set(`${r.id}\u0000sys`, rep(system.id))
+      }
       const res = resolveRequirement(index, r)
       if ('unresolved' in res) continue
       const b = res.binding
@@ -507,6 +512,7 @@ const measureOf =
     }
     for (const p of projection.probes) {
       systemClass.set(p.id, PROBE_CLASS)
+      slotClass.set(`${p.id}\u0000sys`, PROBE_CLASS)
       if (p.owner !== undefined)
         slotClass.set(`${p.id}\u0000${p.slot}`, `${PROBE_CLASS}|${rep(p.owner)}`)
     }

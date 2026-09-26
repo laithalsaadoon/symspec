@@ -841,16 +841,30 @@ describe('V-NUM over every spelling a class resolves, not only the declared ones
     // No bound and no declared quantity is on `keep the level` here. With one (R2, or
     // qty_keep_the_level), the bare response's occurrence of that quantity is read too,
     // and the merge is refused: `V-NUM reads the action occurrences…` below.
-    const unbounded = req({ systemName: 'pump', systemResponse: 'keep the level at-most 5 m' })
-    const actions = level.filter((s) => s.kind !== 'quantity' && s.id !== 'act_c')
+    const steady = level.map((s) =>
+      s.id === 'act_b' ? { ...s, canonical: 'keep the level steady' } : s,
+    )
+    const unbounded = req({ systemName: 'pump', systemResponse: 'keeps the level steady' })
+    const actions = steady.filter((s) => s.kind !== 'quantity' && s.id !== 'act_c')
     const doc = withVocabulary(docOf([unbounded]), actions, [merge])
     expect(brief(doc)).toEqual([])
-    expect(brief(withVocabulary(docOf([unbounded, r2]), level, [merge]))).toEqual([
+    expect(brief(withVocabulary(docOf([unbounded, r2]), steady, [merge]))).toEqual([
       ['V-NUM', 'merge', 'act_a+act_b'],
     ])
     expect(buildProjection(doc)?.rewrites.get(unbounded.id)).toEqual({
       systemResponse: 'maintain the reservoir',
     })
+  })
+
+  it('refuses it when the spelling it rewrites states a quantity no bound reads (V-READ)', () => {
+    // `at-most` is no comparator, so `5 m` is read by no bound and disclosed as
+    // FND_NUMERIC_UNCOMPARED; rewriting the response to `maintain the reservoir` deletes the
+    // disclosure, which nothing the vocabulary says implies.
+    const unbounded = req({ systemName: 'pump', systemResponse: 'keep the level at-most 5 m' })
+    const actions = level.filter((s) => s.kind !== 'quantity' && s.id !== 'act_c')
+    const doc = withVocabulary(docOf([unbounded]), actions, [merge])
+    expect(brief(doc)).toEqual([['V-READ', 'merge', 'act_a+act_b']])
+    expect(buildProjection(doc)?.rewrites.has(unbounded.id)).toBe(false)
   })
 })
 

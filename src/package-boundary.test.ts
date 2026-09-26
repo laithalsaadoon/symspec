@@ -133,19 +133,24 @@ describe('no module reaches outside the package', () => {
     expect(imports).toEqual(["import { Schema } from 'effect'"])
   })
 
-  it('keeps the vocabulary a greenfield client of the engine — it reads `engine/formal`, and the engine reads nothing of it', () => {
+  it('keeps the vocabulary a greenfield client of the engine — it reads the engine`s readers, and the engine reads nothing of it', () => {
     // `domain/vocabulary/` computes its phrase keys with the engine's OWN normalizers and
     // atomizer, which is what makes a symbol partition comparable with the atom partition at
-    // all. It may therefore reach into `engine/formal` (as `compat.ts` does) and into the
-    // requirements model it reads, and nowhere else; `compat.ts` in particular is excluded,
-    // because the projection there is the vocabulary's CALLER. The engine side of the one-way
-    // rule is the exact crossing list above, which names no vocabulary module.
+    // all, and it measures a projection with every engine reader of a slot's words, so that what
+    // it admits is what the engine reads. It may therefore reach into the tiers that hold those
+    // readers — `engine/formal` (as `compat.ts` does), the GtWR lint and the free tier's pair
+    // filters — and into the requirements model it reads, and nowhere else. `compat.ts` in
+    // particular is excluded, because the projection there is the vocabulary's CALLER, and so is
+    // `engine/pipeline`, which runs the solver. The engine side of the one-way rule is the exact
+    // crossing list above, which names no vocabulary module.
     const vocabularyRoot = join(PKG_ROOT, 'src', 'domain', 'vocabulary')
     const files = tsFiles(vocabularyRoot).filter((f) => !f.endsWith('.test.ts'))
     expect(files.length).toBeGreaterThan(0)
     const allowed = [
       join('src', 'domain', 'vocabulary'),
       join('src', 'domain', 'engine', 'formal'),
+      join('src', 'domain', 'engine', 'lint'),
+      join('src', 'domain', 'engine', 'solvers', 'free'),
       join('src', 'domain', 'requirements', 'document.ts'),
       join('src', 'domain', 'requirements', 'content-hash.ts'),
     ]
