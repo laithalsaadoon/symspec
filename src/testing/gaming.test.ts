@@ -12,6 +12,10 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { MUTATE_OPTIONS } from '../app/operations/mutate-options.ts'
+import {
+  DEFAULT_OPPOSITION_COSINE_FLOOR,
+  DEFAULT_SEMANTIC_THRESHOLD,
+} from '../domain/engine/formal/semantic.ts'
 import { OP_VERBS, type OpVerb } from '../domain/requirements/ops.ts'
 import {
   AC_8_2,
@@ -19,10 +23,14 @@ import {
   editVerbs,
   FIXTURES,
   KNOWN_ESCAPES,
+  KNOWN_NONMONOTONE,
   MOVES,
+  moveDirection,
   moveStatuses,
+  NEAR_COSINE,
   NOT_APPLICABLE_YET,
   OP_COVERAGE,
+  orthogonalEmbedder,
   SHARDS,
 } from './gaming.ts'
 
@@ -189,6 +197,70 @@ describe('the gaming registry', () => {
     }
   })
 
+  it('every KNOWN_NONMONOTONE row names a real strengthening pair, once, with what it loses', () => {
+    // G-D reads only moves whose verbs all join to `strengthening`, so a row on any other move
+    // could never be measured and would sit in the table as a stale permission slip.
+    const fixtures = new Set(FIXTURES.map((f) => f.id))
+    const pairs = KNOWN_NONMONOTONE.map((k) => `${k.fixture} × ${k.move}`)
+    expect(pairs.length).toBe(new Set(pairs).size)
+    for (const k of KNOWN_NONMONOTONE) {
+      const label = `${k.fixture} × ${k.move}`
+      expect(fixtures.has(k.fixture), label).toBe(true)
+      const move = MOVES.find((m) => m.id === k.move)
+      expect(move, label).toBeDefined()
+      if (move === undefined) continue
+      expect(moveDirection(move, MUTATE_OPTIONS), label).toBe('strengthening')
+      expect(k.lost.length, label).toBeGreaterThan(0)
+      const cited = CLOSED_BY.exec(k.closedBy)?.[1]
+      expect(cited, `${label}: closedBy ${k.closedBy}`).toMatch(/^AC-[4-7]-\d+$/)
+      expect(SPEC, `${label} cites ${k.closedBy}`).toMatch(new RegExp(`^${cited}\\b`, 'm'))
+      expect(k.why.length, label).toBeGreaterThan(40)
+    }
+  })
+
+  it('derives every registered move`s direction from the verbs it emits', () => {
+    // The labels come from OP_DIRECTION, so a move is weakening the moment any verb it emits
+    // is — `link-culprits` joins four edge verbs and stays strengthening, and `flip-negated`
+    // joins `delete` and `add` and is weakening. Pinned on the cases where the join is the point.
+    const direction = (id: string) => {
+      const move = MOVES.find((m) => m.id === id)
+      if (move === undefined) throw new Error(`no move ${id}`)
+      return moveDirection(move, MUTATE_OPTIONS)
+    }
+    expect(direction('add-decoys')).toBe('strengthening')
+    expect(direction('link-culprits')).toBe('strengthening')
+    expect(direction('add-negation')).toBe('strengthening')
+    expect(direction('add-bound-past-bystander')).toBe('strengthening')
+    expect(direction('add-bystander-negation')).toBe('strengthening')
+    expect(direction('branch-into-cycle')).toBe('strengthening')
+    // An alias and a contrary axiom are weakening: each can discharge an opposition candidate
+    // with nothing in its place.
+    expect(direction('antonym-over-candidate')).toBe('weakening')
+    expect(direction('alias-contraries-glossary@forward')).toBe('weakening')
+    expect(direction('alias-contraries-term@forward')).toBe('weakening')
+    expect(direction('delete-requirement@first')).toBe('weakening')
+    expect(direction('flip-negated@first')).toBe('weakening')
+    expect(direction('shall-to-should@first')).toBe('weakening')
+    expect(direction('embedding-stub')).toBe('run-weakening')
+  })
+
+  it('a `near` pair meets at NEAR_COSINE: above the opposition floor, below the similarity threshold', async () => {
+    expect(NEAR_COSINE).toBeGreaterThanOrEqual(DEFAULT_OPPOSITION_COSINE_FLOOR)
+    expect(NEAR_COSINE).toBeLessThan(DEFAULT_SEMANTIC_THRESHOLD)
+    const embed = orthogonalEmbedder([['fill the tank', 'drain the tank']])
+    const [fill, drain, other] = await embed(['fill the tank', 'drain the tank', 'log the level'])
+    const dot = (a?: Float32Array, b?: Float32Array) =>
+      (a ?? new Float32Array()).reduce((sum, x, i) => sum + x * (b?.[i] ?? 0), 0)
+    expect(dot(fill, fill)).toBeCloseTo(1, 6)
+    expect(dot(fill, drain)).toBeCloseTo(NEAR_COSINE, 6)
+    expect(dot(fill, other)).toBe(0)
+    // And the fixture that exists for it declares a pair its culprits really say.
+    const opposition = FIXTURES.find((f) => f.id === 'opposition-candidate')
+    const doc = buildDoc(opposition?.ops ?? [], MUTATE_OPTIONS)
+    const responses = Object.values(doc.requirements).map((r) => r.systemResponse)
+    for (const phrase of opposition?.near?.flat() ?? []) expect(responses).toContain(phrase)
+  })
+
   it('the shards partition the fixtures, and every shard has its file', () => {
     const sharded = Object.values(SHARDS).flat()
     expect(sharded.length, 'a fixture is in two shards').toBe(new Set(sharded).size)
@@ -208,11 +280,11 @@ describe('the gaming registry', () => {
   })
 
   it('reports every move with its status, derived from the tables', async () => {
-    const report = moveStatuses()
+    const report = moveStatuses(MUTATE_OPTIONS)
       .map((s) => `${s.status}\t${s.direction}\t${s.id}\t${s.acs.join(',')}`)
       .join('\n')
     await expect(`${report}\n`).toMatchFileSnapshot('./__snapshots__/gaming-moves.txt')
     // Every registered and pending move is reported — the report is the complete AC-8-2 list.
-    expect(moveStatuses().length).toBe(REGISTERED.size + PENDING.size)
+    expect(moveStatuses(MUTATE_OPTIONS).length).toBe(REGISTERED.size + PENDING.size)
   })
 })

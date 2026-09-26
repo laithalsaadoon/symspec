@@ -135,3 +135,115 @@ describe('recorded gaps: num', () => {
     }
   })
 })
+
+describe('recorded gaps: one reported core per numeric cell and per temporal run', () => {
+  type Slots = {
+    readonly patternType?: 'ubiquitous' | 'unwanted-behavior'
+    readonly trigger?: string
+    readonly negated?: boolean
+  }
+  const reqOf = (id: string, systemName: string, systemResponse: string, slots: Slots = {}) => {
+    const patternType = slots.patternType ?? 'ubiquitous'
+    const negated = slots.negated ?? false
+    const modal = negated ? 'shall not' : 'shall'
+    return {
+      id,
+      patternType,
+      systemName,
+      ...(slots.trigger !== undefined ? { trigger: slots.trigger } : {}),
+      systemResponse,
+      negated,
+      sentence:
+        slots.trigger !== undefined
+          ? `If ${slots.trigger}, then the ${systemName} ${modal} ${systemResponse}.`
+          : `The ${systemName} ${modal} ${systemResponse}.`,
+      priority: 'medium' as const,
+      status: 'draft' as const,
+      createdAt: TS,
+      updatedAt: TS,
+      derives: [],
+      satisfies: [],
+      verifies: [],
+      refines: [],
+    }
+  }
+  const check = async (reqs: readonly ReturnType<typeof reqOf>[], temporalBound?: number) =>
+    runCheck(
+      {
+        requirements: Object.fromEntries(reqs.map((r) => [r.id, r])),
+        glossary: [],
+        antonyms: [],
+        waivers: [],
+        terms: [],
+        stateModel: { variables: [] },
+      } as never,
+      temporalBound !== undefined ? { temporal: { bound: temporalBound } } : {},
+    )
+  const cores = (report: Awaited<ReturnType<typeof check>>, code: string) =>
+    report.findings.filter((f) => f.code === code).map((f) => [...f.requirementIds].sort())
+
+  // The ids sort the added requirement FIRST, which is what hands it the one reported core.
+  const A = 'aaaaaaaa-0000-4000-8000-000000000001'
+  const B = 'aaaaaaaa-0000-4000-8000-000000000002'
+  const C = 'aaaaaaaa-0000-4000-8000-000000000003'
+  const N = '00000000-0000-4000-8000-000000000009'
+
+  it('the recorded gap is still open: a numeric cell with two disjoint conflicts reports one', async () => {
+    // ENGINE GRANULARITY: `analyzeNumericBounds` proves each (quantity, base unit, context group)
+    // cell once and minimizes once, so it reports ONE core per cell. A (at most 30) conflicts
+    // with B (at least 45), and N (at least 90) conflicts with C (at most 60): two conflicts that
+    // share no requirement, and the report names only (N, C). This is why an `add` can displace
+    // a numeric verdict onto a disjoint pair, and why `DISPLACEMENT` records the numeric tier as
+    // `cell` (measured by the gaming gate: `numeric-bystander` × `add-bound-past-bystander`).
+    // OWNER: spec 007 Story 7, AC-7-1: `data.obligations` lists every obligation, so a conflict
+    // one core stands in for is listed rather than dropped from the report. Enumerating every
+    // core inside the numeric tier is an engine edit, out of Phase 3.
+    // CORRECT OUTCOME: both (A, B) and (C, N) are reported.
+    const system = 'session service'
+    const seeded = [
+      reqOf(A, system, 'expire the session after at most 30 minutes'),
+      reqOf(B, system, 'expire the session after at least 45 minutes'),
+      reqOf(C, system, 'expire the session after at most 60 minutes'),
+    ]
+    // The seeded conflict alone is reported: the gap is not that (A, B) is missed.
+    expect(cores(await check(seeded), 'FND_NUMERIC_CONTRADICTION')).toEqual([[A, B]])
+    const moved = await check([
+      ...seeded,
+      reqOf(N, system, 'expire the session after at least 90 minutes'),
+    ])
+    expect(
+      cores(moved, 'FND_NUMERIC_CONTRADICTION'),
+      'the recorded gap is still open: one core per cell',
+    ).toEqual([[N, C].sort()])
+  })
+
+  it('the recorded gap is still open: the temporal tier reports one joint core for the run', async () => {
+    // ENGINE GRANULARITY: `findTemporalContradictions` makes ONE bounded check over every
+    // requirement at once and reports ONE minimized core. A never records the event and B must
+    // record it after a disk write failure; C raises the alarm after the failure and N never
+    // raises it. Two temporal conflicts that share no requirement, and the report names only
+    // (N, C). The propositional tier enumerates disjoint cores, so it reports both. This is why
+    // `DISPLACEMENT` records the temporal tier as `code` (measured by the gaming gate:
+    // `temporal-conflict` × `add-bystander-negation`).
+    // OWNER: spec 007 Story 7, AC-7-1: `data.obligations` lists every obligation. Enumerating
+    // every temporal core is an engine edit, out of Phase 3.
+    // CORRECT OUTCOME: FND_TEMPORAL_CONTRADICTION over both (A, B) and (C, N).
+    const system = 'audit logger'
+    const failure = { patternType: 'unwanted-behavior', trigger: 'the disk write fails' } as const
+    const seeded = [
+      reqOf(A, system, 'record the event', { negated: true }),
+      reqOf(B, system, 'record the event', failure),
+      reqOf(C, system, 'raise the alarm', failure),
+    ]
+    expect(cores(await check(seeded, 3), 'FND_TEMPORAL_CONTRADICTION')).toEqual([[A, B]])
+    const moved = await check(
+      [...seeded, reqOf(N, system, 'raise the alarm', { negated: true })],
+      3,
+    )
+    expect(
+      cores(moved, 'FND_TEMPORAL_CONTRADICTION'),
+      'the recorded gap is still open: one joint core',
+    ).toEqual([[N, C].sort()])
+    expect(cores(moved, 'FND_CONTRADICTION').sort()).toEqual([[N, C].sort(), [A, B]])
+  })
+})

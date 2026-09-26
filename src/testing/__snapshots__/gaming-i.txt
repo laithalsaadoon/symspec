@@ -1,0 +1,111 @@
+opposition-negated	(baseline)	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-split	(baseline)	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
+opposition-negated	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-negated	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-negated	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-negated	alias-contraries-glossary@forward	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+opposition-negated	alias-contraries-glossary@reverse	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+opposition-negated	alias-contraries-term@forward	refused term:ERR_USAGE
+opposition-negated	alias-contraries-term@reverse	refused term:ERR_USAGE
+opposition-negated	term-over-phrase@inside-canonical	inapplicable
+opposition-negated	term-over-phrase@equal-canonical	inapplicable
+opposition-negated	term-over-phrase@around-canonical	inapplicable
+opposition-negated	term-over-phrase@straddle-canonical	inapplicable
+opposition-negated	term-over-phrase@straddle-alias	inapplicable
+opposition-negated	glossary-over-term@equal/term-then-glossary	inapplicable
+opposition-negated	glossary-over-term@equal/glossary-then-term	inapplicable
+opposition-negated	glossary-over-term@containing/term-then-glossary	inapplicable
+opposition-negated	glossary-over-term@containing/glossary-then-term	inapplicable
+opposition-negated	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+opposition-negated	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+opposition-negated	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+opposition-negated	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+opposition-negated	waive-by-code	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	unwaive	inapplicable
+opposition-negated	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-negated	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-negated	flip-negated@first	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	flip-negated@second	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-negated	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-negated	add-decoys	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	shall-to-should@first	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	shall-to-should@second	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	link-culprits	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	antonym-over-candidate	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-negated	add-bound-past-bystander	inapplicable
+opposition-negated	add-bystander-negation	inapplicable
+opposition-negated	add-negation	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[open-opposition-candidate]
+opposition-negated	add-equivalent@exact	exit 1 verified=false signal=fires errors=[FND_EXACT_DUPLICATE] demotions=[open-opposition-candidate]
+opposition-negated	add-equivalent@case	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	branch-into-cycle	inapplicable
+opposition-negated	supply-dangling-target	inapplicable
+opposition-negated	unglossary	inapplicable
+opposition-negated	unantonym	inapplicable
+opposition-negated	unterm	inapplicable
+opposition-negated	declassify-constraint	inapplicable
+opposition-negated	rebind-effect	inapplicable
+opposition-negated	vacuous-initial	inapplicable
+opposition-negated	release-frame	inapplicable
+opposition-negated	unstate	inapplicable
+opposition-negated	embedding-stub	exit 3 verified=false signal=gone errors=[] demotions=[run-weakened]
+opposition-negated	semantic-off	exit 3 verified=false signal=gone errors=[] demotions=[semantic-tier-skipped]
+opposition-negated	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+opposition-negated	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+opposition-negated	temporal-bound-1	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	temporal-off	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-split	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-split	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-split	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-split	alias-contraries-glossary@forward	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-split	alias-contraries-glossary@reverse	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-split	alias-contraries-term@forward	refused term:ERR_USAGE
+opposition-split	alias-contraries-term@reverse	refused term:ERR_USAGE
+opposition-split	term-over-phrase@inside-canonical	inapplicable
+opposition-split	term-over-phrase@equal-canonical	inapplicable
+opposition-split	term-over-phrase@around-canonical	inapplicable
+opposition-split	term-over-phrase@straddle-canonical	inapplicable
+opposition-split	term-over-phrase@straddle-alias	inapplicable
+opposition-split	glossary-over-term@equal/term-then-glossary	inapplicable
+opposition-split	glossary-over-term@equal/glossary-then-term	inapplicable
+opposition-split	glossary-over-term@containing/term-then-glossary	inapplicable
+opposition-split	glossary-over-term@containing/glossary-then-term	inapplicable
+opposition-split	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+opposition-split	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+opposition-split	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+opposition-split	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+opposition-split	waive-by-code	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
+opposition-split	unwaive	inapplicable
+opposition-split	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-split	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-split	flip-negated@first	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
+opposition-split	flip-negated@second	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
+opposition-split	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-split	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-split	add-decoys	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate,uncovered-requirement]
+opposition-split	shall-to-should@first	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
+opposition-split	shall-to-should@second	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
+opposition-split	link-culprits	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
+opposition-split	antonym-over-candidate	exit 3 verified=false signal=gone errors=[] demotions=[conditional-conflict-unchecked,no-decide-tier-comparison,uncovered-requirement]
+opposition-split	add-bound-past-bystander	inapplicable
+opposition-split	add-bystander-negation	inapplicable
+opposition-split	add-negation	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[open-opposition-candidate,uncovered-requirement]
+opposition-split	add-equivalent@exact	exit 1 verified=false signal=fires errors=[FND_EXACT_DUPLICATE] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
+opposition-split	add-equivalent@case	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate,uncovered-requirement]
+opposition-split	branch-into-cycle	inapplicable
+opposition-split	supply-dangling-target	inapplicable
+opposition-split	unglossary	inapplicable
+opposition-split	unantonym	inapplicable
+opposition-split	unterm	inapplicable
+opposition-split	declassify-constraint	inapplicable
+opposition-split	rebind-effect	inapplicable
+opposition-split	vacuous-initial	inapplicable
+opposition-split	release-frame	inapplicable
+opposition-split	unstate	inapplicable
+opposition-split	embedding-stub	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,run-weakened,uncovered-requirement]
+opposition-split	semantic-off	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,semantic-tier-skipped,uncovered-requirement]
+opposition-split	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+opposition-split	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+opposition-split	temporal-bound-1	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
+opposition-split	temporal-off	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]

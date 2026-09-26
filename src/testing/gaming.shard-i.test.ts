@@ -1,5 +1,5 @@
 /**
- * GAMING GATE, shard b — the fixtures `SHARDS.b` in `./gaming.ts` names, against every move.
+ * GAMING GATE, shard i — the fixtures `SHARDS.i` in `./gaming.ts` names, against every move.
  *
  * The gate itself lives in `./gaming.ts`; this file only WIRES it. `testing/` may not name
  * `app/` or `adapters/` (`../package-boundary.test.ts`), so the real `check` operation and
@@ -21,7 +21,7 @@ import {
 } from '../app/runtime/signal-classes.ts'
 import { describeGamingShard } from './gaming.ts'
 
-describeGamingShard('b', {
+describeGamingShard('i', {
   check: (input) =>
     runOperation(checkOp, input).pipe(
       Effect.map((envelope) => ({ exit: exitCodeForEnvelope(envelope), data: envelope.data })),

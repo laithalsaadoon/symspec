@@ -70,6 +70,7 @@ import {
   type Manifest,
 } from '../runtime/operation.ts'
 import { SCOPE } from '../runtime/scope.ts'
+import { manifestOpDirections, manifestSignalClasses } from '../runtime/signal-classes.ts'
 import { VERSION } from '../runtime/version.ts'
 import { checkOp } from './check.ts'
 import { initOp, listOp, showOp } from './document.ts'
@@ -197,6 +198,11 @@ const manifestEnvelope = () =>
       // it — a disclosure that lives only in prose is one the agent following instructions
       // never sees.
       scope: SCOPE,
+      // What each op can do to the verdict (spec 007 AC-5-1), and what each finding and
+      // demotion MEANS. Both are tables in code, so the manifest reads them rather than
+      // restating them, and `AGENTS.md` renders the same rows.
+      opDirections: manifestOpDirections(),
+      signalClasses: manifestSignalClasses(),
     }),
   )
 

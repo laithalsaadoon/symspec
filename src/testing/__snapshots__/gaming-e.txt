@@ -21,6 +21,7 @@ registered-contrary	glossary-over-term@equal-canonical/glossary-then-term	inappl
 registered-contrary	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 registered-contrary	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
 registered-contrary	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	unwaive	inapplicable
 registered-contrary	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 registered-contrary	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
 registered-contrary	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -31,6 +32,14 @@ registered-contrary	add-decoys	exit 1 verified=true signal=fires errors=[FND_CON
 registered-contrary	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 registered-contrary	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 registered-contrary	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	antonym-over-candidate	inapplicable
+registered-contrary	add-bound-past-bystander	inapplicable
+registered-contrary	add-bystander-negation	inapplicable
+registered-contrary	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+registered-contrary	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	branch-into-cycle	inapplicable
+registered-contrary	supply-dangling-target	inapplicable
 registered-contrary	unglossary	inapplicable
 registered-contrary	unantonym	CLEAN verified=true signal=gone errors=[] demotions=[]
 registered-contrary	unterm	inapplicable
