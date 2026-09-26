@@ -21,7 +21,7 @@ import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import { emptyDocument, type RequirementsDocument } from '../../domain/requirements/document.ts'
 import { foldOps } from '../../domain/requirements/mutate.ts'
 import type { DocumentOp } from '../../domain/requirements/ops.ts'
-import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/doc-store.ts'
 import { embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import { renderAgentsDoc } from '../runtime/agents-doc.ts'
@@ -72,7 +72,7 @@ const NEVER_CODES = [
 
 const checkCodes = async (document: RequirementsDocument): Promise<readonly string[]> => {
   const store = Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: (path) =>
         path === 'doc.json'
           ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })
