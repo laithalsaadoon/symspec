@@ -62,6 +62,19 @@ import { Effect, Schema } from 'effect'
 import { type BudgetHint, budgetHintFor } from '../../domain/advice/budget-hint.ts'
 import { repairForDemotion } from '../../domain/advice/repair.ts'
 import { toEngineDoc } from '../../domain/compat.ts'
+import {
+  belowPinned,
+  type EffectivePins,
+  effectivePins,
+  type GatePins,
+  KNOB_DEFAULTS,
+  type Knob,
+  MAX_TEMPORAL_BOUND,
+  pinDemotionAction,
+  pinnedInvocation,
+  type RunSettings,
+  resolveReachabilityTimeoutMs,
+} from '../../domain/config/config.ts'
 import type { Embedder } from '../../domain/engine/formal/embed.ts'
 import { DEFAULT_SEMANTIC_THRESHOLD } from '../../domain/engine/formal/semantic.ts'
 import type {
@@ -87,7 +100,12 @@ import type {
 } from '../../domain/requirements/document.ts'
 import { runTerminology } from '../../domain/terminology/terminology.ts'
 import { runnableInProse } from '../../ports/command-form.ts'
-import { DocPath, DocStore } from '../../ports/doc-store.ts'
+import {
+  CONFIG_PATH_CONVENTION,
+  type ConfigLocation,
+  DocPath,
+  DocStore,
+} from '../../ports/doc-store.ts'
 import { EmbedderService } from '../../ports/embedder.ts'
 import { ErrSolverInconclusive, ErrUsage } from '../../ports/errors.ts'
 import { SolverService } from '../../ports/solver.ts'
@@ -98,13 +116,11 @@ import { defineOperation } from '../runtime/operation.ts'
 // The two bounds that are policy, stated as values
 // ---------------------------------------------------------------------------
 
-/**
- * The maximum legal `--temporal-bound`. See the module header for the measurements
- * this number comes from; the short version is that k=300 hits Node's heap limit
- * and aborts with no envelope, and no knob can interrupt the encode phase that
- * gets there.
- */
-export const MAX_TEMPORAL_BOUND = 200
+// `MAX_TEMPORAL_BOUND` (see the module header for its measurements) and
+// `resolveReachabilityTimeoutMs` (see `REACHABILITY_TIMEOUT_IS_CANCELLABILITY` below) live in
+// `domain/config/config.ts`, beside the pinned-config table that compares on them, and are
+// re-exported here where the flags they govern are defined.
+export { MAX_TEMPORAL_BOUND, resolveReachabilityTimeoutMs }
 
 /**
  * `check` is the TERMINAL operation of a CLI process, and that is what makes
@@ -147,24 +163,6 @@ export const CHECK_IS_TERMINAL = true
  * measurement rather than rediscover it.
  */
 export const REACHABILITY_TIMEOUT_IS_CANCELLABILITY = true
-
-/**
- * Resolve the reachability tier's per-query bound.
- *
- * 0 is the INHERIT sentinel, not an "unbounded" one, and inheriting `--timeout-ms` is what
- * makes the flag a pure addition: every existing fixture passes `--reachability-timeout-ms`
- * absent, so each one keeps the output it was pinned against instead of needing a re-pin.
- *
- * Zero-is-inherit rather than a nullable field for the reason `check --fail-on-unmatched`
- * documents at length: a negative sentinel is UNREACHABLE from a shell (the CLI reads a
- * leading `-` as the next flag), and unlike that gate, 0 carries no useful meaning here —
- * a 0ms per-query timeout would time out every query before Z3 parsed the model, so
- * spending it as the sentinel costs nothing. The validator rejects negatives outright.
- */
-export const resolveReachabilityTimeoutMs = (
-  reachabilityTimeoutMs: number,
-  timeoutMs: number,
-): number => (reachabilityTimeoutMs > 0 ? reachabilityTimeoutMs : timeoutMs)
 
 // ---------------------------------------------------------------------------
 // The v5 report additions
@@ -266,7 +264,28 @@ export interface TerminologySummary {
   readonly acronymsExamined: number
 }
 
-export interface CheckPayload extends Omit<CheckReport, 'coverage'> {
+/**
+ * `data.run`: the engine's disclosure of what the run was made of, plus the pins it was
+ * compared against when a `symspec.config.json` exists (spec 007 AC-5-10).
+ *
+ * The three pin keys are ABSENT with no config, so a document with no config reports exactly
+ * the engine's `run`, byte for byte.
+ */
+export interface PinnedRunDisclosure extends RunDisclosure {
+  /**
+   * The config the pins were read from, and the rule that chose it: `toplevel` (the
+   * repository's), `directory` (no repository), or `flag`/`env` (named explicitly). A CI job
+   * asserts `source` and `path` to know the committed config governed the run.
+   */
+  readonly config?: ConfigLocation
+  /** The effective pins, per knob. */
+  readonly pinned?: EffectivePins
+  /** The knobs this run ran below their pin, each also a `run-weakened` demotion. */
+  readonly belowPinned?: readonly Knob[]
+}
+
+export interface CheckPayload extends Omit<CheckReport, 'coverage' | 'run'> {
+  readonly run: PinnedRunDisclosure
   readonly coverage: Omit<CheckReport['coverage'], 'demotions'> & {
     readonly demotions: readonly RepairableDemotion[]
   }
@@ -362,8 +381,18 @@ const CheckInput = Schema.Struct({
       }),
     ),
   ),
+  config: Schema.withDecodingDefaultKey<Schema.NullOr<Schema.String>>(Effect.succeed(null))(
+    Schema.NullOr(Schema.String).annotate({
+      default: null,
+      description: lines(
+        'Path to the symspec.config.json whose pins this run is compared against.',
+        CONFIG_PATH_CONVENTION,
+        'A named config that cannot be read is ERR_CONFIG_INVALID, never "no config".',
+      ),
+    }),
+  ),
   timeoutMs: intFlag(
-    2000,
+    KNOB_DEFAULTS.timeoutMs,
     lines(
       'Per-solver timeout in milliseconds, applied to EVERY solver every tier constructs',
       '(contradiction, subsumption, vacuity, incomplete, numeric, temporal, needs-review).',
@@ -376,7 +405,7 @@ const CheckInput = Schema.Struct({
   // rather than tidiness. See {@link resolveReachabilityTimeoutMs} for the sentinel and
   // {@link REACHABILITY_TIMEOUT_IS_CANCELLABILITY} for why the bound is not merely a budget.
   reachabilityTimeoutMs: intFlag(
-    0,
+    KNOB_DEFAULTS.reachabilityTimeoutMs,
     lines(
       'Per-query timeout in milliseconds for the UNBOUNDED reachability tier (Z3 Spacer), applied to',
       'each Horn query the tier issues. 0 (the default) INHERITS --timeout-ms, so omitting this flag',
@@ -395,7 +424,7 @@ const CheckInput = Schema.Struct({
     ),
   ),
   solverBudgetMs: intFlag(
-    0,
+    KNOB_DEFAULTS.solverBudgetMs,
     lines(
       'Whole-run wall-clock solver budget in milliseconds, spanning every solver tier. 0 means',
       'unbounded (the default), which is the engine behavior when the flag is absent.',
@@ -405,7 +434,7 @@ const CheckInput = Schema.Struct({
     ),
   ),
   temporalBound: intFlag(
-    0,
+    KNOB_DEFAULTS.temporalBound,
     lines(
       'Trace bound k for the OPT-IN bounded LTL→SMT temporal tier. 0 (the default) means the tier',
       'does not run; any value from 1 to 200 enables it — supplying a bound IS opting in.',
@@ -786,6 +815,70 @@ const withRepairs = (
 }
 
 // ---------------------------------------------------------------------------
+// The pinned run (spec 007 AC-5-10)
+// ---------------------------------------------------------------------------
+
+/**
+ * What this run was made of, as the knob table reads it: the flags, plus the embedder the
+ * engine reports it actually ran (`data.run.embedder`) and the threshold it ran at.
+ */
+const runSettingsOf = (input: typeof CheckInput.Type, run: RunDisclosure): RunSettings => ({
+  semantic: input.semantic,
+  embedder: run.embedder,
+  semanticThreshold:
+    run.semanticThreshold ??
+    (input.semanticThreshold !== null && Number.isFinite(input.semanticThreshold)
+      ? input.semanticThreshold
+      : KNOB_DEFAULTS.semanticThreshold),
+  timeoutMs: input.timeoutMs,
+  reachabilityTimeoutMs: input.reachabilityTimeoutMs,
+  solverBudgetMs: input.solverBudgetMs,
+  temporalBound: input.temporalBound,
+  strict: input.strict,
+})
+
+/**
+ * Compare one run against the pins of one config: the `data.run` disclosure and one
+ * `run-weakened` demotion per knob below its pin.
+ *
+ * Every such demotion carries the SAME repair — one command at every pin — because running it
+ * discharges all of them, where a per-knob command would discharge one and re-weaken the rest.
+ * A demotion can only push `verified` toward false, so a config can never make a run verify
+ * that would not verify without it.
+ */
+const pinnedRunOf = (
+  config: ConfigLocation,
+  gate: GatePins,
+  run: RunSettings,
+  docPath: string,
+): {
+  readonly disclosure: Required<Pick<PinnedRunDisclosure, 'config' | 'pinned' | 'belowPinned'>>
+  readonly demotions: readonly RepairableDemotion[]
+} => {
+  const pinned = effectivePins(gate)
+  const below = belowPinned(run, pinned)
+  const command = pinnedInvocation(
+    docPath,
+    run,
+    pinned,
+    config.source === 'flag' ? config.path : undefined,
+  )
+  return {
+    disclosure: {
+      config: { path: config.path, source: config.source },
+      pinned,
+      belowPinned: below,
+    },
+    demotions: below.map((knob) => ({
+      reason: 'run-weakened' as const,
+      requirementIds: [],
+      action: pinDemotionAction(knob, run, pinned, config.path, command),
+      repair: { ops: [], commands: [command] },
+    })),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The operation
 // ---------------------------------------------------------------------------
 
@@ -812,7 +905,11 @@ export const checkOp = defineOperation({
 
       yield* validate(input, path)
 
-      const loaded = yield* store.load(path)
+      // The document, plus the pinned config (named explicitly, or at its default location) and
+      // the split anchors (spec 007 AC-5-10). A config that cannot be read fails closed with
+      // ERR_CONFIG_INVALID rather than checking as though there were none.
+      const bundle = yield* store.loadBundle(path, docPath.resolveConfig(input.config))
+      const loaded = bundle.loaded
 
       // Yielding `boot` is what actually starts the WASM module, and it happens
       // HERE — after validation and after the document loaded — so a usage error or
@@ -1024,6 +1121,19 @@ export const checkOp = defineOperation({
         message: runnableInProse(f.message),
         ...(f.suggestion !== undefined ? { suggestion: runnableInProse(f.suggestion) } : {}),
       }))
+      // THE PINNED RUN (spec 007 AC-5-10) — only when a config exists. Compared AFTER the run,
+      // on what it was actually made of (`full.run` says which embedder ran), so a pin reads
+      // the effective settings and never the flags alone.
+      const pinning =
+        bundle.config !== undefined
+          ? pinnedRunOf(
+              bundle.config,
+              bundle.config.config.gate,
+              runSettingsOf(input, full.run),
+              path,
+            )
+          : undefined
+
       const allDemotions = [
         ...withRepairs(
           full.coverage.demotions,
@@ -1036,6 +1146,8 @@ export const checkOp = defineOperation({
           loaded.document,
         ),
         ...reachabilityDemotions,
+        // AC-5-10: one `run-weakened` per knob this run ran below its pin.
+        ...(pinning?.demotions ?? []),
       ]
 
       // Counts are RECOMPUTED over the merged set rather than incremented, so the exit
@@ -1057,6 +1169,8 @@ export const checkOp = defineOperation({
 
       const payload: CheckPayload = {
         ...shaped,
+        // With no config this IS the engine's `run`; with one, the pins ride beside it.
+        run: pinning !== undefined ? { ...shaped.run, ...pinning.disclosure } : shaped.run,
         findings: allFindings,
         counts,
         coverage: {

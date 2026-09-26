@@ -36,18 +36,18 @@ import {
 } from './catalog.ts'
 
 // ---------------------------------------------------------------------------
-// Coverage: all 88, in family order
+// Coverage: all 89, in family order
 // ---------------------------------------------------------------------------
 
 describe('the unified catalog spans all three code families', () => {
-  it('holds exactly 22 ERR_* / 42 FND_* / 24 GTWR_* = 88', () => {
-    // 22 ERR_*: v4's 21 plus spec 007's `ERR_CLAUSE_UNBOUND`.
+  it('holds exactly 23 ERR_* / 42 FND_* / 24 GTWR_* = 89', () => {
+    // 23 ERR_*: v4's 21 plus spec 007's `ERR_CLAUSE_UNBOUND` and `ERR_CONFIG_INVALID`.
     // 42 FND_*: the transplanted 30 plus `FND_NUMERIC_UNCOMPARED` and `FND_NUMBER_SPELLING_CANDIDATE`, plus 8 reachability-tier
     // (`FND_REACHABILITY_*`, `FND_RANGE_VIOLATION`, `FND_CERTIFICATE_DISAGREES`) and 2 `FND_TERM_*` /
     // `FND_ACRONYM_*`. The three live in different files because codes live with the tier
     // that emits them. They report the same `family`, because an agent switches on a code and
     // not on provenance.
-    expect(catalogCounts()).toEqual({ ERR: 22, FND: 42, GTWR: 24, total: 88 })
+    expect(catalogCounts()).toEqual({ ERR: 23, FND: 42, GTWR: 24, total: 89 })
   })
 
   it('resolves EVERY code in every catalog', () => {
@@ -58,7 +58,7 @@ describe('the unified catalog spans all three code families', () => {
       ...TERMINOLOGY_FND_CODES,
       ...GTWR_CODES,
     ] as readonly string[]
-    expect(codes).toHaveLength(88)
+    expect(codes).toHaveLength(89)
     for (const code of codes) {
       const entry = lookupCode(code)
       expect(entry, `${code} must resolve`).toBeDefined()
@@ -70,17 +70,17 @@ describe('the unified catalog spans all three code families', () => {
 
   it('lists the families in order, each in its own append-only order', () => {
     const rows = allCodes()
-    expect(rows.slice(0, 22).map((r) => r.family)).toEqual(Array(22).fill('ERR'))
+    expect(rows.slice(0, 23).map((r) => r.family)).toEqual(Array(23).fill('ERR'))
     // 42 FND rows: v4's 30, the numeric disclosure and the number-spelling proposal, then the reachability 8, then the
     // terminology 2 — all reporting `family: 'FND'`.
-    expect(rows.slice(22, 64).map((r) => r.family)).toEqual(Array(42).fill('FND'))
-    expect(rows.slice(64).map((r) => r.family)).toEqual(Array(24).fill('GTWR'))
+    expect(rows.slice(23, 65).map((r) => r.family)).toEqual(Array(42).fill('FND'))
+    expect(rows.slice(65).map((r) => r.family)).toEqual(Array(24).fill('GTWR'))
     // The per-family order is the shipped append-only order, unreordered — and WITHIN the
     // FND family, provenance order: the transplanted list, then the greenfield's.
-    expect(rows.slice(22, 54).map((r) => r.code)).toEqual([...FND_CODES])
-    expect(rows.slice(54, 62).map((r) => r.code)).toEqual([...REACHABILITY_FND_CODES])
-    expect(rows.slice(62, 64).map((r) => r.code)).toEqual([...TERMINOLOGY_FND_CODES])
-    expect(rows.slice(64).map((r) => r.code)).toEqual([...GTWR_CODES])
+    expect(rows.slice(23, 55).map((r) => r.code)).toEqual([...FND_CODES])
+    expect(rows.slice(55, 63).map((r) => r.code)).toEqual([...REACHABILITY_FND_CODES])
+    expect(rows.slice(63, 65).map((r) => r.code)).toEqual([...TERMINOLOGY_FND_CODES])
+    expect(rows.slice(65).map((r) => r.code)).toEqual([...GTWR_CODES])
   })
 
   it('publishes the description VERBATIM — the manifest`s own bytes', () => {
@@ -407,8 +407,8 @@ describe('nearestCodesAll ranks across all three families', () => {
     expect(nearestCodesAll('FND_', 5)).toHaveLength(5)
   })
 
-  it('draws from all 88 code strings', () => {
-    expect(allCodeStrings()).toHaveLength(88)
-    expect(new Set(allCodeStrings()).size, 'no duplicate codes across families').toBe(88)
+  it('draws from all 89 code strings', () => {
+    expect(allCodeStrings()).toHaveLength(89)
+    expect(new Set(allCodeStrings()).size, 'no duplicate codes across families').toBe(89)
   })
 })

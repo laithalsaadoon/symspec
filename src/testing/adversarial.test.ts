@@ -61,7 +61,7 @@ import { runOperation } from '../app/runtime/operation.ts'
 import type { RequirementsDoc as EngineDoc } from '../domain/engine/core/schema.ts'
 import type { RequirementsDocument } from '../domain/requirements/document.ts'
 import { foldOps } from '../domain/requirements/mutate.ts'
-import { DocPath, DocStore, makeDocPath } from '../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../ports/doc-store.ts'
 import { embedderLayerOf } from '../ports/embedder.ts'
 import { ErrDocNotFound } from '../ports/errors.ts'
 import { asRequirementsDocument, evalRoundCases } from './eval-rounds.ts'
@@ -83,7 +83,7 @@ const ARMED = { strict: true, temporalBound: 10, semantic: true } as const
 /** Run the greenfield `check` over one v3 document, fully armed. */
 const check = async (document: RequirementsDocument): Promise<CheckPayload> => {
   const store = Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: (path) =>
         path === 'doc.json'
           ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })

@@ -406,6 +406,16 @@ export interface Manifest {
   readonly opDirections: ManifestOpDirections
   /** What every finding code and demotion reason MEANS, and which a waiver may suppress. */
   readonly signalClasses: ManifestSignalClasses
+  /**
+   * The run knobs a `symspec.config.json` can pin, each with the flag that sets it and which way
+   * is stronger. A `check` run below a pinned knob is demoted `run-weakened` and listed in
+   * `data.run.belowPinned`.
+   */
+  readonly runWeakening: readonly {
+    readonly knob: string
+    readonly flag: string
+    readonly order: string
+  }[]
 }
 
 /** The op-direction table as the manifest publishes it. */
@@ -473,6 +483,7 @@ export const buildManifest = (args: {
   readonly scope: Readonly<Record<string, string>>
   readonly opDirections: ManifestOpDirections
   readonly signalClasses: ManifestSignalClasses
+  readonly runWeakening: Manifest['runWeakening']
 }): Manifest => ({
   apiVersion: args.apiVersion,
   version: args.version,
@@ -489,6 +500,7 @@ export const buildManifest = (args: {
   scope: args.scope,
   opDirections: args.opDirections,
   signalClasses: args.signalClasses,
+  runWeakening: args.runWeakening,
 })
 
 // ---------------------------------------------------------------------------

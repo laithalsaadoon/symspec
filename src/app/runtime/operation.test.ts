@@ -322,7 +322,14 @@ describe('buildManifest() — projection (b)', () => {
         ],
         demotions: [{ reason: 'run-weakened', class: 'run', drift: false, why: 'the run' }],
       },
+      runWeakening: [{ knob: 'strict', flag: '--strict', order: 'false is weaker than true.' }],
     })
+
+  it('publishes the run-weakening table it is given', () => {
+    expect(manifest().runWeakening).toEqual([
+      { knob: 'strict', flag: '--strict', order: 'false is weaker than true.' },
+    ])
+  })
 
   it('reads name, summary and type off the operation', () => {
     const row = manifest().operations[0]

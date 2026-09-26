@@ -36,7 +36,13 @@ import {
 } from '../../domain/requirements/document.ts'
 import { foldOps } from '../../domain/requirements/mutate.ts'
 import type { DocumentOp } from '../../domain/requirements/ops.ts'
-import { DocPath, DocStore, makeDocPath, type SaveInput } from '../../ports/doc-store.ts'
+import {
+  DocPath,
+  DocStore,
+  documentOnlyStore,
+  makeDocPath,
+  type SaveInput,
+} from '../../ports/doc-store.ts'
 import { embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound, type OperationalError } from '../../ports/errors.ts'
 import { EXIT_CLEAN, EXIT_FINDINGS_FAILURE, EXIT_INCONCLUSIVE } from '../../ports/exit.ts'
@@ -187,7 +193,7 @@ interface MemoryFs {
 
 const memoryStore = (fs: MemoryFs) =>
   Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: (path) => {
         const doc = fs.files.get(path)
         if (doc === undefined) {

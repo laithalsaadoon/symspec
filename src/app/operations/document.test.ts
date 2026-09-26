@@ -20,10 +20,14 @@
  * empty document, miss with near-misses, exact-case preference).
  */
 
+import { dirname, join } from 'node:path'
 import { Effect, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
+import { Intent, Policy } from '../../domain/anchor/anchor.ts'
+import { CONFIG_FILE_NAME, KNOBS, SymspecConfig } from '../../domain/config/config.ts'
 import {
   DOC_VERSION,
+  DOC_VERSION_VOCAB,
   emptyDocument,
   type LoadedDocument,
   type Requirement,
@@ -36,8 +40,14 @@ import {
   resolveId,
   resolveRef,
 } from '../../domain/requirements/resolve.ts'
-import { DocPath, DocStore, makeDocPath, type SaveInput } from '../../ports/doc-store.ts'
-import { ErrDocNotFound, type OperationalError } from '../../ports/errors.ts'
+import {
+  DocPath,
+  DocStore,
+  documentOnlyStore,
+  makeDocPath,
+  type SaveInput,
+} from '../../ports/doc-store.ts'
+import { ErrDocExists, ErrDocNotFound, type OperationalError } from '../../ports/errors.ts'
 import { type Operation, runOperation } from '../runtime/operation.ts'
 import { initOp, listOp, showOp } from './document.ts'
 
@@ -51,33 +61,33 @@ interface MemoryFs {
   readonly saves: SaveInput[]
 }
 
-const memoryStore = (fs: MemoryFs) =>
-  Layer.succeed(DocStore)(
-    DocStore.of({
-      load: (path) => {
-        const doc = fs.files.get(path)
-        if (doc === undefined) {
-          return Effect.fail(
-            new ErrDocNotFound({
-              error: `Could not read a requirements document at ${path}.`,
-              suggestions: [`Run \`symspec init ${path}\`.`],
-            }),
-          )
-        }
-        return Effect.succeed({
-          document: doc,
-          unknownKeys: {},
-          diagnostics: [],
-        } satisfies LoadedDocument)
-      },
-      save: (path, input) =>
-        Effect.sync(() => {
-          fs.files.set(path, input.document)
-          fs.saves.push(input)
-        }),
-      exists: (path) => Effect.succeed(fs.files.has(path)),
-    }),
-  )
+const memoryService = (fs: MemoryFs) =>
+  documentOnlyStore({
+    load: (path) => {
+      const doc = fs.files.get(path)
+      if (doc === undefined) {
+        return Effect.fail(
+          new ErrDocNotFound({
+            error: `Could not read a requirements document at ${path}.`,
+            suggestions: [`Run \`symspec init ${path}\`.`],
+          }),
+        )
+      }
+      return Effect.succeed({
+        document: doc,
+        unknownKeys: {},
+        diagnostics: [],
+      } satisfies LoadedDocument)
+    },
+    save: (path, input) =>
+      Effect.sync(() => {
+        fs.files.set(path, input.document)
+        fs.saves.push(input)
+      }),
+    exists: (path) => Effect.succeed(fs.files.has(path)),
+  })
+
+const memoryStore = (fs: MemoryFs) => Layer.succeed(DocStore)(memoryService(fs))
 
 const memoryPath = (env: Readonly<Record<string, string | undefined>> = {}) =>
   Layer.succeed(DocPath)(makeDocPath(env))
@@ -327,6 +337,147 @@ describe('init', () => {
     const fs = freshFs()
     runOp(op(initOp, {}), fs)
     expect([...fs.files.keys()]).toEqual(['./requirements.json'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// init --split
+// ---------------------------------------------------------------------------
+
+/** A memory filesystem that holds documents AND text files, for the anchors --split writes. */
+interface SplitFs extends MemoryFs {
+  readonly texts: Map<string, string>
+}
+
+const freshSplitFs = (): SplitFs => ({ files: new Map(), saves: [], texts: new Map() })
+
+/** The memory store, plus text files, a sibling config location, and an exclusive create. */
+const splitStore = (fs: SplitFs) => {
+  const base = memoryService(fs)
+  return Layer.succeed(DocStore)(
+    DocStore.of({
+      ...base,
+      exists: (path) => Effect.succeed(fs.files.has(path) || fs.texts.has(path)),
+      configPath: (path) =>
+        Effect.succeed({
+          path: join(dirname(path), CONFIG_FILE_NAME),
+          source: 'directory' as const,
+          document: path,
+        }),
+      create: (path, contents) =>
+        fs.files.has(path) || fs.texts.has(path)
+          ? Effect.fail(new ErrDocExists({ error: `${path} exists`, suggestions: [] }))
+          : Effect.sync(() => {
+              fs.texts.set(path, contents)
+            }),
+    }),
+  )
+}
+
+const runSplit = (raw: Record<string, unknown>, fs: SplitFs) =>
+  Effect.runSync(
+    Effect.provide(
+      Effect.result(op(initOp, { split: true, ...raw })),
+      Layer.mergeAll(splitStore(fs), memoryPath()),
+    ),
+  )
+
+const decodeJson = <A>(schema: Schema.Codec<A>, text: string | undefined): A =>
+  Schema.decodeUnknownSync(schema, { onExcessProperty: 'error' })(JSON.parse(text ?? 'null'))
+
+describe('init --split', () => {
+  it('writes the document, a skeleton intent and policy, and the config that names them', () => {
+    const fs = freshSplitFs()
+    const r = runSplit({ file: 'specs/r.json' }, fs)
+    expect(r._tag).toBe('Success')
+    expect(fs.files.get('specs/r.json')).toEqual(emptyDocument())
+    expect([...fs.texts.keys()].sort()).toEqual([
+      'specs/intent.json',
+      'specs/policy.json',
+      `specs/${CONFIG_FILE_NAME}`,
+    ])
+    expect(decodeJson(Intent, fs.texts.get('specs/intent.json'))).toEqual({
+      intentVersion: 1,
+      items: [],
+    })
+    expect(decodeJson(Policy, fs.texts.get('specs/policy.json'))).toEqual({
+      policyVersion: 1,
+      levels: [],
+      assign: {},
+    })
+    const config = decodeJson(SymspecConfig, fs.texts.get(`specs/${CONFIG_FILE_NAME}`))
+    expect(config.files).toEqual({
+      document: 'r.json',
+      intent: 'intent.json',
+      policy: 'policy.json',
+    })
+    // Every knob pinned, at the default a plain run takes.
+    expect(Object.keys(config.gate).sort()).toEqual([...KNOBS].sort())
+    if (r._tag === 'Success') {
+      expect((r.success.data as { split: unknown }).split).toEqual({
+        config: `specs/${CONFIG_FILE_NAME}`,
+        intent: 'specs/intent.json',
+        policy: 'specs/policy.json',
+      })
+    }
+  })
+
+  it('keeps an existing document instead of refusing or recreating it', () => {
+    const fs = freshSplitFs()
+    const existing = docWith(requirement(ID_A))
+    fs.files.set('r.json', existing)
+    const r = runSplit({ file: 'r.json' }, fs)
+    expect(r._tag).toBe('Success')
+    expect(fs.files.get('r.json')).toBe(existing)
+    expect(fs.saves).toEqual([])
+    if (r._tag === 'Success') {
+      expect(r.success.data).toMatchObject({ created: false, overwritten: false, requirements: 1 })
+    }
+  })
+
+  for (const occupied of ['intent.json', 'policy.json', CONFIG_FILE_NAME]) {
+    it(`never overwrites an existing ${occupied}, even with --force, and writes NOTHING`, () => {
+      for (const force of [false, true]) {
+        const fs = freshSplitFs()
+        fs.texts.set(occupied, '{"owner": "wrote this"}\n')
+        const r = runSplit({ file: 'r.json', force }, fs)
+        expect(r._tag, `force=${force}`).toBe('Failure')
+        if (r._tag === 'Failure') {
+          expect(asCatalogError(r.failure)?._tag).toBe('ERR_DOC_EXISTS')
+          expect(asCatalogError(r.failure)?.error).toContain(occupied)
+        }
+        // Byte-identical, and nothing else was written: not the document, not the others.
+        expect([...fs.texts.entries()]).toEqual([[occupied, '{"owner": "wrote this"}\n']])
+        expect(fs.files.size).toBe(0)
+        expect(fs.saves).toEqual([])
+      }
+    })
+  }
+
+  it('refuses a document that already carries an inline intent: a split copy would make two', () => {
+    const fs = freshSplitFs()
+    fs.files.set('r.json', {
+      ...emptyDocument(),
+      docVersion: DOC_VERSION_VOCAB,
+      intent: { intentVersion: 1, items: [] },
+    })
+    const r = runSplit({ file: 'r.json' }, fs)
+    expect(r._tag === 'Failure' ? asCatalogError(r.failure)?._tag : r._tag).toBe(
+      'ERR_CONFIG_INVALID',
+    )
+    expect(fs.texts.size).toBe(0)
+  })
+
+  it('without --split, init writes no anchor and reports no split key', () => {
+    const fs = freshSplitFs()
+    const r = Effect.runSync(
+      Effect.provide(
+        Effect.result(op(initOp, { file: 'r.json' })),
+        Layer.mergeAll(splitStore(fs), memoryPath()),
+      ),
+    )
+    expect(fs.texts.size).toBe(0)
+    expect(r._tag === 'Success' && 'split' in (r.success.data as object)).toBe(false)
   })
 })
 

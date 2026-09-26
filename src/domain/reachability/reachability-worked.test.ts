@@ -48,7 +48,7 @@ import { stubEmbedder } from '../../adapters/embedding/embedder.ts'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import { type CheckPayload, checkOp } from '../../app/operations/check.ts'
 import { runOperation } from '../../app/runtime/operation.ts'
-import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/doc-store.ts'
 import { embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import {
@@ -184,7 +184,7 @@ const check = (document: RequirementsDocument): Promise<CheckPayload> =>
       Effect.provide(
         Layer.mergeAll(
           Layer.succeed(DocStore)(
-            DocStore.of({
+            documentOnlyStore({
               load: (path) =>
                 path === 'doc.json'
                   ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })

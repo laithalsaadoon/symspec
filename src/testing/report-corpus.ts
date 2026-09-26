@@ -37,7 +37,7 @@
 import { Effect, Layer, ManagedRuntime } from 'effect'
 import type { RequirementsDocument } from '../domain/requirements/document.ts'
 import type { MutateOptions } from '../domain/requirements/mutate.ts'
-import { DocPath, DocStore, makeDocPath } from '../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../ports/doc-store.ts'
 import { embedderLayerOf } from '../ports/embedder.ts'
 import { ErrDocNotFound } from '../ports/errors.ts'
 import { asRequirementsDocument, evalRoundCases } from './eval-rounds.ts'
@@ -113,7 +113,7 @@ const reportRow = async (
   { label, doc, near }: ReportSource,
 ): Promise<string> => {
   const store = Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: (path) =>
         path === 'doc.json'
           ? Effect.succeed({ document: doc, unknownKeys: {}, diagnostics: [] })

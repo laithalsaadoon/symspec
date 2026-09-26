@@ -70,7 +70,7 @@ const ErrorFields = {
 } as const
 
 // ---------------------------------------------------------------------------
-// The 21 codes, in shipped (append-only) order
+// The codes, in shipped (append-only) order
 //
 // GOTCHA (v4 beta.102 + noImplicitOverride): the Runtime marker properties need
 // an `override` modifier. `Cause.YieldableError` already declares
@@ -355,6 +355,18 @@ export class ErrClauseUnbound extends Schema.TaggedErrorClass<ErrClauseUnbound>(
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
   override readonly [Runtime.errorReported] = false
 }
+/** `symspec.config.json`, or a split intent or policy file it names, cannot be read as one, or its location cannot be known (spec 007 AC-5-10). */
+export class ErrConfigInvalid extends Schema.TaggedErrorClass<ErrConfigInvalid>()(
+  'ERR_CONFIG_INVALID',
+  ErrorFields,
+  {
+    description:
+      '`symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, the document carries an inline intent or policy alongside a split one, a config named by --config or SYMSPEC_CONFIG does not exist, or `git rev-parse --show-toplevel` fails in the document directory with anything but the whole "not a git repository" discovery message git itself prints (a refusal that quotes a path spelling that phrase is still a refusal), including git refusing a bare repository the document resolves into (so where the config lives cannot be known). The run fails closed rather than checking without the pins. Suggestion: fix the file the message names; `symspec init --split` in an empty directory writes a valid skeleton of all three to compare against.',
+  },
+) {
+  override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
+  override readonly [Runtime.errorReported] = false
+}
 // ---------------------------------------------------------------------------
 // The closed union and the code list
 // ---------------------------------------------------------------------------
@@ -387,6 +399,7 @@ export type OperationalError =
   | ErrEmbedModelMissing
   | ErrDuplicateKey
   | ErrClauseUnbound
+  | ErrConfigInvalid
 
 /**
  * Every ERR_* class, in shipped order. The catalog projections
@@ -416,6 +429,7 @@ export const ERR_CLASSES = [
   ErrEmbedModelMissing,
   ErrDuplicateKey,
   ErrClauseUnbound,
+  ErrConfigInvalid,
 ] as const
 
 /** The union of ERR_* code strings. */

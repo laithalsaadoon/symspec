@@ -20,7 +20,7 @@ symspec install                            # drop this guidance into your agent 
 ```
 
 `manifest` is the machine-readable version of this document. `explain` answers for a
-single code across all 88 of them (22 `ERR_*`, 42 `FND_*`, 24 `GTWR_*`) and returns
+single code across all 89 of them (23 `ERR_*`, 42 `FND_*`, 24 `GTWR_*`) and returns
 its family, severity, tier, meaning, remedy, and a worked example where the catalog carries
 one — so a fix loop never pays for the whole contract to learn what one code means.
 
@@ -67,6 +67,38 @@ Failure:
   `--solver-budget-ms`: `{recommendedBudgetMs, reason, basis, rationale}`, extrapolated
   from the work THIS run completed and the time it took. Absent on an unbounded run and on a
   run with comfortable headroom — the absence is the all-clear.
+
+### Pinned runs
+
+A committed `symspec.config.json` pins the run settings the gate uses.
+
+Resolution precedence, in order: --config, then the SYMSPEC_CONFIG environment variable, then symspec.config.json at the toplevel `git rev-parse --show-toplevel` prints in the document's directory (symlinks resolved first), or in the document's own directory when git names no repository there. Nothing else is searched, and data.run.config names the path and which of these chose it.
+
+A config dropped beside the document inside a repository is not read, and git is asked with
+`safe.bareRepository=explicit`, so a document that resolves into a committed directory laid out
+as a bare repository fails closed as `ERR_CONFIG_INVALID`. `data.run.config` is
+`{path, source}`, where `source` is `toplevel`, `directory`, `flag` or `env`. The pins are
+authoritative in a CI job on a fresh clone that asserts `source` is `toplevel` and `path` is its
+checkout's config. A local agent that can write `.git/`, pass `--config` or set
+`SYMSPEC_CONFIG` can change what a local run reads, and that run discloses it there.
+
+`symspec init --split` writes one pinning every knob at its default, beside skeleton intent
+and policy files, and never overwrites any of the three. A `check` below a pin is demoted
+`run-weakened` once per knob and listed in `data.run.belowPinned` next to
+`data.run.pinned`; every such demotion carries the one command that runs at all the pins,
+built from the pins rather than the run's flags, so running it leaves `belowPinned` empty. The
+comparison reads the value each tier actually ran at:
+
+| Knob | Set by | Order |
+|---|---|---|
+| `semantic` | `--semantic` | false is weaker than true (the semantic tier did not run). |
+| `embedder` | `SYMSPEC_EMBED_STUB` | no embedder is weaker than the TEST stub, which is weaker than the pinned model. |
+| `semanticThreshold` | `--semantic-threshold` | higher is weaker (the paraphrase pass proposes less). |
+| `timeoutMs` | `--timeout-ms` | lower is weaker; the minimum legal value is 1. |
+| `reachabilityTimeoutMs` | `--reachability-timeout-ms` | lower is weaker, compared on the resolved bound (0 inherits --timeout-ms). |
+| `solverBudgetMs` | `--solver-budget-ms` | 0 (unbounded) is strongest; otherwise lower is weaker. |
+| `temporalBound` | `--temporal-bound` | 0 (off) is weakest; otherwise lower is weaker. |
+| `strict` | `--strict` | false is weaker than true (the strict gate did not run). |
 
 ## Operations
 
@@ -707,7 +739,7 @@ repair intended.
 
 ## Honest scope — read before trusting a verdict
 
-All 8 claims, verbatim:
+All 9 claims, verbatim:
 
 > The formal (SMT) tier is sound modulo atomization, given the conservative near-exact normalization of the atom table: every reported conflict is a genuine logical conflict of the requirements as atomized, and the atom table attached to each finding shows exactly what the solver compared.
 >
@@ -722,6 +754,8 @@ All 8 claims, verbatim:
 > Numeric conflicts are checked over linear integer/real arithmetic (LIA/LRA): requirements placing jointly unsatisfiable bounds on the same per-system quantity, in one role and one dimension, are reported as FND_NUMERIC_CONTRADICTION. A deadline (`within`), a duration (`for`), and a period (`every`) are three roles, an unmarked bound meets every role, and units convert exactly within a dimension. A pair the tier cannot decide as written (a deadline against a duration, two units no conversion relates, or guards the solver never asserted together) is disclosed as FND_NUMERIC_UNCOMPARED, which demotes verified and is never a verdict. Nonlinear-integer arithmetic remains out of scope (undecidable).
 >
 > The unbounded reachability tier proves a declared constraint over EVERY reachable state with no bound on path length (Z3 Spacer), every proof is independently re-verified by three plain-SMT obligations so a claim never rests on trusting the solver, and a violation carries the counterexample trace naming which requirements fired, in order. But the claim is about the STATE MODEL you declared, not about the requirement text: the `classify` expressions ARE the model, so a mis-declared effect yields a sound proof of the wrong thing. It runs only when a state model is committed (otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not run), every proof over a small model is ALSO re-decided by an independent explicit-state search (a disagreement is FND_CERTIFICATE_DISAGREES and withdraws the proof, and a search that stops without showing the model is too large to cover withholds the proof as FND_REACHABILITY_UNKNOWN), a proof that needs variables held fixed is FND_REACHABILITY_UNDER_HYPOTHESES only when the document DECLARES them `frame: stable` — and demotes verified — while one that needs undeclared frames is FND_REACHABILITY_UNKNOWN naming them, a write outside a declared range is FND_RANGE_VIOLATION rather than a silently disabled step, and an unsatisfiable initial state makes every constraint hold vacuously, reported at error severity because it MASKS violations rather than merely failing to prove one.
+>
+> The pinned run configuration is a gate only inside a boundary: a CI job that checks a fresh clone, with `symspec.config.json` and the intent and policy files it names under code-owner review. There the config is read from one place, `symspec.config.json` at the toplevel `git rev-parse --show-toplevel` prints for the document's real directory (symlinks resolved), asked with `safe.bareRepository=explicit` so a committed directory laid out as a bare repository is refused as ERR_CONFIG_INVALID rather than taken for a toplevel (git 2.38 or later honors that setting; an older git ignores it), nothing is searched, so a config committed beside the document is not read, and `data.run.config` reports `{path, source}` for the job to assert (`source` is `toplevel` and `path` is its checkout's config). Outside that boundary it is a disclosure, not a guard: a local agent that can write `.git/`, pass `--config` or set `SYMSPEC_CONFIG` can change which config a local run reads, and that run names what it read and why in `data.run.config`. A run below any pin is demoted `run-weakened`, so a config can only push `verified` toward false.
 >
 > `data.verified` is a COVERAGE claim about the whole document, not a verdict on it: it is true only when every requirement that COULD be cross-compared was (each was asserted together with a peer it shares vocabulary with, in a context group the solver decided — sharing a word is not a comparison), no two requirements demand opposite things of one response (an action and its negation, or two contrary actions such as open and close) under guards the solver never asserted together, every opposition candidate has been triaged (committed via `symspec antonym` / `symspec glossary`, or waived), no committed glossary entry names two contraries as one action, no solver call returned unknown, a decide-tier comparison actually ran, and the run itself was not weakened (the TEST stub embedder demotes, disclosed as `data.run.embedder`, and so does a `--semantic-threshold` above its default, disclosed as `data.run.semanticThreshold`). Two things it therefore does NOT mean. It does not account for proven findings: a document with a proven FND_CONTRADICTION reports `verified: true` and exits 1, because "I compared enough to certify" and "the spec is correct" are different claims and the exit codes are what keep them apart. And a document with fewer than two requirements is vacuously verified — there is no peer to share vocabulary with, so the absence of any cross-comparison is disclosed in `data.coverage.pairsCheckedNote` and `data.residualRisk` rather than as a demotion that could never be discharged. Propose-only findings and coverage statistics can only demote verified, never promote it. Each demotion is listed in `data.coverage.demotions` with the concrete command that discharges it, or the reads that inform the rewrite it needs, so an agent can iterate: `check --strict` (exit 3 on demotion) -> apply the listed ops or rewrite the named requirements -> re-check -> exit 0.
 
@@ -845,6 +879,7 @@ one.
 | `ERR_EMBED_MODEL_MISSING` | The embedding model (core to every `check`) is not cached and remote loading is disabled — the run fails closed rather than silently skipping the semantic/opposition tier. |
 | `ERR_DUPLICATE_KEY` | A create supplied a --key that another requirement already uses; keys must be unique. |
 | `ERR_CLAUSE_UNBOUND` | The words before the modal that no stored slot holds include an unbound clause marker (Unless, Provided (that), In case, Except, Before, Until, Only if, Even if), so the requirement is refused rather than stored without its condition. |
+| `ERR_CONFIG_INVALID` | `symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, the document carries an inline intent or policy alongside a split one, a config named by --config or SYMSPEC_CONFIG does not exist, or `git rev-parse --show-toplevel` fails in the document directory with anything but the whole "not a git repository" discovery message git itself prints (a refusal that quotes a path spelling that phrase is still a refusal), including git refusing a bare repository the document resolves into (so where the config lives cannot be known). The run fails closed rather than checking without the pins. |
 
 ## Finding codes (`FND_*`)
 

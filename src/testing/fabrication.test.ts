@@ -36,7 +36,7 @@ import { buildGlossaryPlan } from '../domain/glossary/glossary-plan.ts'
 import type { RequirementsDocument } from '../domain/requirements/document.ts'
 import { foldOps } from '../domain/requirements/mutate.ts'
 import type { DocumentOp } from '../domain/requirements/ops.ts'
-import { DocPath, DocStore, makeDocPath } from '../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../ports/doc-store.ts'
 import { embedderLayerOf } from '../ports/embedder.ts'
 import { ErrDocNotFound } from '../ports/errors.ts'
 import { crossSlotBridgeDoc, fabricationCases, req } from './fabrication.ts'
@@ -69,7 +69,7 @@ const ARMED = { strict: true, temporalBound: 10, semantic: true } as const
 
 const check = async (document: RequirementsDocument): Promise<CheckPayload> => {
   const store = Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: (path) =>
         path === 'doc.json'
           ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })

@@ -43,6 +43,8 @@
  * promise, then the reference tables it will come back to.
  */
 
+import { CONFIG_FILE_NAME } from '../../domain/config/config.ts'
+import { CONFIG_PATH_CONVENTION } from '../../ports/doc-store.ts'
 import { allCodes, type CodeEntry } from './catalog.ts'
 import { renderCraft } from './craft.ts'
 import { API_VERSION } from './envelope.ts'
@@ -72,6 +74,16 @@ const exitTable = (manifest: Manifest): string =>
     '| Code | Meaning |',
     '|---|---|',
     ...manifest.exitCodes.map((row) => `| **${row.code}** | ${cell(row.meaning)} |`),
+  ].join('\n')
+
+/** The pinned-run knob table, projected from the manifest's \`runWeakening\`. */
+const runWeakeningTable = (manifest: Manifest): string =>
+  [
+    '| Knob | Set by | Order |',
+    '|---|---|---|',
+    ...manifest.runWeakening.map(
+      (row) => `| \`${row.knob}\` | \`${row.flag}\` | ${cell(row.order)} |`,
+    ),
   ].join('\n')
 
 /**
@@ -236,6 +248,29 @@ ${exitTable(manifest)}
   \`--solver-budget-ms\`: \`{recommendedBudgetMs, reason, basis, rationale}\`, extrapolated
   from the work THIS run completed and the time it took. Absent on an unbounded run and on a
   run with comfortable headroom — the absence is the all-clear.
+
+### Pinned runs
+
+A committed \`${CONFIG_FILE_NAME}\` pins the run settings the gate uses.
+
+${CONFIG_PATH_CONVENTION}
+
+A config dropped beside the document inside a repository is not read, and git is asked with
+\`safe.bareRepository=explicit\`, so a document that resolves into a committed directory laid out
+as a bare repository fails closed as \`ERR_CONFIG_INVALID\`. \`data.run.config\` is
+\`{path, source}\`, where \`source\` is \`toplevel\`, \`directory\`, \`flag\` or \`env\`. The pins are
+authoritative in a CI job on a fresh clone that asserts \`source\` is \`toplevel\` and \`path\` is its
+checkout's config. A local agent that can write \`.git/\`, pass \`--config\` or set
+\`SYMSPEC_CONFIG\` can change what a local run reads, and that run discloses it there.
+
+\`symspec init --split\` writes one pinning every knob at its default, beside skeleton intent
+and policy files, and never overwrites any of the three. A \`check\` below a pin is demoted
+\`run-weakened\` once per knob and listed in \`data.run.belowPinned\` next to
+\`data.run.pinned\`; every such demotion carries the one command that runs at all the pins,
+built from the pins rather than the run's flags, so running it leaves \`belowPinned\` empty. The
+comparison reads the value each tier actually ran at:
+
+${runWeakeningTable(manifest)}
 
 ## Operations
 

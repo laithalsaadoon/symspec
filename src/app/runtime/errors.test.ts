@@ -65,12 +65,14 @@ const ERR_CODES_SNAPSHOT = [
   'ERR_DUPLICATE_KEY',
   // Spec 007 AC-2-2: a leading clause with no EARS slot is refused, not dropped.
   'ERR_CLAUSE_UNBOUND',
+  // Spec 007 AC-5-10: a pinned config that cannot be read fails closed.
+  'ERR_CONFIG_INVALID',
 ] as const
 
 describe('append-only ERR_* catalog', () => {
   it('holds the 21 v4 codes plus the greenfield appends', () => {
-    expect(ERR_CODES).toHaveLength(22)
-    expect(ERR_CODES_SNAPSHOT).toHaveLength(22)
+    expect(ERR_CODES).toHaveLength(23)
+    expect(ERR_CODES_SNAPSHOT).toHaveLength(23)
   })
 
   it('keeps every shipped code at its original index', () => {

@@ -240,7 +240,7 @@ describe('explain — AC-A-3: every code through the operation', () => {
     const published = [...manifest.errorCodes, ...manifest.findingCodes, ...manifest.lintCodes].map(
       (row) => row.code,
     )
-    expect(published).toHaveLength(88)
+    expect(published).toHaveLength(89)
 
     for (const code of published) {
       const env = await Effect.runPromise(runOperation(explainOp, { code }))

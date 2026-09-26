@@ -44,9 +44,18 @@
  */
 
 import { execFile, execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -1513,5 +1522,379 @@ describe('spec 007 document format v4, through the real process', () => {
     const { envelope, code } = runJson('list', doc)
     expect(code).toBe(2)
     expect(envelope.code).toBe('ERR_SCHEMA_VERSION')
+  })
+})
+
+/**
+ * Spec 007 AC-5-10 and the AC-5-13 `init --split` half, on the SHIPPED bundle: the fixed config
+ * location, the effective-value comparators, and the write-safety of `init --split` are each
+ * observed through a real process, a real filesystem and the real exit code.
+ *
+ * The suite runs on the TEST stub embedder, which the engine already demotes `run-weakened`.
+ * So these assertions read `data.run.belowPinned` and the demotion ACTION, which name the knob,
+ * rather than the bare reason, which the stub shares.
+ */
+describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () => {
+  const roots: string[] = []
+  const workDir = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), 'symspec-pins-cli-'))
+    roots.push(dir)
+    return dir
+  }
+  afterAll(async () => {
+    const { rm } = await import('node:fs/promises')
+    await Promise.all(roots.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+  })
+
+  const CONFIG = 'symspec.config.json'
+  const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
+
+  /** git with no inherited GIT_* variable (a hook's GIT_DIR would redirect it); stderr captured. */
+  const git = (cwd: string, ...args: string[]): string =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_'))),
+    }).trim()
+
+  /** Make `root` a repository toplevel, the way an owner does. */
+  const repoAt = (root: string): void => {
+    git(root, 'init', '-q')
+  }
+
+  /** The CLI with extra environment variables. */
+  const runJsonEnv = (env: Record<string, string>, ...args: string[]) => {
+    const r = spawnSync(process.execPath, [BUNDLE, ...args], {
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
+    })
+    return { envelope: JSON.parse(r.stdout ?? '') as Record<string, unknown>, code: r.status ?? -1 }
+  }
+
+  /** An initialized document in `dir`, with an optional config beside it. */
+  const docIn = (dir: string, gate?: Record<string, unknown>): string => {
+    const doc = join(dir, 'requirements.json')
+    expect(run('init', doc).code).toBe(0)
+    if (gate !== undefined) writeFileSync(join(dir, CONFIG), json({ configVersion: 1, gate }))
+    return doc
+  }
+
+  const checkRun = (...args: string[]) => {
+    const { envelope, code } = runJson('check', ...args)
+    const data = envelope.data as {
+      run: {
+        belowPinned?: string[]
+        pinned?: Record<string, unknown>
+        config?: { path: string; source: string }
+      }
+      coverage: { demotions: { reason: string; action: string }[] }
+    }
+    return { code, data, envelope }
+  }
+
+  it('--temporal-bound 1 under a pinned 10 is run-weakened; 10 is not (sabotage (a))', () => {
+    const doc = docIn(workDir(), { temporalBound: 10 })
+    const below = checkRun(doc, '--temporal-bound', '1')
+    expect(below.data.run.belowPinned).toEqual(['temporalBound'])
+    expect(below.data.run.pinned).toEqual({ temporalBound: 10 })
+    const pinDemotion = below.data.coverage.demotions.find((d) =>
+      d.action.includes('temporalBound'),
+    )
+    expect(pinDemotion?.reason).toBe('run-weakened')
+    expect(pinDemotion?.action).toContain('--temporal-bound 10')
+    expect(checkRun(doc, '--temporal-bound', '10').data.run.belowPinned).toEqual([])
+  })
+
+  it('--reachability-timeout-ms 1 under a pinned 0 (inherit) is run-weakened (sabotage (b), F10)', () => {
+    const doc = docIn(workDir(), { reachabilityTimeoutMs: 0 })
+    const below = checkRun(doc, '--reachability-timeout-ms', '1')
+    expect(below.data.run.belowPinned).toEqual(['reachabilityTimeoutMs'])
+    expect(below.data.run.pinned).toEqual({ reachabilityTimeoutMs: 2000 })
+    expect(checkRun(doc).data.run.belowPinned).toEqual([])
+  })
+
+  it('reads the config at the repository toplevel, never a weaker one beside the document (sabotage (c), F11)', () => {
+    const root = workDir()
+    repoAt(root)
+    writeFileSync(join(root, CONFIG), json({ configVersion: 1, gate: { temporalBound: 10 } }))
+    const sub = join(root, 'specs')
+    mkdirSync(sub)
+    const doc = docIn(sub, {})
+    const { data } = checkRun(doc, '--temporal-bound', '1')
+    expect(data.run.config).toEqual({ path: join(realpathSync(root), CONFIG), source: 'toplevel' })
+    expect(data.run.belowPinned).toEqual(['temporalBound'])
+  })
+
+  /** A repository committing docs/requirements.json and a toplevel config pinning temporalBound 10. */
+  const committedRepo = () => {
+    const root = realpathSync(workDir())
+    repoAt(root)
+    writeFileSync(join(root, CONFIG), json({ configVersion: 1, gate: { temporalBound: 10 } }))
+    const docs = join(root, 'docs')
+    mkdirSync(docs)
+    const doc = docIn(docs)
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'init')
+    return { root, docs, doc }
+  }
+
+  it('on a fresh clone, committed content cannot move the config off the clone`s toplevel (F11)', () => {
+    const { root, docs } = committedRepo()
+    // A weaker config committed beside the document is committed content, and it is not read.
+    writeFileSync(join(docs, CONFIG), json({ configVersion: 1, gate: {} }))
+    // A nested `.git` cannot be committed at all: git refuses the path.
+    writeFileSync(join(docs, '.git'), 'gitdir: ../.git\n')
+    const blob = git(root, 'hash-object', '-w', join(docs, '.git'))
+    expect(() =>
+      git(root, 'update-index', '--add', '--cacheinfo', `100644,${blob},docs/.git`),
+    ).toThrow()
+    rmSync(join(docs, '.git'))
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'shadow')
+    const clone = join(realpathSync(workDir()), 'clone')
+    git(root, 'clone', '-q', root, clone)
+    const { code, data } = checkRun(
+      join(clone, 'docs', 'requirements.json'),
+      '--temporal-bound',
+      '1',
+    )
+    expect(code).toBe(0)
+    // What a CI job asserts: the committed toplevel config of ITS checkout governed the run.
+    expect(data.run.config).toEqual({ path: join(clone, CONFIG), source: 'toplevel' })
+    expect(data.run.belowPinned).toEqual(['temporalBound'])
+  })
+
+  // Git's refusal quotes the bare directory's path. A committed name spelling git's own
+  // "not a git repository" must not pass for no repository, which would fall back to the
+  // weaker config beside the document and drop the pins.
+  it.each([
+    ['fake'],
+    ['NOT A GIT REPOSITORY'],
+    [join('n', 'not a git repository', 'fake')],
+  ])('on a fresh clone, a committed directory laid out as a bare repository is refused, not a toplevel (F11, %s)', (name) => {
+    const { root, docs } = committedRepo()
+    // Git discovers any directory holding HEAD, objects/ and refs/ as a bare repository and
+    // honors a core.worktree its committed config names, so this directory is committable.
+    const fake = join(root, name)
+    for (const sub of ['objects', 'refs', 'wt']) mkdirSync(join(fake, sub), { recursive: true })
+    writeFileSync(join(fake, 'HEAD'), 'ref: refs/heads/main\n')
+    writeFileSync(join(fake, 'objects', '.keep'), '')
+    writeFileSync(join(fake, 'refs', '.keep'), '')
+    writeFileSync(
+      join(fake, 'config'),
+      '[core]\n\trepositoryformatversion = 0\n\tbare = false\n\tworktree = wt\n',
+    )
+    writeFileSync(join(fake, 'wt', CONFIG), json({ configVersion: 1, gate: {} }))
+    git(root, 'mv', join(docs, 'requirements.json'), join(fake, 'wt', 'requirements.json'))
+    symlinkSync(
+      relative(docs, join(fake, 'wt', 'requirements.json')),
+      join(docs, 'requirements.json'),
+    )
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'attack')
+    const clone = join(realpathSync(workDir()), 'clone')
+    git(root, 'clone', '-q', root, clone)
+    // The default invocation, from the checkout, on the committed document path.
+    const r = spawnSync(process.execPath, [BUNDLE, 'check', '--temporal-bound', '1'], {
+      cwd: join(clone, 'docs'),
+      encoding: 'utf8',
+    })
+    const envelope = JSON.parse(r.stdout) as { code?: string; error?: string }
+    expect(r.status).toBe(2)
+    expect(envelope.code).toBe('ERR_CONFIG_INVALID')
+    expect(envelope.error).toContain('bare repository')
+  })
+
+  it('a symlinked directory or document reads the config of the repository it resolves into (F11)', () => {
+    const { root, docs } = committedRepo()
+    // The shadow a lexical walk would read: a config beside the link, pinning nothing.
+    const outside = realpathSync(workDir())
+    writeFileSync(join(outside, CONFIG), json({ configVersion: 1, gate: {} }))
+    symlinkSync(docs, join(outside, 'd'))
+    symlinkSync(join(docs, 'requirements.json'), join(outside, 'r.json'))
+    for (const via of [join(outside, 'd', 'requirements.json'), join(outside, 'r.json')]) {
+      const { data } = checkRun(via, '--temporal-bound', '1')
+      expect(data.run.config, via).toEqual({ path: join(root, CONFIG), source: 'toplevel' })
+      expect(data.run.belowPinned, via).toEqual(['temporalBound'])
+    }
+    expect(git(root, 'status', '--porcelain', '--ignored', '-uall')).toBe('')
+  })
+
+  it('the toplevel is the one git rev-parse prints: a linked work tree reads its own', () => {
+    const { root } = committedRepo()
+    const linked = join(realpathSync(workDir()), 'wt')
+    git(root, 'worktree', 'add', '-q', '--detach', linked)
+    writeFileSync(join(linked, CONFIG), json({ configVersion: 1, gate: { temporalBound: 20 } }))
+    const { data } = checkRun(join(linked, 'docs', 'requirements.json'), '--temporal-bound', '10')
+    expect(git(join(linked, 'docs'), 'rev-parse', '--show-toplevel')).toBe(linked)
+    expect(data.run.config).toEqual({ path: join(linked, CONFIG), source: 'toplevel' })
+    expect(data.run.pinned).toEqual({ temporalBound: 20 })
+  })
+
+  it('asks git about the document, not about a GIT_DIR the caller inherited', () => {
+    const { root, doc } = committedRepo()
+    const other = realpathSync(workDir())
+    repoAt(other)
+    writeFileSync(join(other, CONFIG), json({ configVersion: 1, gate: {} }))
+    const hooked = runJsonEnv(
+      { GIT_DIR: join(other, '.git'), GIT_WORK_TREE: other },
+      'check',
+      doc,
+      '--temporal-bound',
+      '1',
+    )
+    const run = (hooked.envelope.data as { run: Record<string, unknown> }).run
+    expect(run.config).toEqual({ path: join(root, CONFIG), source: 'toplevel' })
+    expect(run.belowPinned).toEqual(['temporalBound'])
+  })
+
+  it('with no git to ask, the config beside the document is read and disclosed as directory', () => {
+    const { docs, doc } = committedRepo()
+    writeFileSync(join(docs, CONFIG), json({ configVersion: 1, gate: {} }))
+    const noGit = runJsonEnv({ PATH: join(docs, 'no-such-bin') }, 'check', doc)
+    const run = (noGit.envelope.data as { run: Record<string, unknown> }).run
+    expect(run.config).toEqual({ path: join(docs, CONFIG), source: 'directory' })
+  })
+
+  it('--config and SYMSPEC_CONFIG replace the toplevel config, and data.run.config says so', () => {
+    const { root, doc } = committedRepo()
+    const elsewhere = realpathSync(workDir())
+    const byFlag = join(elsewhere, 'flag.json')
+    const byEnv = join(elsewhere, 'env.json')
+    writeFileSync(byFlag, json({ configVersion: 1, gate: { temporalBound: 30 } }))
+    writeFileSync(byEnv, json({ configVersion: 1, gate: { temporalBound: 40 } }))
+    const flagged = checkRun(doc, '--temporal-bound', '1', '--config', byFlag)
+    expect(flagged.data.run.config).toEqual({ path: byFlag, source: 'flag' })
+    expect(flagged.data.run.pinned).toEqual({ temporalBound: 30 })
+    // The repair re-reads the same config, so running it discharges the pins it was built from.
+    const repair = flagged.data.coverage.demotions.find((d) => d.action.includes('pinned by'))
+    expect(repair?.action).toContain(`--config ${byFlag}`)
+    const env = { SYMSPEC_CONFIG: byEnv }
+    const viaEnv = runJsonEnv(env, 'check', doc, '--temporal-bound', '1')
+    const envRun = (viaEnv.envelope.data as { run: Record<string, unknown> }).run
+    expect(envRun.config).toEqual({ path: byEnv, source: 'env' })
+    expect(envRun.pinned).toEqual({ temporalBound: 40 })
+    // The flag beats the environment.
+    const both = runJsonEnv(env, 'check', doc, '--config', byFlag)
+    expect((both.envelope.data as { run: Record<string, unknown> }).run.config).toEqual({
+      path: byFlag,
+      source: 'flag',
+    })
+    // An empty SYMSPEC_CONFIG is unset: the toplevel config governs.
+    const empty = runJsonEnv({ SYMSPEC_CONFIG: '' }, 'check', doc)
+    expect((empty.envelope.data as { run: Record<string, unknown> }).run.config).toEqual({
+      path: join(root, CONFIG),
+      source: 'toplevel',
+    })
+  })
+
+  it('an explicit config that cannot be read fails closed as ERR_CONFIG_INVALID', () => {
+    const { doc } = committedRepo()
+    const missing = join(realpathSync(workDir()), 'absent.json')
+    const flagged = runJson('check', doc, '--config', missing)
+    expect(flagged.code).toBe(2)
+    expect(flagged.envelope.code).toBe('ERR_CONFIG_INVALID')
+    const viaEnv = runJsonEnv({ SYMSPEC_CONFIG: missing }, 'check', doc)
+    expect(viaEnv.code).toBe(2)
+    expect(viaEnv.envelope.code).toBe('ERR_CONFIG_INVALID')
+  })
+
+  it('outside a repository, the config beside the document is read and disclosed as directory', () => {
+    const dir = realpathSync(workDir())
+    const doc = docIn(dir, { temporalBound: 10 })
+    const { data } = checkRun(doc, '--temporal-bound', '1')
+    expect(data.run.config).toEqual({ path: join(dir, CONFIG), source: 'directory' })
+    expect(data.run.belowPinned).toEqual(['temporalBound'])
+  })
+
+  it('running the published repair discharges every pin, even one the run met by a flag', () => {
+    const doc = docIn(workDir(), { timeoutMs: 5000, temporalBound: 10, strict: true })
+    const pinRepair = (args: string[]) => {
+      const { data } = checkRun(...args)
+      const commands = data.coverage.demotions
+        .filter((d) => d.action.includes('pinned by'))
+        .map((d) => (d as { repair?: { commands: string[] } }).repair?.commands[0])
+      expect(new Set(commands).size).toBeLessThanOrEqual(1)
+      return { below: data.run.belowPinned, command: commands[0] }
+    }
+    const first = pinRepair([doc, '--temporal-bound', '10', '--strict', '--timeout-ms', '1'])
+    expect(first.below).toEqual(['timeoutMs', 'reachabilityTimeoutMs'])
+    const tokens = (first.command ?? '').split(' ')
+    // No embedder pin, so the command sets no environment: it is `symspec check <doc> ...`.
+    expect(tokens.slice(0, 3)).toEqual(['symspec', 'check', doc])
+    const second = pinRepair([doc, ...tokens.slice(3)])
+    expect(second.below).toEqual([])
+    expect(second.command).toBeUndefined()
+  })
+
+  it('a config that is not JSON fails closed as ERR_CONFIG_INVALID at exit 2', () => {
+    const dir = workDir()
+    const doc = docIn(dir)
+    writeFileSync(join(dir, CONFIG), '{ nope')
+    const { envelope, code } = runJson('check', doc)
+    expect(code).toBe(2)
+    expect(envelope.code).toBe('ERR_CONFIG_INVALID')
+  })
+
+  it('init --split writes the anchors and the config; check then reads them', () => {
+    const dir = workDir()
+    const doc = join(dir, 'requirements.json')
+    const { envelope, code } = runJson('init', doc, '--split')
+    expect(code).toBe(0)
+    expect((envelope.data as { split: unknown }).split).toEqual({
+      config: join(dir, CONFIG),
+      intent: join(dir, 'intent.json'),
+      policy: join(dir, 'policy.json'),
+    })
+    const config = JSON.parse(readFileSync(join(dir, CONFIG), 'utf8')) as {
+      files: Record<string, string>
+      gate: Record<string, unknown>
+    }
+    expect(config.files).toEqual({
+      document: 'requirements.json',
+      intent: 'intent.json',
+      policy: 'policy.json',
+    })
+    // Pinned at the defaults, so the only knob a suite run is below is the stub embedder.
+    const checked = checkRun(doc)
+    expect(checked.data.run.belowPinned).toEqual(['embedder'])
+    expect(
+      checked.data.coverage.demotions.some(
+        (d) =>
+          d.reason === 'run-weakened' && d.action.includes('SYMSPEC_EMBED_STUB=0 symspec check'),
+      ),
+    ).toBe(true)
+  })
+
+  it('init --split never overwrites an existing anchor, even with --force (sabotage (d))', () => {
+    const dir = workDir()
+    const doc = join(dir, 'requirements.json')
+    const owned = json({ intentVersion: 1, items: [{ id: 'I1', text: 'The owner wrote this.' }] })
+    writeFileSync(join(dir, 'intent.json'), owned)
+    for (const extra of [[], ['--force']]) {
+      const { envelope, code } = runJson('init', doc, '--split', ...extra)
+      expect(code).toBe(2)
+      expect(envelope.code).toBe('ERR_DOC_EXISTS')
+      expect(readFileSync(join(dir, 'intent.json'), 'utf8')).toBe(owned)
+      expect(existsSync(join(dir, 'policy.json'))).toBe(false)
+      expect(existsSync(join(dir, CONFIG))).toBe(false)
+      expect(existsSync(doc)).toBe(false)
+    }
+  })
+
+  it('the manifest publishes the knob table as runWeakening', () => {
+    const { envelope } = runJson('manifest')
+    const rows = (envelope.data as { runWeakening: { knob: string; flag: string }[] }).runWeakening
+    expect(rows.map((r) => r.knob)).toEqual([
+      'semantic',
+      'embedder',
+      'semanticThreshold',
+      'timeoutMs',
+      'reachabilityTimeoutMs',
+      'solverBudgetMs',
+      'temporalBound',
+      'strict',
+    ])
   })
 })
