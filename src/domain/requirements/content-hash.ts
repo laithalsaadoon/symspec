@@ -27,7 +27,7 @@
  * published test vectors and against `node:crypto` in `content-hash.test.ts`.
  */
 
-import type { Requirement, RequirementsDocument } from './document.ts'
+import type { Requirement, RequirementsDocument, Waiver } from './document.ts'
 
 /** SHA-256 round constants: the first 32 bits of the fractional cube roots of the first 64 primes. */
 const K = new Uint32Array([
@@ -126,3 +126,28 @@ export const requirementsContentHash = (
   }
   return `sha256:${sha256Hex(JSON.stringify(rows))}`
 }
+
+/**
+ * True unless `w` is bound to reviewed text that has since changed.
+ *
+ * A waiver carrying a `contentHash` records that someone read the requirements it scopes AS THEY
+ * WERE WRITTEN THEN. The tier cannot hash (it never sees the document's own fields), so the check
+ * is made at the boundary (`../compat.ts`) and a stale waiver never crosses: the finding it covered
+ * comes back, with its demotion, for the new text to be reviewed. Dropping a waiver can only put a
+ * finding back, never invent one, so this direction is the safe one. A hash with no requirement to
+ * bind to, or naming a requirement that is gone, binds nothing and is dropped too.
+ *
+ * One function: the boundary drops by it, and the vocabulary's projection rebinds by it.
+ */
+export const bindsCurrentText = (
+  document: Pick<RequirementsDocument, 'requirements'>,
+  w: Waiver,
+): boolean => {
+  if (w.contentHash === undefined) return true
+  const ids = waiverScope(w)
+  return ids.length > 0 && requirementsContentHash(document, ids) === w.contentHash
+}
+
+/** The requirements a waiver's `contentHash` is taken over: its exact set, else its one requirement. */
+export const waiverScope = (w: Waiver): readonly string[] =>
+  w.requirementIds ?? (w.requirementId !== undefined ? [w.requirementId] : [])

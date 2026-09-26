@@ -31,6 +31,11 @@
  */
 
 import { requirementBounds } from '../engine/formal/numeric.ts'
+import {
+  bindsCurrentText,
+  requirementsContentHash,
+  waiverScope,
+} from '../requirements/content-hash.ts'
 import type {
   Requirement,
   RequirementsDocument,
@@ -280,26 +285,44 @@ export const projectVocabulary = (
 }
 
 /**
- * The document the engine is handed: each rewritten slot replaced, and each quantity-alias row
- * appended to the glossary, the channel the numeric tier reads its aliases from. The sentence,
- * and every other field, is passed verbatim.
+ * The document the engine is handed: each rewritten slot replaced, each quantity-alias row
+ * appended to the glossary, the channel the numeric tier reads its aliases from, and each waiver
+ * bound to the requirements as the author wrote them. The sentence, and every other field, is
+ * passed verbatim.
+ *
+ * A waiver's `contentHash` binds it to the text a reviewer read, and the boundary drops one whose
+ * requirements no longer hash to it (`bindsCurrentText`). The author's text is the document's, and
+ * a projection does not edit it: so a waiver that binds the document as written is rebound to the
+ * requirements as projected, and one that does not is dropped here, as the boundary would drop it
+ * on the original. Either way the check honours exactly the waivers it honours on the original: a
+ * rewrite neither resurrects a finding someone reviewed nor revives a review of other words.
  */
 export const projectedDocument = (
   doc: RequirementsDocument,
   projection: Projection,
-): RequirementsDocument => ({
-  ...doc,
-  glossary: [
-    ...doc.glossary,
-    ...projection.quantityAliases.map((row) => ({
-      canonical: row.canonical,
-      aliases: [...row.aliases],
-    })),
-  ],
-  requirements: Object.fromEntries(
+): RequirementsDocument => {
+  const requirements = Object.fromEntries(
     Object.values(doc.requirements).map((r) => [
       r.id,
       { ...r, ...(projection.rewrites.get(r.id) ?? {}) },
     ]),
-  ),
-})
+  )
+  const waivers = doc.waivers.flatMap((w) => {
+    if (!bindsCurrentText(doc, w)) return []
+    if (w.contentHash === undefined) return [w]
+    const contentHash = requirementsContentHash({ requirements }, waiverScope(w))
+    return contentHash === undefined ? [] : [{ ...w, contentHash }]
+  })
+  return {
+    ...doc,
+    glossary: [
+      ...doc.glossary,
+      ...projection.quantityAliases.map((row) => ({
+        canonical: row.canonical,
+        aliases: [...row.aliases],
+      })),
+    ],
+    requirements,
+    waivers,
+  }
+}

@@ -24,6 +24,7 @@ import { orthogonalEmbedder } from '../../testing/gaming.ts'
 import { toEngineDoc } from '../compat.ts'
 import type { Embedder } from '../engine/formal/embed.ts'
 import { runCheck } from '../engine/pipeline/check.ts'
+import { requirementsContentHash } from '../requirements/content-hash.ts'
 import {
   DOC_VERSION_VOCAB,
   emptyDocument,
@@ -687,6 +688,60 @@ describe('a rewrite keeps the system scope the per-system tiers pair on', () => 
     expect(brief(doc)).toEqual([['V1', 'alias', 'plant']])
     const { after, rewrites } = await beforeAndAfter(doc, constantEmbedder)
     expect(rewrites).toEqual([])
+    expect(after).toEqual(before)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A waiver bound to the reviewed text
+// ---------------------------------------------------------------------------
+
+describe('a rewrite keeps the waivers the check honours', () => {
+  const r1 = req({ systemName: 'The pump controller', systemResponse: 'enable the pump' })
+  const r2 = req({ systemName: 'The pump controller', systemResponse: 'throttle the pump' })
+  const ids = [r1.id, r2.id].sort()
+  const plain = docOf([r1, r2])
+  const waived: RequirementsDocument = {
+    ...plain,
+    waivers: [
+      {
+        code: 'FND_OPPOSITION_CANDIDATE',
+        requirementIds: ids,
+        contentHash: requirementsContentHash(plain, ids) ?? '',
+        reason: 'reviewed: enabling and throttling the pump are not opposites',
+      },
+    ],
+  }
+
+  it('admits a system rename, and the waiver reviewed on the text as written still binds', async () => {
+    const doc = renamed(waived, (s) => s.kind === 'system', 'The main pump controller')
+    expect(brief(doc)).toEqual([])
+    const { before, after, rewrites } = await beforeAndAfter(doc, constantEmbedder)
+    expect(rewrites.map((r) => Object.keys(r))).toEqual([['systemName'], ['systemName']])
+    expect(before.findings.some((f) => f.startsWith('FND_OPPOSITION_CANDIDATE'))).toBe(false)
+    expect(after).toEqual(before)
+  })
+
+  it('keeps a stale waiver stale when the rewrite restores the text it was reviewed on', async () => {
+    // The waiver was reviewed on `The main pump controller`; the requirements now say `The pump
+    // controller`, so the check drops it. Renaming back to the reviewed words must not revive it.
+    const reviewed = docOf([
+      { ...r1, systemName: 'The main pump controller' },
+      { ...r2, systemName: 'The main pump controller' },
+    ])
+    const stale: RequirementsDocument = {
+      ...plain,
+      waivers: [
+        {
+          ...(waived.waivers[0] as (typeof waived.waivers)[number]),
+          contentHash: requirementsContentHash(reviewed, ids) ?? '',
+        },
+      ],
+    }
+    const doc = renamed(stale, (s) => s.kind === 'system', 'The main pump controller')
+    expect(brief(doc)).toEqual([])
+    const { before, after } = await beforeAndAfter(doc, constantEmbedder)
+    expect(before.findings.some((f) => f.startsWith('FND_OPPOSITION_CANDIDATE'))).toBe(true)
     expect(after).toEqual(before)
   })
 })
