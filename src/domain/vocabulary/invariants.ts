@@ -20,7 +20,7 @@
  * | V-REF | a merge or distinct record names declared symbols |
  * | V-DISTINCT | no merge unites a pair stated distinct |
  * | V-FROZEN | the glossary and terms digest equals the one taken when the vocabulary was adopted |
- * | V-READ | every tier that reads a slot's words (lint, the propose and disclosure tiers, `readers.ts`) reads the projection as it reads the original, less what the declaration implies |
+ * | V-READ | every tier that reads a slot's words (lint, the propose and disclosure tiers, the embedder's texts, `readers.ts`) reads the projection as it reads the original, less what the declaration implies, and the check honours the same waivers |
  *
  * ## Two halves: the record, and the outcome
  *
@@ -49,7 +49,7 @@
  * and the vocabulary alone, and it was measured.
  */
 
-import { sha256Hex } from '../requirements/content-hash.ts'
+import { bindsCurrentText, sha256Hex } from '../requirements/content-hash.ts'
 import {
   type RequirementsDocument,
   type SymbolId,
@@ -482,12 +482,15 @@ const measureOf =
         slot: p.slot,
       })),
     ]
-    const read = (after: boolean) =>
-      readOutcome(units(after), projection.labelProbes, {
-        glossary: (after ? projected : doc).glossary,
+    const read = (after: boolean) => {
+      const side = after ? projected : doc
+      return readOutcome(units(after), projection.labelProbes, {
+        glossary: side.glossary,
         antonyms: tables.antonyms,
         terms: doc.terms,
+        waivers: side.waivers.filter((w) => bindsCurrentText(side, w)),
       })
+    }
     const before = read(false)
     const after = read(true)
 

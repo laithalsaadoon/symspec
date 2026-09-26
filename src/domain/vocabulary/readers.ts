@@ -7,8 +7,8 @@
  * (S6-D3): a lost opposition candidate or relational disclosure is a lost demotion, and
  * `verified` goes to true over a document the declared partition says nothing about.
  *
- * Every such reader in the check path is listed here, read by the engine's OWN function, and
- * compared between the original and the projected document:
+ * Every such reader in the check path is listed here, read by the engine's OWN function over the
+ * inputs `check` builds for it, and compared between the original and the projected document:
  *
  * | reader | engine function | how it is compared |
  * |---|---|---|
@@ -17,9 +17,12 @@
  * | ambiguity family (the distinct system spellings) | `detectAmbiguity` | equal |
  * | quantities in a converted unit no bound read | `unreadQuantities` | equal |
  * | inter-entity comparison words | `hasRelationalLanguage` | equal |
+ * | the text the similarity graph embeds | `sentence`, else the response | equal |
+ * | the waivers the check honours | `bindsCurrentText` | equal |
  * | a response that may perform a prohibited action | `mayPerform` | equal |
  * | opposition candidates, every pair related | `oppositionCandidatesOver` | per pair, and see the cosine |
- * | opposite-polarity near-duplicates (AC-3-6) | `similarSemanticOver` | see the cosine |
+ * | similarity suggestions, every pair related | `similarSemanticOver` | see the cosine |
+ * | relational / aggregate disclosures | `findRelationalUnchecked` over `relationalInputsOf` | per pair, and per group |
  * | quantity-alias candidates | `findQuantityAliasCandidates` | per pair |
  * | digit-separator spellings | `findNumberSpellingCandidates` | per pair |
  * | lexically similar, un-unified responses | `findSimilarUnunified` | per pair |
@@ -29,20 +32,20 @@
  * A reader of ONE requirement must read the same thing after the projection as before: nothing
  * the declaration says makes a requirement's lint, unread numbers or comparison words change.
  *
- * Four readers are not listed because the atom comparison already decides them. The relational
- * tier groups on the system scope and `normalize` of each guard slot, and one `normalize` is one
- * atom, so it groups more only where the atoms join, and a spelling left verbatim beside a
- * rewritten one splits its atom first. Its `guardKey === ''` skip changes only with an emptied
- * slot, which drops an atom. The contrary-glossary-alias demotion names the responses whose
- * phrase is in an entry with contraries, which are exactly the responses linked to that entry's
- * atom (the `entry` use). And the tiers' own same-atom and contrary skips read the atoms.
+ * Two readers are not listed because the atom comparison already decides them. The
+ * contrary-glossary-alias demotion names the responses whose phrase is in an entry with
+ * contraries, which are exactly the responses linked to that entry's atom (the `entry` use). And
+ * the tiers' own same-atom and contrary skips read the atoms.
  *
  * A PAIR reader may change only as the declaration implies, and each reader says how. A pair a
  * tier stops reporting is implied only where the pair's own subject became one class (a
  * similarity suggestion or an opposition candidate is discharged by the merge its message names
- * for synonyms; a quantity-alias candidate by the quantity merge). A pair a tier starts
- * reporting is implied only where the pair's context became one class (two systems merged, two
- * guards merged). Anything else is a refusal naming the pair.
+ * for synonyms; a quantity-alias candidate by the quantity merge), or, for the relational tier,
+ * where a member's singleton atom joined another's. A pair a tier starts reporting is implied only
+ * where the pair's context became one class (two systems merged, two guards merged: for the
+ * relational tier, a guard atom of each newly one, since it groups on the guard's words, which a
+ * committed glossary can already have joined into one atom). Anything else is a refusal naming
+ * the pair.
  *
  * Where a one-requirement or whole-set reader would change under a merge (two systems merged
  * leave fewer spellings for a reference to be ambiguous among), the merge is refused too: the
@@ -50,16 +53,17 @@
  *
  * ## The cosine is not the text's to change
  *
- * The opposition and near-duplicate tiers gate some pairs on the embedder's cosine, which is a
- * reading of the response text: a rewrite changes it, and no model runs here. So each is read at
- * both extremes (every pair unrelated, every pair related). A pair reported at one extreme and not
- * the other rests on the cosine, and so does every near-duplicate (the tier gates each on its
- * threshold): such a pair must keep both its texts, so the model reads it as it did. The pairs
- * reported with every pair related must be the same pairs before and after (a structural one is
- * reported at both extremes, so this is where a rewrite that deletes the structure is caught).
- * The plain similarity suggestions (`FND_SIMILAR_SEMANTIC` with no near-duplicate, and the
- * similarity graph, which embeds the stored sentence, or the response when none is stored) are
- * not held to their cosine: they demote nothing, and a canonical's embedding is the author's.
+ * The opposition and similarity tiers gate their pairs on the embedder's cosine, which is the
+ * model's reading of the response text: a rewrite changes it, and no model runs here. So each is
+ * read at both extremes (every pair unrelated, every pair related). Every pair the similarity tier
+ * reports with every pair related rests on its threshold, and so does an opposition candidate
+ * reported at one extreme and not the other: such a pair must keep both its texts, so the model
+ * reads it as it did, unless the declaration makes it one response (the tier then skips it, as
+ * implied). The opposition candidates reported with every pair related must be the same pairs
+ * before and after (a structural one is reported at both extremes, so this is where a rewrite that
+ * deletes the structure is caught). `FND_NO_PAIRS_CHECKED` is read off the same pairs, so it
+ * cannot move either. The similarity graph embeds the stored sentence, which a projection never
+ * rewrites, or the response where no sentence is stored, and that text is held equal.
  */
 
 import { detectAmbiguity } from '../engine/formal/ambiguity.ts'
@@ -71,11 +75,16 @@ import {
   makeDigitSeparatorFoldAtomize,
   termIndex,
 } from '../engine/formal/atomize.ts'
-import { encode, toEncodable } from '../engine/formal/encode.ts'
+import { atomOwnerRoster, encode, toEncodable } from '../engine/formal/encode.ts'
 import { findNumberSpellingCandidates } from '../engine/formal/number-spelling.ts'
 import { mayPerform, requirementBounds, unreadQuantities } from '../engine/formal/numeric.ts'
 import { findQuantityAliasCandidates, guardKeyOf } from '../engine/formal/quantity-alias.ts'
-import { hasRelationalLanguage } from '../engine/formal/relational.ts'
+import {
+  findRelationalUnchecked,
+  hasRelationalLanguage,
+  relationalInputsOf,
+  singletonOwners,
+} from '../engine/formal/relational.ts'
 import {
   oppositionCandidatesOver,
   type PairCosine,
@@ -83,9 +92,10 @@ import {
 } from '../engine/formal/semantic.ts'
 import { findSimilarUnunified } from '../engine/formal/similar.ts'
 import { checkGtWRules, checkGtWRulesSet, lintSentenceOf } from '../engine/lint/gtwr.ts'
+import { isBlocked } from '../engine/pipeline/gate.ts'
 import { detectExactDuplicates } from '../engine/solvers/free/duplicates.ts'
 import { emitCandidatePairs } from '../engine/solvers/free/pairwise-filter.ts'
-import type { Requirement } from '../requirements/document.ts'
+import type { Requirement, Waiver } from '../requirements/document.ts'
 import { viewOf } from './keys.ts'
 
 const SEP = '\u0000'
@@ -93,6 +103,7 @@ const SEP = '\u0000'
 /** The pair readers, each a set of requirement pairs `lo\0hi`. */
 export const PAIR_READERS = [
   'opposition',
+  'relational',
   'quantity-alias',
   'number-spelling',
   'similar-ununified',
@@ -110,8 +121,12 @@ export interface TextReading {
   readonly pairs: ReadonlyMap<PairReader, ReadonlySet<string>>
   /** The pairs reported whatever the cosine: opposition candidates with every pair unrelated. */
   readonly structural: ReadonlySet<string>
-  /** The opposite-polarity near-duplicates with every pair related, each gated on the cosine. */
-  readonly nearDuplicates: ReadonlySet<string>
+  /** The similarity suggestions with every pair related: each is gated on the cosine. */
+  readonly similar: ReadonlySet<string>
+  /** Each relational / aggregate disclosure, as its sorted requirement ids. */
+  readonly relationalGroups: ReadonlySet<string>
+  /** The requirements owning an atom no other included requirement shares. */
+  readonly unmatched: ReadonlySet<string>
   /** Per requirement, the response text the embedder reads. */
   readonly embedded: ReadonlyMap<string, string>
   /** Keyed `<requirement>\0<kind>`: each slot's atom in digit-separator fold space. */
@@ -128,11 +143,13 @@ const sortedJson = (items: readonly string[]): string => JSON.stringify([...item
 const UNRELATED: PairCosine = () => 0
 const RELATED: PairCosine = () => 1
 
-/** The tables a document is read under, as the engine indexes them. */
+/** The tables a document is read under, as the engine indexes them, and the waivers it honours. */
 export interface TextTables {
   readonly glossary: ReadonlyArray<{ canonical: string; aliases: readonly string[] }>
   readonly antonyms: ReadonlyMap<string, AntonymEntry> | undefined
   readonly terms: ReadonlyArray<{ canonical: string; aliases: readonly string[] }>
+  /** The waivers the boundary hands the engine: those `bindsCurrentText` keeps. */
+  readonly waivers: readonly Waiver[]
 }
 
 /** Read every text reader over `requirements`, under `tables`. */
@@ -155,6 +172,7 @@ export const readText = (requirements: readonly Requirement[], tables: TextTable
     )
     at('unread', JSON.stringify(unreadQuantities(view).map((q) => q.text)))
     at('relational-language', String(hasRelationalLanguage(view.systemResponse)))
+    at('graph-text', view.sentence || view.systemResponse)
     const enc = encodable[i] ?? toEncodable(view)
     embedded.set(view.id, enc.systemResponse)
     for (const row of encode(enc, fold).atoms) folded.set(`${view.id}${SEP}${row.kind}`, row.atom)
@@ -173,6 +191,18 @@ export const readText = (requirements: readonly Requirement[], tables: TextTable
         ),
       ),
     ],
+    [
+      'waivers',
+      JSON.stringify(
+        tables.waivers.map((w) => [
+          w.code,
+          w.reason,
+          w.requirementId ?? null,
+          w.requirementIds ?? null,
+          w.contentHash !== undefined,
+        ]),
+      ),
+    ],
   ])
 
   const bounds = views.map((v) => requirementBounds(v, glossary).map((b) => b.predicate))
@@ -184,13 +214,31 @@ export const readText = (requirements: readonly Requirement[], tables: TextTable
     ...(tables.antonyms !== undefined ? { antonyms: tables.antonyms } : {}),
   }
   const structural = pairsOf(oppositionCandidatesOver(encodable, UNRELATED, semanticOptions))
-  const nearDuplicates = pairsOf(
-    similarSemanticOver(encodable, RELATED, { glossary, atomize }).filter(
-      (f) => f.oppositePolarityVariant,
-    ),
+  const similar = pairsOf(similarSemanticOver(encodable, RELATED, { glossary, atomize }))
+
+  // The relational tier, over what `check` hands it: every requirement, each marked by whether it
+  // owns an atom the roster of the requirements the gate admits shares with no other.
+  const admitted = views.flatMap((v, i) =>
+    isBlocked(v, tables.waivers) ? [] : [encode(encodable[i] ?? toEncodable(v), atomize)],
   )
+  const unmatched = singletonOwners(atomOwnerRoster(admitted))
+  const boundCount = new Map(views.map((v, i) => [v.id, (bounds[i] ?? []).length]))
+  const relational = findRelationalUnchecked(
+    relationalInputsOf(views, (id) => (boundCount.get(id) ?? 0) > 0, unmatched),
+  )
+  const relationalGroups = new Set(relational.map((f) => f.requirementIds.join(',')))
   const pairs = new Map<PairReader, ReadonlySet<string>>([
     ['opposition', pairsOf(oppositionCandidatesOver(encodable, RELATED, semanticOptions))],
+    [
+      'relational',
+      new Set(
+        relational.flatMap((f) =>
+          f.requirementIds.flatMap((a, i) =>
+            f.requirementIds.slice(i + 1).map((b) => pairOf(a, b)),
+          ),
+        ),
+      ),
+    ],
     [
       'quantity-alias',
       pairsOf(
@@ -242,7 +290,18 @@ export const readText = (requirements: readonly Requirement[], tables: TextTable
     }
   }
 
-  return { unary, whole, pairs, structural, nearDuplicates, embedded, folded, loose }
+  return {
+    unary,
+    whole,
+    pairs,
+    structural,
+    similar,
+    relationalGroups,
+    unmatched,
+    embedded,
+    folded,
+    loose,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +330,9 @@ const READER_WORDS: Readonly<Record<string, string>> = {
   lint: 'the GtWR lint findings',
   unread: 'the quantities the numeric tier discloses as unread',
   'relational-language': 'the comparison words the relational tier reads',
+  'graph-text': 'the text the similarity graph embeds',
+  waivers: 'the waivers the check honours',
+  relational: 'the relational disclosures',
   ambiguity: 'the ambiguity findings',
   'lint-set': 'the set-level GtWR lint findings',
   opposition: 'the opposition candidates',
@@ -286,11 +348,16 @@ type Implied = (a: string, b: string, j: PairJoins) => boolean
 
 interface PairJoins {
   readonly slot: (a: string, b: string, kinds: readonly string[]) => boolean
+  /** A guard atom of `a` and one of `b`, in either guard slot, newly one. */
+  readonly guards: (a: string, b: string) => boolean
   readonly bounds: (a: string, b: string) => boolean
   readonly spelling: (a: string, b: string) => boolean
+  /** Whether `a` or `b` owns an unshared atom on one side and not the other. */
+  readonly unmatched: (a: string, b: string) => boolean
 }
 
 const never: Implied = () => false
+const GUARD_KINDS = ['trig', 'pre'] as const
 const systems: Implied = (a, b, j) => j.slot(a, b, ['sys'])
 const responses: Implied = (a, b, j) => j.slot(a, b, ['resp'])
 const anySlot: Implied = (a, b, j) => j.slot(a, b, ['sys', 'resp', 'trig', 'pre'])
@@ -299,6 +366,10 @@ const IMPLIED: Readonly<Record<PairReader, { readonly lost: Implied; readonly ga
   {
     // A candidate's own advice for synonyms is the merge: one atom, which the solver decides.
     opposition: { lost: responses, gained: systems },
+    relational: {
+      lost: (a, b, j) => j.unmatched(a, b),
+      gained: (a, b, j) => j.slot(a, b, ['sys']) || j.guards(a, b) || j.unmatched(a, b),
+    },
     'quantity-alias': {
       lost: (a, b, j) => j.bounds(a, b),
       gained: (a, b, j) => j.slot(a, b, ['sys', 'trig', 'pre']),
@@ -356,6 +427,22 @@ export const compareText = (
           joins.atom('after', a, k) === joins.atom('after', b, k)
         )
       }),
+    guards: (a, b) =>
+      GUARD_KINDS.some((ka) =>
+        GUARD_KINDS.some((kb) => {
+          const ba = joins.atom('before', a, ka)
+          const bb = joins.atom('before', b, kb)
+          const aa = joins.atom('after', a, ka)
+          return (
+            ba !== undefined &&
+            bb !== undefined &&
+            ba !== bb &&
+            aa !== undefined &&
+            aa === joins.atom('after', b, kb)
+          )
+        }),
+      ),
+    unmatched: (a, b) => [a, b].some((u) => before.unmatched.has(u) !== after.unmatched.has(u)),
     bounds: (a, b) => {
       const ba = joins.boundKeys('before', a)
       const bb = joins.boundKeys('before', b)
@@ -392,12 +479,29 @@ export const compareText = (
     }
   }
 
-  // A pair reported at one cosine extreme and not the other rests on the model's cosine: it
-  // keeps both texts, or the model may read it differently.
+  // A relational disclosure names a whole group, and a regroup can leave every pair reported
+  // (three pair disclosures become one over the three): it is implied only where one of the
+  // group's pairs could change as the declaration implies.
+  for (const group of [...before.relationalGroups, ...after.relationalGroups]) {
+    if (before.relationalGroups.has(group) === after.relationalGroups.has(group)) continue
+    const ids = group.split(',')
+    const { lost, gained } = IMPLIED.relational
+    const implied = ids.some((a, i) =>
+      ids.slice(i + 1).some((b) => lost(a, b, pairJoins) || gained(a, b, pairJoins)),
+    )
+    if (implied) continue
+    return {
+      detail: `the projection would regroup ${READER_WORDS.relational} over ${ids.map((u) => `"${joins.textOf(u)}"`).join(', ')}, which the vocabulary does not imply`,
+      phrases: ids.map((u) => joins.textOf(u)),
+    }
+  }
+
+  // A pair the cosine gates keeps both texts, or the model may read it differently: every
+  // similarity suggestion, and an opposition candidate reported at one extreme and not the other.
   const changedText = (u: string) => before.embedded.get(u) !== after.embedded.get(u)
   const cosineGated = [before, after].flatMap((r) => [
     ...[...(r.pairs.get('opposition') ?? [])].filter((p) => !r.structural.has(p)),
-    ...r.nearDuplicates,
+    ...r.similar,
   ])
   for (const pair of cosineGated) {
     const [a = '', b = ''] = pair.split(SEP)

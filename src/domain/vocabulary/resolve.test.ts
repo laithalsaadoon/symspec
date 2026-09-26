@@ -35,6 +35,7 @@ import {
   SYMBOL_ID_PATTERN,
   type SymbolKind,
   type VocabSymbol,
+  vocabularyOf,
 } from '../requirements/document.ts'
 import { renderSentence } from '../requirements/render.ts'
 import { buildProjection, buildVocabularyIndex } from './build.ts'
@@ -42,8 +43,14 @@ import { KIND_PREFIX, mintSymbolIds } from './ids.ts'
 import { implicitVocabulary, renderVocabularyOps, type VocabDeclaration } from './implicit.ts'
 import { frozenTablesDigest } from './invariants.ts'
 import { phraseKey, tablesOf } from './keys.ts'
-import { projectedDocument } from './projection.ts'
-import { bindingOf, type RequirementBinding, resolvePhrase, resolveRequirement } from './resolve.ts'
+import { projectedDocument, projectVocabulary } from './projection.ts'
+import {
+  bindingOf,
+  indexVocabulary,
+  type RequirementBinding,
+  resolvePhrase,
+  resolveRequirement,
+} from './resolve.ts'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -1252,10 +1259,24 @@ describe('V-OPP refuses an action phrase the encoder reads as negated', () => {
 // ---------------------------------------------------------------------------
 
 describe('a rewrite that changes how a bound label is spelled keeps the quantity partition', () => {
+  // Each fixture rewrites R1's response while R2, of the same system, is a similarity pair the
+  // model's cosine gates: the validator refuses the rewrite for that (`readers.ts`, the cosine is
+  // not the text's to change), whatever the quantity rows do. So the rows are measured here on the
+  // projection the declaration WOULD give, unvalidated, which is what the validator measures a
+  // candidate on: the refusal is the cosine's, and the rows are right.
   const pump = { id: 'sys_pump', kind: 'system', canonical: 'pump', aliases: [] } as const
+  const unvalidated = (doc: RequirementsDocument) => {
+    const projection = projectVocabulary(
+      doc,
+      indexVocabulary(vocabularyOf(doc), tablesOf(doc), 'explicit'),
+    )
+    return { projection, document: projectedDocument(doc, projection) }
+  }
   const keysAfter = (doc: RequirementsDocument) => [
-    ...new Set(quantityKeysOf(projected(doc)).flat()),
+    ...new Set(quantityKeysOf(unvalidated(doc).document).flat()),
   ]
+  const cosineRefusal = (doc: RequirementsDocument) =>
+    buildVocabularyIndex(doc).invalid.filter((v) => /rests on the embedding/.test(v.detail))
 
   it('keeps one quantity when an action alias respells its label (`level%` -> `level`)', async () => {
     const r1 = req({ systemName: 'pump', systemResponse: 'keep the level% at most 5 m' })
@@ -1267,16 +1288,18 @@ describe('a rewrite that changes how a bound label is spelled keeps the quantity
       quantity('qty_a', 'hold the depth', ['keep the level%']),
     ])
     expect(await codesOf(doc)).toContain('FND_NUMERIC_CONTRADICTION')
-    // Admitted, with R1 rewritten: the row covers the label the rewrite hands the tier.
-    expect(brief(doc)).toEqual([])
-    expect(buildProjection(doc)?.rewrites.get(r1.id)).toEqual({
-      systemResponse: 'keep the level at most 5 m',
-    })
-    expect(buildProjection(doc)?.quantityAliases).toEqual([
+    // The row splits R1 from R2 in the similarity tier's reading, which then reads R1's rewritten
+    // words: it is the entry refused.
+    expect(brief(doc)).toEqual([['V-READ', 'alias', 'keep the level%']])
+    expect(cosineRefusal(doc)).toHaveLength(1)
+    // The row covers the label the rewrite hands the tier.
+    const { projection, document } = unvalidated(doc)
+    expect(projection.rewrites.get(r1.id)).toEqual({ systemResponse: 'keep the level at most 5 m' })
+    expect(projection.quantityAliases).toEqual([
       { canonical: 'hold the depth', aliases: ['keep the level', 'keep the level%'] },
     ])
     expect(keysAfter(doc)).toHaveLength(1)
-    expect(await codesOf(projected(doc))).toContain('FND_NUMERIC_CONTRADICTION')
+    expect(await codesOf(document)).toContain('FND_NUMERIC_CONTRADICTION')
   })
 
   it('keeps it in the merge form', async () => {
@@ -1297,9 +1320,10 @@ describe('a rewrite that changes how a bound label is spelled keeps the quantity
         { a: 'qty_a', b: 'qty_b' },
       ],
     )
-    expect(brief(doc)).toEqual([])
+    expect(brief(doc)).toEqual([['V-READ', 'merge', 'act_a+act_b']])
+    expect(cosineRefusal(doc)).toHaveLength(1)
     expect(keysAfter(doc)).toHaveLength(1)
-    expect(await codesOf(projected(doc))).toContain('FND_NUMERIC_CONTRADICTION')
+    expect(await codesOf(unvalidated(doc).document)).toContain('FND_NUMERIC_CONTRADICTION')
   })
 
   it('keeps one quantity when the canonical carries the `%` (`level` -> `level%`), on either bound', async () => {
@@ -1332,10 +1356,12 @@ describe('a rewrite that changes how a bound label is spelled keeps the quantity
       )
       for (const doc of [alias, merge]) {
         expect(await codesOf(doc)).toContain('FND_NUMERIC_CONTRADICTION')
-        expect(brief(doc), rewritten).toEqual([])
-        expect(buildProjection(doc)?.rewrites.has(r1.id), rewritten).toBe(true)
+        expect(cosineRefusal(doc), rewritten).toHaveLength(1)
+        expect(unvalidated(doc).projection.rewrites.has(r1.id), rewritten).toBe(true)
         expect(keysAfter(doc), rewritten).toHaveLength(1)
-        expect(await codesOf(projected(doc)), rewritten).toContain('FND_NUMERIC_CONTRADICTION')
+        expect(await codesOf(unvalidated(doc).document), rewritten).toContain(
+          'FND_NUMERIC_CONTRADICTION',
+        )
       }
     }
   })
@@ -1343,6 +1369,8 @@ describe('a rewrite that changes how a bound label is spelled keeps the quantity
   it('never lets a row capture the label an action rewrite hands the tier', async () => {
     // The rewrite gives R1 the label `keep the level`, which `a keep the level`, qty_x's alias,
     // is looked up on: the row would join R1's bound to R2's, two quantities no author merged.
+    // The probe of act_b's canonical hands the tier the same label, so the row is refused even
+    // with the rewrite itself refused for the cosine.
     const r1 = req({ systemName: 'pump', systemResponse: 'keep the level% at most 5 m' })
     const r2 = req({ systemName: 'pump', systemResponse: 'keep the depth at least 10 m' })
     const doc = withVocabulary(docOf([r1, r2]), [
@@ -1353,12 +1381,19 @@ describe('a rewrite that changes how a bound label is spelled keeps the quantity
       quantity('qty_y', 'keep the level%'),
     ])
     expect(await codesOf(doc)).not.toContain('FND_NUMERIC_CONTRADICTION')
-    expect(brief(doc)).toEqual([['V-NUM', 'alias', 'a keep the level']])
-    // The refusal names the labels it would have joined.
-    expect(buildVocabularyIndex(doc).invalid.map((v) => v.colliding)).toEqual([
-      ['keep the level%', 'keep the depth'],
+    expect(brief(doc)).toEqual([
+      ['V-READ', 'alias', 'keep the level% at most 5 m'],
+      ['V-NUM', 'alias', 'a keep the level'],
     ])
-    expect(keysAfter(doc)).toHaveLength(2)
+    // The refusal names the labels it would have joined: the probe's, R1 being left as written.
+    expect(
+      buildVocabularyIndex(doc)
+        .invalid.filter((v) => v.invariant === 'V-NUM')
+        .map((v) => v.colliding),
+    ).toEqual([['keep the level', 'keep the depth']])
+    // Unvalidated, the row joins the two quantities; admitted, they stay two.
+    expect(keysAfter(doc)).toHaveLength(1)
+    expect([...new Set(quantityKeysOf(projected(doc)).flat())]).toHaveLength(2)
     expect(await codesOf(projected(doc))).not.toContain('FND_NUMERIC_CONTRADICTION')
   })
 })

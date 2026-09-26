@@ -18,7 +18,10 @@
  * Every run has the semantic tier on, at two extremes of the embedder: the orthogonal one (no
  * two different texts related) and the constant one (every two related), so a demotion that
  * rests on the propose tier is in the verdict, and `verified` can be true. Without an embedder
- * every run demotes on `semantic-tier-skipped`, and "gains no `verified`" can never fire.
+ * every run demotes on `semantic-tier-skipped`, and "gains no `verified`" can never fire. At both
+ * extremes the propose tier's answer does not depend on the words, so each run is also made with
+ * the lexical embedder, whose cosine is the words two texts share: a rewrite that moves a pair
+ * across a threshold, as the model's cosine would, changes that run.
  *
  * Unsat cores are not unique, so an error finding is compared by code, not by the requirement
  * set it names: a merge that makes a smaller core provable reports that core instead.
@@ -29,7 +32,7 @@ import { describe, expect, it } from 'vitest'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import { MUTATE_OPTIONS } from '../../app/operations/mutate-options.ts'
 import { SolverService } from '../../ports/solver.ts'
-import { orthogonalEmbedder } from '../../testing/gaming.ts'
+import { lexicalEmbedder, orthogonalEmbedder } from '../../testing/gaming.ts'
 import { reportSources } from '../../testing/report-corpus.ts'
 import { toEngineDoc } from '../compat.ts'
 import { normalizeScope } from '../engine/formal/atomize.ts'
@@ -57,7 +60,11 @@ const constantEmbedder = (): Embedder => async (texts) =>
     return v
   })
 
-const EMBEDDERS = { orthogonal: orthogonalEmbedder, constant: constantEmbedder } as const
+const EMBEDDERS = {
+  orthogonal: orthogonalEmbedder,
+  constant: constantEmbedder,
+  lexical: lexicalEmbedder,
+} as const
 
 /** One run's verdict: `verified`, and every demotion and finding with its severity and ids. */
 interface Verdict {

@@ -2489,6 +2489,33 @@ export const orthogonalEmbedder = (near: readonly (readonly [string, string])[] 
     })
 }
 
+/**
+ * Every distinct WORD on its own axis, and a text the sum of its words: the cosine of two texts
+ * is how many words they share. Between the two extremes (orthogonal, constant) it is the one
+ * fixed embedder whose cosine a rewrite of the words moves, as the model's does. Fresh per run,
+ * like {@link orthogonalEmbedder}.
+ */
+export const lexicalEmbedder = (): Embedder => {
+  const axes = new Map<string, number>()
+  const DIM = 4096
+  return async (texts) =>
+    texts.map((t) => {
+      const v = new Float32Array(DIM)
+      for (const word of t.toLowerCase().match(/[a-z0-9]+/g) ?? []) {
+        let axis = axes.get(word)
+        if (axis === undefined) {
+          axis = axes.size
+          if (axis >= DIM) throw new Error('lexical embedder ran out of axes')
+          axes.set(word, axis)
+        }
+        v[axis] = (v[axis] ?? 0) + 1
+      }
+      // The engine's `cosine` is a dot product over unit vectors, as the model returns them.
+      const norm = Math.hypot(...v)
+      return norm === 0 ? v : v.map((x) => x / norm)
+    })
+}
+
 /** The baseline embedder one fixture runs under: orthogonal, with the fixture's `near` pairs. */
 export const fixtureEmbedder = (fixture: Pick<Fixture, 'near'>): Embedder =>
   orthogonalEmbedder(fixture.near ?? [])

@@ -138,11 +138,12 @@ describe('no module reaches outside the package', () => {
     // atomizer, which is what makes a symbol partition comparable with the atom partition at
     // all, and it measures a projection with every engine reader of a slot's words, so that what
     // it admits is what the engine reads. It may therefore reach into the tiers that hold those
-    // readers — `engine/formal` (as `compat.ts` does), the GtWR lint and the free tier's pair
-    // filters — and into the requirements model it reads, and nowhere else. `compat.ts` in
+    // readers — `engine/formal` (as `compat.ts` does), the GtWR lint, the free tier's pair
+    // filters and the AC-3-7 gate, which decides the requirements the relational tier's roster is
+    // taken over — and into the requirements model it reads, and nowhere else. `compat.ts` in
     // particular is excluded, because the projection there is the vocabulary's CALLER, and so is
-    // `engine/pipeline`, which runs the solver. The engine side of the one-way rule is the exact
-    // crossing list above, which names no vocabulary module.
+    // the rest of `engine/pipeline`, which runs the solver. The engine side of the one-way rule is
+    // the exact crossing list above, which names no vocabulary module.
     const vocabularyRoot = join(PKG_ROOT, 'src', 'domain', 'vocabulary')
     const files = tsFiles(vocabularyRoot).filter((f) => !f.endsWith('.test.ts'))
     expect(files.length).toBeGreaterThan(0)
@@ -151,6 +152,7 @@ describe('no module reaches outside the package', () => {
       join('src', 'domain', 'engine', 'formal'),
       join('src', 'domain', 'engine', 'lint'),
       join('src', 'domain', 'engine', 'solvers', 'free'),
+      join('src', 'domain', 'engine', 'pipeline', 'gate.ts'),
       join('src', 'domain', 'requirements', 'document.ts'),
       join('src', 'domain', 'requirements', 'content-hash.ts'),
     ]

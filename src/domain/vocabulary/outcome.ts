@@ -37,13 +37,13 @@
  * - the occurrences a response hands the numeric tier on a key some bound is on are the same
  *   records on the same classes;
  * - the guard implications are the same implications, their atoms mapped onto classes;
- * - every tier that reads a slot's WORDS beyond its atom (lint, the propose and disclosure tiers)
- *   reads the same thing, less what the declaration implies (`readers.ts`, invariant V-READ).
+ * - every tier that reads a slot's WORDS beyond its atom (lint, the propose and disclosure tiers,
+ *   the texts the embedder reads) reads the same thing, less what the declaration implies, and
+ *   the check honours the same waivers (`readers.ts`, invariant V-READ).
  *
  * Any difference is a refusal that names the phrases involved.
  */
 
-import type { AntonymEntry } from '../engine/formal/antonyms.ts'
 import {
   type Atomize,
   areContrary,
@@ -63,7 +63,7 @@ import {
 } from '../engine/formal/numeric.ts'
 import type { Requirement } from '../requirements/document.ts'
 import { viewOf } from './keys.ts'
-import { compareText, readText, type TextReading } from './readers.ts'
+import { compareText, readText, type TextReading, type TextTables } from './readers.ts'
 
 /** The slot a probe reads: the one its phrase sits in, as the encoder names it. */
 export type ProbeSlot = 'resp' | 'trig' | 'pre'
@@ -83,13 +83,6 @@ export interface LabelUnit {
   readonly id: string
   readonly system: string
   readonly label: string
-}
-
-/** The tables a document is read under: its committed glossary, antonyms and terms. */
-export interface ReadTables {
-  readonly glossary: ReadonlyArray<{ canonical: string; aliases: readonly string[] }>
-  readonly antonyms: ReadonlyMap<string, AntonymEntry> | undefined
-  readonly terms: ReadonlyArray<{ canonical: string; aliases: readonly string[] }>
 }
 
 interface AtomUse {
@@ -143,7 +136,7 @@ const claimOf = (p: NumericPredicate): string => {
 export const readOutcome = (
   units: readonly Unit[],
   labels: readonly LabelUnit[],
-  tables: ReadTables,
+  tables: TextTables,
 ): Reading => {
   const glossary = glossaryIndex(tables.glossary)
   const atomize: Atomize = makeAtomize(glossary, tables.antonyms, termIndex(tables.terms))

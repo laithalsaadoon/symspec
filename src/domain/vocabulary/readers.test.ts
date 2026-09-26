@@ -20,7 +20,7 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import { SolverService } from '../../ports/solver.ts'
-import { orthogonalEmbedder } from '../../testing/gaming.ts'
+import { lexicalEmbedder, orthogonalEmbedder } from '../../testing/gaming.ts'
 import { toEngineDoc } from '../compat.ts'
 import type { Embedder } from '../engine/formal/embed.ts'
 import { runCheck } from '../engine/pipeline/check.ts'
@@ -693,6 +693,164 @@ describe('a rewrite keeps the system scope the per-system tiers pair on', () => 
 })
 
 // ---------------------------------------------------------------------------
+// The relational tier groups on `normalize` of the guard, which a committed glossary is coarser than
+// ---------------------------------------------------------------------------
+
+describe('a rewrite keeps the relational groups, where a committed glossary joins two guard spellings', () => {
+  // The glossary makes both preconditions one atom, so the implicit vocabulary makes them one
+  // state symbol. Respelling its canonical rewrites BOTH to one text: the atom partition is the
+  // same, and the relational tier, which groups on `normalize` of the raw guard, now groups them.
+  const cases = [
+    {
+      name: 'the canonical is the shorter spelling',
+      glossary: { canonical: 'the door is open', aliases: ['the door is open and latched'] },
+      system: 'controller',
+      pre: ['the door is open', 'the door is open and latched'],
+      responses: [
+        'keep the fan speed the same as the pump speed',
+        'keep the heater power different from the pump power',
+      ],
+      renamed: 'the door is open now',
+    },
+    {
+      name: 'the canonical is the longer spelling',
+      glossary: { canonical: 'the door is open wide', aliases: ['the door is open'] },
+      system: 'The climate unit',
+      pre: ['the door is open', 'the door is open wide'],
+      responses: [
+        'set the fan speed different from the pump speed',
+        'set the vent rate different from the heater rate',
+      ],
+      renamed: 'the cabin door is open wide',
+    },
+  ]
+  for (const c of cases) {
+    it(`drops a lone state rename that would join two relational groups: ${c.name}`, async () => {
+      const reqs = c.pre.map((preCondition, i) =>
+        req({
+          systemName: c.system,
+          patternType: 'state-driven',
+          preCondition,
+          systemResponse: c.responses[i] ?? '',
+        }),
+      )
+      const plain: RequirementsDocument = { ...docOf(reqs), glossary: [c.glossary] }
+      const doc = renamed(plain, (s) => s.kind === 'state', c.renamed)
+      // Every spelling the rename rewrites is refused: each alone joins the two groups.
+      const refused = brief(doc)
+      expect(refused.length).toBeGreaterThan(0)
+      expect(
+        refused.every(([invariant, dropped]) => invariant === 'V-READ' && dropped === 'alias'),
+      ).toBe(true)
+      for (const embedder of [orthogonalEmbedder, constantEmbedder]) {
+        const before = await verdictOf(plain, embedder)
+        const byHand = await verdictOf(
+          rewritten(plain, new Map(reqs.map((r) => [r.id, { preCondition: c.renamed }]))),
+          embedder,
+        )
+        expect(byHand.findings.some((f) => f.startsWith('FND_RELATIONAL_UNCHECKED'))).toBe(true)
+        expect(before.findings.some((f) => f.startsWith('FND_RELATIONAL_UNCHECKED'))).toBe(false)
+        const { after } = await beforeAndAfter(doc, embedder)
+        expect(after).toEqual(before)
+      }
+    })
+  }
+})
+
+describe('a rewrite keeps how the relational disclosures group', () => {
+  // Three guard spellings, each shared by two requirements, give three disclosures, one per pair.
+  // The glossary joins two of the spellings into one state, and respelling it gives all three
+  // requirements one precondition text: one disclosure over the three, and the same three pairs.
+  const OPEN = 'the door is open'
+  const WIDE = 'the door is open wide'
+  const ARMED = 'the alarm is armed'
+  const rows: readonly [string, string, string][] = [
+    [OPEN, WIDE, 'set the fan speed different from the pump speed'],
+    [OPEN, ARMED, 'set the vent rate different from the heater rate'],
+    [WIDE, ARMED, 'set the valve flow different from the drain flow'],
+  ]
+  const reqs = rows.map(([preCondition, trigger, systemResponse]) =>
+    req({
+      systemName: 'controller',
+      patternType: 'event-driven',
+      preCondition,
+      trigger,
+      systemResponse,
+    }),
+  )
+  const plain: RequirementsDocument = {
+    ...docOf(reqs),
+    glossary: [{ canonical: OPEN, aliases: [WIDE] }],
+  }
+
+  it('drops the rename, and the verdict is the same', async () => {
+    const before = await verdictOf(plain)
+    const relational = (v: typeof before) =>
+      v.findings.filter((f) => f.startsWith('FND_RELATIONAL_UNCHECKED'))
+    expect(relational(before)).toHaveLength(3)
+    const byHand = await verdictOf(
+      rewritten(plain, new Map(reqs.map((r) => [r.id, { preCondition: 'the door is open now' }]))),
+    )
+    expect(relational(byHand)).toHaveLength(2)
+    const doc = renamed(plain, (s) => s.kind === 'state', 'the door is open now')
+    const refused = brief(doc)
+    expect(refused.length).toBeGreaterThan(0)
+    expect(
+      refused.every(([invariant, dropped]) => invariant === 'V-READ' && dropped === 'alias'),
+    ).toBe(true)
+    const { after } = await beforeAndAfter(doc)
+    expect(after).toEqual(before)
+  })
+})
+
+describe('the relational roster is the one `check` takes, over the requirements the gate admits', () => {
+  // R3 and R4 repeat R1's and R2's responses, and a sentence the lint blocks keeps each out of
+  // the formal tier. So in `check` R1 and R2 each own an atom no admitted requirement shares, and
+  // grouping them (the rename joins their glossary-joined preconditions' words) fabricates the
+  // aggregate disclosure. A roster over every requirement would see those atoms shared, find no
+  // aggregate shape on either side, and admit the rename.
+  const pre = ['the door is open', 'the door is open wide']
+  const responses = [
+    'keep the fan temperature below 50 degrees celsius',
+    'keep the pump temperature below 70 degrees celsius',
+  ]
+  const reqs = pre.map((preCondition, i) =>
+    req({
+      systemName: 'controller',
+      patternType: 'state-driven',
+      preCondition,
+      systemResponse: responses[i] ?? '',
+    }),
+  )
+  const blocked = responses.map((systemResponse) => ({
+    ...req({ systemName: 'controller', systemResponse }),
+    sentence: 'controller fan pump',
+  }))
+  const plain: RequirementsDocument = {
+    ...docOf([...reqs, ...blocked]),
+    glossary: [{ canonical: pre[0] ?? '', aliases: [pre[1] ?? ''] }],
+  }
+
+  it('drops the rename, and the verdict is the same', async () => {
+    const byHand = await verdictOf(
+      rewritten(plain, new Map(reqs.map((r) => [r.id, { preCondition: 'the door is open now' }]))),
+    )
+    const before = await verdictOf(plain)
+    expect(before.demotions.filter((d) => d.startsWith('excluded-from-formal'))).toHaveLength(2)
+    expect(byHand.findings.some((f) => f.startsWith('FND_RELATIONAL_UNCHECKED'))).toBe(true)
+    expect(before.findings.some((f) => f.startsWith('FND_RELATIONAL_UNCHECKED'))).toBe(false)
+    const doc = renamed(plain, (s) => s.kind === 'state', 'the door is open now')
+    const refused = brief(doc)
+    expect(refused.length).toBeGreaterThan(0)
+    expect(
+      refused.every(([invariant, dropped]) => invariant === 'V-READ' && dropped === 'alias'),
+    ).toBe(true)
+    const { after } = await beforeAndAfter(doc)
+    expect(after).toEqual(before)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // A waiver bound to the reviewed text
 // ---------------------------------------------------------------------------
 
@@ -742,6 +900,90 @@ describe('a rewrite keeps the waivers the check honours', () => {
     expect(brief(doc)).toEqual([])
     const { before, after } = await beforeAndAfter(doc, constantEmbedder)
     expect(before.findings.some((f) => f.startsWith('FND_OPPOSITION_CANDIDATE'))).toBe(true)
+    expect(after).toEqual(before)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The cosine of a plain similarity suggestion is the model's reading of the words
+// ---------------------------------------------------------------------------
+
+describe('a rewrite keeps the words every cosine-read pair is embedded from', () => {
+  const cases = [
+    {
+      name: 'a rename that would raise a pair over the similarity threshold',
+      responses: ['lock the front door', 'bolt the rear hatch'],
+      renamed: 'lock the front door firmly',
+    },
+    {
+      name: 'a rename that would drop a pair under the similarity threshold',
+      responses: ['lock the front door', 'lock the front door firmly'],
+      renamed: 'actuate the primary ingress barrier bolt',
+    },
+  ]
+  for (const c of cases) {
+    it(`drops ${c.name}`, async () => {
+      const reqs = c.responses.map((systemResponse) =>
+        req({ systemName: 'The door controller', systemResponse }),
+      )
+      const plain = docOf(reqs)
+      const second = c.responses[1] ?? ''
+      const doc = renamed(plain, (s) => s.kind === 'action' && s.canonical === second, c.renamed)
+      const before = await verdictOf(plain, lexicalEmbedder)
+      const byHand = await verdictOf(
+        rewritten(plain, new Map([[reqs[1]?.id ?? '', { systemResponse: c.renamed }]])),
+        lexicalEmbedder,
+      )
+      expect(byHand).not.toEqual(before)
+      expect(brief(doc)).toEqual([['V-READ', 'alias', second]])
+      const { after, rewrites } = await beforeAndAfter(doc, lexicalEmbedder)
+      expect(rewrites).toEqual([])
+      expect(after).toEqual(before)
+    })
+  }
+})
+
+describe('a rewrite keeps the text the similarity graph embeds', () => {
+  // The graph embeds the stored sentence, which no projection rewrites, or the response where no
+  // sentence is stored. Two systems, so no pair tier pairs them: only the graph reads the rewrite.
+  // The lint blocks an empty sentence, and a waiver readmits each to the formal tier; one trace
+  // link makes the graph propose the links it finds missing.
+  const reqs = [
+    {
+      ...req({ systemName: 'door controller', systemResponse: 'lock the front door' }),
+      sentence: '',
+    },
+    {
+      ...req({ systemName: 'gate controller', systemResponse: 'bolt the rear hatch' }),
+      sentence: '',
+    },
+  ]
+  const traced = {
+    ...req({ systemName: 'hatch controller', systemResponse: 'log the event' }),
+    sentence: '',
+    refines: [reqs[0]?.id ?? ''],
+  }
+  const plain: RequirementsDocument = {
+    ...docOf([...reqs, traced]),
+    waivers: [{ code: 'GTWR_R1_PATTERN', reason: 'stored without a sentence on purpose' }],
+  }
+  const RENAMED = 'lock the front door firmly'
+
+  it('drops a rename of a response the graph embeds', async () => {
+    const before = await verdictOf(plain, lexicalEmbedder)
+    const byHand = await verdictOf(
+      rewritten(plain, new Map([[reqs[1]?.id ?? '', { systemResponse: RENAMED }]])),
+      lexicalEmbedder,
+    )
+    expect(byHand).not.toEqual(before)
+    const doc = renamed(
+      plain,
+      (s) => s.kind === 'action' && s.canonical === 'bolt the rear hatch',
+      RENAMED,
+    )
+    expect(brief(doc)).toEqual([['V-READ', 'alias', 'bolt the rear hatch']])
+    const { after, rewrites } = await beforeAndAfter(doc, lexicalEmbedder)
+    expect(rewrites).toEqual([])
     expect(after).toEqual(before)
   })
 })
