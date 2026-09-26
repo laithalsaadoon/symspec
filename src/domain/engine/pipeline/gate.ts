@@ -33,6 +33,7 @@
 
 import type { Requirement, Waiver } from '../core/schema.ts'
 import { checkGtWRules, type GtWRFinding, lintSentenceOf } from '../lint/gtwr.ts'
+import type { ReqView } from '../solvers/types.ts'
 
 /** Why a requirement was excluded from symbolization. */
 export type ExclusionReason = 'parse-failure' | 'blocking-surface-check'
@@ -111,10 +112,19 @@ function isWaivedBlocking(f: GtWRFinding, requirementId: string, w: Waiver): boo
  * soundness — see {@link gate}). A requirement whose ONLY blocking findings are
  * all waived therefore returns `[]` and is re-admitted to symbolization.
  */
-function blockingFindings(requirement: Requirement, waivers: readonly Waiver[]): GtWRFinding[] {
+function blockingFindings(requirement: ReqView, waivers: readonly Waiver[]): GtWRFinding[] {
   return checkGtWRules(requirement, lintSentenceOf(requirement))
     .filter((f) => f.severity === 'error')
     .filter((f) => !waivers.some((w) => isWaivedBlocking(f, requirement.id, w)))
+}
+
+/**
+ * True when the gate keeps `requirement` out of the formal tier for a blocking surface finding no
+ * waiver in `waivers` discharges: the test {@link gate} applies, for a reader that measures which
+ * requirements `check` symbolizes without building a whole requirement.
+ */
+export function isBlocked(requirement: ReqView, waivers: readonly Waiver[] = []): boolean {
+  return blockingFindings(requirement, waivers).length > 0
 }
 
 /**

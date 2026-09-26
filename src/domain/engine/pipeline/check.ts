@@ -115,6 +115,7 @@ import {
 import type { Embedder } from '../formal/embed.ts'
 import {
   type Atomize,
+  atomOwnerRoster,
   type EncodableRequirement,
   type EncodedRequirement,
   encode,
@@ -140,7 +141,11 @@ import {
   disclosureOfUnreadQuantities,
 } from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates, guardKeyOf } from '../formal/quantity-alias.ts'
-import { findRelationalUnchecked } from '../formal/relational.ts'
+import {
+  findRelationalUnchecked,
+  relationalInputsOf,
+  singletonOwners,
+} from '../formal/relational.ts'
 import {
   DEFAULT_SEMANTIC_THRESHOLD,
   findOppositionCandidates,
@@ -1311,32 +1316,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       )
 
       // Wishlist #5b: tally the spec-wide atom roster and count singletons —
-      // atoms that appear in exactly one included requirement. An atom counts
-      // once per requirement (a requirement that repeats an atom across slots
-      // does not make it "matched"); an atom is "matched" only when ≥2 distinct
-      // requirements reference it. Deterministic, no solver contact.
-      const atomOwners = new Map<string, Set<string>>()
-      for (const e of encoded) {
-        for (const row of e.atoms) {
-          let owners = atomOwners.get(row.atom)
-          if (owners === undefined) {
-            owners = new Set<string>()
-            atomOwners.set(row.atom, owners)
-          }
-          owners.add(e.id)
-        }
-      }
-      // Spec 007 AC-2-1: a contrary axiom compares two atoms exactly as the old rename's one shared
-      // atom did, so each side's atom counts the other side's owners as partners. Two members of
-      // one side get no credit: nothing relates them, so nothing compared them. Read from a
-      // snapshot so the credit is one hop.
-      const contraryOwners = contraryPairs(encoded.flatMap((e) => e.atoms)).map(
-        ([a, b]) => [a, b, [...(atomOwners.get(a) ?? [])], [...(atomOwners.get(b) ?? [])]] as const,
-      )
-      for (const [a, b, ownersA, ownersB] of contraryOwners) {
-        for (const id of ownersB) atomOwners.get(a)?.add(id)
-        for (const id of ownersA) atomOwners.get(b)?.add(id)
-      }
+      // atoms that appear in exactly one included requirement, contraries crediting each
+      // other's owners (`atomOwnerRoster`, where the rule is stated).
+      const atomOwners = atomOwnerRoster(encoded)
       for (const owners of atomOwners.values()) {
         if (owners.size === 1) unmatchedAtoms += 1
       }
@@ -1537,24 +1519,12 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // declines to certify (DEMOTES `verified`), never asserts a conflict, so
       // it cannot manufacture a false one. Per-requirement `hasUnmatchedAtom` is
       // read from the atom-owner roster built above (owners.size === 1).
-      const singletonOwnerIds = new Set<string>()
-      for (const [, owners] of atomOwners) {
-        if (owners.size === 1) for (const id of owners) singletonOwnerIds.add(id)
-      }
       const relationalUnchecked = findRelationalUnchecked(
-        reqs.map((r) => ({
-          id: r.id,
-          systemName: r.systemName,
-          guardKey: guardKeyOf(r),
-          // The RAW slots too: this tier groups per slot rather than per slot PAIR, because a
-          // discloser wants a coarser key than the prover it shares `guardKeyOf` with. See
-          // `relational.ts`'s grouping comment for the direction argument.
-          ...(r.preCondition !== undefined ? { preCondition: r.preCondition } : {}),
-          ...(r.trigger !== undefined ? { trigger: r.trigger } : {}),
-          responseText: r.systemResponse,
-          hasNumericBound: (predsById.get(r.id) ?? []).length > 0,
-          hasUnmatchedAtom: singletonOwnerIds.has(r.id),
-        })),
+        relationalInputsOf(
+          reqs,
+          (id) => (predsById.get(id) ?? []).length > 0,
+          singletonOwners(atomOwners),
+        ),
       )
 
       // AC-33-2: opt-in bounded temporal tier. Map each requirement to LTL

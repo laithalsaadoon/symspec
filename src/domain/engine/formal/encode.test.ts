@@ -38,6 +38,7 @@ import { getContext } from './backend.ts'
 import {
   and,
   atom,
+  atomOwnerRoster,
   type EncodableRequirement,
   encode,
   implies,
@@ -355,5 +356,44 @@ describe('z3 interns a Bool const by name within a context', () => {
     solver.add(ctx.Bool.const(NAME))
     solver.add(ctx.Not(ctx.Bool.const('sys__lift_controller__resp__halt_the_car')))
     expect(await solver.check()).toBe('unsat')
+  })
+})
+
+describe('atomOwnerRoster: which requirements each atom is compared across', () => {
+  const ubiquitous = (id: string, systemResponse: string): EncodableRequirement => ({
+    id,
+    patternType: 'ubiquitous',
+    systemName: 'the valve controller',
+    systemResponse,
+    negated: false,
+    sentence: '',
+    priority: 'medium',
+    status: 'draft',
+  })
+  const ownersOf = (reqs: readonly EncodableRequirement[]) =>
+    Object.fromEntries(
+      [...atomOwnerRoster(reqs.map((r) => encode(r, real)))].map(([a, o]) => [a, [...o].sort()]),
+    )
+
+  it('counts an atom once per requirement that references it', () => {
+    const roster = ownersOf([
+      ubiquitous('r1', 'log the event'),
+      ubiquitous('r2', 'log the event'),
+      ubiquitous('r3', 'purge the cache'),
+    ])
+    expect(Object.values(roster).sort()).toEqual([['r1', 'r2'], ['r3']])
+  })
+
+  it('credits each side of a contrary pair with the other side`s owners, one hop', () => {
+    // `open` / `close` is a seed contrary: the axiom compares the two atoms as one shared atom
+    // did, so neither is unmatched.
+    const roster = ownersOf([
+      ubiquitous('r1', 'open the valve'),
+      ubiquitous('r2', 'close the valve'),
+    ])
+    expect(Object.values(roster).sort()).toEqual([
+      ['r1', 'r2'],
+      ['r1', 'r2'],
+    ])
   })
 })
