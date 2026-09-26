@@ -16,18 +16,26 @@
  *
  * - O, by the key the engine reads on the ORIGINAL document;
  * - D, by the class the vocabulary DECLARES the use's phrase to be in (its system's class and its
- *   symbol's class); a use whose phrase resolves to nothing is its own class;
+ *   symbol's class, slot by slot); a use whose phrase resolves to nothing is classed by its O key,
+ *   in a namespace no declared class shares, since the vocabulary says nothing about it and the
+ *   projection leaves it as written;
  * - P, by the key the engine reads on the PROJECTED document.
  *
- * The projection is admitted only when P is exactly the join of O and D: every two uses the
- * engine already reads as one stay one (nothing split), every two uses the author declared one
- * become one (the merge happened), and nothing else becomes one (nothing merged that neither the
- * engine nor the author merged). D alone is not the target, because the engine already joins
- * some uses the vocabulary keeps apart by design: an optional-feature precondition and a state
- * precondition of one spelling are one `guard` atom and two symbols. Where D is coarser than or
- * equal to O, which the resolver guarantees for every same-domain pair, the join IS D.
+ * The projection is admitted only when P EQUALS D (decision D10): every two uses the author
+ * declared one read one key, and no two uses the author kept apart do. Never "P equals the join
+ * of O and D": the engine already reads some uses as one that the vocabulary keeps apart by
+ * design (an optional-feature precondition and a state precondition of one spelling are one
+ * `guard` atom and two symbols), and a join lets a declared alias carry a third use across that
+ * edge onto a requirement nobody merged it with.
  *
- * With P the join, every key of P names one class, and the rest of the reading is compared per
+ * So O must agree with D before any projection is measured: two uses on one O key in two D
+ * classes are a HYGIENE refusal of the document as written (V-KIND), naming the phrase, both
+ * requirements and both symbols. No rewrite could repair it without splitting an atom the engine
+ * reads today, and the implicit bootstrap, whose projection is the identity, reports the same
+ * refusal. Where the resolver guarantees D is coarser than or equal to O, which it does for every
+ * same-domain pair, the hygiene check never fires.
+ *
+ * With P equal to D, every key of P names one class, and the rest of the reading is compared per
  * class:
  *
  * - each slot keeps its polarity, and each bound every field but its key (comparator, value,
@@ -219,98 +227,142 @@ export const readOutcome = (
 
 /** A difference between two readings: the invariant it breaks, in words, and the phrases involved. */
 export interface Mismatch {
-  readonly invariant: 'V1' | 'V-OPP' | 'V-NUM' | 'V-READ'
+  readonly invariant: 'V1' | 'V-KIND' | 'V-OPP' | 'V-NUM' | 'V-READ'
   readonly detail: string
   readonly phrases: readonly string[]
+  /** For a hygiene refusal, the ids of the document requirements that use the phrase two ways. */
+  readonly requirements?: readonly string[]
+  /** For a hygiene refusal, the symbols the two uses are declared as. */
+  readonly symbols?: readonly string[]
+  /**
+   * The ORIGINAL document breaks it, whatever the projection (decision D10): one phrase the
+   * engine reads as one key and the vocabulary declares two ways.
+   */
+  readonly hygiene?: true
 }
 
 /** The class a use is DECLARED in, or `undefined` for a use whose phrase resolves to nothing. */
 export interface Declared {
   readonly atom: (use: string) => string | undefined
   readonly bound: (use: string) => string | undefined
+  /** Who a refusal names for a use: its requirement (or declared phrase), and the symbol it is declared as. */
+  readonly who: (use: string) => Who
 }
 
-/** Union-find over string nodes. */
-const partition = () => {
-  const parent = new Map<string, string>()
-  const find = (x: string): string => {
-    let r = x
-    for (let p = parent.get(r); p !== undefined && p !== r; p = parent.get(r)) r = p
-    parent.set(x, r)
-    return r
-  }
-  const union = (a: string, b: string) => {
-    const ra = find(a)
-    const rb = find(b)
-    if (ra !== rb) parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb)
-  }
-  const add = (x: string) => {
-    if (!parent.has(x)) parent.set(x, x)
-  }
-  return { find, union, add }
+/** The words and ids a refusal names a use by. */
+export interface Who {
+  /** The requirement the use sits in, as the author names it (its key, else its id), or the probe. */
+  readonly unit: string
+  /** The requirement's id, for a use in a document requirement. */
+  readonly requirement?: string
+  /** The symbol the use is declared as, and its kind. */
+  readonly symbol?: string
+  readonly kind?: string
 }
+
+/** The namespace of an undeclared use's class: kept apart from every declared class. */
+const UNDECLARED = '\u0000undeclared\u0000'
+
+/** How a refusal names one use: `a state (st_x) in R1`. */
+const described = (w: Who): string =>
+  `${w.kind === undefined ? 'undeclared' : `a ${w.kind} (${w.symbol ?? ''})`} in ${w.requirement === undefined ? '' : 'requirement '}${w.unit}`
 
 /**
- * The join of O and D over `uses`, and whether P equals it: per use, the class it joins, and
- * the first split or unexpected merge found.
+ * The target partition over `uses` and whether the engine reads it, today and projected.
+ *
+ * The target is the DECLARED partition exactly (decision D10): a declared use is in its
+ * declared class, and a use whose phrase resolves to nothing is classed by the key the engine
+ * reads on it today, in a namespace of its own, since the vocabulary says nothing about it and
+ * the projection does not rewrite it. It is never the join of the engine's reading and the
+ * declaration: a join lets two uses the author kept apart meet through a third the engine reads
+ * as one with each, which is how a feature-only alias once reached a state requirement nobody
+ * merged it with.
+ *
+ * Two comparisons, in order:
+ *
+ * - HYGIENE, the original against the target: two uses the engine reads as one key today are in
+ *   one target class. A document that breaks it (one system using one phrase as a feature and as
+ *   a state, which the encoder reads as one `guard` atom) cannot be projected to the declared
+ *   partition by any rewrite that does not also split an atom the engine reads today, so it is
+ *   refused as written, every such key reported.
+ * - EXACTNESS, the projection against the target: every two uses of one class read one key, and
+ *   no key is read by two classes.
  */
-const joinAndCompare = (
+const exactCompare = (
   uses: readonly string[],
   before: (use: string) => string,
   after: (use: string) => string,
   declared: (use: string) => string | undefined,
   textOf: (use: string) => string,
+  who: (use: string) => Who,
   what: readonly [one: string, many: string],
-): { readonly classOf: (use: string) => string; readonly mismatch?: string[] } => {
-  const j = partition()
-  const byBefore = new Map<string, string>()
-  const byDeclared = new Map<string, string>()
+): {
+  readonly classOf: (use: string) => string
+  readonly hygiene: readonly Mismatch[]
+  readonly mismatch?: string[]
+} => {
+  const classOf = (u: string) => declared(u) ?? `${UNDECLARED}${before(u)}`
+  const hygiene: Mismatch[] = []
+  const today = new Map<string, Map<string, string>>()
   for (const u of uses) {
-    j.add(u)
-    const b = byBefore.get(before(u))
-    if (b === undefined) byBefore.set(before(u), u)
-    else j.union(b, u)
-    const k = declared(u)
-    if (k === undefined) continue
-    const d = byDeclared.get(k)
-    if (d === undefined) byDeclared.set(k, u)
-    else j.union(d, u)
+    const classes = today.get(before(u)) ?? new Map<string, string>()
+    if (!classes.has(classOf(u))) classes.set(classOf(u), u)
+    today.set(before(u), classes)
   }
-  const keyOfClass = new Map<string, string>()
-  const classOfKey = new Map<string, string>()
-  const firstOf = new Map<string, string>()
+  for (const classes of today.values()) {
+    const [first, ...others] = [...classes.values()]
+    if (first === undefined) continue
+    for (const u of others) {
+      const pair = [who(first), who(u)]
+      const phrase = textOf(first)
+      const spelled = textOf(u) === phrase ? `"${phrase}"` : `"${phrase}" / "${textOf(u)}"`
+      hygiene.push({
+        invariant: 'V-KIND',
+        detail: `${spelled} is ${described(who(first))} and ${described(who(u))}, and the engine reads both as one ${what[0]}; one phrase is one kind in one system, so give both uses one kind or reword one of them`,
+        phrases: [...new Set([phrase, textOf(u)])],
+        requirements: pair
+          .flatMap((w) => (w.requirement === undefined ? [] : [w.requirement]))
+          .sort(),
+        symbols: pair.flatMap((w) => (w.symbol === undefined ? [] : [w.symbol])).sort(),
+        hygiene: true,
+      })
+    }
+  }
+  if (hygiene.length > 0) return { classOf, hygiene }
+
+  const keyOfClass = new Map<string, { key: string; use: string }>()
+  const classOfKey = new Map<string, { cls: string; use: string }>()
   for (const u of uses) {
-    const c = j.find(u)
+    const c = classOf(u)
     const k = after(u)
-    const seenKey = keyOfClass.get(c)
-    if (seenKey === undefined) keyOfClass.set(c, k)
-    else if (seenKey !== k) {
-      const other = firstOf.get(c) ?? u
+    const seen = keyOfClass.get(c)
+    if (seen === undefined) keyOfClass.set(c, { key: k, use: u })
+    else if (seen.key !== k) {
       return {
-        classOf: j.find,
+        classOf,
+        hygiene,
         mismatch: [
-          `"${textOf(other)}" and "${textOf(u)}" are one ${what[0]} today or by declaration, and the projection would read them as two (${seenKey}, ${k})`,
-          textOf(other),
+          `"${textOf(seen.use)}" and "${textOf(u)}" are one ${what[0]} by declaration, and the projection would read them as two (${seen.key}, ${k})`,
+          textOf(seen.use),
           textOf(u),
         ],
       }
     }
-    if (!firstOf.has(c)) firstOf.set(c, u)
-    const seenClass = classOfKey.get(k)
-    if (seenClass === undefined) classOfKey.set(k, c)
-    else if (seenClass !== c) {
-      const other = firstOf.get(seenClass) ?? u
+    const held = classOfKey.get(k)
+    if (held === undefined) classOfKey.set(k, { cls: c, use: u })
+    else if (held.cls !== c) {
       return {
-        classOf: j.find,
+        classOf,
+        hygiene,
         mismatch: [
-          `"${textOf(other)}" and "${textOf(u)}" are two ${what[1]} today and by declaration, and the projection would read them as one (${k})`,
-          textOf(other),
+          `"${textOf(held.use)}" and "${textOf(u)}" are two ${what[1]} by declaration, and the projection would read them as one (${k})`,
+          textOf(held.use),
           textOf(u),
         ],
       }
     }
   }
-  return { classOf: j.find }
+  return { classOf, hygiene }
 }
 
 const pairKey = (a: string, b: string) => (a < b ? `${a}${SEP}${b}` : `${b}${SEP}${a}`)
@@ -342,16 +394,52 @@ const renamed = (formula: unknown, rename: (name: string) => string): string =>
   )
 
 /**
- * Compare the reading of the original with the reading of the projection. `undefined` when the
- * projection changes nothing but what the declaration merges.
+ * Compare the reading of the original with the reading of the projection. Empty when the
+ * projection changes nothing but what the declaration merges. Every hygiene refusal when the
+ * original itself reads a declared distinction as one key, since no projection repairs that;
+ * otherwise the first difference found.
  */
 export const compareOutcome = (
   before: Reading,
   after: Reading,
   declared: Declared,
-): Mismatch | undefined => {
-  // Atoms: the same slots, each at its polarity, partitioned as the join.
+): readonly Mismatch[] => {
   const atomUses = [...before.atoms.keys()].sort()
+  const atomText = (use: string) => before.atoms.get(use)?.text ?? ''
+  const atomJoin = exactCompare(
+    atomUses,
+    (u) => before.atoms.get(u)?.atom ?? '',
+    (u) => after.atoms.get(u)?.atom ?? '',
+    declared.atom,
+    atomText,
+    declared.who,
+    ['atom', 'atoms'],
+  )
+  const boundUses = [...before.bounds.keys()].sort()
+  const boundJoin = exactCompare(
+    boundUses,
+    (u) => before.bounds.get(u)?.key ?? '',
+    (u) => after.bounds.get(u)?.key ?? '',
+    declared.bound,
+    (u) => before.bounds.get(u)?.label ?? '',
+    declared.who,
+    ['quantity', 'quantities'],
+  )
+  const hygiene = [...atomJoin.hygiene, ...boundJoin.hygiene]
+  if (hygiene.length > 0) return hygiene
+  const first = compareProjection(before, after, atomJoin, boundJoin)
+  return first === undefined ? [] : [first]
+}
+
+type Compared = ReturnType<typeof exactCompare>
+
+const compareProjection = (
+  before: Reading,
+  after: Reading,
+  atomJoin: Compared,
+  boundJoin: Compared,
+): Mismatch | undefined => {
+  // Atoms: the same slots, each at its polarity, partitioned as declared.
   for (const use of new Set([...before.atoms.keys(), ...after.atoms.keys()])) {
     const o = before.atoms.get(use)
     const p = after.atoms.get(use)
@@ -371,15 +459,6 @@ export const compareOutcome = (
       }
     }
   }
-  const atomText = (use: string) => before.atoms.get(use)?.text ?? ''
-  const atomJoin = joinAndCompare(
-    atomUses,
-    (u) => before.atoms.get(u)?.atom ?? '',
-    (u) => after.atoms.get(u)?.atom ?? '',
-    declared.atom,
-    atomText,
-    ['atom', 'atoms'],
-  )
   if (atomJoin.mismatch !== undefined) {
     const [detail = '', ...phrases] = atomJoin.mismatch
     return { invariant: 'V1', detail, phrases }
@@ -415,7 +494,7 @@ export const compareOutcome = (
     }
   }
 
-  // Bounds: the same bounds per unit, each with its claim, keyed as the join.
+  // Bounds: the same bounds per unit, each with its claim, keyed as declared.
   for (const [unit, n] of before.boundCount) {
     if (after.boundCount.get(unit) !== n) {
       const text =
@@ -427,8 +506,7 @@ export const compareOutcome = (
       }
     }
   }
-  const boundUses = [...before.bounds.keys()].sort()
-  for (const use of boundUses) {
+  for (const use of [...before.bounds.keys()].sort()) {
     const o = before.bounds.get(use)
     const p = after.bounds.get(use)
     if (o === undefined || p === undefined || o.claim !== p.claim) {
@@ -440,14 +518,6 @@ export const compareOutcome = (
       }
     }
   }
-  const boundJoin = joinAndCompare(
-    boundUses,
-    (u) => before.bounds.get(u)?.key ?? '',
-    (u) => after.bounds.get(u)?.key ?? '',
-    declared.bound,
-    (u) => before.bounds.get(u)?.label ?? '',
-    ['quantity', 'quantities'],
-  )
   if (boundJoin.mismatch !== undefined) {
     const [detail = '', ...phrases] = boundJoin.mismatch
     return { invariant: 'V-NUM', detail, phrases }
@@ -523,7 +593,6 @@ export const compareOutcome = (
       const n = reading.boundCount.get(unit) ?? 0
       return Array.from({ length: n }, (_, i) => reading.bounds.get(`${unit}${SEP}${i}`)?.key ?? '')
     },
-    classOf: atomJoin.classOf,
     textOf: (unit) => before.atoms.get(`${unit}${SEP}resp`)?.text ?? unit,
   })
   if (text !== undefined) return { invariant: 'V-READ', ...text }

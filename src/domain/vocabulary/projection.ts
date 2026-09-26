@@ -100,20 +100,33 @@ export interface Projection {
   readonly labelProbes: readonly (LabelUnit & { readonly symbol: SymbolId })[]
 }
 
-/** The system every probe is set under. Its atoms and quantity keys are its own. */
+/** The system every probe but a feature's is set under. Its atoms and quantity keys are its own. */
 export const PROBE_SYSTEM = 'vocabulary probe'
+
+/**
+ * The system a FEATURE probe is set under, apart from every other probe. The encoder reads an
+ * optional-feature precondition in the `guard` namespace, so a declared feature and a declared
+ * state spelled alike would be one atom under one probe system while the vocabulary declares
+ * them two kinds, and every such vocabulary would be refused whatever the document says. What
+ * the engine joins is a feature and a guard spelled alike IN ONE SYSTEM of the document, and
+ * that is refused on the document's own requirements (V-KIND, decision D10).
+ */
+export const FEATURE_PROBE_SYSTEM = 'vocabulary feature probe'
 
 /** The response a guard probe carries; only the probe's own slot is ever read. */
 const PROBE_RESPONSE = 'hold'
 
 /** The slot a declared phrase of each kind is set in, and the pattern that slot needs. */
 const PROBE_SHAPE: Readonly<
-  Record<Exclude<SymbolKind, 'system' | 'quantity'>, { slot: ProbeSlot; pattern: string }>
+  Record<
+    Exclude<SymbolKind, 'system' | 'quantity'>,
+    { slot: ProbeSlot; pattern: string; system: string }
+  >
 > = {
-  action: { slot: 'resp', pattern: 'ubiquitous' },
-  event: { slot: 'trig', pattern: 'event-driven' },
-  state: { slot: 'pre', pattern: 'state-driven' },
-  feature: { slot: 'pre', pattern: 'optional-feature' },
+  action: { slot: 'resp', pattern: 'ubiquitous', system: PROBE_SYSTEM },
+  event: { slot: 'trig', pattern: 'event-driven', system: PROBE_SYSTEM },
+  state: { slot: 'pre', pattern: 'state-driven', system: PROBE_SYSTEM },
+  feature: { slot: 'pre', pattern: 'optional-feature', system: FEATURE_PROBE_SYSTEM },
 }
 
 const probeRequirement = (
@@ -121,12 +134,12 @@ const probeRequirement = (
   kind: keyof typeof PROBE_SHAPE,
   phrase: string,
 ): Requirement => {
-  const { slot, pattern } = PROBE_SHAPE[kind]
+  const { slot, pattern, system } = PROBE_SHAPE[kind]
   const systemResponse = slot === 'resp' ? phrase : PROBE_RESPONSE
   return {
     id,
     patternType: pattern as Requirement['patternType'],
-    systemName: PROBE_SYSTEM,
+    systemName: system,
     systemResponse,
     negated: false,
     sentence: '',

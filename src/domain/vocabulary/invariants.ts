@@ -10,11 +10,11 @@
  *
  * | id | invariant |
  * |---|---|
- * | V1 | each phrase key has one owning symbol per collision domain; and the projection reads the atoms as the join of the atoms the engine reads today and the classes the vocabulary declares |
+ * | V1 | each phrase key has one owning symbol per collision domain; and the projection reads the atoms exactly as the classes the vocabulary declares, never as their join with today's atoms (D10) |
  * | V2 | aliases are one hop: an alias is never another symbol's canonical |
  * | V-OPP | the projection keeps every slot's polarity, exactly the contrary pairs the engine reads today (none inside one class), and every guard implication |
- * | V-NUM | the projection keeps every bound's claim, reads the quantity keys as the join of today's keys and the declared quantity classes, and keeps what every response performs on a bounded quantity |
- * | V-KIND | a class is one kind; a distinct record names two symbols of one kind |
+ * | V-NUM | the projection keeps every bound's claim, reads the quantity keys exactly as the declared quantity classes, and keeps what every response performs on a bounded quantity |
+ * | V-KIND | a class is one kind; a distinct record names two symbols of one kind; and no key the engine reads today holds two declared classes, such as one phrase a system uses as a feature and as a state (hygiene, D10) |
  * | V-STATE | the states of one class name one variable value |
  * | V-PARENT | parents exist, are systems, and form no cycle; merged systems do not have different parents |
  * | V-REF | a merge or distinct record names declared symbols |
@@ -24,14 +24,16 @@
  *
  * ## Two halves: the record, and the outcome
  *
- * The RECORD checks (V1's ownership, V2, V-KIND, V-STATE, V-PARENT, V-REF, V-DISTINCT, V-FROZEN)
- * are about the vocabulary as written, and need no engine. The OUTCOME checks (V1's atoms, V-OPP,
- * V-NUM, V-READ) are about what the engine would read: the validator builds the projection a vocabulary
- * gives (`projection.ts`, the same function the engine is handed), reads the original and the
- * projected document with the engine's own readers, and admits the vocabulary only when the two
- * readings differ by exactly what the declaration merges (`outcome.ts`). It never predicts a hazard
- * from the original text: a vocabulary is refused for what its projection does, and for nothing
- * else.
+ * The RECORD checks (V1's ownership, V2, V-KIND's classes, V-STATE, V-PARENT, V-REF, V-DISTINCT,
+ * V-FROZEN) are about the vocabulary as written, and need no engine. The OUTCOME checks (V1's
+ * atoms, V-KIND's hygiene, V-OPP, V-NUM, V-READ) are about what the engine reads: the validator
+ * builds the projection a vocabulary gives (`projection.ts`, the same function the engine is
+ * handed), reads the original and the projected document with the engine's own readers, and
+ * admits the vocabulary only when the projection reads exactly the declared partition and the two
+ * readings differ by exactly what the declaration merges (`outcome.ts`). It never predicts a
+ * hazard from the words: a vocabulary is refused for what the engine reads, on the original (the
+ * hygiene check, where today's keys already join two declared classes) or on the projection, and
+ * for nothing else.
  *
  * The outcome is measured over the document's requirements AND one probe per declared phrase
  * (`projection.ts`), so an alias is judged by what it does to every phrase the vocabulary names,
@@ -62,11 +64,12 @@ import {
   DOMAIN_OF_KIND,
   type PhraseTables,
   phraseKey,
+  slotUses,
   tablesOf,
 } from './keys.ts'
 import { compareOutcome, type Declared, type Mismatch, readOutcome, type Unit } from './outcome.ts'
 import { projectedDocument, projectVocabulary } from './projection.ts'
-import { indexVocabulary, resolvePhrase, resolveRequirement } from './resolve.ts'
+import { indexVocabulary, resolvePhrase } from './resolve.ts'
 
 /** Every invariant the validator enforces. */
 export const INVARIANT_IDS = [
@@ -99,6 +102,11 @@ export interface VocabularyViolation {
   readonly phrase?: string
   /** For an outcome refusal, the phrases whose reading the projection would have changed. */
   readonly colliding?: readonly string[]
+  /**
+   * For a hygiene refusal (V-KIND, decision D10), the ids of the requirements that use one
+   * phrase two ways: the author picks one kind for it, or rewords one requirement.
+   */
+  readonly requirements?: readonly string[]
 }
 
 /** The result of validating a vocabulary: what survives, and every violation found on the way. */
@@ -394,7 +402,7 @@ export const validateVocabulary = (
   const outcomeMergeViolations: VocabularyViolation[] = []
   const allMerges = new Set(recordMerges.map((m) => m.i))
   let admitted = assemble((w) => w.aliases, allMerges)
-  if (measure(admitted) !== undefined) {
+  if (measure(admitted).length > 0) {
     const rewrites = (w: Working, alias: string) => key(w.domain, alias) !== w.canonicalKey
     const kept = new Map<SymbolId, string[]>(
       [...live.values()].map((w) => [w.symbol.id, w.aliases.filter((a) => !rewrites(w, a))]),
@@ -402,22 +410,30 @@ export const validateVocabulary = (
     const merges = new Set<number>()
     const current = () => assemble((w) => kept.get(w.symbol.id) ?? [], merges)
     // The floor rewrites nothing, so the projection is the identity and cannot move a verdict;
-    // a floor that still differs is disclosed, and every rewriting entry is refused with it.
-    const floor = measure(current())
-    if (floor !== undefined) {
+    // a floor that still differs is disclosed, and every rewriting entry is refused with it. A
+    // hygiene refusal is the document's own (one phrase read as one key and declared two ways),
+    // so each is disclosed as it stands, naming the phrase and the requirements that use it.
+    const floorAll = measure(current())
+    const floor = floorAll[0]
+    for (const f of floor?.hygiene === true ? floorAll : floorAll.slice(0, 1)) {
       outcomeAliasViolations.push({
-        invariant: floor.invariant,
+        invariant: f.invariant,
         dropped: 'nothing',
-        detail: `with no alias that rewrites and no merge, ${floor.detail}`,
-        symbols: [],
-        colliding: floor.phrases,
+        detail:
+          f.hygiene === true ? f.detail : `with no alias that rewrites and no merge, ${f.detail}`,
+        symbols: [...(f.symbols ?? [])],
+        ...(f.hygiene === true && f.phrases[0] !== undefined ? { phrase: f.phrases[0] } : {}),
+        colliding: f.phrases,
+        ...(f.requirements !== undefined && f.requirements.length > 0
+          ? { requirements: f.requirements }
+          : {}),
       })
     }
     for (const w of [...live.values()].sort((a, b) => (a.symbol.id < b.symbol.id ? -1 : 1))) {
       for (const alias of w.aliases.filter((a) => rewrites(w, a))) {
         const list = kept.get(w.symbol.id) ?? []
         list.push(alias)
-        const m = floor ?? measure(current())
+        const m = floor ?? measure(current())[0]
         if (m === undefined) continue
         list.pop()
         outcomeAliasViolations.push({
@@ -432,7 +448,7 @@ export const validateVocabulary = (
     }
     for (const { i, lo, hi } of recordMerges) {
       merges.add(i)
-      const m = floor ?? measure(current())
+      const m = floor ?? measure(current())[0]
       if (m === undefined) continue
       merges.delete(i)
       outcomeMergeViolations.push({
@@ -461,12 +477,12 @@ export const validateVocabulary = (
 /**
  * The outcome measurement of candidate vocabularies over one document: the projection each gives
  * (`projection.ts`, the function the engine is handed), read with the engine's own readers beside
- * the original (`outcome.ts`). `undefined` when the two readings differ by exactly what the
- * candidate declares.
+ * the original (`outcome.ts`). Empty when the two readings differ by exactly what the candidate
+ * declares; every hygiene refusal when the original reads a declared distinction as one key.
  */
 const measureOf =
   (doc: RequirementsDocument, tables: PhraseTables, mode: 'explicit' | 'implicit') =>
-  (candidate: Vocabulary): Mismatch | undefined => {
+  (candidate: Vocabulary): readonly Mismatch[] => {
     const index = indexVocabulary(candidate, tables, mode)
     const projection = projectVocabulary(doc, index)
     const projected = projectedDocument(doc, projection)
@@ -494,44 +510,81 @@ const measureOf =
     const before = read(false)
     const after = read(true)
 
-    // The class each use is declared in: its system's class and its symbol's class.
-    const slotClass = new Map<string, string>()
+    // The class each use is declared in, slot by slot: its system's class and its symbol's
+    // class. Per slot, not per requirement: a requirement with one unresolved slot still
+    // declares the others, and classing them as undeclared would put them apart from the
+    // declared uses the engine reads them with.
+    const SEP = '\u0000'
+    const slotClass = new Map<string, { cls: string; symbol: SymbolId }>()
     const systemClass = new Map<string, string>()
+    const unitName = new Map<string, { unit: string; requirement?: string }>()
+    const KIND_OF_SLOT = {
+      systemName: 'sys',
+      trigger: 'trig',
+      preCondition: 'pre',
+      systemResponse: 'resp',
+    } as const
     for (const r of Object.values(doc.requirements)) {
+      unitName.set(r.id, { unit: r.key ?? r.id, requirement: r.id })
       const system = resolvePhrase(index, ['system'], r.systemName)
-      if (!('unresolved' in system)) {
-        systemClass.set(r.id, rep(system.id))
-        slotClass.set(`${r.id}\u0000sys`, rep(system.id))
+      const sys = 'unresolved' in system ? undefined : rep(system.id)
+      if (sys !== undefined) systemClass.set(r.id, sys)
+      for (const use of slotUses(r, tables)) {
+        if (use.slot === 'quantity') continue
+        const res = resolvePhrase(index, use.kinds, use.text)
+        if ('unresolved' in res) continue
+        const kind = KIND_OF_SLOT[use.slot]
+        if (kind === 'sys') slotClass.set(`${r.id}${SEP}sys`, { cls: rep(res.id), symbol: res.id })
+        else if (sys !== undefined)
+          slotClass.set(`${r.id}${SEP}${kind}`, { cls: `${sys}|${rep(res.id)}`, symbol: res.id })
       }
-      const res = resolveRequirement(index, r)
-      if ('unresolved' in res) continue
-      const b = res.binding
-      const at = (kind: string, id: SymbolId | undefined) => {
-        if (id !== undefined) slotClass.set(`${r.id}\u0000${kind}`, `${rep(b.system)}|${rep(id)}`)
-      }
-      at('resp', b.response)
-      at('trig', b.trigger)
-      at('pre', b.preCondition ?? b.feature)
     }
     for (const p of projection.probes) {
-      systemClass.set(p.id, PROBE_CLASS)
-      slotClass.set(`${p.id}\u0000sys`, PROBE_CLASS)
+      const system = `${PROBE_CLASS}${p.requirement.systemName}`
+      unitName.set(p.id, {
+        unit: `the declared phrase "${p.requirement[PROBE_SLOT_FIELD[p.slot]] ?? ''}"`,
+      })
+      systemClass.set(p.id, system)
+      slotClass.set(`${p.id}${SEP}sys`, { cls: system, symbol: p.symbol })
       if (p.owner !== undefined)
-        slotClass.set(`${p.id}\u0000${p.slot}`, `${PROBE_CLASS}|${rep(p.owner)}`)
+        slotClass.set(`${p.id}${SEP}${p.slot}`, {
+          cls: `${system}|${rep(p.owner)}`,
+          symbol: p.owner,
+        })
     }
-    for (const l of projection.labelProbes) systemClass.set(l.id, PROBE_CLASS)
+    for (const l of projection.labelProbes) {
+      unitName.set(l.id, { unit: `the declared quantity "${l.label}"` })
+      systemClass.set(l.id, `${PROBE_CLASS}${l.system}`)
+    }
+    const quantityOf = (use: string) => {
+      const label = before.bounds.get(use)?.label ?? ''
+      const system = systemClass.get(use.split(SEP)[0] ?? '')
+      if (system === undefined || label.trim() === '') return undefined
+      const q = resolvePhrase(index, ['quantity'], label)
+      return 'unresolved' in q ? undefined : { cls: `${system}|${rep(q.id)}`, symbol: q.id }
+    }
     const declared: Declared = {
-      atom: (use) => slotClass.get(use),
-      bound: (use) => {
-        const label = before.bounds.get(use)?.label ?? ''
-        const system = systemClass.get(use.split('\u0000')[0] ?? '')
-        if (system === undefined || label.trim() === '') return undefined
-        const q = resolvePhrase(index, ['quantity'], label)
-        return 'unresolved' in q ? undefined : `${system}|${rep(q.id)}`
+      atom: (use) => slotClass.get(use)?.cls,
+      bound: (use) => quantityOf(use)?.cls,
+      who: (use) => {
+        const name = unitName.get(use.split(SEP)[0] ?? '') ?? { unit: use }
+        const symbol = slotClass.get(use)?.symbol ?? quantityOf(use)?.symbol
+        const kind = symbol === undefined ? undefined : index.byId.get(symbol)?.kind
+        return {
+          ...name,
+          ...(symbol !== undefined && kind !== undefined ? { symbol, kind } : {}),
+        }
       },
     }
     return compareOutcome(before, after, declared)
   }
 
-/** The system class every probe is declared under. */
-const PROBE_CLASS = '\u0000probe'
+/** The system class every probe is declared under, suffixed by its probe system. */
+const PROBE_CLASS = '\u0000probe\u0000'
+
+/** The requirement field a probe's phrase is set in. */
+const PROBE_SLOT_FIELD = {
+  resp: 'systemResponse',
+  trig: 'trigger',
+  pre: 'preCondition',
+} as const

@@ -202,26 +202,6 @@ describe('V1 — one owner per phrase key per collision domain', () => {
     expect(violations).toEqual([])
   })
 
-  it('refuses a feature alias that the guard namespace already names as a state', () => {
-    // The propositional encoder names an optional-feature precondition in the `guard` namespace,
-    // so rewriting this alias to its canonical would split it from the state guard it shares an
-    // atom with today, and a conflict between the two requirements would disappear.
-    const symbols: VocabSymbol[] = [
-      {
-        id: 'feat_heater',
-        kind: 'feature',
-        canonical: 'the heater is installed',
-        aliases: ['the heater is fitted'],
-      },
-      { id: 'st_fitted', kind: 'state', canonical: 'the heater is fitted', aliases: [] },
-    ]
-    expect(brief(validateVocabulary(docWith({ symbols })).violations)).toEqual([
-      ['V1', 'alias', 'the heater is fitted'],
-    ])
-    // Control: the same alias with no state spelled that way.
-    expect(validateVocabulary(docWith({ symbols: symbols.slice(0, 1) })).violations).toEqual([])
-  })
-
   it('refuses a quantity alias the kind-blind glossary would apply to an action beside another', () => {
     // The row `dwell time` <- `keep the door unlocked` is looked up on every slot, so it re-keys
     // the ACTION `keep the door unlocked` onto `dwell time`, the atom `act_dwell` holds: two

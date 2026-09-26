@@ -314,8 +314,6 @@ export interface Joins {
   readonly atom: (side: 'before' | 'after', requirement: string, kind: string) => string | undefined
   /** Every bound quantity key of a requirement, by index, before or after. */
   readonly boundKeys: (side: 'before' | 'after', requirement: string) => readonly string[]
-  /** The class the join of today's atoms and the declaration puts a slot use in. */
-  readonly classOf: (use: string) => string
   /** The words to name a requirement by in a refusal. */
   readonly textOf: (requirement: string) => string
 }

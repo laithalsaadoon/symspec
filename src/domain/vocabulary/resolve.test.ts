@@ -156,8 +156,9 @@ const corpus = (): readonly { label: string; doc: RequirementsDocument }[] => [
  * Grouped per collision domain. An optional-feature precondition is a `feature` and a
  * state-driven one a `state`: the propositional encoder names both in the `guard` namespace, so
  * they can share an atom while being two symbols by design. What keeps THAT pair sound is the
- * outcome check in `invariants.ts` (the projection must read the JOIN of today's atoms and the
- * declared classes), pinned there, not a merged namespace here.
+ * outcome check in `invariants.ts`, which refuses a document whose system uses one phrase both
+ * ways as a hygiene violation (V-KIND, decision D10, pinned in `hygiene.test.ts`), not a merged
+ * namespace here.
  */
 const partitionViolations = (doc: RequirementsDocument): string[] => {
   const { index } = buildVocabularyIndex(doc)
