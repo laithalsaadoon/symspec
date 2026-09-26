@@ -801,6 +801,10 @@ when ALL of the following hold:
 3. Neither of these holds:
    - `s` is a demotion and `resolvedBy` holds in the current document: the named pair is now
      one class, or now registered contraries, or the named quantity labels are now one class.
+     EXCEPT (lead decision D9): an `open-opposition-candidate` is resolved only when the relation
+     that discharges it (antonym, alias, or distinct over the candidate's two verbs) is ANCHORED —
+     a seed antonym row, or an entry in the intent artifact's vocabulary. Triage of an opposition
+     candidate is a claim about language the kernel cannot check, so an unanchored triage is drift.
    - `transformed` holds: the current report has an error of the same code naming a superset of
      the requirements.
 4. There is no certificate. In Phase 3 there never is.
@@ -820,7 +824,8 @@ under `--baseline` must produce NO FND_SEMANTIC_DRIFT. The discharges are:
 - `update intentRef`
 - declaring a missing symbol
 - `vocab-alias` for an alias candidate
-- `antonym` for an opposition candidate
+- `antonym` for an opposition candidate, when the pair is anchored in intent or a seed row (D9);
+  the UNANCHORED antonym is instead asserted to produce FND_SEMANTIC_DRIFT
 - `vocab-alias` for a quantity alias candidate
 - rewording a GTWR-blocked requirement
 - every tool-emitted reachability `repair.ops`

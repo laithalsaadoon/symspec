@@ -750,3 +750,17 @@ are accepted. The five decisions it left open:
   `.git/` edits are out of scope. Config discovery is `--config` / `SYMSPEC_CONFIG`, else
   `<git toplevel>/symspec.config.json`, else the document's directory, and a run discloses where
   its config came from in `data.run.config`.
+
+### Phase 3 decisions, W2 follow-up (2026-09-26)
+
+- **D9** Triaging an opposition candidate (antonym, alias, or distinct over its two verbs) is a
+  claim about language the kernel cannot check. Under `--baseline` it counts as
+  `FND_SEMANTIC_DRIFT` unless the relation is anchored: a seed antonym row, or an entry in the
+  intent artifact's vocabulary. Other vocabulary merges (quantity aliases, guard aliases) are
+  resolved by unification: the solver then compares the pair, and aliasing contraries is refused.
+- **D10** A projection is admitted only when its atom partition equals the declared partition
+  exactly. One phrase used as two guard kinds (a feature and a state) that the engine reads as one
+  atom is refused as a hygiene violation naming the phrase; the author picks one kind or renames.
+- **D11** Propose tiers (embeddings) read the author's original words; only decide keys see the
+  projection. S8 carries the original text through `compat.toEngineDoc`. Until then S6 refuses
+  action renames whose semantic pairs it cannot predict.
