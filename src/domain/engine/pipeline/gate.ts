@@ -31,9 +31,8 @@
  * so gating the same requirement set twice yields the identical partition.
  */
 
-import { renderSentence } from '../core/render.ts'
 import type { Requirement, Waiver } from '../core/schema.ts'
-import { checkGtWRules, type GtWRFinding } from '../lint/gtwr.ts'
+import { checkGtWRules, type GtWRFinding, lintSentenceOf } from '../lint/gtwr.ts'
 
 /** Why a requirement was excluded from symbolization. */
 export type ExclusionReason = 'parse-failure' | 'blocking-surface-check'
@@ -113,8 +112,7 @@ function isWaivedBlocking(f: GtWRFinding, requirementId: string, w: Waiver): boo
  * all waived therefore returns `[]` and is re-admitted to symbolization.
  */
 function blockingFindings(requirement: Requirement, waivers: readonly Waiver[]): GtWRFinding[] {
-  const sentence = requirement.sentence || renderSentence(requirement)
-  return checkGtWRules(requirement, sentence)
+  return checkGtWRules(requirement, lintSentenceOf(requirement))
     .filter((f) => f.severity === 'error')
     .filter((f) => !waivers.some((w) => isWaivedBlocking(f, requirement.id, w)))
 }
