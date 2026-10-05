@@ -122,3 +122,111 @@ runs `prepare` (tsdown) and rebuilds the ignored dist; nothing tracked changed.
 G1 is the only one with a reachable sabotage that no test catches; the rest are scope notes.
 
 Behaviors: RH-001, RH-002, RH-003, RH-004, RH-005, RH-006, RH-007, RH-008, RH-009
+
+## After closures
+
+Role evidence, loop-back evidence-2 (job 930). HEAD 6509f0f on vdd/release-hardening (build-2: 36bb975, 6509f0f
+above c1fe161). Everything ran in a throwaway `git clone --no-hardlinks` of repo3 under the job-930 scratch
+folder (`pnpm install --offline --frozen-lockfile`); repo3 was not edited except this section. Node 24,
+pnpm 11.21.0, `SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1`. This record rules nothing.
+
+### A. The whole gate: `pnpm check` at 6509f0f, exit 0
+
+| leg | verdict | count |
+|---|---|---|
+| 1 `biome ci .` | pass | 234 files, no fixes |
+| 2 `tsc --noEmit` | pass | exit 0 |
+| 3 `check:agents` | pass | AGENTS.md equals the generator's output |
+| 4 `gate:reachability` | pass | variables=12, clean=580ms, buggy=869ms, "sound ... catches the planted defect" |
+| 5 `build` (tsdown) | pass | dist/cli.mjs 2.74 MB + model-cache 7.02 kB |
+| 6 `vitest run` | pass | 108 files, 3282 of 3282 passed (section 1 above: 3276; +6 = the 4 RH-010, 1 RH-011, 1 RH-012 tests) |
+| 7 `knip` | pass | no findings |
+
+Seven of seven legs ran, none failed. Tests whose name carries an RH id: 25 (cli 12, publish 5, agents-doc 3,
+scope 1, document 4), 25 passed, 0 failed (earlier 19: cli 7, document 3). The clone's `git status` was clean.
+
+### B. Sabotage replays of build-2's plants (each alone, then `git checkout -- src`)
+
+Source plants in `src/adapters/fs/store.ts` ran `pnpm run build` then `vitest run src/cli.test.ts -t RH-0`
+(12 selected); the document plants ran `vitest run src/domain/requirements/document.test.ts -t RH-0` (4 selected).
+
+| # | behavior | plant | result |
+|---|---|---|---|
+| S1 | RH-011 | bare check back to `stderr.includes('cannot use bare repository')` | red: [RH-011] an ownership refusal quoting a directory that spells the bare-repository phrase ... (1 failed, 11 passed) |
+| S2 | RH-011 | bare check on any line (`split('\n').some(startsWith prefix)`) | red: same [RH-011] test (1 failed, 11 passed) |
+| S3 | RH-005 | prefix `error: cannot use bare repository '` | red: [RH-005] the bare-repository refusal stays ERR_CONFIG_INVALID (1 failed) |
+| S4 | RH-010 | readLink fallback removed (`Effect.succeed(found)`) | red: both [RH-010] DANGLING tests (beside, ancestor) (2 failed, 10 passed) |
+| S5 | RH-010 | every entry error reads absent | red: both [RH-010] guard (existing) ELOOP tests (2 failed, 10 passed) |
+| S6 | RH-003, RH-011 | every entry error reads present, NotFound included | red: both [RH-003] tests and [RH-011] (3 failed, 9 passed) |
+| S7 | RH-012 | symbol id "Requirements are checked against the symbol" restored | red: [RH-012] every description, at every nesting level ... (1 failed, 3 passed) |
+| S8 | RH-012 | distinct "decided when the document is checked" restored | red: same [RH-012] test |
+| S9 | RH-012 | intent items "Every requirement names one of them" restored | red: same [RH-012] test |
+| S2b | none | whole-stderr `startsWith(prefix)` (firstLineOf dropped) | GREEN (12 passed). Equivalent: the prefix holds no newline, so a whole-string prefix match is a first-line prefix match. Not a gap. |
+| S10 | RH-012 | V4_EXPERIMENTAL_STATEMENT dropped from the nested intent item text description | GREEN (4 passed). See gap G7. |
+
+Nine of nine behavior-bearing plants red; the two green ones are as build-2 recorded. S7..S9 name one test
+because RH-012 is one test that walks every description; its failure message carries the offending paths.
+
+### C. The reviewer's three repros, rerun on the closed head
+
+The scripts in job-883 hard-code that job's clone, so copies with the path rewritten to the job-930 scratch
+folder were run, against the throwaway copy only (`guard-mutant.py` edits `dist/cli.mjs` in place).
+
+R2, `bare-phrase-repro.py` (a document in a directory literally named `cannot use bare repository`, no config
+in any ancestor, a git shim printing `fatal: detected dubious ownership in repository at '<dir>'` and exiting 128):
+
+| mode | before (job-883, head c1fe161) | after (6509f0f) |
+|---|---|---|
+| no git on PATH | exit 0, verified true, config null | exit 0, verified true, config null |
+| ownership shim | exit 2 ERR_CONFIG_INVALID | exit 0, verified true, config `{path: <dir>/symspec.config.json, source: "directory", gitRefusal: "fatal: detected dubious ownership in repository at '<dir>'"}` |
+
+R1, `guard-mutant.py` as written cannot run: its target string `fs.exists(candidate).pipe(orElseSucceed(() => true))`
+is gone from the bundle (`AssertionError` on `original.count(before)==1`, bundle untouched, verified by `cmp`).
+Replaced by `guard-mutant-adapted.py`, same method (bundle-only edit restored in `finally`, the seven-now-twelve
+RH CLI tests, then the real fixtures `security-fixtures/loop` with a self-symlinked config and
+`security-fixtures/dangling` with a link to a missing file, both under the rev-parse refusal shim):
+
+| | RH CLI tests (-t RH-0) | loop (ELOOP) fixture | dangling fixture |
+|---|---|---|---|
+| clean head | 12 passed (also `security-repros.py`) | exit 2 ERR_CONFIG_INVALID | exit 2 ERR_CONFIG_INVALID |
+| reviewer's mutant, any entry error reads absent | 2 failed (both RH-010 guard (existing)), 10 passed | exit 0, verified true (unpinned run accepted) | exit 2 |
+| readLink fallback removed | 2 failed (both RH-010 DANGLING), 10 passed | exit 2 | exit 0, verified true |
+
+Before, that mutant left 7 of 7 RH CLI tests green (job-883 `mutant-rh-tests.json`); now the tests catch it.
+The remaining rows of `security-repros.py` on the closed head: no-config rev-parse refusal matches the no-git
+run (exit 0, gitRefusal disclosed); invalid config in an ancestor, exit 2, never loaded; a document symlink
+whose real ancestor holds a config, exit 2; SYMSPEC_CONFIG and --config under refusal, exit 2.
+
+R3, the JSON-schema projection (`review-schema.mts`: `Schema.toJsonSchemaDocument(RequirementsDocument)`, every
+description searched for four retained phrases):
+
+| | matches | exit |
+|---|---|---|
+| before (c1fe161) | 9 paths, all without the statement (six symbol-kind ids, distinct, intent item text, intent items) | 1 |
+| after (6509f0f) | 0 matches | 0 |
+
+The decoder counterexample is unchanged and still true: a v4 document with one intent item and one requirement
+with neither `intentRef` nor `derived` decodes (`accepted: true, intentRef: null, derived: null`). The
+descriptions now say so ("this one decodes a requirement with neither"). I also listed the 78 descriptions under
+vocabulary, intent, policy, intentRef and derived (58 distinct after collapsing the symbol kinds): a search for
+"every requirement names", "are frozen", "checked against the symbol", "decided when the document is checked"
+and "text the specification is checked against" found 0. That is a search for those strings, not a proof that
+no other wording claims enforcement.
+
+### D. Gaps after the closures (none ruled)
+
+- G1 (RH-004 fail-closed) is now covered: the ELOOP tests (RH-010 guard (existing)) go red on S5 and on the
+  reviewer's mutant. Not covered: the "unreadable directory" error (mode 000 ancestor) that `entryPresent`
+  also counts as present; only the ELOOP error is exercised. A mutant treating PermissionDenied alone as
+  absent was not run.
+- G7 (RH-012, new, from S10): the statement is required only on the five v4 keys' own descriptions, so a
+  nested description (intent item text, symbol id, distinct) can lose the statement while RH-012 stays green;
+  the nested ones are held to the claim list only. Build-2 recorded it; it matches RH-012's stated scope.
+- G2 (RH-007/RH-012 reach the schema only through the module; no shipped surface prints these descriptions),
+  G3, G4, G5, G6 of section 6 are unchanged and were not re-checked here, except that AGENTS.md is still equal
+  to its generator (leg 3). G5 is narrower than it was: RH-011 now runs a rev-parse-only ownership refusal
+  through the bundle, but the shim still refuses `git` wholesale in the RH-003 tests.
+- R1's unsafe-fallback and the R2 phrase case are closed by tests; no open sabotage that a test misses, other
+  than G7 and the unreadable-directory variant above.
+
+Behaviors: RH-010 RH-011 RH-012
