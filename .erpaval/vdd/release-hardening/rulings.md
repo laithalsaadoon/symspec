@@ -61,6 +61,23 @@ They are pinned; the contract does not reopen them.
    today (run-weakened) and are NOT labelled experimental. Behaviors: RH-007, RH-008, RH-009.
    Ruled: (RH-R3).
 
+4. RH-010 · A config whose existence cannot be determined, or a dangling config link, under a
+   git refusal. RH-R4 (review findings R1, R2, R3, review ledger fc203db; ruled by the coordinator,
+   job 815, under the owner's delegated authority): under a git refusal with no config named, a
+   symspec.config.json at the document's directory or an ancestor whose existence cannot be
+   determined (self-symlink, ELOOP) fails closed with ERR_CONFIG_INVALID. A dangling
+   symspec.config.json symlink counts as PRESENT under a refusal (fail closed), because under a
+   refusal the run cannot tell which config governs and an agent could plant a dangling link to
+   steer discovery; this differs on purpose from the non-refusal path. (R2) The bare-repository
+   refusal is recognised from git's own message form (its 'fatal: cannot use bare repository'
+   line, the path quoted after it excluded), so a quoted path containing that phrase does not
+   change the classification; the ordinary refusal then falls back exactly as RH-003 says. (R3)
+   Over EVERY description in the projected JSON schema of the document (all nesting levels), the
+   unqualified enforcement claims are absent, and every projected description of vocabulary,
+   intent, policy, intentRef and derived carries V4_EXPERIMENTAL_STATEMENT. Behaviors: RH-010,
+   RH-011, RH-012.
+   Ruled: (RH-R4).
+
 ## Contract readings (how the tests pin the rulings; the build follows these)
 
 - C1 (RH-R3) The constant is `V4_EXPERIMENTAL_STATEMENT`, a string exported from
@@ -102,6 +119,39 @@ They are pinned; the contract does not reopen them.
   baseline, intent, or pinned configuration."); the `files.intent` and `files.policy`
   descriptions of `SymspecConfig`; and the ERR_CONFIG_INVALID catalog text, which says any git
   failure but "not a git repository" is ERR_CONFIG_INVALID and is stale once RH-R2 (a) lands.
+
+- C9 (RH-R4, R1) RH-010 is pinned on the shipped bundle under the same refusing `git` shim as
+  RH-003. "Existence cannot be determined" is produced without mocks by a `symspec.config.json`
+  symlinked to itself (stat fails ELOOP), beside the document and in an ancestor; those two tests
+  are a guard of code already right at ca83661 (`existing` half: they pass there, and they go red
+  on the reviewer's mutant `fs.exists(candidate).pipe(Effect.orElseSucceed(() => false))`). A
+  dangling link is a `symspec.config.json` symlink to a path that does not exist, beside the
+  document and in an ancestor; both must fail closed as ERR_CONFIG_INVALID naming the refusal,
+  with no `data`. What a dangling link does OFF the refusal path is not pinned (RH-R4 lets it
+  differ). An unreadable ancestor directory (EACCES) is not pinned: a document under it cannot be
+  read either.
+- C10 (RH-R4, R2) RH-011's fixture directories, each with no config at or above it: the
+  reviewer's `cannot use bare repository`; `fatal: cannot use bare repository` (git's prefix
+  inside the quoted path); and `x<newline>fatal: cannot use bare repository '` (the phrase at the
+  start of a LINE of the quoted path). The refusal is the ordinary ownership one quoting the
+  directory, so each run must equal the no-git run in exit code, verdict, findings and demotions,
+  carry no error code, and disclose `{path: <dir>/symspec.config.json, source: 'directory'}`. So
+  the bare refusal is git's stderr whose FIRST line begins `fatal: cannot use bare repository`;
+  a substring or any-line (multiline) match fails RH-011. RH-005 (a real bare refusal from real
+  git) is unchanged and still fails closed.
+- C11 (RH-R4, R3) RH-012 walks `Schema.toJsonSchemaDocument(RequirementsDocument)` whole
+  (`schema` and `definitions`, every nesting level, union and refinement branches included). The
+  claims are matched as claims, not as exact wording: RH-R3's two sentences, and
+  /tables are frozen/, /every requirement names/, /(is|are) checked against/, /when the document
+  is checked/ (case-insensitive, whitespace collapsed); a description carrying the statement is
+  NOT thereby excused, so a claim must be rephrased as what a later release will do. "Every
+  projected description of" a key means every description on that property's own node, at every
+  place a property of that name occurs: the node, its allOf/anyOf/oneOf branches at any depth and
+  a `$ref` target, not its nested properties or items (those are held to the claim list). Each of
+  the five keys must occur and carry at least one description. At ca83661 the walk reports the
+  nine projected claims from four source sites (the symbol id, the distinct record, intent item
+  text, intent items) and no key description lacking the statement; dropping the statement from
+  `derived` makes it report `...properties.derived: lacks the statement`.
 
 ## Boundaries
 

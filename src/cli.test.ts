@@ -2120,4 +2120,107 @@ describe('release hardening — a git refusal and the v4 anchors, through the re
     // The pins are enforced today: the config's own description is not labelled experimental.
     expect(existsSync(join(dir, CONFIG))).toBe(true)
   })
+
+  /**
+   * Review findings R1 and R2 (review ledger, commit fc203db), ruling RH-R4.
+   *
+   * R1: under a refusal the lookup for a `symspec.config.json` at or above the document must
+   * fail closed on a candidate whose existence it cannot determine. A config symlinked to itself
+   * makes the existence check itself fail (ELOOP), with no mock: HEAD fails closed, and the
+   * mutant that reads such a failure as "absent" passed every earlier RH test while the run
+   * exited 0, verified true. RH-R4: a DANGLING `symspec.config.json` symlink also counts as
+   * present under a refusal, because the run cannot tell which config governs and an agent could
+   * plant a dangling link to steer discovery. (Off the refusal path a dangling link is not
+   * pinned here; RH-R4 says it may differ on purpose.)
+   *
+   * R2: the bare-repository refusal is recognised from git's own message form, so a document
+   * directory whose name spells the phrase does not turn an ownership refusal into it.
+   */
+  const shimPath = (): Record<string, string> => ({
+    PATH: `${refusingGit()}:${process.env.PATH ?? ''}`,
+  })
+
+  /** A refusal with `link` placed at `at/symspec.config.json`, for a document in `docDir`. */
+  const refusedWithLink = (docDir: string, at: string, target: string) => {
+    const doc = docIn(docDir)
+    symlinkSync(target, join(at, CONFIG))
+    return runJsonEnv(shimPath(), 'check', doc)
+  }
+
+  it('[RH-010] guard (existing): a config beside the document whose existence cannot be determined (a self-symlink, ELOOP) fails closed under a git refusal', () => {
+    const dir = workDir()
+    const refused = refusedWithLink(dir, dir, CONFIG)
+    expect(refused.code).toBe(2)
+    expect(refused.envelope.code).toBe('ERR_CONFIG_INVALID')
+    expect(String(refused.envelope.error)).toContain(refusalIn(dir))
+    expect(refused.envelope.data).toBeUndefined()
+  })
+
+  it('[RH-010] guard (existing): a self-symlinked config in an ANCESTOR fails closed under a git refusal too', () => {
+    const parent = workDir()
+    const dir = join(parent, 'specs', 'door')
+    mkdirSync(dir, { recursive: true })
+    const refused = refusedWithLink(dir, parent, join(parent, CONFIG))
+    expect(refused.code).toBe(2)
+    expect(refused.envelope.code).toBe('ERR_CONFIG_INVALID')
+    expect(String(refused.envelope.error)).toContain(refusalIn(dir))
+    expect(refused.envelope.data).toBeUndefined()
+  })
+
+  it('[RH-010] a DANGLING config symlink beside the document counts as present under a git refusal and fails closed (RH-R4)', () => {
+    const dir = workDir()
+    const refused = refusedWithLink(dir, dir, join(dir, 'no-such-config.json'))
+    expect(refused.code).toBe(2)
+    expect(refused.envelope.code, 'a dangling link must not read as no config').toBe(
+      'ERR_CONFIG_INVALID',
+    )
+    expect(String(refused.envelope.error)).toContain(refusalIn(dir))
+    expect(refused.envelope.data).toBeUndefined()
+  })
+
+  it('[RH-010] a DANGLING config symlink in an ANCESTOR counts as present under a git refusal and fails closed (RH-R4)', () => {
+    const parent = workDir()
+    const dir = join(parent, 'specs', 'door')
+    mkdirSync(dir, { recursive: true })
+    const refused = refusedWithLink(dir, parent, join(parent, 'gone', CONFIG))
+    expect(refused.code).toBe(2)
+    expect(refused.envelope.code, 'a dangling link must not read as no config').toBe(
+      'ERR_CONFIG_INVALID',
+    )
+    expect(String(refused.envelope.error)).toContain(refusalIn(dir))
+    expect(refused.envelope.data).toBeUndefined()
+  })
+
+  it('[RH-011] an ownership refusal quoting a directory that spells the bare-repository phrase runs exactly as no repository', () => {
+    // The reviewer's directory name, one that also carries git's `fatal: ` prefix, and one where
+    // the phrase starts a line of the quoted path: each is inside the quoted path, so each is
+    // excluded; the refusal is the ordinary one and falls back exactly as RH-003 says.
+    const names = [
+      'cannot use bare repository',
+      'fatal: cannot use bare repository',
+      "x\nfatal: cannot use bare repository '",
+    ]
+    const outcomes = names.map((name) => {
+      const dir = join(workDir(), name)
+      mkdirSync(dir)
+      const doc = docIn(dir)
+      expectNoConfigAbove(dir)
+      const noGit = runJsonEnv({ PATH: join(workDir(), 'no-such-bin') }, 'check', doc)
+      const refused = runJsonEnv(shimPath(), 'check', doc)
+      const config = (refused.envelope.data as { run?: { config?: Record<string, unknown> } })?.run
+        ?.config
+      return {
+        name,
+        code: refused.envelope.code ?? null,
+        exit: refused.code === noGit.code,
+        verdict:
+          refused.envelope.type === 'check' &&
+          JSON.stringify(verdictOf(refused.envelope)) === JSON.stringify(verdictOf(noGit.envelope)),
+        path: config?.path === join(dir, CONFIG) && config?.source === 'directory',
+      }
+    })
+    expect(outcomes).toEqual(
+      names.map((name) => ({ name, code: null, exit: true, verdict: true, path: true })),
+    )
+  })
 })

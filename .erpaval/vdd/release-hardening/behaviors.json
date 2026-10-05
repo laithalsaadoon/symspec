@@ -52,5 +52,24 @@
     "origin": "ruling RH-R3",
     "class": "published documentation (honest scope)",
     "existing": false
+  },
+  "RH-010": {
+    "title": "Under a git refusal with no config named, a symspec.config.json at the document's directory or any ancestor whose existence cannot be determined (a self-symlink, ELOOP) fails closed as ERR_CONFIG_INVALID, and a dangling symspec.config.json symlink there counts as present and fails closed too",
+    "origin": "review R1; ruling RH-R4 (dangling link)",
+    "class": "gate boundary (fail closed)",
+    "existing": false,
+    "existingPart": "the ELOOP half guards code already right at ca83661 (its two tests pass there and kill the reviewer's orElseSucceed(() => false) mutant); the dangling half is new and fails on ca83661"
+  },
+  "RH-011": {
+    "title": "The bare-repository refusal is recognised from git's own message form (its 'fatal: cannot use bare repository' line), never from the quoted path, so an ownership refusal quoting a directory that spells the phrase falls back exactly as RH-003 says",
+    "origin": "review R2",
+    "class": "gate boundary (config resolution; legacy documents check as before)",
+    "existing": false
+  },
+  "RH-012": {
+    "title": "Over every description at every nesting level of the projected document JSON schema, no unqualified enforcement claim appears, and every description the projection attaches to the vocabulary, intent, policy, intentRef and derived keys carries V4_EXPERIMENTAL_STATEMENT",
+    "origin": "review R3 (extends RH-007)",
+    "class": "published schema descriptions (honest scope)",
+    "existing": false
   }
 }
