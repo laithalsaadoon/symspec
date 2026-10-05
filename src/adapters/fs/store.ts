@@ -29,7 +29,10 @@
  * is asked with implicit bare-repository discovery refused (the one repository layout committed
  * content CAN hold), so git's answer there is the committed repository's. The lookup never
  * searches for a config, so a config placed between the document and the toplevel is not read.
- * Every failure to read what
+ * A git refusal (anything but "not a git repository") is `ERR_CONFIG_INVALID`, except that with no
+ * config named, a refusal other than the bare-repository one, and no `symspec.config.json` in the
+ * document's directory or any ancestor (looked for only to refuse, never read), the run is the
+ * no-repository run and `unresolvedConfig` discloses the refusal. Every failure to read what
  * the config names is `ERR_CONFIG_INVALID`: fail closed, never "no config". `create` is the
  * exclusive write `init --split` uses for those owner-authored files.
  *
@@ -324,6 +327,31 @@ const NOT_A_REPOSITORY =
 export const isNotARepository = (stderr: string): boolean => NOT_A_REPOSITORY.test(stderr)
 
 /**
+ * Whether `git rev-parse` stderr is (or might be) git refusing an implicit bare repository. A
+ * SUBSTRING match, deliberately the opposite of {@link isNotARepository}: this one only ever
+ * makes a run fail closed, so a refusal quoting a path that spells the phrase is read as the
+ * bare refusal and stays `ERR_CONFIG_INVALID`.
+ */
+const isBareRepositoryRefusal = (stderr: string): boolean =>
+  stderr.includes('cannot use bare repository')
+
+/** The first line of git's stderr, verbatim (git's refusals continue with advice lines). */
+const firstLineOf = (stderr: string): string => stderr.split('\n', 1)[0] ?? ''
+
+/** A git refusal: the directory it was asked in, its exit code and its (trimmed) stderr. */
+interface GitRefusal {
+  readonly dir: string
+  readonly code: number
+  readonly stderr: string
+}
+
+/** What git says about a directory: its toplevel, no repository, or a refusal. */
+type Toplevel =
+  | { readonly _tag: 'toplevel'; readonly path: string }
+  | { readonly _tag: 'none' }
+  | ({ readonly _tag: 'refused' } & GitRefusal)
+
+/**
  * The production {@link DocStore}, over the platform `FileSystem` and `Path`.
  *
  * `Layer.effect` (NOT `Layer.scoped`, which does not exist on beta.102) because
@@ -445,39 +473,63 @@ export const docStoreLayer = Layer.effect(DocStore)(
       )
 
     /**
-     * The toplevel git prints for `dir`, or `undefined` when git names no repository there (or
-     * is not installed). Any other failure (an unsafe-ownership refusal, a `.git` git cannot
-     * read) is `ERR_CONFIG_INVALID`: the location cannot be known, so it is not guessed.
+     * The toplevel git prints for `dir`, `undefined` when git names no repository there (or is
+     * not installed), or git's refusal. Any other failure (an unsafe-ownership refusal, a
+     * `.git` git cannot read, a bare repository) is a refusal: the location cannot be known.
      */
-    const toplevelOf = (dir: string): Effect.Effect<string | undefined, ErrConfigInvalid> =>
+    const askToplevel = (dir: string): Effect.Effect<Toplevel> =>
       Effect.gen(function* () {
         const result = yield* Effect.result(revParseToplevel(dir))
         // No git to ask: there is no repository this build can see.
-        if (result._tag === 'Failure') return undefined
+        if (result._tag === 'Failure') return { _tag: 'none' } as const
         const { code, stdout, stderr } = result.success
-        if (code === 0 && stdout.length > 0) return yield* realOf(stdout)
-        if (isNotARepository(stderr)) return undefined
-        return yield* Effect.fail(
-          new ErrConfigInvalid({
-            error: `\`git rev-parse --show-toplevel\` failed in ${dir} (exit ${code}): ${stderr || 'no output'}. The pinned config is read at the repository toplevel, so its location cannot be known.`,
-            suggestions: [
-              `Run \`git -C ${dir} rev-parse --show-toplevel\` and fix what it reports.`,
-              `If git refuses the repository's ownership, mark it safe: \`git config --global --add safe.directory ${dir}\`.`,
-              "If git refuses a bare repository, the document resolves into a directory laid out as one; move the document into the repository's work tree.",
-              'Or name the config explicitly with --config.',
-            ],
-          }),
-        )
+        if (code === 0 && stdout.length > 0)
+          return { _tag: 'toplevel', path: yield* realOf(stdout) } as const
+        if (isNotARepository(stderr)) return { _tag: 'none' } as const
+        return { _tag: 'refused', dir, code, stderr } as const
+      })
+
+    /** A refusal as `ERR_CONFIG_INVALID`, optionally naming a config that cannot be ignored. */
+    const refusalError = (refusal: GitRefusal, present?: string): ErrConfigInvalid =>
+      new ErrConfigInvalid({
+        error: `\`git rev-parse --show-toplevel\` failed in ${refusal.dir} (exit ${refusal.code}): ${refusal.stderr || 'no output'}. The pinned config is read at the repository toplevel, so its location cannot be known.${present !== undefined ? ` A config exists at ${present}, so the run does not proceed without knowing whether it governs this document.` : ''}`,
+        suggestions: [
+          `Run \`git -C ${refusal.dir} rev-parse --show-toplevel\` and fix what it reports.`,
+          `If git refuses the repository's ownership, mark it safe: \`git config --global --add safe.directory ${refusal.dir}\`.`,
+          "If git refuses a bare repository, the document resolves into a directory laid out as one; move the document into the repository's work tree.",
+          'Or name the config explicitly with --config.',
+        ],
+      })
+
+    /** The document's real path and directory, and what git says about that directory. */
+    const locate = (target: string) =>
+      Effect.gen(function* () {
+        const document = yield* realOf(path.resolve(target))
+        const dir = path.dirname(document)
+        return { document, dir, toplevel: yield* askToplevel(dir) }
       })
 
     const configPath = (target: string): Effect.Effect<DefaultConfigLocation, ErrConfigInvalid> =>
       Effect.gen(function* () {
-        const document = yield* realOf(path.resolve(target))
-        const dir = path.dirname(document)
-        const toplevel = yield* toplevelOf(dir)
-        return toplevel !== undefined
-          ? { path: path.join(toplevel, CONFIG_FILE_NAME), source: 'toplevel', document }
+        const { document, dir, toplevel } = yield* locate(target)
+        if (toplevel._tag === 'refused') return yield* Effect.fail(refusalError(toplevel))
+        return toplevel._tag === 'toplevel'
+          ? { path: path.join(toplevel.path, CONFIG_FILE_NAME), source: 'toplevel', document }
           : { path: path.join(dir, CONFIG_FILE_NAME), source: 'directory', document }
+      })
+
+    /**
+     * The first `symspec.config.json` in `dir` or any ancestor, or `undefined` when there is
+     * none. Only ever used to REFUSE: the file is never read. A path whose existence cannot be
+     * determined counts as present, so an unreadable directory fails closed.
+     */
+    const configAtOrAbove = (dir: string): Effect.Effect<string | undefined> =>
+      Effect.gen(function* () {
+        for (let at = dir; ; at = path.dirname(at)) {
+          const candidate = path.join(at, CONFIG_FILE_NAME)
+          if (yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => true))) return candidate
+          if (path.dirname(at) === at) return undefined
+        }
       })
 
     /** Read, parse and decode one owner-authored JSON file, failing as ERR_CONFIG_INVALID. */
@@ -545,7 +597,37 @@ export const docStoreLayer = Layer.effect(DocStore)(
       Effect.gen(function* () {
         const loaded = yield* load(target)
         const inline = documentBundle(loaded)
-        const location = yield* configPath(target)
+        const located = yield* locate(target)
+        const { toplevel } = located
+        if (toplevel._tag === 'refused') {
+          // A named config still needs the default location (it decides which document the
+          // named config governs), and the bare-repository refusal is the one committed
+          // content can cause: both fail closed, as does any config that could govern the run.
+          if (explicit !== undefined || isBareRepositoryRefusal(toplevel.stderr))
+            return yield* Effect.fail(refusalError(toplevel))
+          const present = yield* configAtOrAbove(located.dir)
+          if (present !== undefined) return yield* Effect.fail(refusalError(toplevel, present))
+          return {
+            ...inline,
+            unresolvedConfig: {
+              path: path.join(located.dir, CONFIG_FILE_NAME),
+              source: 'directory',
+              gitRefusal: firstLineOf(toplevel.stderr),
+            },
+          } satisfies DocumentBundle
+        }
+        const location: DefaultConfigLocation =
+          toplevel._tag === 'toplevel'
+            ? {
+                path: path.join(toplevel.path, CONFIG_FILE_NAME),
+                source: 'toplevel',
+                document: located.document,
+              }
+            : {
+                path: path.join(located.dir, CONFIG_FILE_NAME),
+                source: 'directory',
+                document: located.document,
+              }
         // An explicit config is read or refused: a named file that is absent is not "no config".
         const chosen = explicit ?? location
         const configFile = path.resolve(chosen.path)

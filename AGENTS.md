@@ -76,7 +76,11 @@ Resolution precedence, in order: --config, then the SYMSPEC_CONFIG environment v
 
 A config dropped beside the document inside a repository is not read, and git is asked with
 `safe.bareRepository=explicit`, so a document that resolves into a committed directory laid out
-as a bare repository fails closed as `ERR_CONFIG_INVALID`. `data.run.config` is
+as a bare repository fails closed as `ERR_CONFIG_INVALID`. Any other git refusal (unsafe
+ownership, an unreadable `.git`) fails closed too, unless no config is named and no
+`symspec.config.json` exists in the document's directory or any ancestor: then no config could
+govern the run, so it runs as with no repository and `data.run.config` adds `gitRefusal`, the
+first line of git's refusal. `data.run.config` is
 `{path, source}`, where `source` is `toplevel`, `directory`, `flag` or `env`. The pins are
 authoritative in a CI job on a fresh clone that asserts `source` is `toplevel` and `path` is its
 checkout's config. A local agent that can write `.git/`, pass `--config` or set
@@ -879,7 +883,7 @@ one.
 | `ERR_EMBED_MODEL_MISSING` | The embedding model (core to every `check`) is not cached and remote loading is disabled — the run fails closed rather than silently skipping the semantic/opposition tier. |
 | `ERR_DUPLICATE_KEY` | A create supplied a --key that another requirement already uses; keys must be unique. |
 | `ERR_CLAUSE_UNBOUND` | The words before the modal that no stored slot holds include an unbound clause marker (Unless, Provided (that), In case, Except, Before, Until, Only if, Even if), so the requirement is refused rather than stored without its condition. |
-| `ERR_CONFIG_INVALID` | `symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, the document carries an inline intent or policy alongside a split one, a config named by --config or SYMSPEC_CONFIG does not exist, or `git rev-parse --show-toplevel` fails in the document directory with anything but the whole "not a git repository" discovery message git itself prints (a refusal that quotes a path spelling that phrase is still a refusal), including git refusing a bare repository the document resolves into (so where the config lives cannot be known). The run fails closed rather than checking without the pins. |
+| `ERR_CONFIG_INVALID` | `symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, the document carries an inline intent or policy alongside a split one, a config named by --config or SYMSPEC_CONFIG does not exist, or `git rev-parse --show-toplevel` fails in the document directory with anything but the whole "not a git repository" discovery message git itself prints (a refusal that quotes a path spelling that phrase is still a refusal), including git refusing a bare repository the document resolves into (so where the config lives cannot be known). The run fails closed rather than checking without the pins. The one exception: with no config named, a refusal other than the bare-repository one, and no `symspec.config.json` in the document directory or any ancestor, no config could govern the run, so `check` runs as with no repository and discloses the first line of the refusal in `data.run.config.gitRefusal`. |
 
 ## Finding codes (`FND_*`)
 

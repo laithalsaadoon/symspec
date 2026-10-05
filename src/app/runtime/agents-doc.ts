@@ -257,7 +257,11 @@ ${CONFIG_PATH_CONVENTION}
 
 A config dropped beside the document inside a repository is not read, and git is asked with
 \`safe.bareRepository=explicit\`, so a document that resolves into a committed directory laid out
-as a bare repository fails closed as \`ERR_CONFIG_INVALID\`. \`data.run.config\` is
+as a bare repository fails closed as \`ERR_CONFIG_INVALID\`. Any other git refusal (unsafe
+ownership, an unreadable \`.git\`) fails closed too, unless no config is named and no
+\`${CONFIG_FILE_NAME}\` exists in the document's directory or any ancestor: then no config could
+govern the run, so it runs as with no repository and \`data.run.config\` adds \`gitRefusal\`, the
+first line of git's refusal. \`data.run.config\` is
 \`{path, source}\`, where \`source\` is \`toplevel\`, \`directory\`, \`flag\` or \`env\`. The pins are
 authoritative in a CI job on a fresh clone that asserts \`source\` is \`toplevel\` and \`path\` is its
 checkout's config. A local agent that can write \`.git/\`, pass \`--config\` or set

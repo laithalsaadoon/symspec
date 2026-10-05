@@ -105,6 +105,7 @@ import {
   type ConfigLocation,
   DocPath,
   DocStore,
+  type UnresolvedConfigLocation,
 } from '../../ports/doc-store.ts'
 import { EmbedderService } from '../../ports/embedder.ts'
 import { ErrSolverInconclusive, ErrUsage } from '../../ports/errors.ts'
@@ -275,9 +276,11 @@ export interface PinnedRunDisclosure extends RunDisclosure {
   /**
    * The config the pins were read from, and the rule that chose it: `toplevel` (the
    * repository's), `directory` (no repository), or `flag`/`env` (named explicitly). A CI job
-   * asserts `source` and `path` to know the committed config governed the run.
+   * asserts `source` and `path` to know the committed config governed the run. With no config
+   * at all it is present only to disclose a git refusal no config could be governed by:
+   * `{path, source: 'directory', gitRefusal}`, and the pin keys stay absent.
    */
-  readonly config?: ConfigLocation
+  readonly config?: ConfigLocation | UnresolvedConfigLocation
   /** The effective pins, per knob. */
   readonly pinned?: EffectivePins
   /** The knobs this run ran below their pin, each also a `run-weakened` demotion. */
@@ -1170,7 +1173,12 @@ export const checkOp = defineOperation({
       const payload: CheckPayload = {
         ...shaped,
         // With no config this IS the engine's `run`; with one, the pins ride beside it.
-        run: pinning !== undefined ? { ...shaped.run, ...pinning.disclosure } : shaped.run,
+        run:
+          pinning !== undefined
+            ? { ...shaped.run, ...pinning.disclosure }
+            : bundle.unresolvedConfig !== undefined
+              ? { ...shaped.run, config: bundle.unresolvedConfig }
+              : shaped.run,
         findings: allFindings,
         counts,
         coverage: {
