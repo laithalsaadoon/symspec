@@ -1,0 +1,2 @@
+# A wording waiver scoped by one ref and no hash (the CLI's `symspec waive <code> --ref` form).
+{"op":"waive","code":"GTWR_R5_INDEFINITE_ARTICLE","reason":"'an audit record' names the one record the shift close writes","ref":"LOG-R1"}

@@ -648,7 +648,10 @@ describe('the document lifecycle end to end', () => {
     expect(envelope.code).toBe('ERR_DOC_NOT_FOUND')
   })
 
-  it('imports the agent-run-triggers stream from --file, with exact counts', () => {
+  it('[S3-012] imports the agent-run-triggers stream from --file, with exact counts, refusing its 8 unscoped waivers (exit 1)', () => {
+    // Ruling R13 (S3-012) replaces this test's old exit 0 and `waivers: 8`: every v4 waiver in
+    // this stream is code-only, apply's classifier refuses a code-only waive (R5), and a refused
+    // record makes import exit 1 while the requirements are still written.
     const dir = work()
     const doc = join(dir, 'art.json')
     const { envelope, code } = runJson(
@@ -658,11 +661,11 @@ describe('the document lifecycle end to end', () => {
       '--doc',
       doc,
     )
-    expect(code).toBe(0)
+    expect(code).toBe(1)
     const data = envelope.data as {
       imported: Record<string, number>
       gaps: string[]
-      problems: unknown[]
+      problems: { line: number; detail: string }[]
       unresolved: unknown[]
     }
     expect(data.imported).toEqual({
@@ -670,9 +673,10 @@ describe('the document lifecycle end to end', () => {
       edges: 22,
       glossary: 0,
       antonyms: 0,
-      waivers: 8,
+      waivers: 0,
     })
-    expect(data.problems).toEqual([])
+    expect(data.problems).toHaveLength(8)
+    for (const p of data.problems) expect(p.detail).toContain('ERR_WAIVER_REFUSED')
     expect(data.unresolved).toEqual([])
     expect(data.gaps.length).toBeGreaterThan(0)
     // The imported document is loadable by the same binary — the round trip that
@@ -1896,5 +1900,146 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
       'temporalBound',
       'strict',
     ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 Waivability (AC-5-6) through the shipped bundle: exits, writes, and the waive command
+// ---------------------------------------------------------------------------
+
+describe('S3: waive, apply and import refuse never-class and unscoped waivers through the CLI', () => {
+  const S3 = fileURLToPath(new URL('./testing/__fixtures__/s3-waivability', import.meta.url))
+  const dirs: string[] = []
+  afterAll(async () => {
+    const { rm } = await import('node:fs/promises')
+    await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+  })
+  /** A fresh copy of base.json in a temp dir. */
+  const baseCopy = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), 'symspec-s3-'))
+    dirs.push(dir)
+    const doc = join(dir, 'requirements.json')
+    writeFileSync(doc, readFileSync(join(S3, 'base.json')))
+    return doc
+  }
+  type Result = { ok: boolean; code?: string; error?: string }
+
+  it.each([
+    'repro-code-only',
+    'never-verdict',
+    'lint-code-only',
+    'structural-cycle-code-only',
+  ])('[S3-002] apply %s: the refused waive aborts the stream, exit 1, nothing written, the file byte-identical', (name) => {
+    const doc = baseCopy()
+    const before = readFileSync(doc)
+    const { envelope, code } = runJson(
+      'apply',
+      '--file',
+      doc,
+      '--ops',
+      join(S3, 'cases', `${name}.ops.jsonl`),
+    )
+    expect(code).toBe(1)
+    const data = envelope.data as { written: boolean; results: Result[] }
+    expect(data.written).toBe(false)
+    expect(data.results.find((r) => !r.ok)?.code).toBe('ERR_WAIVER_REFUSED')
+    expect(readFileSync(doc).equals(before)).toBe(true)
+  })
+
+  it('[S3-001] [S3-011] symspec waive FND_CONTRADICTION --ref ORD-R1 is refused ERR_WAIVER_REFUSED, naming the code and its class, exit 1, file untouched', () => {
+    const doc = baseCopy()
+    const before = readFileSync(doc)
+    const { stdout, code } = run(
+      'waive',
+      'FND_CONTRADICTION',
+      '--ref',
+      'ORD-R1',
+      '--reason',
+      'retired path',
+      '--file',
+      doc,
+    )
+    expect(code).not.toBe(0)
+    expect(stdout).toContain('ERR_WAIVER_REFUSED')
+    expect(stdout).toContain('verdict')
+    expect(stdout).not.toMatch(/vocab\s+distinct|propose-vocabulary|--rescope-waivers/i)
+    expect(readFileSync(doc).equals(before)).toBe(true)
+  })
+
+  it('[S3-003] symspec waive GTWR_R5_INDEFINITE_ARTICLE with no --ref is refused ERR_WAIVER_REFUSED, file untouched', () => {
+    const doc = baseCopy()
+    const before = readFileSync(doc)
+    const { stdout, code } = run(
+      'waive',
+      'GTWR_R5_INDEFINITE_ARTICLE',
+      '--reason',
+      'house style',
+      '--file',
+      doc,
+    )
+    expect(code).not.toBe(0)
+    expect(stdout).toContain('ERR_WAIVER_REFUSED')
+    expect(readFileSync(doc).equals(before)).toBe(true)
+  })
+
+  it('[S3-005] [S3-006] symspec waive GTWR_R5_INDEFINITE_ARTICLE --ref LOG-R1 keeps working: stored as requirementIds [LOG-R1] plus the hash of its text', () => {
+    const doc = baseCopy()
+    const { code } = runJson(
+      'waive',
+      'GTWR_R5_INDEFINITE_ARTICLE',
+      '--ref',
+      'LOG-R1',
+      '--reason',
+      'one record',
+      '--file',
+      doc,
+    )
+    expect(code).toBe(0)
+    const stored = (JSON.parse(readFileSync(doc, 'utf8')) as { waivers: Record<string, unknown>[] })
+      .waivers
+    expect(stored).toEqual([
+      {
+        code: 'GTWR_R5_INDEFINITE_ARTICLE',
+        requirementIds: ['5a1e0000-0000-4000-8000-0000000000a1'],
+        contentHash: 'sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0',
+        reason: 'one record',
+      },
+    ])
+  })
+
+  it('[S3-012] [S3-013] import v4-waivers.txt writes the six requirements, refuses I1, I3, I4 and I5 into problems[], and exits 1', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'symspec-s3-'))
+    dirs.push(dir)
+    const doc = join(dir, 'imported.json')
+    const { envelope, code } = runJson(
+      'import',
+      '--file',
+      join(S3, 'import', 'v4-waivers.txt'),
+      '--doc',
+      doc,
+    )
+    expect(code).toBe(1)
+    const data = envelope.data as { imported: Record<string, number>; problems: unknown[] }
+    expect(data.imported.requirements).toBe(6)
+    expect(data.imported.waivers).toBe(2)
+    expect(data.problems).toHaveLength(4)
+    const written = JSON.parse(readFileSync(doc, 'utf8')) as {
+      requirements: Record<string, unknown>
+      waivers: { code: string; requirementId?: string; requirementIds?: string[] }[]
+    }
+    expect(Object.keys(written.requirements)).toHaveLength(6)
+    // I4 is never widened: no stored waiver lacks a scope.
+    for (const w of written.waivers) expect(w.requirementIds, JSON.stringify(w)).toBeDefined()
+  })
+
+  it('[S3-034] check --strict on blocking-lint-both.stored exits 1: the FND_CONTRADICTION error sets the exit before any demotion', () => {
+    const { envelope, code } = runJson(
+      'check',
+      join(S3, 'cases', 'blocking-lint-both.stored.json'),
+      '--strict',
+    )
+    expect(code).toBe(1)
+    const data = envelope.data as { findings: { code: string; severity: string }[] }
+    expect(data.findings.find((f) => f.code === 'FND_CONTRADICTION')?.severity).toBe('error')
   })
 })

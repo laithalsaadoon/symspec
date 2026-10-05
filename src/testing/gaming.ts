@@ -85,6 +85,7 @@
 import { Effect, Layer, ManagedRuntime } from 'effect'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { parseLine } from '../domain/engine/parse/result.ts'
+import { requirementsContentHash } from '../domain/requirements/content-hash.ts'
 import {
   emptyDocument,
   RELATIONS,
@@ -417,6 +418,16 @@ const waivedLintOps = (r2Response: string, r2Negated: boolean): readonly Documen
 ]
 
 /**
+ * The waived-blocking-lint fixture's consistent twin (R2 acknowledges the order): the same two
+ * scoped GTWR_R7_VAGUE waivers over a pair that does not conflict. It verified at base; under G3
+ * (ruling R26, S3-035) it demotes `waived-blocking-lint` and is not clean.
+ */
+export const WAIVED_LINT_CONTROL_TWIN: readonly DocumentOp[] = waivedLintOps(
+  'acknowledge the order in a timely manner',
+  false,
+)
+
+/**
  * A contradiction beside a DANGLING trace edge: `DNG-R1` derives from `DNG-R3`, which is then
  * deleted (`delete` leaves inbound edges dangling by design). `add` accepts an explicit `id`, so
  * re-adding a requirement under the missing UUID discharges FND_DANGLING_REFERENCE with one
@@ -689,7 +700,12 @@ export const FIXTURES: readonly Fixture[] = [
     ops: waivedLintOps('record the order in a timely manner', true),
     culprits: ['WBL-R1', 'WBL-R2'],
     signal: { code: 'FND_CONTRADICTION', names: ['WBL-R1', 'WBL-R2'] },
-    control: { ops: waivedLintOps('acknowledge the order in a timely manner', false) },
+    // Ruling R26 (gap G3, S3-035): a waived blocking lint re-admits its requirement but demotes
+    // `waived-blocking-lint`, so no twin that keeps the waivers can reach a clean verdict. The
+    // consistent twin is kept as {@link WAIVED_LINT_CONTROL_TWIN}, where a test pins exactly that.
+    control: {
+      none: 'A waived blocking lint never yields verified: true (G3, ruling R26): the consistent twin with the same two waivers demotes waived-blocking-lint and exits 3 under --strict, which is the behavior, not a defect to discriminate.',
+    },
   },
   {
     id: 'dangling-target',
@@ -792,13 +808,36 @@ type Edit =
   | { readonly kind: 'ops'; readonly ops: readonly DocumentOp[] }
   | { readonly kind: 'reparse'; readonly ref: string; readonly sentence: string }
   | { readonly kind: 'run'; readonly knobs: Partial<Knobs>; readonly embedder?: EmbedderChoice }
+  /**
+   * Waivers written straight into the STORED document, with no fold: the hand-edited channel
+   * (trust boundary TB3) no write-time fence runs on. It emits no op, so it has no verb; only
+   * `check` can catch it.
+   */
+  | { readonly kind: 'raw-waivers'; readonly waivers: readonly StoredWaiver[] }
   | { readonly kind: 'inapplicable'; readonly reason: string }
 
-/** Everything a move may read. The baseline codes are what an agent sees in the report. */
+/** One stored waiver, as `doc.waivers` holds it. */
+type StoredWaiver = RequirementsDocument['waivers'][number]
+
+/** A code's waivability, as `app/runtime/signal-classes.ts` publishes it; injected by the shard. */
+export type WaivabilityOf = (code: string) => 'scoped' | 'never' | undefined
+
+/** One baseline finding, as the report names it: its code and its requirement UUIDs. */
+export interface FindingView {
+  readonly code: string
+  readonly requirementIds: readonly string[]
+}
+
+/**
+ * Everything a move may read. The baseline codes and findings are what an agent sees in the
+ * report; the waivability is the published column beside them.
+ */
 export interface MoveContext {
   readonly fixture: Fixture
   readonly doc: RequirementsDocument
   readonly baselineCodes: readonly string[]
+  readonly baselineFindings: readonly FindingView[]
+  readonly waivability: WaivabilityOf
 }
 
 export interface Move {
@@ -1108,6 +1147,50 @@ const glossaryOverTerm = (): readonly Move[] =>
     ),
   )
 
+const WAIVE_REASON = 'accepted for this release'
+
+/**
+ * The scoped waivers of every never-class baseline finding: its code over its exact requirement
+ * ids and their current content hash, one per distinct (code, id set). Measured ONLY on fixtures
+ * whose seeded finding is never-class: a scoped, reviewed waiver of a SCOPED-class finding
+ * (`derives-cycle`'s FND_CYCLE) is the designed discharge, not an escape (ruling R45), and is
+ * pinned by its own positive test in `gaming-waivers.test.ts`.
+ */
+const scopedNeverWaivers = (
+  ctx: MoveContext,
+):
+  | {
+      readonly waivers: readonly {
+        readonly code: string
+        readonly ids: readonly string[]
+        readonly contentHash: string
+      }[]
+    }
+  | { readonly kind: 'inapplicable'; readonly reason: string } => {
+  const { fixture, doc, baselineFindings, waivability } = ctx
+  if ('code' in fixture.signal && waivability(fixture.signal.code) === 'scoped')
+    return {
+      kind: 'inapplicable',
+      reason: `the seeded finding ${fixture.signal.code} is scoped-class, so a scoped waive of it is a designed discharge`,
+    }
+  const seen = new Set<string>()
+  const waivers = baselineFindings.flatMap((f) => {
+    if (waivability(f.code) !== 'never' || f.requirementIds.length === 0) return []
+    const ids = [...new Set(f.requirementIds)].sort()
+    const key = `${f.code}|${ids.join(',')}`
+    const contentHash = requirementsContentHash(doc, ids)
+    if (seen.has(key) || contentHash === undefined) return []
+    seen.add(key)
+    return [{ code: f.code, ids, contentHash }]
+  })
+  return waivers.length === 0
+    ? {
+        kind: 'inapplicable',
+        reason: 'the baseline report carries no never-class finding that names a requirement',
+      }
+    : { waivers }
+}
+
 export const MOVES: readonly Move[] = [
   ...oneSided('rename-system', 'rename a system', (r, key) => ({
     kind: 'ops',
@@ -1148,9 +1231,57 @@ export const MOVES: readonly Move[] = [
             ops: baselineCodes.map((code) => ({
               op: 'waive' as const,
               code,
-              reason: 'accepted for this release',
+              reason: WAIVE_REASON,
             })),
           },
+  },
+  {
+    id: 'waive-scoped-never',
+    clause:
+      'op coverage: a scoped waive of each never-class baseline finding over its exact ids and current hash',
+    // The strongest form of the scoped move: every never-class finding the report shows, over the
+    // exact requirement ids it names and the hash of their current text — what an agent types
+    // once a code-only waive is refused and the refusal says to name the requirements.
+    edit: (ctx) => {
+      const scoped = scopedNeverWaivers(ctx)
+      if ('kind' in scoped) return scoped
+      return {
+        kind: 'ops',
+        ops: scoped.waivers.map((w) => ({
+          op: 'waive' as const,
+          code: w.code,
+          refs: [...w.ids],
+          contentHash: w.contentHash,
+          reason: WAIVE_REASON,
+        })),
+      }
+    },
+  },
+  {
+    id: 'waive-raw',
+    clause:
+      'hand-edited waivers: the same waivers plus a code-only one per never-class baseline code, written into the stored document with no fold',
+    // The channel no write-time fence runs on (TB3): a refusal at `waive` closes nothing if
+    // `check` still honors the same waiver written into the JSON by hand.
+    edit: (ctx) => {
+      const scoped = scopedNeverWaivers(ctx)
+      if ('kind' in scoped) return scoped
+      const codes = [...new Set(scoped.waivers.map((w) => w.code))].sort()
+      return {
+        kind: 'raw-waivers',
+        waivers: [
+          ...scoped.waivers.map(
+            (w): StoredWaiver => ({
+              code: w.code,
+              requirementIds: [...w.ids],
+              contentHash: w.contentHash,
+              reason: WAIVE_REASON,
+            }),
+          ),
+          ...codes.map((code): StoredWaiver => ({ code, reason: WAIVE_REASON })),
+        ],
+      }
+    },
   },
   {
     id: 'unwaive',
@@ -1655,7 +1786,29 @@ export type MoveStatus = 'registered-caught' | 'registered-escapes-known-gap' | 
 export const cellDirection = (edit: Edit, ctx: MoveContext): Direction | undefined =>
   edit.kind === 'run'
     ? 'run-weakening'
-    : joinDirections(editVerbs(edit, ctx).map((verb) => OP_DIRECTION[verb].direction))
+    : edit.kind === 'raw-waivers'
+      ? // A hand-written waiver emits no op, but it does what `waive` does: the verb's label.
+        OP_DIRECTION.waive.direction
+      : joinDirections(editVerbs(edit, ctx).map((verb) => OP_DIRECTION[verb].direction))
+
+/**
+ * The code a static (no-`check`) context gives the baseline: which code a waive move names does
+ * not change which verb it emits, so a placeholder never-class finding over a fixture's first
+ * requirement is enough to derive a waive move's direction.
+ */
+const PLACEHOLDER_CODE = 'FND_PLACEHOLDER'
+
+const placeholderContext = (fixture: Fixture, doc: RequirementsDocument): MoveContext => {
+  const first = Object.keys(doc.requirements).sort()[0]
+  return {
+    fixture,
+    doc,
+    baselineCodes: [PLACEHOLDER_CODE],
+    baselineFindings:
+      first === undefined ? [] : [{ code: PLACEHOLDER_CODE, requirementIds: [first] }],
+    waivability: (code) => (code === PLACEHOLDER_CODE ? 'never' : undefined),
+  }
+}
 
 /**
  * A registered move's direction: the join of {@link cellDirection} over every fixture it
@@ -1664,7 +1817,7 @@ export const cellDirection = (edit: Edit, ctx: MoveContext): Direction | undefin
  */
 export const moveDirection = (move: Move, options: MutateOptions): Direction => {
   const directions = FIXTURES.flatMap((fixture) => {
-    const ctx = { fixture, doc: buildDoc(fixture.ops, options), baselineCodes: ['FND_PLACEHOLDER'] }
+    const ctx = placeholderContext(fixture, buildDoc(fixture.ops, options))
     const d = cellDirection(move.edit(ctx), ctx)
     return d === undefined ? [] : [d]
   })
@@ -1782,29 +1935,6 @@ export const KNOWN_ESCAPES: readonly KnownEscape[] = [
       'opposition-split',
     ],
     'The same deletion from the other side. On temporal-conflict it is caught only because deleting `AUD-R2` leaves `AUD-R1` uncovered — a coverage accident, not a defence, which is why the `@first` row exists. On dangling-target it is caught only because the dangling edge on `DNG-R1` survives the deletion.',
-  ),
-  ...escapes(
-    'waive-by-code',
-    'AC-5-6',
-    [
-      'one-trigger-contradiction',
-      'contrary-pair',
-      'registered-contrary',
-      'numeric-conflict',
-      'temporal-conflict',
-      'glossary-bridged',
-      'term-bridged',
-      'waived-blocking-lint',
-      'dangling-target',
-      'overlapping-contrary',
-    ],
-    'A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable.',
-  ),
-  ...escapes(
-    'waive-by-code',
-    'AC-5-6',
-    ['derives-cycle'],
-    'A code-only waiver suppresses FND_CYCLE, an error-severity structural finding, and nothing else is wrong, so the run verifies. AC-5-6 refuses a waiver that does not name the requirement ids and content hash it was raised on; a structural finding stays waivable only that way (`scoped`).',
   ),
   ...(['flip-negated@first', 'flip-negated@second'] as const).flatMap((move) =>
     escapes(
@@ -2045,7 +2175,7 @@ export const OP_COVERAGE: Readonly<
   },
   glossary: { moves: ['alias-contraries-glossary@forward', 'alias-contraries-glossary@reverse'] },
   antonym: { moves: ['antonym-over-candidate'] },
-  waive: { moves: ['waive-by-code'] },
+  waive: { moves: ['waive-by-code', 'waive-scoped-never'] },
   unwaive: { moves: ['unwaive'] },
   unglossary: { moves: ['unglossary'] },
   unantonym: { moves: ['unantonym'] },
@@ -2077,6 +2207,7 @@ export const editVerbs = (edit: Edit, ctx: MoveContext): readonly OpVerb[] => {
         ? ['delete', 'add', 'classify']
         : ['delete', 'add']
     case 'run':
+    case 'raw-waivers':
     case 'inapplicable':
       return []
   }
@@ -2195,6 +2326,17 @@ const applyEdit = async (
             changed: edit.sentence !== req(doc, edit.ref).sentence,
           }
     }
+    case 'raw-waivers': {
+      // No fold: the stored document as a hand edit leaves it.
+      const moved: RequirementsDocument = { ...doc, waivers: [...doc.waivers, ...edit.waivers] }
+      return {
+        kind: 'check',
+        doc: moved,
+        knobs: ARMED,
+        embedder: 'orthogonal',
+        changed: !sameDoc(moved, doc),
+      }
+    }
     case 'ops': {
       const moved = fold(doc, edit.ops, options)
       return 'kind' in moved
@@ -2258,6 +2400,11 @@ export interface GamingWiring {
    * must measure the directions against the SAME D the manifest states them over.
    */
   readonly verdictBearing: VerdictBearing
+  /**
+   * The published waivability of a code (`waivabilityOf` in `app/runtime/signal-classes.ts`),
+   * so the waive moves pick the never-class findings by the SAME column the fold enforces.
+   */
+  readonly waivability: WaivabilityOf
 }
 
 /** One member of D, as `app/runtime/signal-classes.ts` projects it. */
@@ -2344,6 +2491,8 @@ export interface RunResult {
   readonly errorCodes: readonly string[]
   readonly demotions: readonly string[]
   readonly codes: readonly string[]
+  /** Every finding the report shows, with its requirement UUIDs as reported. */
+  readonly findings: readonly FindingView[]
   /** D for this run, with requirement ids read as their keys so a lost member reads as prose. */
   readonly d: readonly DMemberView[]
   /** The equivalence groups this run's report states, read as keys like {@link d}. */
@@ -2440,6 +2589,7 @@ const runCheck = async (
     errorCodes: uniq(data.findings.filter((f) => f.severity === 'error').map((f) => f.code)),
     demotions: uniq(data.coverage.demotions.map((d) => d.reason)),
     codes: uniq(data.findings.map((f) => f.code)),
+    findings: data.findings.map((f) => ({ code: f.code, requirementIds: [...f.requirementIds] })),
     d: wiring.verdictBearing
       .of(data)
       .map((m) => ({ ...m, requirementIds: m.requirementIds.map(keyOf).sort() })),
@@ -2489,8 +2639,15 @@ export const runMatrix = async (
         )
       }
       const baselineCodes = baseline.kind === 'ran' ? baseline.codes : []
+      const baselineFindings = baseline.kind === 'ran' ? baseline.findings : []
       for (const move of moves) {
-        const ctx = { fixture, doc, baselineCodes }
+        const ctx: MoveContext = {
+          fixture,
+          doc,
+          baselineCodes,
+          baselineFindings,
+          waivability: wiring.waivability,
+        }
         const edit = move.edit(ctx)
         const applied = await applyEdit(edit, doc, wiring.mutateOptions)
         const outcome: Outcome =
@@ -2691,14 +2848,14 @@ export const describeGamingShard = (key: string, wiring: GamingWiring): void => 
       expect(failures.controlFailures).toEqual([])
     })
 
-    it('no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair', () => {
+    it('[S3-048] [S3-049] [S3-050] no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair', () => {
       expect(
         failures.unlistedEscapes,
         'new escape: register it with the AC that closes it',
       ).toEqual([])
     })
 
-    it('every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)', () => {
+    it('[S3-048] every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)', () => {
       expect(failures.staleEscapes, 'the row no longer escapes: delete it').toEqual([])
     })
 

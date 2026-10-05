@@ -333,7 +333,8 @@ describe('--dry-run writes nothing, on EVERY mutation op', () => {
     ['update', UPDATE, { ref: 'G1', attr: 'status', value: 'approved' }],
     ['delete', DELETE, { ref: 'G1' }],
     ['link', LINK, { from: 'G1', to: 'G1', relation: 'refines' }],
-    ['waive', WAIVE, { code: 'GTWR_R7_VAGUE', reason: 'reviewed' }],
+    // Scoped: ruling R5 (S3-003) refuses a code-only waive, so the preview names a requirement.
+    ['waive', WAIVE, { code: 'GTWR_R7_VAGUE', reason: 'reviewed', ref: 'G1' }],
     ['glossary', GLOSSARY, { canonical: 'issue a session token', alias: 'mint a token' }],
     ['antonym', ANTONYM, { a: 'open', b: 'shut' }],
   ]
@@ -525,7 +526,8 @@ describe('the injected fold options reach the fold', () => {
     // The defect V27 recorded was a mutation round-tripping a document through a
     // strip-mode parse and silently dropping a forward-compatible table. The write path
     // carries the load's `unknownKeys` back, so a mutation cannot strip one.
-    const fs = fresh()
+    // Seeded, so the waive can name G1 (ruling R5, S3-003: a code-only waive is refused).
+    const fs = await seeded()
     const withUnknown = Layer.mergeAll(
       Layer.succeed(DocStore)(
         documentOnlyStore({
@@ -551,6 +553,8 @@ describe('the injected fold options reach the fold', () => {
       runOperation(waiveOp, {
         code: 'GTWR_R7_VAGUE',
         reason: 'reviewed',
+        // Scoped: ruling R5 (S3-003) refuses a code-only waive.
+        ref: 'G1',
         file: 'doc.json',
       }).pipe(Effect.provide(withUnknown)),
     )

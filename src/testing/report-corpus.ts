@@ -49,6 +49,7 @@ import {
   type Fixture,
   fixtureEmbedder,
   type GamingWiring,
+  WAIVED_LINT_CONTROL_TWIN,
 } from './gaming.ts'
 
 /** One document of the corpus, labelled `<corpus>/<id>` so a diff line names where to look. */
@@ -83,8 +84,16 @@ export const reportSources = (options: MutateOptions): readonly ReportSource[] =
   for (const f of FIXTURES) {
     const near = f.near === undefined ? {} : { near: f.near }
     out.push({ label: `gaming/${f.id}`, doc: buildDoc(f.ops, options), ...near })
-    if ('ops' in f.control) {
-      out.push({ label: `gaming-control/${f.id}`, doc: buildDoc(f.control.ops, options), ...near })
+    // The waived-blocking-lint twin is no gaming control any more (G3, ruling R26: it cannot be
+    // clean), but it stays a corpus document, so its verdict delta under AC-5-6 is a visible row.
+    const twin =
+      'ops' in f.control
+        ? f.control.ops
+        : f.id === 'waived-blocking-lint'
+          ? WAIVED_LINT_CONTROL_TWIN
+          : undefined
+    if (twin !== undefined) {
+      out.push({ label: `gaming-control/${f.id}`, doc: buildDoc(twin, options), ...near })
     }
   }
   return out

@@ -12,10 +12,12 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { MUTATE_OPTIONS } from '../app/operations/mutate-options.ts'
+import { waivabilityOf } from '../app/runtime/signal-classes.ts'
 import {
   DEFAULT_OPPOSITION_COSINE_FLOOR,
   DEFAULT_SEMANTIC_THRESHOLD,
 } from '../domain/engine/formal/semantic.ts'
+import { requirementsContentHash } from '../domain/requirements/content-hash.ts'
 import { OP_VERBS, type OpVerb } from '../domain/requirements/ops.ts'
 import {
   AC_8_2,
@@ -95,12 +97,20 @@ describe('the gaming registry', () => {
 
     // What each move emits on each fixture, statically. `waive-by-code` reads the baseline's
     // codes, so it gets a placeholder: which codes it waives does not change which verb it uses.
+    // `waive-scoped-never` reads the baseline's findings, so it gets a placeholder never-class
+    // finding over a real requirement of the fixture (its hash must be computable).
     const emitted = new Map<string, Set<OpVerb>>()
     for (const fixture of FIXTURES) {
+      const doc = buildDoc(fixture.ops, MUTATE_OPTIONS)
+      const first = Object.keys(doc.requirements).sort()[0]
       const ctx = {
         fixture,
-        doc: buildDoc(fixture.ops, MUTATE_OPTIONS),
+        doc,
         baselineCodes: ['FND_PLACEHOLDER'],
+        baselineFindings:
+          first === undefined ? [] : [{ code: 'FND_PLACEHOLDER', requirementIds: [first] }],
+        waivability: (code: string) =>
+          code === 'FND_PLACEHOLDER' ? ('never' as const) : waivabilityOf(code),
       }
       for (const move of MOVES) {
         const verbs = emitted.get(move.id) ?? new Set<OpVerb>()
@@ -135,7 +145,13 @@ describe('the gaming registry', () => {
     expect(moves.map((m) => m.id)).toEqual(['shall-to-should@first', 'shall-to-should@second'])
     for (const fixture of FIXTURES) {
       const doc = buildDoc(fixture.ops, MUTATE_OPTIONS)
-      const ctx = { fixture, doc, baselineCodes: [] }
+      const ctx = {
+        fixture,
+        doc,
+        baselineCodes: [],
+        baselineFindings: [],
+        waivability: waivabilityOf,
+      }
       for (const move of moves) {
         const edit = move.edit(ctx)
         const label = `${fixture.id} × ${move.id}`
@@ -162,7 +178,13 @@ describe('the gaming registry', () => {
     const entry = doc.terms[0]
     expect(entry).toBeDefined()
     if (entry === undefined) return
-    const ctx = { fixture, doc, baselineCodes: [] }
+    const ctx = {
+      fixture,
+      doc,
+      baselineCodes: [],
+      baselineFindings: [],
+      waivability: waivabilityOf,
+    }
     for (const move of MOVES.filter((m) => m.id.startsWith('glossary-over-term@'))) {
       const edit = move.edit(ctx)
       expect(edit.kind, move.id).toBe('ops')
@@ -277,6 +299,129 @@ describe('the gaming registry', () => {
         `describeGamingShard('${key}',`,
       )
     }
+  })
+
+  it('[S3-047] [S3-048] [S3-050] no KNOWN_ESCAPES row names a waive move, waive-by-code stays registered, and OP_COVERAGE.waive maps to moves that emit waive', () => {
+    // The 11 waive-by-code rows (10 never-class fixtures + derives-cycle) are deleted, the move is
+    // NOT: a refused move still measured is the gate, a deleted move is a blind spot.
+    const waiveRows = KNOWN_ESCAPES.filter((k) => k.move.startsWith('waive')).map(
+      (k) => `${k.fixture} × ${k.move}`,
+    )
+    expect(waiveRows, 'a waive move escapes nowhere once AC-5-6 lands').toEqual([])
+    expect(KNOWN_ESCAPES.some((k) => k.move === 'waive-by-code')).toBe(false)
+    expect(
+      KNOWN_ESCAPES.some((k) => k.fixture === 'derives-cycle' && k.move === 'waive-by-code'),
+    ).toBe(false)
+    expect(REGISTERED.has('waive-by-code')).toBe(true)
+    expect(AC_8_2.find((c) => c.clause === 'waive by code')?.moves).toContain('waive-by-code')
+
+    // OP_COVERAGE.waive still measures: it maps to registered moves, the new scoped one among
+    // them, and is not a written reason.
+    const row = OP_COVERAGE.waive
+    expect('moves' in row, 'waive must stay measured, not excused by a reason').toBe(true)
+    const moves = 'moves' in row ? row.moves : []
+    expect(moves).toContain('waive-by-code')
+    expect(moves).toContain('waive-scoped-never')
+    expect(moves, 'waive-raw emits no op, so it cannot cover the verb').not.toContain('waive-raw')
+    for (const id of moves) expect(REGISTERED.has(id), id).toBe(true)
+  })
+
+  it('[S3-049] waive-scoped-never and waive-raw are registered and inapplicable on derives-cycle', () => {
+    expect(REGISTERED.has('waive-scoped-never')).toBe(true)
+    expect(REGISTERED.has('waive-raw')).toBe(true)
+    const move = (id: string) => {
+      const m = MOVES.find((x) => x.id === id)
+      if (m === undefined) throw new Error(`no move ${id}`)
+      return m
+    }
+    const cycle = FIXTURES.find((f) => f.id === 'derives-cycle')
+    expect(cycle).toBeDefined()
+    if (cycle === undefined) return
+    expect(waivabilityOf('FND_CYCLE')).toBe('scoped')
+    const doc = buildDoc(cycle.ops, MUTATE_OPTIONS)
+    const ids = ['CYC-A', 'CYC-C'].map(
+      (k) => Object.values(doc.requirements).find((r) => r.key === k)?.id ?? k,
+    )
+    // Even with a never-class finding in the report, the seeded FND_CYCLE is scoped-class: a
+    // scoped waive of it is the designed discharge (R45), so neither move runs here.
+    const ctx = {
+      fixture: cycle,
+      doc,
+      baselineCodes: ['FND_CYCLE', 'FND_CONTRADICTION'],
+      baselineFindings: [
+        { code: 'FND_CYCLE', requirementIds: ids },
+        { code: 'FND_CONTRADICTION', requirementIds: ids },
+      ],
+      waivability: waivabilityOf,
+    }
+    for (const id of ['waive-scoped-never', 'waive-raw']) {
+      const edit = move(id).edit(ctx)
+      expect(edit.kind, `derives-cycle × ${id}`).toBe('inapplicable')
+      expect(editVerbs(edit, ctx), id).toEqual([])
+    }
+  })
+
+  it('[S3-049] waive-scoped-never waives each never-class finding over its exact ids and current hash; waive-raw writes the same plus a code-only one per code, with no op', () => {
+    const move = (id: string) => {
+      const m = MOVES.find((x) => x.id === id)
+      if (m === undefined) throw new Error(`no move ${id}`)
+      return m
+    }
+    const fixture = FIXTURES.find((f) => f.id === 'one-trigger-contradiction')
+    expect(fixture).toBeDefined()
+    if (fixture === undefined) return
+    const doc = buildDoc(fixture.ops, MUTATE_OPTIONS)
+    const ids = fixture.culprits
+      .map((k) => Object.values(doc.requirements).find((r) => r.key === k)?.id ?? k)
+      .sort()
+    const hash = requirementsContentHash(doc, ids)
+    expect(hash).toMatch(/^sha256:[0-9a-f]{64}$/)
+    expect(waivabilityOf('FND_CONTRADICTION')).toBe('never')
+    expect(waivabilityOf('GTWR_R7_VAGUE')).toBe('scoped')
+    const ctx = {
+      fixture,
+      doc,
+      baselineCodes: ['FND_CONTRADICTION', 'GTWR_R7_VAGUE'],
+      baselineFindings: [
+        { code: 'FND_CONTRADICTION', requirementIds: [...ids].reverse() },
+        // A scoped-class finding is not this move's target.
+        { code: 'GTWR_R7_VAGUE', requirementIds: [ids[0] ?? ''] },
+        // A never-class finding that names no requirement cannot be scoped.
+        { code: 'FND_CONTRADICTION', requirementIds: [] },
+      ],
+      waivability: waivabilityOf,
+    }
+    const scoped = move('waive-scoped-never').edit(ctx)
+    expect(scoped).toEqual({
+      kind: 'ops',
+      ops: [
+        {
+          op: 'waive',
+          code: 'FND_CONTRADICTION',
+          refs: ids,
+          contentHash: hash,
+          reason: 'accepted for this release',
+        },
+      ],
+    })
+    expect(editVerbs(scoped, ctx)).toEqual(['waive'])
+
+    const raw = move('waive-raw').edit(ctx)
+    expect(raw).toEqual({
+      kind: 'raw-waivers',
+      waivers: [
+        {
+          code: 'FND_CONTRADICTION',
+          requirementIds: ids,
+          contentHash: hash,
+          reason: 'accepted for this release',
+        },
+        { code: 'FND_CONTRADICTION', reason: 'accepted for this release' },
+      ],
+    })
+    expect(editVerbs(raw, ctx), 'a hand edit emits no op').toEqual([])
+    expect(moveDirection(move('waive-raw'), MUTATE_OPTIONS)).toBe('weakening')
+    expect(moveDirection(move('waive-scoped-never'), MUTATE_OPTIONS)).toBe('weakening')
   })
 
   it('reports every move with its status, derived from the tables', async () => {

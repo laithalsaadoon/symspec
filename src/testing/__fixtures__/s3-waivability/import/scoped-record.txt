@@ -1,0 +1,4 @@
+# An import stream whose only waiver is a JSONL record in the scoped form apply accepts (refs + contentHash).
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000a1","key":"LOG-R1","patternType":"event-driven","trigger":"the operator closes the shift","systemName":"audit logger","systemResponse":"store an audit record"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000a2","key":"LOG-R2","patternType":"event-driven","trigger":"the operator closes the shift","systemName":"audit logger","systemResponse":"store a shift summary"}
+{"op":"waive","code":"GTWR_R5_INDEFINITE_ARTICLE","reason":"'an audit record' names the one record the shift close writes","refs":["LOG-R1"],"contentHash":"sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0"}

@@ -37,12 +37,14 @@ import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/d
 import { type Embedder, embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
+import { buildSkillBody } from '../install/skill-body.ts'
 import { type CheckPayload, checkOp } from '../operations/check.ts'
 import { applyOpDefinition } from '../operations/mutation.ts'
 import { parseOp } from '../operations/parse.ts'
 import { lookupCode } from './catalog.ts'
 import { ANTI_PATTERNS, CRAFT_SECTIONS, craftCodes, craftContents, renderCraft } from './craft.ts'
 import { runOperation } from './operation.ts'
+import { waivabilityOf } from './signal-classes.ts'
 
 // ---------------------------------------------------------------------------
 // Running a sentence through the real lint tier
@@ -921,4 +923,63 @@ describe('the state-model section`s transcript is REAL', () => {
       ),
     ).toBe(false)
   }, 60_000)
+})
+
+// ---------------------------------------------------------------------------
+// S3 (spec 007 AC-5-6): the installed skill teaches no waiver the fold refuses
+// ---------------------------------------------------------------------------
+
+/** The published never-class codes a text names, by token. */
+const neverCodesIn = (text: string): readonly string[] =>
+  [...new Set(text.match(/\b(?:FND|GTWR)_[A-Z0-9_]+\b/g) ?? [])].filter(
+    (code) => waivabilityOf(code) === 'never',
+  )
+
+/**
+ * Every surface the craft corpus reaches: the installed skill body (craft at `##`) and the
+ * AGENTS.md rendering (craft at `###`).
+ */
+const SKILL_SURFACES: readonly (readonly [string, string])[] = [
+  ['installed skill body', buildSkillBody()],
+  ['craft at depth 3 (AGENTS.md)', renderCraft(3)],
+]
+
+describe('[S3-043] the skill body offers no waiver for a never-class code', () => {
+  it.each(
+    SKILL_SURFACES,
+  )('[S3-043] %s: the "always-safe reviewed waiver" advice is gone', (_, body) => {
+    // NEGATIVE guards on the stale sentences (craft.ts VOCABULARY_FIRST, "The one thing never to
+    // do mechanically"): an opposition candidate is triage, never waivable, so the fold refuses
+    // the very op this advice tells an agent to apply.
+    expect(body).not.toContain('The always-safe third option is the reviewed waiver')
+    expect(body).not.toContain('the always-safe third option is the reviewed waiver')
+    expect(body).not.toMatch(/always-safe[^.]*waiver/i)
+    expect(body).not.toContain('only waiver that discharges an opposition candidate')
+  })
+
+  it.each(
+    SKILL_SURFACES,
+  )('[S3-043] %s: no paragraph naming FND_OPPOSITION_CANDIDATE offers a waiver', (_, body) => {
+    const paragraphs = body.split(/\n\s*\n/).filter((p) => p.includes('FND_OPPOSITION_CANDIDATE'))
+    expect(
+      paragraphs.length,
+      'the skill body still teaches the opposition candidate',
+    ).toBeGreaterThan(0)
+    const offers = paragraphs.filter((p) =>
+      /\b(?:reviewed|repair|pair|scoped|triage) waiver\b|waiver in the demotion|\bwaive (?:it|this|the pair)\b/i.test(
+        p,
+      ),
+    )
+    expect(offers).toEqual([])
+  })
+
+  it.each(
+    SKILL_SURFACES,
+  )('[S3-043] %s: no sentence pairs a never-class code with "waive"', (_, body) => {
+    const sentences = body
+      .split(/\n\s*\n/)
+      .flatMap((p) => p.replace(/\s*\n\s*/g, ' ').split(/(?<=[.!?])\s+/))
+    const paired = sentences.filter((s) => /waive/i.test(s) && neverCodesIn(s).length > 0)
+    expect(paired).toEqual([])
+  })
 })

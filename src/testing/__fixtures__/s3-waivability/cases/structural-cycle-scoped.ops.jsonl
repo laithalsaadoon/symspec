@@ -1,0 +1,6 @@
+# Two new requirements that derive each other (FND_CYCLE, structural), then a waiver over exactly the finding's two requirements (the fold binds the hash).
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000e1","key":"CYC-A","patternType":"ubiquitous","systemName":"badge reader","systemResponse":"log the badge scan"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000e2","key":"CYC-B","patternType":"ubiquitous","systemName":"badge reader","systemResponse":"archive the badge scan"}
+{"op":"derive","from":"CYC-A","to":"CYC-B"}
+{"op":"derive","from":"CYC-B","to":"CYC-A"}
+{"op":"waive","code":"FND_CYCLE","reason":"the two badge requirements are one policy","refs":["CYC-A","CYC-B"]}

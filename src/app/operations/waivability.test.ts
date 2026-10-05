@@ -14,10 +14,12 @@
  * then requires the refusal. Neither half can drift from the published claim without a red test.
  */
 
+import { readFileSync } from 'node:fs'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { stubEmbedder } from '../../adapters/embedding/embedder.ts'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
+import { requirementsContentHash } from '../../domain/requirements/content-hash.ts'
 import { emptyDocument, type RequirementsDocument } from '../../domain/requirements/document.ts'
 import { foldOps } from '../../domain/requirements/mutate.ts'
 import type { DocumentOp } from '../../domain/requirements/ops.ts'
@@ -26,7 +28,13 @@ import { embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import { renderAgentsDoc } from '../runtime/agents-doc.ts'
 import { runOperation } from '../runtime/operation.ts'
-import { WAIVABILITY_ENFORCED, waivabilityOf } from '../runtime/signal-classes.ts'
+import {
+  FINDING_CLASS,
+  WAIVABILITY,
+  WAIVABILITY_ENFORCED,
+  waivabilityOf,
+  waivabilityStatement,
+} from '../runtime/signal-classes.ts'
 import { checkOp } from './check.ts'
 import { currentManifest, explainOp } from './index.ts'
 import { MUTATE_OPTIONS } from './mutate-options.ts'
@@ -134,6 +142,95 @@ describe('waivability enforcement — the published flag is what the build does'
       expect(waivability.statement).toMatch(/NOT enforced/)
       expect(agents).not.toContain('| Code | Severity | Tier | Class | Waivable | Meaning |')
       expect(agents).not.toContain('| Finding class | Waivable | In D | Meaning |')
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 (spec 007 AC-5-6): the flag is TRUE, and both halves hold unconditionally
+// ---------------------------------------------------------------------------
+
+/**
+ * One published never-class code per never class, read off `FINDING_CLASS` so the probe cannot
+ * name a class no code has. `anchor` is a never class too, but no published code carries it on
+ * this build (`FINDING_CLASS` has no anchor row), so the loop covers the classes that exist and
+ * picks up an anchor code the day one is published.
+ */
+const NEVER_BY_CLASS: readonly (readonly [string, string])[] = Object.entries(WAIVABILITY)
+  .filter(([, waivable]) => waivable === 'never')
+  .flatMap(([cls]) => {
+    const code = Object.entries(FINDING_CLASS).find(([, row]) => row.class === cls)?.[0]
+    return code === undefined ? [] : [[cls, code] as const]
+  })
+
+/** The fold entry an aborted fold stopped at. */
+const refusal = (doc: RequirementsDocument, ops: readonly DocumentOp[]) => {
+  const folded = fold(doc, ops)
+  return folded.abortedAt === undefined ? undefined : folded.results[folded.abortedAt]
+}
+
+describe('[S3-044] waivability is enforced, and nothing publishes otherwise', () => {
+  it('[S3-044] WAIVABILITY_ENFORCED is true', () => {
+    expect(WAIVABILITY_ENFORCED).toBe(true)
+  })
+
+  it('[S3-044] the probe covers one never code of every never class a published code has', () => {
+    expect(NEVER_BY_CLASS.map(([cls]) => cls)).toEqual(
+      expect.arrayContaining(['verdict', 'disclosure', 'triage', 'hygiene']),
+    )
+    for (const [, code] of NEVER_BY_CLASS) expect(waivabilityOf(code), code).toBe('never')
+  })
+
+  it('[S3-044] no surface says "NOT enforced": the statement, the manifest, AGENTS.md and explain', async () => {
+    expect(waivabilityStatement()).not.toMatch(/NOT enforced/)
+    expect(currentManifest().signalClasses.waivability.statement).not.toMatch(/NOT enforced/)
+    // A boolean, not `not.toContain`: a failure would otherwise print all of AGENTS.md.
+    expect(renderAgentsDoc(currentManifest()).includes('NOT enforced'), 'rendered AGENTS.md').toBe(
+      false,
+    )
+    for (const [, code] of NEVER_BY_CLASS) {
+      const env = await Effect.runPromise(runOperation(explainOp, { code }))
+      expect(JSON.stringify(env.data), code).not.toContain('NOT enforced')
+      expect(env.data.waivableEnforced, code).toBe(true)
+    }
+  })
+
+  it('[S3-044] the committed AGENTS.md does not say "NOT enforced by this build"', () => {
+    const committed = readFileSync(new URL('../../../AGENTS.md', import.meta.url), 'utf8')
+    expect(committed.includes('NOT enforced by this build'), 'AGENTS.md').toBe(false)
+  })
+
+  it('[S3-044] write time: the fold refuses a never code of each class, code-only and refs+hash, with ERR_WAIVER_REFUSED', () => {
+    const doc = built()
+    const refs = Object.keys(doc.requirements).sort()
+    const contentHash = requirementsContentHash(doc, refs)
+    expect(contentHash).toBeDefined()
+    for (const [cls, code] of NEVER_BY_CLASS) {
+      const codeOnly = refusal(doc, [{ op: 'waive', code, reason: 'accepted for this release' }])
+      expect(codeOnly?.code, `${cls} ${code}: code-only`).toBe('ERR_WAIVER_REFUSED')
+      const scoped = refusal(doc, [
+        {
+          op: 'waive',
+          code,
+          refs,
+          ...(contentHash !== undefined ? { contentHash } : {}),
+          reason: 'reviewed: these two were read',
+        },
+      ])
+      expect(scoped?.code, `${cls} ${code}: refs+hash`).toBe('ERR_WAIVER_REFUSED')
+    }
+  })
+
+  it('[S3-044] check time: a stored FND_CONTRADICTION waiver, code-only or refs+hash, suppresses nothing', async () => {
+    const doc = built()
+    const refs = Object.keys(doc.requirements).sort()
+    const contentHash = requirementsContentHash(doc, refs)
+    for (const waiver of [
+      { code: 'FND_CONTRADICTION', reason: 'hand-edited' },
+      { code: 'FND_CONTRADICTION', requirementIds: refs, contentHash, reason: 'hand-edited' },
+    ]) {
+      const waived = { ...doc, waivers: [waiver] } as unknown as RequirementsDocument
+      expect(await checkCodes(waived), JSON.stringify(waiver)).toContain('FND_CONTRADICTION')
     }
   })
 })

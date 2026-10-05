@@ -23,12 +23,27 @@
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { Effect } from 'effect'
+import ts from 'typescript'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
+import { checkOp } from '../../app/operations/check.ts'
 import { allOperations } from '../../app/operations/index.ts'
 import { allCodes, lookupCode } from '../../app/runtime/catalog.ts'
+import { exitCodeForEnvelope } from '../../app/runtime/exit.ts'
+import { runOperation } from '../../app/runtime/operation.ts'
+import { waivabilityOf } from '../../app/runtime/signal-classes.ts'
 import { runnable } from '../../ports/command-form.ts'
+import {
+  type CheckWiring,
+  checkDocument,
+  fixtureDoc,
+  HASH,
+  ID,
+} from '../../testing/waiver-fixture.ts'
 import type { Embedder } from '../engine/formal/embed.ts'
 import { type CheckFinding, type CoverageDemotion, runCheck } from '../engine/pipeline/check.ts'
+import { requirementsContentHash } from '../requirements/content-hash.ts'
 import type { RequirementsDocument } from '../requirements/document.ts'
 import { applyOp } from '../requirements/mutate.ts'
 import { type RepairContext, repairForDemotion } from './repair.ts'
@@ -456,7 +471,11 @@ describe('a pair demotion repair is scoped to its own pair', () => {
     ['number-spelling-candidate', 'FND_NUMBER_SPELLING_CANDIDATE', 'spelling'],
   ]
 
-  it.each(PAIRS)('%s: applying the op leaves an untriaged pair demoting', (reason, code, msg) => {
+  // Ruling R29 (S3-039) replaces "applying the op leaves an untriaged pair demoting": every
+  // code here is never-class, so the repair offers no waive of it at all.
+  it.each(
+    PAIRS,
+  )('[S3-039] %s: the repair offers no waive of its never-class code, so no pair is discharged', (reason, code, msg) => {
     const door = pairFinding(code, ['door-lo', 'door-hi'], msg)
     const brake = pairFinding(code, ['brake-lo', 'brake-hi'], msg)
     const context: RepairContext = { ...CONTEXT, findings: [door, brake] }
@@ -464,10 +483,9 @@ describe('a pair demotion repair is scoped to its own pair', () => {
       { reason, requirementIds: ['door-lo', 'door-hi'], action: 'x' } as CoverageDemotion,
       context,
     )
-    expect(repair.ops).toEqual([expect.objectContaining({ op: 'waive', code })])
-    const waive = repair.ops[0] as { code?: string; ref?: string }
-    expect(suppresses(waive, door)).toBe(true)
-    expect(suppresses(waive, brake)).toBe(false)
+    expect((repair.ops as readonly { op?: string }[]).filter((op) => op.op === 'waive')).toEqual([])
+    const waives = repair.ops as readonly { code?: string; ref?: string }[]
+    expect(waives.some((op) => suppresses(op, door) || suppresses(op, brake))).toBe(false)
   })
 
   // Every pair discharge binds the FINDING, not one of its ids: a ref-scoped waiver still
@@ -483,47 +501,44 @@ describe('a pair demotion repair is scoped to its own pair', () => {
     ['quantity-alias-candidate', 'FND_QUANTITY_ALIAS_CANDIDATE'],
   ]
 
-  it.each(REVIEWED)('%s: the op names the exact set and its content hash', (reason, code) => {
+  // Ruling R29 (S3-039) replaces "the op names the exact set and its content hash": a refs+hash
+  // waive of a never-class code is refused by the fold, so the repair offers none, scoped or not.
+  it.each(
+    REVIEWED,
+  )('[S3-039] %s: no waive op, not even one over the exact set and its content hash', (reason, code) => {
     const pair = pairFinding(code, ['w', 'x'], 'pair')
-    const hashed: string[][] = []
     const repair = repairForDemotion(
       { reason, requirementIds: ['x', 'w'], action: 'x' } as CoverageDemotion,
       {
         ...CONTEXT,
         findings: [pair],
-        contentHash: (ids) => {
-          hashed.push([...ids])
-          return `sha256:${ids.join('+')}`
-        },
+        contentHash: (ids) => `sha256:${ids.join('+')}`,
       },
     )
-    expect(repair.ops).toEqual([
-      {
-        op: 'waive',
-        code,
-        reason: expect.any(String),
-        refs: ['w', 'x'],
-        contentHash: 'sha256:w+x',
-      },
-    ])
-    expect(hashed).toEqual([['w', 'x']])
+    expect(repair.ops).not.toContainEqual(expect.objectContaining({ op: 'waive', code }))
+    expect((repair.ops as readonly { op?: string }[]).filter((op) => op.op === 'waive')).toEqual([])
   })
 
-  it.each(REVIEWED)('%s: the op does not reach a cluster that grew', (reason, code) => {
+  // Ruling R29 (S3-039) replaces "the op does not reach a cluster that grew": with no waive op,
+  // neither the pair nor a grown cluster is discharged by the repair.
+  it.each(
+    REVIEWED,
+  )('[S3-039] %s: no repair op reaches the pair or a cluster that grew', (reason, code) => {
     const pair = pairFinding(code, ['w', 'x'], 'pair')
     const repair = repairForDemotion(
       { reason, requirementIds: ['w', 'x'], action: 'x' } as CoverageDemotion,
       { ...CONTEXT, findings: [pair] },
     )
-    const waive = repair.ops[0] as { code?: string; refs?: readonly string[] }
     const grown: CheckFinding = { ...pair, requirementIds: ['w', 'x', 'y'] }
-    expect(suppresses(waive, pair)).toBe(true)
-    expect(suppresses(waive, grown)).toBe(false)
-    // Without a document to hash, the op omits the hash and `apply` binds the text it finds.
-    expect(waive).not.toHaveProperty('contentHash')
+    const ops = repair.ops as readonly { code?: string; ref?: string; refs?: readonly string[] }[]
+    expect(ops.filter((op) => suppresses(op, pair) || suppresses(op, grown))).toEqual([])
   })
 
-  it.each(REVIEWED)('%s: in a four-cycle, each op discharges its own pair only', (reason, code) => {
+  // Ruling R29 (S3-039) replaces "in a four-cycle, each op discharges its own pair only": no
+  // repair op discharges any pair of a never-class code.
+  it.each(
+    REVIEWED,
+  )('[S3-039] %s: in a four-cycle, no repair op discharges any pair', (reason, code) => {
     // Every id is in two pairs, so no one-requirement scope is exact: the old pick fell back to a
     // shared id and one triage discharged a second pair.
     const cycle = [
@@ -537,8 +552,8 @@ describe('a pair demotion repair is scoped to its own pair', () => {
         { reason, requirementIds: [...own.requirementIds], action: 'x' } as CoverageDemotion,
         { ...CONTEXT, findings: cycle },
       )
-      const waive = repair.ops[0] as { code?: string; refs?: readonly string[] }
-      expect(cycle.filter((f) => suppresses(waive, f))).toEqual([own])
+      const ops = repair.ops as readonly { code?: string; ref?: string; refs?: readonly string[] }[]
+      expect(cycle.filter((f) => ops.some((op) => suppresses(op, f)))).toEqual([])
     }
   })
 
@@ -560,7 +575,9 @@ describe('a pair demotion repair is scoped to its own pair', () => {
     expect(repair.commands.some((c) => c.startsWith('symspec waive'))).toBe(false)
   })
 
-  it('avoids an id a SIBLING pair shares, when the pair has one of its own', () => {
+  // Ruling R29 (S3-039) replaces "avoids an id a SIBLING pair shares, when the pair has one of its
+  // own": FND_SIMILAR_SEMANTIC is triage, so the repair offers no waive that reaches either pair.
+  it('[S3-039] offers no waive that reaches its pair or a SIBLING pair sharing an id', () => {
     // [a, c] and [b, c]: scoping to c would discharge both, scoping to a only its own.
     const ac = pairFinding('FND_SIMILAR_SEMANTIC', ['a', 'c'], 'merge a c')
     const bc = pairFinding('FND_SIMILAR_SEMANTIC', ['b', 'c'], 'merge b c')
@@ -572,9 +589,8 @@ describe('a pair demotion repair is scoped to its own pair', () => {
       } as CoverageDemotion,
       { ...CONTEXT, findings: [bc, ac] },
     )
-    const waive = repair.ops[0] as { code?: string; ref?: string }
-    expect(suppresses(waive, ac)).toBe(true)
-    expect(suppresses(waive, bc)).toBe(false)
+    const ops = repair.ops as readonly { code?: string; ref?: string; refs?: readonly string[] }[]
+    expect(ops.filter((op) => suppresses(op, ac) || suppresses(op, bc))).toEqual([])
   })
 
   it("reads its commands from ITS pair's finding, not the first one sharing an id", () => {
@@ -835,5 +851,184 @@ describe('AC-3-6: the first repair command keeps every conflict visible', () => 
     }
     // Control: with R1 deleted and no merge, the committed glossary still catches R3/R4.
     expect(contradictions(await check(doc('R1')))).toEqual([['R3', 'R4']])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 (spec 007 AC-5-6): the excluded-from-formal remedy, and the engine's never-code prose
+// ---------------------------------------------------------------------------
+
+/** The real `check` and solver, as `testing/waiver-fixture.ts` takes them. */
+const WIRING: CheckWiring = {
+  check: (input) =>
+    runOperation(checkOp, input).pipe(
+      Effect.map((envelope) => ({
+        exit: exitCodeForEnvelope(envelope),
+        data: envelope.data as unknown,
+      })),
+    ),
+  solver: solverServiceLayer,
+}
+
+describe('[S3-041] the excluded-from-formal remedy for a blocking scoped lint', () => {
+  // base.json's ORD-R1 is blocked by GTWR_R7_VAGUE, a wording (scoped) code.
+  const doc = fixtureDoc('base.json')
+  const id = ID['ORD-R1']
+  let action = ''
+  let ops: readonly Readonly<Record<string, unknown>>[] = []
+
+  beforeAll(async () => {
+    const run = await checkDocument(WIRING, doc)
+    const demotion = run.data.coverage.demotions.find(
+      (d) => d.reason === 'excluded-from-formal' && d.requirementIds.includes(id),
+    )
+    if (demotion === undefined)
+      throw new Error('base.json: no excluded-from-formal demotion for ORD-R1')
+    action = demotion.action ?? ''
+    ops = demotion.repair?.ops ?? []
+  }, 120_000)
+
+  it('[S3-041] the fixture premise: ORD-R1 is blocked by GTWR_R7_VAGUE, a scoped code', () => {
+    expect(waivabilityOf('GTWR_R7_VAGUE')).toBe('scoped')
+    expect(requirementsContentHash(doc, [id])).toBe(HASH['ORD-R1'])
+  })
+
+  it('[S3-041] the action offers rephrasing first, before any waiver', () => {
+    const rephrase = action.search(/\b(?:rephrase|rewrite|reword)/i)
+    expect(rephrase, action).toBeGreaterThanOrEqual(0)
+    const waive = action.search(/waive/i)
+    if (waive >= 0) expect(rephrase, action).toBeLessThan(waive)
+  })
+
+  it('[S3-041] any offered waive is refs plus the current content hash, never a single ref', () => {
+    const waives = ops.filter((op) => op.op === 'waive')
+    for (const op of waives) {
+      expect(op).toEqual({
+        op: 'waive',
+        code: 'GTWR_R7_VAGUE',
+        refs: [id],
+        contentHash: HASH['ORD-R1'],
+        reason: expect.any(String),
+      })
+      expect(op).not.toHaveProperty('ref')
+    }
+    // An action that mentions a waiver must carry the exact op, so an agent never has to spell
+    // one from the prose.
+    if (/\bwaive\b|waiver/i.test(action)) expect(waives.length, action).toBeGreaterThan(0)
+  })
+
+  it('[S3-041] an offered waiver says it demotes waived-blocking-lint, so the run cannot verify', () => {
+    if (!ops.some((op) => op.op === 'waive') && !/\bwaive\b|waiver/i.test(action)) return
+    expect(action).toContain('waived-blocking-lint')
+    expect(action).toMatch(
+      /cannot (?:verify|certify|be verified)|never (?:yields? |reaches |be )?`?verified|`?verified`?[^.]{0,40}\bfalse\b/i,
+    )
+  })
+
+  it('[S3-041] the action spells no single-ref `symspec waive <blocking-code> --ref` syntax', () => {
+    // NEGATIVE guards on base's sentence: a one-requirement waive is the wider scope S3 removes.
+    expect(action).not.toContain('symspec waive add <blocking-code> --ref')
+    expect(action).not.toContain('symspec waive <blocking-code> --ref')
+    expect(action).not.toMatch(/symspec waive\b[^`]*--ref\b/)
+  })
+})
+
+/**
+ * Every string a TypeScript source file holds — plain, template and template-part literals —
+ * with comments excluded by construction (the compiler's own scanner, not a regex).
+ */
+const stringLiterals = (relative: string): readonly string[] => {
+  const file = ts.createSourceFile(
+    relative,
+    readFileSync(join(REPO_ROOT, relative), 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+  )
+  const out: string[] = []
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isStringLiteral(node) ||
+      ts.isNoSubstitutionTemplateLiteral(node) ||
+      ts.isTemplateHead(node) ||
+      ts.isTemplateMiddle(node) ||
+      ts.isTemplateTail(node)
+    ) {
+      out.push(node.text)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  return out
+}
+
+/**
+ * The engine sites whose findings are all never-class: every code literal each file holds is
+ * asserted never below, so a string in it that says "waive" can only be advice to waive a
+ * never code (S3-040, R29).
+ */
+const NEVER_ONLY_SITES = [
+  'src/domain/engine/formal/semantic.ts',
+  'src/domain/engine/formal/numeric-contradiction.ts',
+  'src/domain/engine/formal/number-spelling.ts',
+  'src/domain/engine/formal/quantity-alias.ts',
+  'src/domain/engine/formal/coverage.ts',
+] as const
+
+/**
+ * `pipeline/check.ts` also builds the excluded-from-formal action, whose blocking code is a
+ * scoped lint (S3-041 may offer its scoped waive there). So its sweep forbids the never-code
+ * spellings base ships rather than every "waive": the pair demotions' "repair waiver"
+ * (open-opposition-candidate, opposite-polarity-near-duplicate, quantity-alias-candidate),
+ * relational's "waive this finding", numeric-bounds-uncompared's "waive this finding", and
+ * number-spelling-candidate's "waive FND_NUMBER_SPELLING_CANDIDATE", and the unapplied-waiver
+ * note's "a candidate is discharged only by a waiver" (open-opposition-candidate).
+ */
+const CHECK_TS = 'src/domain/engine/pipeline/check.ts'
+const NEVER_WAIVE_SPELLINGS =
+  /repair waiver|waive (?:this|it|the pair)\b|waive FND_[A-Z_]+|discharged only by a waiver/i
+
+describe('[S3-040] the engine never advises a waiver of a never-class code (static)', () => {
+  it('[S3-040] the extractor reads string literals and skips comments', () => {
+    const probe = ts.createSourceFile(
+      'probe.ts',
+      `// waive in a comment\nconst a = 'waive one'\nconst b = \`x $\{a} waive two\`\n`,
+      ts.ScriptTarget.Latest,
+      true,
+    )
+    const found: string[] = []
+    const visit = (node: ts.Node): void => {
+      if (ts.isStringLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateTail(node)) {
+        found.push(node.text)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(probe)
+    expect(found).toEqual(['waive one', 'x ', ' waive two'])
+  })
+
+  it.each(NEVER_ONLY_SITES)('[S3-040] %s emits only never-class codes', (relative) => {
+    const codes = [
+      ...new Set(stringLiterals(relative).filter((s) => /^(?:FND|GTWR)_[A-Z0-9_]+$/.test(s))),
+    ]
+    expect(codes.length, relative).toBeGreaterThan(0)
+    for (const code of codes) expect(waivabilityOf(code), `${relative}: ${code}`).toBe('never')
+  })
+
+  it.each(NEVER_ONLY_SITES)('[S3-040] %s: no string literal says "waive"', (relative) => {
+    expect(stringLiterals(relative).filter((s) => /waive/i.test(s))).toEqual([])
+  })
+
+  it('[S3-040] pipeline/check.ts: no never-code demotion action spells a waiver', () => {
+    expect(stringLiterals(CHECK_TS).filter((s) => NEVER_WAIVE_SPELLINGS.test(s))).toEqual([])
+  })
+})
+
+/** The commands and flags this build does not have (R24, R36). */
+const UNBUILT = ['vocab distinct', 'propose-vocabulary', '--rescope-waivers'] as const
+
+describe('[S3-045] no source string names a command this build lacks (static)', () => {
+  it.each(walk('src').sort())('[S3-045] %s', (relative) => {
+    const named = stringLiterals(relative).filter((s) => UNBUILT.some((u) => s.includes(u)))
+    expect(named).toEqual([])
   })
 })

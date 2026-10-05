@@ -43,7 +43,11 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { solverServiceLayer } from '../adapters/z3/solver-service.ts'
+import * as s3Options from '../app/operations/mutate-options.ts'
+import * as s3Catalog from '../app/runtime/catalog.ts'
+import * as s3Classes from '../app/runtime/signal-classes.ts'
 import { SolverService } from '../ports/solver.ts'
+import * as s3 from '../testing/waiver-fixture.ts'
 import { toEngineDoc, toEngineRequirement } from './compat.ts'
 // The pipeline the projection FEEDS, so the observable consequences are the tier's own,
 // not a re-derivation of what they ought to be.
@@ -51,6 +55,8 @@ import { runCheck } from './engine/pipeline/check.ts'
 import { requirementsContentHash } from './requirements/content-hash.ts'
 import type { Requirement, RequirementsDocument } from './requirements/document.ts'
 import { emptyDocument } from './requirements/document.ts'
+import { foldOps } from './requirements/mutate.ts'
+import type { DocumentOp } from './requirements/ops.ts'
 import { renderSentence } from './requirements/render.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -235,14 +241,28 @@ describe('compat — every projected field the tier reads', () => {
     expect(toEngineDoc(doc).terms?.[0]?.aliases).not.toBe(doc.terms[0]?.aliases)
   })
 
-  it('preserves a committed waiver, so a reviewed baseline stays suppressed', async () => {
+  it('[S3-021] preserves a committed scoped waiver, so a reviewed baseline stays suppressed', async () => {
+    // Ruling R16 (S3-017) replaces the code-only waiver this test used: a stored code-only
+    // waiver is inert, so the reviewed baseline is the exact set plus its content hash.
     const doc = docOf(req({ id: A }), req({ id: B }))
     const waived: RequirementsDocument = {
       ...doc,
-      waivers: [{ code: 'FND_EXACT_DUPLICATE', reason: 'reviewed: intentional restatement' }],
+      waivers: [
+        {
+          code: 'FND_EXACT_DUPLICATE',
+          requirementIds: [A, B],
+          contentHash: requirementsContentHash(doc, [A, B]) as string,
+          reason: 'reviewed: intentional restatement',
+        },
+      ],
     }
     expect(toEngineDoc(waived).waivers).toEqual([
-      { code: 'FND_EXACT_DUPLICATE', reason: 'reviewed: intentional restatement' },
+      {
+        code: 'FND_EXACT_DUPLICATE',
+        requirementIds: [A, B],
+        reason: 'reviewed: intentional restatement',
+        textBound: true,
+      },
     ])
     const report = await check(waived)
     // The waiver bit: the finding is gone from `findings[]` AND counted, so a
@@ -251,18 +271,37 @@ describe('compat — every projected field the tier reads', () => {
     expect(report.waived).toBeGreaterThan(0)
   })
 
-  it('preserves a SCOPED waiver`s requirementId', () => {
-    // A scoped waiver only bites findings naming that requirement. Losing the scope
-    // would silently widen it to document-wide — a suppression the author did not
-    // ask for.
-    const doc: RequirementsDocument = {
-      ...docOf(req({ id: A })),
-      waivers: [{ code: 'GTWR_R5_INDEFINITE_ARTICLE', requirementId: A, reason: 'reviewed' }],
-    }
-    expect(toEngineDoc(doc).waivers[0]?.requirementId).toBe(A)
+  it('[S3-018] [S3-020] keeps a one-requirement waiver only bound to its text, as the exact set [id]', () => {
+    // Ruling R16 (S3-018) and R39 (S3-020) replace this test's old claim that a bare
+    // `requirementId` crosses: with no hash it is inert, and with the matching hash it crosses
+    // as the exact set of that one requirement, bound to the text. Never widened.
+    const base = docOf(req({ id: A }))
+    const scoped = (contentHash?: string): RequirementsDocument => ({
+      ...base,
+      waivers: [
+        {
+          code: 'GTWR_R5_INDEFINITE_ARTICLE',
+          requirementId: A,
+          ...(contentHash !== undefined ? { contentHash } : {}),
+          reason: 'reviewed',
+        },
+      ],
+    })
+    expect(toEngineDoc(scoped()).waivers).toEqual([])
+    expect(toEngineDoc(scoped(requirementsContentHash(base, [A]))).waivers).toEqual([
+      {
+        code: 'GTWR_R5_INDEFINITE_ARTICLE',
+        requirementIds: [A],
+        reason: 'reviewed',
+        textBound: true,
+      },
+    ])
   })
 
-  it('carries an exact-set waiver while its reviewed text is unchanged, and drops it after', () => {
+  it('[S3-019] carries an exact-set waiver while its reviewed text is unchanged, and drops it after', () => {
+    // Ruling R3 (S3-016) and R16 (S3-019): the code here was FND_NUMERIC_UNCOMPARED, a
+    // disclosure (never class) that no longer crosses at all, and an exact set with no hash is
+    // inert; the binding is pinned on a scoped (wording) code instead.
     // The content hash is the half of a pair waiver's binding the tier cannot check: it never
     // sees the v3 fields. So the boundary drops a waiver whose requirements were edited, and the
     // finding it covered comes back for the new text to be reviewed.
@@ -271,7 +310,7 @@ describe('compat — every projected field the tier reads', () => {
       ...document,
       waivers: [
         {
-          code: 'FND_NUMERIC_UNCOMPARED',
+          code: 'GTWR_R5_INDEFINITE_ARTICLE',
           requirementIds: [A, B],
           ...(hash !== undefined ? { contentHash: hash } : {}),
           reason: 'reviewed',
@@ -283,7 +322,7 @@ describe('compat — every projected field the tier reads', () => {
     // waiver needs before it discharges anything (check.ts `PAIR_BOUND_CODES`).
     expect(toEngineDoc(bound(doc, hash)).waivers).toEqual([
       {
-        code: 'FND_NUMERIC_UNCOMPARED',
+        code: 'GTWR_R5_INDEFINITE_ARTICLE',
         requirementIds: [A, B],
         reason: 'reviewed',
         textBound: true,
@@ -294,11 +333,9 @@ describe('compat — every projected field the tier reads', () => {
     expect(toEngineDoc(bound(edited, hash)).waivers).toEqual([])
     const deleted = docOf(req({ id: A }))
     expect(toEngineDoc(bound(deleted, hash)).waivers).toEqual([])
-    // An exact-set waiver a hand-written document carries WITHOUT a hash is still id-scoped, and
-    // bound to no text.
-    expect(toEngineDoc(bound(edited, undefined)).waivers).toEqual([
-      { code: 'FND_NUMERIC_UNCOMPARED', requirementIds: [A, B], reason: 'reviewed' },
-    ])
+    // An exact-set waiver a hand-written document carries WITHOUT a hash is bound to no text, so
+    // it does not cross either.
+    expect(toEngineDoc(bound(edited, undefined)).waivers).toEqual([])
   })
 
   it('preserves edge arrays by VALUE, and does not share them with the v3 document', () => {
@@ -402,5 +439,143 @@ describe('compat — the two dropped v3 fields have no consumer in the G2a path'
     // it as a claim about the document. It is there because v4 TYPE requires
     // the field; no tier branches on it.
     expect(toEngineDoc(emptyDocument()).schemaVersion).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 Waivability (AC-5-6): the check-time twin at the ONE boundary crossing
+// ---------------------------------------------------------------------------
+
+describe('S3: toEngineDoc forwards no stored waiver the S3 fold would refuse as an op', () => {
+  // A test may wire every ring: the classifier and the fold's options are the app's.
+  const base = () => s3.fixtureDoc('base.json')
+  const forwarded = (doc: RequirementsDocument, w: Readonly<Record<string, unknown>>) =>
+    toEngineDoc(s3.withRawWaivers(doc, [w])).waivers?.length ?? 0
+  const FINDING_CODES = s3Catalog
+    .allCodes()
+    .filter((c) => c.family !== 'ERR')
+    .map((c) => c.code)
+  const NEVER = FINDING_CODES.filter((c) => s3Classes.waivabilityOf(c) === 'never')
+  const SCOPED = FINDING_CODES.filter((c) => s3Classes.waivabilityOf(c) === 'scoped')
+  const { ID, HASH } = s3
+  /** Every stored scope shape, over base.json's text. */
+  const STORED_SHAPES: readonly { readonly name: string; readonly scope: object }[] = [
+    { name: 'code-only', scope: {} },
+    { name: 'requirementId', scope: { requirementId: ID['ORD-R1'] } },
+    { name: 'requirementIds, no hash', scope: { requirementIds: [ID['ORD-R1']] } },
+    {
+      name: 'requirementIds + matching hash',
+      scope: { requirementIds: [ID['ORD-R1']], contentHash: HASH['ORD-R1'] },
+    },
+    {
+      name: 'pair requirementIds + matching hash',
+      scope: {
+        requirementIds: [ID['CAB-R1'], ID['CAB-R2']],
+        contentHash: HASH['CAB-R1,CAB-R2'],
+      },
+    },
+    {
+      name: 'requirementId + matching hash',
+      scope: { requirementId: ID['ORD-R1'], contentHash: HASH['ORD-R1'] },
+    },
+  ]
+
+  it('[S3-016] [S3-030] a stored never-class waiver never reaches the engine, in any stored scope shape, hash or not', () => {
+    const doc = base()
+    const crossed: string[] = []
+    for (const code of NEVER) {
+      for (const { name, scope } of STORED_SHAPES) {
+        if (forwarded(doc, { code, reason: 'hand-edited', ...scope }) > 0)
+          crossed.push(`${code} (${name})`)
+      }
+    }
+    expect(NEVER.length).toBeGreaterThan(10)
+    expect(crossed, 'never-class waivers compat forwarded').toEqual([])
+  })
+
+  it('[S3-017] [S3-030] a stored code-only waiver of every code, an unknown code included, never reaches the engine', () => {
+    const doc = base()
+    const crossed = [...FINDING_CODES, 'FND_NOT_A_CODE'].filter(
+      (code) => forwarded(doc, { code, reason: 'hand-edited' }) > 0,
+    )
+    expect(crossed).toEqual([])
+  })
+
+  it('[S3-018] [S3-019] [S3-030] a stored single requirementId with no hash, or requirementIds with no hash, never reaches the engine, for every scoped code', () => {
+    const doc = base()
+    const crossed: string[] = []
+    for (const code of SCOPED) {
+      for (const scope of [{ requirementId: ID['LOG-R1'] }, { requirementIds: [ID['LOG-R1']] }]) {
+        if (forwarded(doc, { code, reason: 'hand-edited', ...scope }) > 0)
+          crossed.push(`${code} ${JSON.stringify(scope)}`)
+      }
+    }
+    expect(crossed).toEqual([])
+  })
+
+  it('[S3-009] [S3-010] [S3-030] a stored waiver of an unclassified code, or a case or whitespace variant of a never code, never reaches the engine, even scoped and hash-bound', () => {
+    const doc = base()
+    const scope = { requirementIds: [ID['ORD-R1']], contentHash: HASH['ORD-R1'] }
+    const codes = [
+      'FND_NOT_A_CODE',
+      'constructor',
+      'toString',
+      'GTWR_R99_NOT_A_RULE',
+      ...NEVER.flatMap((c) => [` ${c}`, `${c} `, c.toLowerCase()]),
+    ]
+    const crossed = codes.filter(
+      (code) => forwarded(doc, { code, reason: 'hand-edited', ...scope }) > 0,
+    )
+    expect(crossed.map((c) => JSON.stringify(c))).toEqual([])
+  })
+
+  it('[S3-020] [S3-021] a stored scoped-class waiver with refs (or one requirementId) and the matching hash reaches the engine, as an exact set bound to the text', () => {
+    const doc = base()
+    for (const code of SCOPED) {
+      for (const scope of [
+        { requirementIds: [ID['LOG-R1']], contentHash: HASH['LOG-R1'] },
+        { requirementId: ID['LOG-R1'], contentHash: HASH['LOG-R1'] },
+      ]) {
+        const waivers = toEngineDoc(
+          s3.withRawWaivers(doc, [{ code, reason: 'r', ...scope }]),
+        ).waivers
+        expect(waivers, `${code} ${JSON.stringify(scope)}`).toEqual([
+          expect.objectContaining({ code, requirementIds: [ID['LOG-R1']], textBound: true }),
+        ])
+      }
+    }
+  })
+
+  it('[S3-030] the check-time twin: every stored waiver compat forwards is one the S3 fold accepts as the same op on the same document', () => {
+    // Stored shape -> the op an agent would have typed for it.
+    const doc = base()
+    const asOp = (w: Readonly<Record<string, unknown>>): DocumentOp => {
+      const ids =
+        (w.requirementIds as string[] | undefined) ??
+        (w.requirementId !== undefined ? [w.requirementId as string] : undefined)
+      return {
+        op: 'waive',
+        code: w.code as string,
+        reason: 'r',
+        ...(ids !== undefined ? { refs: ids } : {}),
+        ...(w.contentHash !== undefined ? { contentHash: w.contentHash as string } : {}),
+      } as DocumentOp
+    }
+    const disagreements: string[] = []
+    let reached = 0
+    for (const code of [...FINDING_CODES, 'FND_NOT_A_CODE']) {
+      for (const { name, scope } of STORED_SHAPES) {
+        const w = { code, reason: 'r', ...scope }
+        if (forwarded(doc, w) === 0) continue
+        reached += 1
+        const folded = foldOps(doc, [asOp(w)], '2026-10-05T00:00:00.000Z', s3Options.MUTATE_OPTIONS)
+        if (folded.abortedAt !== undefined) disagreements.push(`${code} (${name})`)
+      }
+    }
+    expect(disagreements, 'forwarded at check, refused at write').toEqual([])
+    // Not vacuous: the scoped codes' hash-bound shapes do cross.
+    expect(reached).toBeGreaterThanOrEqual(SCOPED.length * 2)
+    // And the shapes the fold refuses are the ones that do not.
+    expect(forwarded(doc, { code: 'FND_CONTRADICTION', reason: 'r' })).toBe(0)
   })
 })

@@ -210,7 +210,7 @@ const dischargeableReasons = (
 ]
 
 describe('AC-A-1 + AC-A-2 — check → apply the repairs → check again', () => {
-  it('discharges every demotion that carried OPS, and progress strictly improves', async () => {
+  it('[S3-033] discharges every demotion that carried OPS, trading excluded-from-formal for one waived-blocking-lint', async () => {
     const world: World = { document: demotedDocument(), saves: 0 }
 
     // ---- STEP 1: check -----------------------------------------------------
@@ -256,8 +256,17 @@ describe('AC-A-1 + AC-A-2 — check → apply the repairs → check again', () =
       expect(remaining.has(reason), `"${reason}" carried ops but survived the repair`).toBe(false)
     }
 
-    // AC-A-2: the gradient STRICTLY improved on the axis the repairs touched.
-    expect(after.progress.demotions).toBeLessThan(before.progress.demotions)
+    // AC-A-2 on this document, under ruling R26 (G3, S3-033): the only repair waives a
+    // BLOCKING lint, so the excluded-from-formal demotion is exchanged for exactly one
+    // waived-blocking-lint naming the same requirement. The demotion count holds; it does not
+    // fall, because a waived blocking lint never verifies.
+    expect(before.coverage.demotions.map((d) => d.reason as string)).toEqual([
+      'excluded-from-formal',
+    ])
+    expect(after.coverage.demotions.map((d) => d.reason as string)).toEqual([
+      'waived-blocking-lint',
+    ])
+    expect(after.progress.demotions).toBe(before.progress.demotions)
     // And the repairs did not make anything worse on the other two axes — a repair that
     // discharged a demotion by introducing a conflict would be a bad trade.
     expect(after.progress.openFindings).toBeLessThanOrEqual(before.progress.openFindings)
@@ -282,7 +291,10 @@ describe('AC-A-1 + AC-A-2 — check → apply the repairs → check again', () =
     expect(JSON.stringify(world.document)).toBe(afterFirst)
   }, 60_000)
 
-  it('reaching the FIXED POINT makes `verified` true, and progress hits zero demotions', async () => {
+  it('[S3-035] [S3-033] reaching the FIXED POINT re-admits the blocked requirement but does NOT verify: the waived blocking lint demotes waived-blocking-lint', async () => {
+    // Ruling R26 (gap G3, S3-035) replaces this test's old claim that the fixed point verifies:
+    // the only repair on this document waives a BLOCKING lint, and a waived blocking lint
+    // re-admits its requirement to the solver but never yields `verified: true`.
     // The convergence claim the whole loop exists to support: applying repairs until
     // none remain flips the verdict. Iterated rather than assumed, with a bound so a
     // non-converging loop fails as a test rather than hanging.
@@ -302,12 +314,15 @@ describe('AC-A-1 + AC-A-2 — check → apply the repairs → check again', () =
     // (`rounds > 0`), not by starting at the fixed point.
     expect(rounds).toBeGreaterThan(0)
     expect(rounds).toBeLessThan(5)
-    // No demotion carries an op any more — the loop has nothing left to do
-    // mechanically.
-    expect(dischargeableReasons(payload)).toEqual([])
-    // On THIS document that is the whole demotion set, so the verdict flips.
-    expect(payload.progress.demotions).toBe(0)
-    expect(payload.verified).toBe(true)
+    // The blocked requirement is back in front of the solver: excluded-from-formal is gone.
+    const reasons = payload.coverage.demotions.map((d) => d.reason as string)
+    expect(reasons).not.toContain('excluded-from-formal')
+    // And the waiver that re-admitted it demotes, naming it, so the verdict does not flip.
+    const waived = payload.coverage.demotions.filter(
+      (d) => (d.reason as string) === 'waived-blocking-lint',
+    )
+    expect(waived.map((d) => d.requirementIds)).toEqual([['aaaaaaaa-0000-4000-8000-000000000003']])
+    expect(payload.verified).toBe(false)
   }, 120_000)
 
   it('an UNREPAIRABLE demotion carries no ops, and says so by ABSENCE', async () => {

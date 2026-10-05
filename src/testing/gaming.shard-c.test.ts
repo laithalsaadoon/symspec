@@ -18,6 +18,7 @@ import {
   dDisplaced,
   equivalencesOf,
   verdictBearingOf,
+  waivabilityOf,
 } from '../app/runtime/signal-classes.ts'
 import { describeGamingShard } from './gaming.ts'
 
@@ -35,4 +36,5 @@ describeGamingShard('c', {
     covers: dCovers,
     displaced: dDisplaced,
   },
+  waivability: waivabilityOf,
 })
