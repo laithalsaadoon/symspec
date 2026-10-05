@@ -106,7 +106,7 @@
  */
 
 import { Effect, Schema } from 'effect'
-import { Intent, IntentId, Policy, Sha256Hex } from '../anchor/anchor.ts'
+import { Intent, IntentId, Policy, Sha256Hex, V4_EXPERIMENTAL_STATEMENT } from '../anchor/anchor.ts'
 import { renderSentence } from './render.ts'
 import { RESERVED_WORDS } from './state-expr.ts'
 
@@ -148,6 +148,13 @@ export type DocVersion = (typeof ACCEPTED_DOC_VERSIONS)[number]
  * error that names the upgrade (see {@link RequirementsDocument}).
  */
 export const V4_ONLY_DOCUMENT_KEYS = ['vocabulary', 'intent', 'policy'] as const
+
+/**
+ * The v4 status statement: v4's keys decode and survive a save, and no check tier reads them in
+ * this release. Defined beside the intent and policy schemas (a leaf module), re-exported here
+ * so every surface takes it from the requirements model (ruling RH-R3).
+ */
+export { V4_EXPERIMENTAL_STATEMENT }
 
 /** The requirement keys that exist only in format v4, refused under `docVersion: 3` likewise. */
 export const V4_ONLY_REQUIREMENT_KEYS = ['intentRef', 'derived'] as const
@@ -544,16 +551,18 @@ const verificationNoteDescription = lines(
 )
 
 const intentRefDescription = lines(
-  'The id of the intent item this requirement serves (document format v4).',
-  'Every requirement names one intent item, or is marked `derived` instead; a requirement',
-  'carries one of the two and never both. Same format as a requirement key.',
-  "Example: 'I1'.",
+  'The id of the intent item this requirement serves (document format v4). Same format as a',
+  "requirement key. Example: 'I1'. A later release will require each requirement to carry",
+  'either this or `derived`, and never both; this one checks neither.',
+  V4_EXPERIMENTAL_STATEMENT,
 )
 
 const derivedDescription = lines(
   'Marks a requirement that serves no single intent item: it follows from others, such as an',
   'interface contract two obligations share (document format v4). The literal `true`; omit the',
-  'key otherwise. A requirement carries this or an `intentRef`, and never both.',
+  'key otherwise. A later release will require each requirement to carry either this or an',
+  '`intentRef`, and never both; this one checks neither.',
+  V4_EXPERIMENTAL_STATEMENT,
 )
 
 const idDescription = lines(
@@ -1421,12 +1430,14 @@ export const Vocabulary = Schema.Struct({
       sha256: Sha256Hex.annotate({
         description: lines(
           'The sha256 of the document`s `glossary` and `terms` at the moment the vocabulary was',
-          'adopted, as 64 lowercase hex digits. With a vocabulary those two tables are frozen, and',
-          'this digest is what a later edit to either one is compared against.',
+          'adopted, as 64 lowercase hex digits. A later release will freeze those two tables once',
+          'a vocabulary is adopted and compare an edit to either one against this digest; this one',
+          'compares nothing, and `glossary` still writes to both.',
         ),
       }),
     }).annotate({
-      description: 'The digest of the glossary and term tables as they were when frozen.',
+      description:
+        'The digest of the glossary and term tables as they were when the vocabulary was adopted.',
     }),
   ),
 })
@@ -1435,6 +1446,7 @@ export const Vocabulary = Schema.Struct({
       'The controlled vocabulary (document format v4): every system, feature, event, state, action',
       'and quantity the requirements name, declared once, plus the committed merges between them',
       'and the pairs stated to be distinct.',
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   })
   .pipe(

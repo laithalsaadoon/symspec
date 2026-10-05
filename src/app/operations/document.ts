@@ -32,6 +32,7 @@ import {
   type DocVersion,
   emptyDocument,
   type Requirement,
+  V4_EXPERIMENTAL_STATEMENT,
 } from '../../domain/requirements/document.ts'
 import { requireRequirement } from '../../domain/requirements/resolve.ts'
 import { DOC_PATH_CONVENTION, DocPath, DocStore } from '../../ports/doc-store.ts'
@@ -87,6 +88,12 @@ interface InitPayload {
   readonly overwritten: boolean
   readonly requirements: number
   readonly split?: { readonly config: string; readonly intent: string; readonly policy: string }
+  /**
+   * Present exactly when `split` is: what this release does with the intent and policy it just
+   * wrote ({@link V4_EXPERIMENTAL_STATEMENT}). The config's pins are enforced, so it is not
+   * covered by the note.
+   */
+  readonly anchorsNote?: string
 }
 
 /** The split intent file's name, beside the document. */
@@ -181,6 +188,7 @@ const initSplit = (path: string, force: boolean) =>
       overwritten: docExists && force,
       requirements: Object.keys(document.requirements).length,
       split: { config: configFile, intent: intentFile, policy: policyFile },
+      anchorsNote: `${SPLIT_INTENT_FILE} and ${SPLIT_POLICY_FILE}: ${V4_EXPERIMENTAL_STATEMENT}`,
     })
   })
 
@@ -229,6 +237,7 @@ export const initOp = defineOperation({
           'for the document`s real directory, or that directory when git names no repository there.',
           '`check` reads it from there unless --config or SYMSPEC_CONFIG names another, and a run below',
           'any pin is demoted `run-weakened`.',
+          `The intent and policy files: ${V4_EXPERIMENTAL_STATEMENT}`,
           'An existing document is kept, not recreated (unless --force). The three new files are NEVER',
           'overwritten, --force or not: if any exists the command writes nothing and fails with',
           'ERR_DOC_EXISTS, because an owner writes these, not the tool. A document that already carries',

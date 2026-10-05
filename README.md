@@ -813,8 +813,7 @@ cannot drift apart. The second claim is the one to read if you read only one.
 > error severity because it MASKS violations rather than merely failing to prove one.
 
 > The pinned run configuration is a gate only inside a boundary: a CI job that checks a fresh
-> clone, with `symspec.config.json` and the intent and policy files it names under code-owner
-> review. There the config is read from one place, `symspec.config.json` at the toplevel `git
+> clone, with `symspec.config.json` under code-owner review. There the config is read from one place, `symspec.config.json` at the toplevel `git
 > rev-parse --show-toplevel` prints for the document's real directory (symlinks resolved),
 > asked with `safe.bareRepository=explicit` so a committed directory laid out as a bare
 > repository is refused as ERR_CONFIG_INVALID rather than taken for a toplevel (git 2.38 or

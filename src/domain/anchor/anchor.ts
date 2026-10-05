@@ -40,6 +40,18 @@ import { Schema } from 'effect'
 /** Multi-line description builder. */
 const lines = (...xs: readonly string[]): string => xs.join('\n')
 
+/**
+ * What THIS release does with document format v4's vocabulary, intent and policy, and with a
+ * requirement's `intentRef` and `derived`: it decodes them and writes them back, and no check
+ * tier reads them. ONE constant, interpolated into every surface that describes them (the
+ * schema descriptions the manifest and AGENTS.md derive from, `init --split`'s help and result,
+ * the README), so no copy can drift into an enforcement claim (ruling RH-R3). Defined in this
+ * leaf module because the intent and policy descriptions below carry it and this file imports
+ * nothing from the repository; `document.ts` re-exports it.
+ */
+export const V4_EXPERIMENTAL_STATEMENT =
+  'Experimental in this release: decoded and preserved on save, read by no check tier yet; its shape may change in a minor release.'
+
 /** A non-empty string. */
 const NonEmpty = Schema.String.pipe(Schema.check(Schema.isMinLength(1)))
 
@@ -154,6 +166,7 @@ export const Intent = Schema.Struct({
     description: lines(
       'What the specification is for: the obligations, assumptions and goals its requirements serve.',
       'Inline in the document (format v4) or in its own file. Written by its owner; no op writes it.',
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   })
   .pipe(
@@ -225,6 +238,7 @@ export const Policy = Schema.Struct({
     description: lines(
       'How much each intent item matters: ordered criticality levels and the level of each item.',
       'Inline in the document (format v4) or in its own file. Written by its owner; no op writes it.',
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   })
   .pipe(
