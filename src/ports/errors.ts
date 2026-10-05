@@ -367,6 +367,18 @@ export class ErrConfigInvalid extends Schema.TaggedErrorClass<ErrConfigInvalid>(
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
   override readonly [Runtime.errorReported] = false
 }
+/** A `waive` the waivability policy refuses: a `never`-class code, a code no catalog classifies, or a waiver with no requirement scope (spec 007 AC-5-6). */
+export class ErrWaiverRefused extends Schema.TaggedErrorClass<ErrWaiverRefused>()(
+  'ERR_WAIVER_REFUSED',
+  ErrorFields,
+  {
+    description:
+      "A `waive` was refused by the waivability policy (spec 007 AC-5-6): the code is a `never`-class finding (verdict, disclosure, triage, hygiene or anchor), which only a change to the document discharges; or no catalog publishes the code, so it has no class; or the waive names no requirement, and a waiver binds only the requirement ids and text a reviewer read. The op is refused and an atomic batch writes nothing. Suggestion: for a `never` code, rewrite the requirement the finding names (or commit the `antonym` or `glossary` entry it proposes); for a `wording` or `structural` code, name the finding's requirement ids with `refs` (its `repair.ops` carry them, with the content hash).",
+  },
+) {
+  override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
+  override readonly [Runtime.errorReported] = false
+}
 // ---------------------------------------------------------------------------
 // The closed union and the code list
 // ---------------------------------------------------------------------------
@@ -400,6 +412,7 @@ export type OperationalError =
   | ErrDuplicateKey
   | ErrClauseUnbound
   | ErrConfigInvalid
+  | ErrWaiverRefused
 
 /**
  * Every ERR_* class, in shipped order. The catalog projections
@@ -430,6 +443,7 @@ export const ERR_CLASSES = [
   ErrDuplicateKey,
   ErrClauseUnbound,
   ErrConfigInvalid,
+  ErrWaiverRefused,
 ] as const
 
 /** The union of ERR_* code strings. */

@@ -18,7 +18,9 @@ registered-caught	weakening	glossary-over-term@equal-canonical/term-then-glossar
 registered-caught	weakening	glossary-over-term@equal-canonical/glossary-then-term	
 registered-escapes-known-gap	weakening	glossary-over-term@containing-canonical/term-then-glossary	S4 / AC-4-2 (cross-table fence + check twin)
 registered-escapes-known-gap	weakening	glossary-over-term@containing-canonical/glossary-then-term	S4 / AC-4-2 (cross-table fence + check twin)
-registered-escapes-known-gap	weakening	waive-by-code	AC-5-6
+registered-caught	weakening	waive-by-code	
+registered-caught	weakening	waive-scoped-never	
+registered-caught	weakening	waive-raw	
 registered-caught	weakening	unwaive	
 registered-escapes-known-gap	weakening	delete-requirement@first	AC-5-2
 registered-escapes-known-gap	weakening	delete-requirement@second	AC-5-2

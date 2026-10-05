@@ -102,6 +102,7 @@ export const FOLD_ERROR_CODES = [
   'ERR_DUPLICATE_ID',
   'ERR_DUPLICATE_KEY',
   'ERR_NULL_REQUIRED',
+  'ERR_WAIVER_REFUSED',
 ] as const
 
 /** One op's success: the new document plus what the op touched. */
@@ -687,6 +688,27 @@ export interface MutateOptions {
     canonical: string,
     alias: string,
   ) => string | undefined
+  /**
+   * The WAIVABILITY policy (spec 007 AC-5-6): the class of a finding code and whether a waiver
+   * may suppress it, or `undefined` for a code no catalog publishes.
+   *
+   * Injected for the same reason as {@link validateAntonyms}: the class table is the published
+   * catalog's, which this module does not load. Supplied, it makes `waive` refuse with
+   * `ERR_WAIVER_REFUSED` a `never`-class code in every scope, a code with no class, and a
+   * waiver that names no requirement; and it stores every accepted waiver in the one scoped
+   * form, `requirementIds` plus the content hash of their current text (a `ref` becomes
+   * `refs: [ref]`). Omitted ⇒ the fold stores what the op says, which is correct for a caller
+   * with no catalog and unsound for the CLI — so the operation layer always supplies it.
+   */
+  readonly waiverPolicy?: (code: string) => WaiverPolicyRow | undefined
+}
+
+/** One code's row under {@link MutateOptions.waiverPolicy}. */
+export interface WaiverPolicyRow {
+  /** The finding class the code belongs to (`verdict`, `wording`, …), named in a refusal. */
+  readonly class: string
+  /** `scoped`: waivable over named requirements and their current text. `never`: not at all. */
+  readonly waivable: 'scoped' | 'never'
 }
 
 const applyAntonym = (
@@ -989,9 +1011,40 @@ const resolveRefs = (
   return [...ids].sort()
 }
 
+/**
+ * The waivability refusal (spec 007 AC-5-6), or `undefined` when the policy lets `code` be
+ * waived at all. A `never` class is refused whatever the scope, so it is decided before the
+ * scope is read: no `refs` or hash would make a verdict, a disclosure or a triage candidate a
+ * thing a reviewer can accept.
+ */
+const waiverClassRefusal = (
+  code: string,
+  row: WaiverPolicyRow | undefined,
+): OpFailure | undefined => {
+  if (row === undefined) {
+    return fail(
+      'ERR_WAIVER_REFUSED',
+      `No catalog publishes the code \`${code}\`, so it has no waivability class and cannot be waived.`,
+      [
+        `Run \`symspec explain ${code}\` for the nearest published codes, and waive the exact code a \`symspec check\` finding carries.`,
+      ],
+    )
+  }
+  if (row.waivable === 'scoped') return undefined
+  return fail(
+    'ERR_WAIVER_REFUSED',
+    `\`${code}\` is a ${row.class}-class finding, and a ${row.class} finding is never waivable, in any scope: only a change to what the document says discharges it.`,
+    [
+      `Read the finding's message and demotion action (\`symspec check\`), then rewrite the requirement it names (\`symspec update\`), or commit the \`symspec antonym\` or \`symspec glossary\` entry it proposes where the two phrasings really are contraries or one action.`,
+      `\`symspec explain ${code}\` states what the code means and how it is discharged.`,
+    ],
+  )
+}
+
 const applyWaive = (
   document: RequirementsDocument,
   op: Extract<DocumentOp, { op: 'waive' }>,
+  options: MutateOptions,
 ): OpSuccess | OpFailure => {
   const code = op.code.trim()
   const reason = op.reason.trim()
@@ -1001,11 +1054,39 @@ const applyWaive = (
     ])
   }
 
+  const policy = options.waiverPolicy
+  if (policy !== undefined) {
+    const refused = waiverClassRefusal(code, policy(code))
+    if (refused !== undefined) return refused
+  }
+
   if (op.ref !== undefined && op.refs !== undefined) {
     return fail('ERR_USAGE', 'A `waive` op takes "ref" or "refs", not both.', [
       '"ref" waives every finding of the code that names one requirement; "refs" waives only the finding over exactly those requirements, as they are written now.',
     ])
   }
+
+  // Under the policy a waiver is ALWAYS scoped and bound to the text it was reviewed on: a
+  // waiver by code alone reaches every finding of the code, including ones raised after the
+  // review over requirements nobody read, so it is refused; a single `ref` is the exact set of
+  // that one requirement, normalized here so it is stored, hashed, in the one scoped form.
+  if (policy !== undefined) {
+    if (op.ref === undefined && op.refs === undefined) {
+      return fail(
+        'ERR_WAIVER_REFUSED',
+        `A \`waive\` of \`${code}\` must name the requirement ids of the finding it accepts ("refs"): a waiver by code alone would reach every finding of the code, including ones nobody reviewed.`,
+        [
+          `Copy the waive op from the finding's \`repair.ops\` (\`symspec check\`): it carries "refs" and the content hash of the text the finding was raised on.`,
+          `Or pass the finding's requirement with \`symspec waive ${code} --ref <id> --reason "…"\`.`,
+        ],
+      )
+    }
+    if (op.ref !== undefined) {
+      const { ref, ...rest } = op
+      return applyWaive(document, { ...rest, refs: [ref] }, options)
+    }
+  }
+
   if (op.contentHash !== undefined && op.refs === undefined) {
     return fail('ERR_USAGE', 'A `waive` op\'s "contentHash" binds a "refs" scope; add "refs".', [
       "Copy the op from the finding's `repair.ops` as-is: it carries both.",
@@ -1617,7 +1698,7 @@ export const applyOp = (
     case 'unantonym':
       return applyUnantonym(document, op, options)
     case 'waive':
-      return applyWaive(document, op)
+      return applyWaive(document, op, options)
     case 'unwaive':
       return applyUnwaive(document, op)
     case 'state':

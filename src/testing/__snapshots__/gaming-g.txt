@@ -22,7 +22,9 @@ overlapping-contrary	glossary-over-term@equal-canonical/term-then-glossary	inapp
 overlapping-contrary	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 overlapping-contrary	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 overlapping-contrary	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-overlapping-contrary	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+overlapping-contrary	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+overlapping-contrary	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+overlapping-contrary	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 overlapping-contrary	unwaive	inapplicable
 overlapping-contrary	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 overlapping-contrary	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -76,7 +78,9 @@ opposition-candidate	glossary-over-term@equal-canonical/term-then-glossary	inapp
 opposition-candidate	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 opposition-candidate	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 opposition-candidate	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-opposition-candidate	waive-by-code	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+opposition-candidate	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+opposition-candidate	waive-raw	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
 opposition-candidate	unwaive	inapplicable
 opposition-candidate	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 opposition-candidate	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]

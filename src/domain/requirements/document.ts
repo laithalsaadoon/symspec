@@ -1070,9 +1070,10 @@ export const Waiver = Schema.Struct({
   requirementId: Schema.optionalKey(
     Uuid.annotate({
       description: lines(
-        'Optional UUID scope. When set, only findings of `code` that name this requirement are waived;',
-        'when omitted, every finding of `code` is waived document-wide. Resolved from a key at waive',
-        'time, so the STORED scope is always the stable UUID.',
+        'Legacy one-requirement scope, as builds before spec 007 AC-5-6 stored it. `waive` now stores a',
+        '`ref` as `requirementIds: [id]`; a stored `requirementId` applies only with a matching',
+        '`contentHash` (as the exact set of that one requirement), and without one `check` ignores it',
+        'and discloses it `waiver-inert`. A waiver with no scope at all is inert too.',
       ),
     }),
   ),
@@ -1081,19 +1082,20 @@ export const Waiver = Schema.Struct({
       .pipe(Schema.check(Schema.isMinLength(1)))
       .annotate({
         description: lines(
-          'Optional EXACT scope: only a finding of `code` whose requirement set is exactly these UUIDs',
+          'The EXACT scope: only a finding of `code` whose requirement set is exactly these UUIDs',
           'is waived, so a reviewed pair does not reach a cluster that later grows or a sibling pair',
-          'sharing one id. Written by the `refs` form of the `waive` op, together with `contentHash`.',
+          'sharing one id. Written by every `waive` op (a `ref` becomes `[ref]`), with `contentHash`.',
         ),
       }),
   ),
   contentHash: Schema.optionalKey(
     Schema.String.pipe(Schema.check(Schema.isPattern(CONTENT_HASH_PATTERN))).annotate({
       description: lines(
-        'Optional binding to the TEXT that was reviewed: `sha256:<hex>` of the meaning-bearing fields',
+        'The binding to the TEXT that was reviewed: `sha256:<hex>` of the meaning-bearing fields',
         'of the requirements in `requirementIds`, taken when the waiver was committed. Once any of',
-        'them is edited or deleted the hash no longer matches and `check` ignores the waiver, so a',
-        'review of one wording never certifies another.',
+        'them is edited the hash no longer matches and `check` ignores the waiver, listing it in',
+        '`data.ignoredWaivers`, so a review of one wording never certifies another. A waiver with no',
+        'hash binds no text and is inert.',
       ),
     }),
   ),
@@ -1105,7 +1107,7 @@ export const Waiver = Schema.Struct({
   }),
 }).annotate({
   description:
-    'A reviewed, reasoned suppression of a finding code, optionally scoped to one requirement or to an exact requirement set and its reviewed text.',
+    'A reviewed, reasoned suppression of a `wording` or `structural` finding over an exact requirement set and its reviewed text. A `never`-class code is never waivable (spec 007 AC-5-6).',
 })
 export type Waiver = typeof Waiver.Type
 
@@ -1475,9 +1477,13 @@ export const vocabularyOf = (document: Pick<RequirementsDocument, 'vocabulary'>)
  * preserved verbatim and disclosed. `'sentence-drift'` reports a stored
  * `sentence` the renderer would not produce from the requirement's own slots —
  * a hand edit that a future write will overwrite, which is worth saying out loud
- * BEFORE the overwrite rather than after.
+ * BEFORE the overwrite rather than after. `'waiver-inert'` is raised by `check`, not by a load
+ * (spec 007 AC-5-6): a stored waiver the waivability policy does not let reach the engine — a
+ * `never`-class code, a code no catalog publishes, a waiver with no requirement scope or no
+ * content hash, or one whose requirement set matches no finding — kept in the document and
+ * disclosed with the ops that remove or re-scope it.
  */
-export const DIAGNOSTIC_KINDS = ['unknown-top-level-key', 'sentence-drift'] as const
+export const DIAGNOSTIC_KINDS = ['unknown-top-level-key', 'sentence-drift', 'waiver-inert'] as const
 export type DiagnosticKind = (typeof DIAGNOSTIC_KINDS)[number]
 
 /**
@@ -1499,6 +1505,17 @@ export interface DocumentDiagnostic {
   readonly keys?: readonly string[]
   /** The requirement ids involved, when the diagnostic is requirement-scoped. */
   readonly requirementIds?: readonly string[]
+  /**
+   * `waiver-inert` only (spec 007 AC-5-6): the stored waiver the diagnostic is about, exactly as
+   * the document stores it, so an agent can find the row it names.
+   */
+  readonly waiver?: Readonly<Record<string, unknown>>
+  /**
+   * `waiver-inert` only: the replacement ops, each one `apply` decodes. The `unwaive` of the
+   * stored waiver first, then, for a `scoped` code, one `waive` per finding it reaches today,
+   * over that finding's requirements and the hash of their current text.
+   */
+  readonly ops?: readonly Readonly<Record<string, unknown>>[]
 }
 
 // ---------------------------------------------------------------------------

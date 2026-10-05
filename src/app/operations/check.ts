@@ -61,7 +61,7 @@
 import { Effect, Schema } from 'effect'
 import { type BudgetHint, budgetHintFor } from '../../domain/advice/budget-hint.ts'
 import { repairForDemotion } from '../../domain/advice/repair.ts'
-import { toEngineDoc } from '../../domain/compat.ts'
+import { type IgnoredWaiver, toEngineDoc } from '../../domain/compat.ts'
 import {
   belowPinned,
   type EffectivePins,
@@ -99,6 +99,13 @@ import type {
   RequirementsDocument,
 } from '../../domain/requirements/document.ts'
 import { runTerminology } from '../../domain/terminology/terminology.ts'
+import {
+  type AppliedWaiver,
+  accountWaivers,
+  isLintCode,
+  lintFindingScopes,
+  waivedBlockingIds,
+} from '../../domain/waiver-accounting.ts'
 import { runnableInProse } from '../../ports/command-form.ts'
 import {
   CONFIG_PATH_CONVENTION,
@@ -111,6 +118,7 @@ import { ErrSolverInconclusive, ErrUsage } from '../../ports/errors.ts'
 import { SolverService } from '../../ports/solver.ts'
 import { ok, type Repair } from '../runtime/envelope.ts'
 import { defineOperation } from '../runtime/operation.ts'
+import type { AppDemotionReason } from '../runtime/signal-classes.ts'
 
 // ---------------------------------------------------------------------------
 // The two bounds that are policy, stated as values
@@ -177,7 +185,12 @@ export const REACHABILITY_TIMEOUT_IS_CANCELLABILITY = true
  * tell an agent "there is a repair, it is nothing"; omitting the key says "no
  * mechanical fix exists, read `action`". See `../formal/repair.ts`.
  */
-export interface RepairableDemotion extends CoverageDemotion {
+export interface RepairableDemotion extends Omit<CoverageDemotion, 'reason'> {
+  /**
+   * The engine's reasons, each greenfield tier's, and `waived-blocking-lint`, which `check`
+   * raises at the boundary (spec 007 AC-5-6, G3): every reason `DEMOTION_CLASS` classifies.
+   */
+  readonly reason: AppDemotionReason
   readonly repair?: Repair
 }
 
@@ -319,8 +332,24 @@ export interface CheckPayload extends Omit<CheckReport, 'coverage' | 'run'> {
   readonly terminology?: TerminologySummary
   /** The resolved document path, so an agent can quote it in a follow-up. */
   readonly path: string
-  /** The load's info-grade disclosures (V27 channel), surfaced on every read. */
+  /**
+   * The load's info-grade disclosures (V27 channel), surfaced on every read, then one
+   * `waiver-inert` entry per stored waiver the waivability policy keeps from the engine (spec
+   * 007 AC-5-6) and per applied-scope waiver that matches no finding.
+   */
   readonly diagnostics: readonly DocumentDiagnostic[]
+  /**
+   * Every stale-hash waiver of a `scoped` code: the text it was reviewed on changed, so the
+   * finding it covered is back (spec 007 AC-5-6, R21). ALWAYS present, `[]` when none, and never
+   * filtered by `--min-severity` or `--findings-only`: a waiver that silently stopped applying is
+   * exactly what an output filter must not hide.
+   */
+  readonly ignoredWaivers: readonly IgnoredWaiver[]
+  /**
+   * Every waiver the engine applied, with its code, requirement ids and reason (R33), so each
+   * suppressed finding is accounted for by name rather than by the `waived` count alone.
+   */
+  readonly appliedWaivers: readonly AppliedWaiver[]
   /**
    * The measured budget recommendation (AC-A-8) — present ONLY when the run has
    * something measured to say about its own `--solver-budget-ms`.
@@ -1039,6 +1068,68 @@ export const checkOp = defineOperation({
             })
           : undefined
 
+      // THE WAIVER ACCOUNT (spec 007 AC-5-6). Whether a crossed waiver applied needs the
+      // findings from before it applied, and the engine reports only a count. Lint findings do
+      // not depend on any waiver, so they are recomputed; every other crossed code is read off a
+      // second run that keeps only the lint waivers — the only ones the AC-3-7 gate reads, so the
+      // second run's formal tier saw exactly the requirements this one did. It runs only when a
+      // non-lint waiver crossed, which a document with no such waiver never pays for.
+      const crossedOther = (engineDoc.waivers ?? []).some((w) => !isLintCode(w.code))
+      const preWaiverOther = crossedOther
+        ? (yield* Effect.tryPromise({
+            try: () =>
+              runCheck(
+                {
+                  ...engineDoc,
+                  waivers: (engineDoc.waivers ?? []).filter((w) => isLintCode(w.code)),
+                },
+                toCheckOptions(input, embedder, embedderService.isStub),
+              ),
+            catch: (cause) =>
+              new ErrSolverInconclusive({
+                error: `The check did not complete: ${cause instanceof Error ? cause.message : String(cause)}`,
+                suggestions: [
+                  'Raise --solver-budget-ms, or lower --timeout-ms so individual solvers give up sooner.',
+                ],
+              }),
+          })).findings.filter((f) => !isLintCode(f.code))
+        : []
+      const waiverAccount = accountWaivers(
+        loaded.document,
+        [...lintFindingScopes(engineDoc), ...preWaiverOther],
+        [
+          ...full.findings,
+          ...(reachabilityProjection?.findings ?? []),
+          ...(terminology?.findings ?? []),
+        ],
+        [...(reachabilityProjection?.findings ?? []), ...(terminology?.findings ?? [])],
+      )
+
+      // A waived blocking lint re-admits its requirement to the solver (the waiver-aware gate),
+      // and a comparison over wording a reviewer accepted rather than fixed certifies nothing
+      // (G3, R26): ONE demotion naming every re-admitted requirement (R40), in place of the
+      // `excluded-from-formal` the waiver lifted. No repair ops: the discharge is the rephrase,
+      // which no op performs, and an op here would keep the round-trip from a fixed point.
+      const readmitted = waivedBlockingIds(engineDoc)
+      const waivedBlockingDemotions: readonly RepairableDemotion[] =
+        readmitted.length > 0
+          ? [
+              {
+                reason: 'waived-blocking-lint',
+                requirementIds: [...readmitted],
+                action:
+                  `${readmitted.join(', ')} ${readmitted.length === 1 ? 'reaches' : 'reach'} the ` +
+                  'formal tier only through a waiver of the error-severity lint that blocked ' +
+                  `${readmitted.length === 1 ? 'it' : 'them'}: the waiver-aware gate re-admits a ` +
+                  'requirement whose blocking wording a reviewer accepted, and a comparison over ' +
+                  'wording accepted rather than fixed certifies nothing, so this run cannot ' +
+                  'verify while the waiver stands. Rephrase each to clear the blocking finding ' +
+                  "(the finding's message names it), remove its waiver, then re-run `symspec " +
+                  'check`.',
+              },
+            ]
+          : []
+
       // Output shaping is applied AFTER the repairs are computed from the full
       // report, so a filter cannot strip a remedy. Presentation only: it never
       // touches `counts`, so the exit code is identical filtered or not.
@@ -1100,7 +1191,9 @@ export const checkOp = defineOperation({
       const reachabilityDemotions: readonly RepairableDemotion[] = (
         reachabilityProjection?.demotions ?? []
       ).map((d) => ({
-        reason: d.reason as CoverageDemotion['reason'],
+        // The reachability tier types its reason as a string on its wire shape; every value it
+        // emits is a `ReachabilityDemotionReason`, which `AppDemotionReason` includes.
+        reason: d.reason as AppDemotionReason,
         requirementIds: [...d.requirementIds],
         action: d.action,
         ...(d.repair !== undefined ? { repair: d.repair } : {}),
@@ -1145,6 +1238,7 @@ export const checkOp = defineOperation({
           full.run,
           loaded.document,
         ),
+        ...waivedBlockingDemotions,
         ...reachabilityDemotions,
         // AC-5-10: one `run-weakened` per knob this run ran below its pin.
         ...(pinning?.demotions ?? []),
@@ -1215,7 +1309,9 @@ export const checkOp = defineOperation({
           openFindings: counts.error,
         },
         path,
-        diagnostics: loaded.diagnostics,
+        diagnostics: [...loaded.diagnostics, ...waiverAccount.diagnostics],
+        ignoredWaivers: waiverAccount.ignoredWaivers,
+        appliedWaivers: waiverAccount.appliedWaivers,
         // ABSENT, not `undefined`. A run with nothing measured to say about its budget
         // emits no key at all — the same convention `repair` and `partial` follow, and
         // the reason `budgetHint?:` is optional rather than nullable.

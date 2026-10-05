@@ -22,7 +22,9 @@ one-trigger-contradiction	glossary-over-term@equal-canonical/term-then-glossary	
 one-trigger-contradiction	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 one-trigger-contradiction	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 one-trigger-contradiction	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-one-trigger-contradiction	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+one-trigger-contradiction	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+one-trigger-contradiction	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+one-trigger-contradiction	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 one-trigger-contradiction	unwaive	inapplicable
 one-trigger-contradiction	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 one-trigger-contradiction	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -76,7 +78,9 @@ contrary-pair	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
 contrary-pair	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 contrary-pair	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 contrary-pair	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-contrary-pair	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+contrary-pair	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+contrary-pair	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 contrary-pair	unwaive	inapplicable
 contrary-pair	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 contrary-pair	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]

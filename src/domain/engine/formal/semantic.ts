@@ -532,10 +532,6 @@ export async function findSimilarSemantic(
       // (key `close_the_door` against `close_the_doors`), so a raw-text test would never match
       // that pair. Raw text is the fallback only for an atomizer that reports no canonical body.
       // (Computed above, before the antonym hint it suppresses.)
-      // The pair's own waiver is the demotion's repair op, scoped to exactly these two
-      // requirements as written; a `symspec waive` can scope to one requirement at most, and
-      // that discharges every near-duplicate naming it, triaged or not.
-      const waiver = "the demotion's repair waiver, which is scoped to exactly this pair"
       // The merge is chosen in the same canonical space as the test above, never aliases a
       // phrase to its own opposite, and never breaks a unification the document already has;
       // when no candidate survives, the message withholds it.
@@ -566,7 +562,7 @@ export async function findSimilarSemantic(
                 contrary ? 'one antonym key as contraries' : 'one atom at opposite polarity'
               }, which the solver compares like any other pair) `
             : 'you rewrite one of them as above ') +
-          `or declare them distinct with ${waiver}.`
+          'or reword one so the two plainly name different actions.'
         : ''
 
       findings.push({
@@ -951,7 +947,7 @@ function variantMessage(
   const why =
     'The formal tier does not read those as one object, because a preposition can name a ' +
     'different place or carry direction (to/from), so it compared nothing between them.'
-  const tail = ` If they are different objects, waive this finding.${through} This is a suggestion, not a verdict.`
+  const tail = ` If they are different objects, reword one so its object differs in more than a preposition (name the place or the direction in full).${through} This is a suggestion, not a verdict.`
   if (variant === 'same-verb') {
     return (
       `${lo} and ${hi} respond under the same system with the same verb ("${headA}"), one of them ` +

@@ -21,7 +21,9 @@ opposition-negated	glossary-over-term@equal-canonical/term-then-glossary	inappli
 opposition-negated	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 opposition-negated	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 opposition-negated	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-opposition-negated	waive-by-code	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-negated	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+opposition-negated	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+opposition-negated	waive-raw	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
 opposition-negated	unwaive	inapplicable
 opposition-negated	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 opposition-negated	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
@@ -75,7 +77,9 @@ opposition-split	glossary-over-term@equal-canonical/term-then-glossary	inapplica
 opposition-split	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 opposition-split	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 opposition-split	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-opposition-split	waive-by-code	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
+opposition-split	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+opposition-split	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+opposition-split	waive-raw	exit 3 verified=false signal=fires errors=[] demotions=[no-decide-tier-comparison,open-opposition-candidate,uncovered-requirement]
 opposition-split	unwaive	inapplicable
 opposition-split	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 opposition-split	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]

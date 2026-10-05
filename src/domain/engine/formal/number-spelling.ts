@@ -115,7 +115,8 @@ export function findNumberSpellingCandidates(
               'the alias and the requirement write one number. If they do, rewrite the ' +
               'requirement with `symspec update` (or re-commit the alias) so both spell the ' +
               'number identically, and re-run `symspec check`. If they are different numbers, ' +
-              'waive this finding for the pair. This is a suggestion, not a verdict.'
+              'rewrite one so both follow one separator convention, and the solver compares the ' +
+              'two numbers as written. This is a suggestion, not a verdict.'
             : `${lo.id} and ${hi.id} write the same phrase with numbers that differ only in a ` +
               `digit separator ("${lo.slotText}" vs "${hi.slotText}"), so they are two atoms and ` +
               'the solver never compared them. A `,` or `.` between digits is a thousands ' +
@@ -123,7 +124,8 @@ export function findNumberSpellingCandidates(
               'decide whether they are one number. If they are, rewrite one requirement with ' +
               '`symspec update` so both spell the number identically: they then share one atom ' +
               'and re-running `symspec check` proves any conflict. If they are different ' +
-              'numbers, waive this finding for the pair. This is a suggestion, not a verdict.',
+              'numbers, rewrite one so both follow one separator convention, and the solver ' +
+              'compares the two numbers as written. This is a suggestion, not a verdict.',
         })
       }
     }

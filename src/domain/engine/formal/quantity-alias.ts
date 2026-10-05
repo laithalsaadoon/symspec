@@ -251,7 +251,9 @@ export function findQuantityAliasCandidates(
           ? 'tier keys them together and can prove any conflict, then re-run `symspec check`. '
           : 'tier keys them together, then re-run `symspec check`. ') +
         roles +
-        'If they are genuinely different quantities, waive this finding. This is a suggestion, not a verdict.'
+        'If they are genuinely different quantities, reword one so each names its own quantity ' +
+        'in different words (the two verb phrasings are what made them look like one). This is a ' +
+        'suggestion, not a verdict.'
       findings.push({
         code: 'FND_QUANTITY_ALIAS_CANDIDATE',
         severity: 'info',

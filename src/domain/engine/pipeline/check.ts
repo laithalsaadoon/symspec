@@ -730,8 +730,8 @@ function unappliedNote(unapplied: readonly Waiver[]): string {
   return (
     ` ${one ? 'A waiver' : `${unapplied.length} waivers`} of ${unapplied[0]!.code} ` +
     `${one ? 'reaches' : 'reach'} this pair but ${one ? 'was' : 'were'} not applied (${scopes.join('; ')}): ` +
-    'a candidate is discharged only by a waiver over exactly its requirements, bound to their ' +
-    'current text, so a waiver by code or by one requirement never certifies a pair nobody read.'
+    'a triage candidate is decided only by an edit that lets the solver compare the pair, so ' +
+    'no waiver of it certifies a pair, and one by code or by one requirement reaches pairs nobody read.'
   )
 }
 
@@ -2126,10 +2126,12 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         action:
           `Rephrase ${ex.id} to clear the error-severity lint/parse finding that blocked it from ` +
           'the formal tier (see the finding message for the blocking code), then re-run `symspec ' +
-          'check`. Alternatively, `symspec waive add <blocking-code> --ref ' +
-          `${ex.id}` +
-          ' --reason "…"` — the waiver-aware gate re-admits the requirement to the solver. Waiving ' +
-          'the FND_EXCLUDED_FROM_FORMAL disclosure itself does NOT restore coverage.',
+          'check`: that is the only discharge that can reach `verified: true`. Alternatively, when ' +
+          'the blocking finding is a lint whose wording a reviewer accepts as written, the repair ' +
+          `carries a waive op of that code over exactly ${ex.id} and its current text (refs plus ` +
+          'the content hash): the waiver-aware gate re-admits the requirement to the solver, but ' +
+          'the run then demotes `waived-blocking-lint` in place of this demotion, so it cannot ' +
+          'verify. The FND_EXCLUDED_FROM_FORMAL disclosure itself is never waivable.',
       })
     }
     // Quantity-alias candidates: a possible single-quantity numeric conflict
@@ -2141,9 +2143,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         action:
           'Two co-active opposed numeric bounds landed on different quantity keys. If they ' +
           'constrain one physical quantity, commit the `symspec glossary add` alias from the ' +
-          "finding's message so the numeric tier compares them; otherwise apply this demotion's " +
-          'repair waiver, which is scoped to exactly this pair as currently written. Then re-run ' +
-          '`symspec check`.',
+          "finding's message so the numeric tier compares them; otherwise reword one so each " +
+          'names its own quantity in different words. Then re-run `symspec check`.',
       })
     }
     // Relational/aggregate blind spot: the pairwise same-quantity numeric tier
@@ -2156,9 +2157,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         requirementIds: [...f.requirementIds],
         action:
           `Aggregate/cross-quantity reasoning over ${f.requirementIds.join(', ')} was not attempted ` +
-          '(the numeric tier is pairwise same-quantity only). Verify any shared-resource sum or ' +
-          'cross-entity relation by hand and waive this finding, or restate the constraint as a ' +
-          'same-quantity numeric bound the solver can check.',
+          '(the numeric tier is pairwise same-quantity only). Restate the constraint as a ' +
+          'same-quantity numeric bound the solver can check: a relation the tier did not attempt ' +
+          'is discharged only by a restatement it decides, never by accepting it as written.',
       })
     }
     // Numeric bounds the tier neither proved nor dismissed: a verdict that turns on a
@@ -2173,13 +2174,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           f.requirementIds.length === 1
             ? `${f.requirementIds[0]} states a quantity the numeric tier read no bound on, so it ` +
               "was compared with nothing (the finding's message names it). Restate it after a " +
-              'comparator phrase the tier reads so the numeric tier can decide it, or waive this ' +
-              'finding once you have checked no other requirement bounds it. Then re-run ' +
+              'comparator phrase the tier reads so the numeric tier can decide it. Then re-run ' +
               '`symspec check`.'
             : `The numeric bounds of ${f.requirementIds.join(', ')} were neither proved nor dismissed ` +
               "(the finding's message says which reading splits them). Restate them in one sense and " +
-              'one recognized unit so the numeric tier can decide them, or waive this finding once you ' +
-              'have checked they are consistent. Then re-run `symspec check`.',
+              'one recognized unit so the numeric tier can decide them. Then re-run `symspec check`.',
       })
     }
     // AC-2-4: a number spelled with two digit separators. Off the KEPT set, so the reviewed
@@ -2193,7 +2192,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           'digit separator, on two atoms the solver never compared. If they are one number, ' +
           'rewrite one with `symspec update` so both spell it identically, then re-run `symspec ' +
           'check`: the shared atom makes any conflict provable. If they are different numbers, ' +
-          'waive FND_NUMBER_SPELLING_CANDIDATE for the pair.',
+          'rewrite one so both follow one digit-separator convention.',
       })
     }
     // AC-3-6: an untriaged opposite-polarity inflection variant is a possible
@@ -2220,9 +2219,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
             : "If they are the same, rewrite one to use the other's words: no glossary merge is " +
               'offered, because every merge of these phrasings aliases a phrase to its own ' +
               'opposite or splits an atom the document already shares. ') +
-          "If they are genuinely distinct, apply this demotion's repair waiver, which is scoped " +
-          'to exactly this pair as currently written. Then re-run ' +
-          '`symspec check`.',
+          'If they are genuinely distinct, reword one so the two plainly name different actions. ' +
+          'Then re-run `symspec check`.',
       })
     }
     // A glossary entry naming two contraries as one action: its consequence (neither action ever
@@ -2276,8 +2274,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           `Triage the opposition candidate over ${f.requirementIds.join(' and ')}: make the pair ` +
           "provable with the edit the finding's message names (the rewrite, `symspec antonym add` " +
           'if the verbs are opposites, or `symspec glossary add` if synonyms), or, if the two do ' +
-          "not conflict, apply this demotion's repair waiver, which is scoped to exactly these " +
-          'requirements as currently written. Then re-run `symspec check`.' +
+          'not conflict, reword one so they no longer read as opposite responses: a candidate is ' +
+          'decided by an edit, never by accepting it as written. Then re-run `symspec check`.' +
           unappliedNote(unappliedWaivers(f, waivers)),
       })
     }

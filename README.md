@@ -387,9 +387,7 @@ holds the reason along with the command that resolves it.
 ```console
 $ symspec check --strict --field data.coverage.demotions.0.repair
 {"data":{"coverage":{"demotions":{"0":{"repair":{
-  "ops":[{"op":"waive","code":"FND_QUANTITY_ALIAS_CANDIDATE",
-          "reason":"triaged: <why this candidate is not a conflict>",
-          "refs":["2daa564c…","304db074…"],"contentHash":"sha256:a83189f0…"}],
+  "ops":[],
   "commands":["symspec glossary \"administer the infusion\" \"run the infusion\"",
               "symspec check","symspec check ./requirements.json"]}}}}}}      # exit 3
 ```
@@ -398,9 +396,10 @@ $ symspec check --strict --field data.coverage.demotions.0.repair
 system and trigger landed on different quantity keys that share the noun *infusion*, so they
 were never compared. symspec does not decide that they are one quantity, because that is a
 judgment about your domain. It reports that it did not check, and returns the command that would
-let it check. The waiver it offers instead is bound to exactly these two requirements and their
-current text, through `refs` and `contentHash`, so it cannot discharge a pair nobody triaged.
-This is the propose/decide split. Commit the decision:
+let it check. It offers no waiver: a triage candidate is never waivable, and `symspec waive`
+refuses one with `ERR_WAIVER_REFUSED`, because accepting the pair as written would leave it
+uncompared. If the two bounds really are different quantities, reword one so each names its own
+quantity (`symspec update`). This is the propose/decide split. Commit the decision:
 
 ```console
 $ symspec glossary "administer the infusion" "run the infusion"
@@ -440,8 +439,8 @@ would be a deadline, and the numeric tier keeps a deadline and a duration on two
 for 30. The candidate says so before you commit (*after the alias it DISCLOSES the pair
 (FND_NUMERIC_UNCOMPARED) rather than proving it*), and after the same `glossary` commit that
 document reports `FND_NUMERIC_UNCOMPARED` at info severity, demotes, and exits 0 rather than
-claiming a proof it does not have. Restate the pair so both bounds measure the same thing, or
-waive the disclosure once you have checked it.
+claiming a proof it does not have. Restate the pair so both bounds measure the same thing: a
+disclosure is never waivable, so the restatement is the only discharge.
 
 ---
 
@@ -832,7 +831,7 @@ cannot drift apart. The second claim is the one to read if you read only one.
 > not a comparison), no two requirements demand opposite things of one response (an action and
 > its negation, or two contrary actions such as open and close) under guards the solver never
 > asserted together, every opposition candidate has been triaged (committed via `symspec
-> antonym` / `symspec glossary`, or waived), no committed glossary entry names two contraries as
+> antonym` / `symspec glossary`), no committed glossary entry names two contraries as
 > one action, no solver call returned unknown, a decide-tier comparison actually ran, and the
 > run itself was not weakened (the TEST stub embedder demotes, disclosed as `data.run.embedder`,
 > and so does a `--semantic-threshold` above its default, disclosed as
@@ -846,7 +845,10 @@ cannot drift apart. The second claim is the one to read if you read only one.
 > statistics can only demote verified, never promote it. Each demotion is listed in
 > `data.coverage.demotions` with the concrete command that discharges it, or the reads that
 > inform the rewrite it needs, so an agent can iterate: `check --strict` (exit 3 on demotion) ->
-> apply the listed ops or rewrite the named requirements -> re-check -> exit 0.
+> apply the listed ops or rewrite the named requirements -> re-check -> exit 0. A waiver's
+> content hash binds the text it was reviewed on, not the reviewer: any writer can mint a waiver
+> whose hash matches, so a scoped waiver of a wording or structural finding records that the
+> current text was accepted, not who accepted it.
 
 The practical consequence is that a clean check means "no conflict was proven" rather than "this
 spec is consistent". Two fields tell you how much went uncompared:
@@ -877,7 +879,7 @@ There are 24 operations. All of them are projections of one operations table, wh
 | Analysis | `check` |
 | Agent surface | `manifest`, `explain`, `version`, `install`, `download-model` |
 
-There are **89 stable codes** across three catalogs. `ERR_*` codes are operational failures,
+There are **90 stable codes** across three catalogs. `ERR_*` codes are operational failures,
 `FND_*` codes are check findings, and `GTWR_*` codes are lint rules from the INCOSE *Guide to
 Writing Requirements*. `symspec explain` resolves any of them. The catalogs are append-only, so a
 code's meaning never changes and a code is never removed. Agents branch on these codes, which is

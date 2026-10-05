@@ -20,7 +20,9 @@ registered-contrary	glossary-over-term@equal-canonical/term-then-glossary	inappl
 registered-contrary	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 registered-contrary	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 registered-contrary	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-registered-contrary	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+registered-contrary	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+registered-contrary	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
 registered-contrary	unwaive	inapplicable
 registered-contrary	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 registered-contrary	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]

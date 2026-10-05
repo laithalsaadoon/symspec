@@ -232,9 +232,11 @@ export type AntonymOp = typeof AntonymOp.Type
  * `{"op":"waive", …}` — commit one reviewed finding suppression. `reason` is REQUIRED: a
  * waiver with no audit trail is indistinguishable from neglect to the next reader.
  *
- * Three scopes, narrowest last: none (document-wide), `ref` (every finding of `code` naming
- * that requirement), and `refs` (only the finding over EXACTLY those requirements, bound to
- * their current text by a content hash). `refs` is what a pair finding's repair emits, with the
+ * Three scopes as written: none, `ref`, and `refs` (only the finding over EXACTLY those
+ * requirements, bound to their current text by a content hash). Under the waivability policy
+ * every write channel supplies (spec 007 AC-5-6) a waive with no scope, or of a `never`-class
+ * code, is refused, and a `ref` is stored as `refs: [ref]` with the hash the fold computes.
+ * `refs` is what a pair finding's repair emits, with the
  * `contentHash` of the text `check` raised it on; `apply` refuses the op if that text has since
  * changed, so a waiver is never committed over wording nobody reviewed.
  */

@@ -188,6 +188,10 @@ const WaiveOp = Schema.Struct({
   code: Schema.String,
   reason: Schema.String,
   ref: Schema.optionalKey(Schema.String),
+  // The scoped form `apply` accepts and `check`'s repairs emit (spec 007 AC-5-6): the exact set
+  // and the hash of the text it was reviewed on.
+  refs: Schema.optionalKey(Schema.Array(Schema.String)),
+  contentHash: Schema.optionalKey(Schema.String),
 })
 
 /** Every op record kind, as one union. */
@@ -552,7 +556,7 @@ const applySideTable = (
 ): void => {
   const result = applyOp(snapshotOf(state), op, timestamp, MUTATE_OPTIONS)
   if (isOpFailure(result)) {
-    const detail = `The \`${op.op}\` record was refused by the write-time check \`apply\` runs (${result.code}), so it was NOT imported: ${result.error}`
+    const detail = `The \`${op.op}\` record${recordScope(op)} was refused by the write-time check \`apply\` runs (${result.code}), so it was NOT imported: ${result.error}`
     state.problems.push({ line, detail })
     state.refused.push({
       line,
@@ -569,14 +573,28 @@ const applySideTable = (
 }
 
 /**
- * Apply a waiver record, resolving an optional requirement scope FIRST so an unresolvable one
- * widens rather than refuses.
+ * A waiver record's code and its scope AS WRITTEN, for a refusal's detail: the reader of
+ * `problems[]` needs to find the line's own words, not the UUID a key resolved to.
+ */
+const recordScope = (op: Extract<DocumentOp, { op: 'glossary' | 'antonym' | 'waive' }>): string => {
+  if (op.op !== 'waive') return ''
+  const scope =
+    op.refs !== undefined
+      ? ` over refs ${op.refs.join(', ')}`
+      : op.ref !== undefined
+        ? ` scoped to ${op.ref}`
+        : ' with no requirement scope'
+  return ` of ${op.code}${scope}`
+}
+
+/**
+ * Apply a waiver record through the same fold as `apply`, scope and all (spec 007 AC-5-6).
  *
- * A scope that does not resolve drops the SCOPE, not the waiver: an unscoped
- * waiver is broader than intended but still suppresses the finding the author
- * decided to accept, whereas dropping the waiver would resurrect a
- * knowingly-accepted finding. The widening is disclosed in `unresolved[]`. A scope that does
- * resolve is handed on as the UUID, and the record then passes the same fold as any other.
+ * The fold resolves a `ref` or `refs` written as a key or a UUID against the imported
+ * requirements, so an import stores exactly what `apply` stores: `requirementIds` plus the hash
+ * of their current text. A scope that resolves to NOTHING is refused, like every other record a
+ * fence refuses, and never widened to a document-wide waiver: a waiver by code alone is what the
+ * waivability policy refuses, so widening would smuggle one past the fence (ruling R13).
  */
 const applyWaive = (
   state: FoldState,
@@ -584,22 +602,7 @@ const applyWaive = (
   line: number,
   timestamp: string,
 ): void => {
-  const { ref, ...unscoped } = op
-  if (ref === undefined) {
-    applySideTable(state, unscoped, line, timestamp)
-    return
-  }
-  const scoped = resolveId(snapshotOf(state), ref)
-  if (scoped === undefined) {
-    state.unresolved.push({
-      op: 'waive',
-      ref,
-      detail: `The waiver scope "${ref}" matches no imported requirement, so the waiver for ${op.code} was imported UNSCOPED (document-wide) rather than dropped — dropping it would resurrect a finding someone reviewed and accepted.`,
-    })
-    applySideTable(state, unscoped, line, timestamp)
-    return
-  }
-  applySideTable(state, { ...unscoped, ref: scoped }, line, timestamp)
+  applySideTable(state, op, line, timestamp)
 }
 
 /** What the fold produced. */
@@ -792,8 +795,8 @@ const refusedFinding = (r: RefusedRecord): RefusedRecordFinding => ({
  * ## It reports; a fence refusal is the one thing it fails on
  *
  * The payload carries what was imported AND everything that was not: `gaps[]`
- * passed through from v4 verbatim, `unresolved[]` for edges dropped and
- * waiver scopes widened, `duplicates[]` for records that would have overwritten,
+ * passed through from v4 verbatim, `unresolved[]` for edges dropped (a waiver scope that
+ * resolves to nothing is refused, never widened), `duplicates[]` for records that would have overwritten,
  * and `problems[]` for lines it could not read or records `apply`'s write-time checks
  * refused. A disclosure is not a failure — an import that got 82 of 82
  * requirements and disclosed one un-reproducible timestamp gap SUCCEEDED, and

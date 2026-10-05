@@ -21,7 +21,9 @@ derives-cycle	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
 derives-cycle	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 derives-cycle	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 derives-cycle	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-derives-cycle	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+derives-cycle	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+derives-cycle	waive-scoped-never	inapplicable
+derives-cycle	waive-raw	inapplicable
 derives-cycle	unwaive	inapplicable
 derives-cycle	delete-requirement@first	exit 1 verified=true signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[]
 derives-cycle	delete-requirement@second	exit 1 verified=true signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[]
@@ -75,7 +77,9 @@ numeric-bystander	glossary-over-term@equal-canonical/term-then-glossary	inapplic
 numeric-bystander	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 numeric-bystander	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 numeric-bystander	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-numeric-bystander	waive-by-code	exit 3 verified=false signal=gone errors=[] demotions=[uncovered-requirement]
+numeric-bystander	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+numeric-bystander	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+numeric-bystander	waive-raw	exit 1 verified=false signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[uncovered-requirement]
 numeric-bystander	unwaive	inapplicable
 numeric-bystander	delete-requirement@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
 numeric-bystander	delete-requirement@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]

@@ -59,6 +59,7 @@ import {
   ErrNotFound,
   ErrNullRequired,
   ErrUsage,
+  ErrWaiverRefused,
   type OperationalError,
 } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
@@ -171,6 +172,8 @@ const toCatalogError = (
       return new ErrDuplicateKey(fields)
     case 'ERR_NULL_REQUIRED':
       return new ErrNullRequired(fields)
+    case 'ERR_WAIVER_REFUSED':
+      return new ErrWaiverRefused(fields)
     default:
       // ERR_USAGE, and anything a future fold code forgets to map. Defaulting to a
       // USAGE error rather than an internal one is the honest fallback: the fold only
@@ -760,7 +763,7 @@ export const linkOp = defineOperation({
 
 export const waiveOp = defineOperation({
   name: 'waive',
-  summary: 'Commit or remove a reviewed finding waiver, optionally scoped to one requirement',
+  summary: 'Commit or remove a reviewed finding waiver, scoped to the requirement it names',
   type: 'waive',
   input: Schema.Struct({
     code: requiredString(
@@ -785,17 +788,19 @@ export const waiveOp = defineOperation({
     ),
     ref: optionalString(
       lines(
-        'Optional requirement scope (key or UUID). When set, only findings of `--code` naming that',
-        'requirement are waived; when omitted, every finding of `--code` is waived document-wide.',
-        'Resolved to the stable UUID before storing, so the waiver survives any relabeling.',
+        'The requirement scope (key or UUID), REQUIRED when adding: a waiver with no scope is refused',
+        'ERR_WAIVER_REFUSED, as is any waiver of a `never`-class code. Stored as the exact set of that',
+        'one requirement plus the hash of its current text, so it waives only the finding over that',
+        'requirement as written. A finding over two or more requirements is waived through `apply`',
+        'with the waive op its `repair.ops` carry.',
       ),
     ),
     remove: Schema.withDecodingDefaultKey<Schema.Boolean>(Effect.succeed(false))(
       Schema.Boolean.annotate({
         default: false,
         description: lines(
-          'Remove the waiver instead of adding it. Matches on code AND scope, so removing an',
-          'unscoped waiver does NOT remove a requirement-scoped one of the same code.',
+          'Remove the waiver instead of adding it. Matches on code AND scope: with `--ref`, the waiver',
+          'over exactly that requirement; without it, only a legacy waiver that has no scope.',
         ),
       }),
     ),
@@ -817,7 +822,10 @@ export const waiveOp = defineOperation({
         )
       }
       const op: DocumentOp = input.remove
-        ? { op: 'unwaive', code: input.code, ...(input.ref !== null ? { ref: input.ref } : {}) }
+        ? // The scope `waive --ref` stores (spec 007 AC-5-6): the exact set of that one
+          // requirement, so `--remove --ref` removes what `--ref` added. A legacy `requirementId`
+          // waiver is removed by the unwaive op its `waiver-inert` diagnostic carries.
+          { op: 'unwaive', code: input.code, ...(input.ref !== null ? { refs: [input.ref] } : {}) }
         : {
             op: 'waive',
             code: input.code,

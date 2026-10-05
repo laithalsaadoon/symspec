@@ -241,12 +241,10 @@ when NOTHING was cross-compared at all.
 mutually exclusive remedies: \`symspec antonym\` if the verbs are opposites,
 \`symspec glossary\` if they are synonyms. Committing the wrong one MANUFACTURES a false
 contradiction, and embeddings cannot tell which is right because antonyms embed close
-together. Read the pair and decide; the always-safe third option is the reviewed waiver
-in the demotion's \`repair.ops\`, which records "I triaged this pair, as written, and it is
-not a conflict". It names exactly the two requirements and their text, and it is the
-only waiver that discharges an opposition candidate: one by code or by one \`--ref\`
-would reach candidates nobody triaged, so \`check\` keeps it but does not apply it, and
-the demotion's action says so.`,
+together. Read the pair and decide. If the two do not conflict, reword one so they no
+longer read as opposite responses to one trigger: a candidate is triage, and only an edit
+that lets the solver decide the pair discharges it. Nothing accepts the pair as written,
+so there is no third option to apply blind.`,
 }
 
 // ---------------------------------------------------------------------------

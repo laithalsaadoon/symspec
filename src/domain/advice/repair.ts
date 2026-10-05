@@ -72,6 +72,7 @@ import type { Repair } from '../../ports/repair.ts'
 import type { CheckFinding, CoverageDemotion, RunDisclosure } from '../engine/pipeline/check.ts'
 import type { Exclusion } from '../engine/pipeline/gate.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
+import { waivabilityOf } from '../waivability.ts'
 
 /** The reason strings a {@link CoverageDemotion} may carry. */
 export type DemotionReason = CoverageDemotion['reason']
@@ -196,21 +197,32 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // The join: the gate carried the blocking findings as evidence, so each
       // becomes a CONCRETE waive — one per code, because waiving is per-code and an
       // agent should be able to discharge them one at a time and re-check between.
-      const codes = [...new Set(exclusion.findings.map((f) => f.code))].sort()
+      // Only a `scoped`-class code (spec 007 AC-5-6): the fold refuses any other.
+      const codes = [...new Set(exclusion.findings.map((f) => f.code))]
+        .filter((code) => waivabilityOf(code) === 'scoped')
+        .sort()
+      const contentHash = context.contentHash?.([id])
       return {
         // REAL OPS (G2b). Each is a `{"op":"waive"}` record `apply` decodes, scoped
-        // to the excluded requirement so it suppresses that finding THERE rather
-        // than document-wide. The reason carries a PLACEHOLDER an agent must replace
+        // to EXACTLY the excluded requirement and bound to its current text (`refs` plus
+        // the content hash), so it suppresses that finding THERE and only while the
+        // reviewed text stands. The reason carries a PLACEHOLDER an agent must replace
         // — deliberately, because a waiver's whole value is its audit trail and
         // synthesizing a justification would be the tool lying on the author's
         // behalf. An agent that applies these unedited commits a visible
         // `<why this finding does not apply>`, which is the honest failure mode.
+        //
+        // Applied, the waiver re-admits the requirement to the solver and the run demotes
+        // `waived-blocking-lint` in its place (G3): a comparison over wording a reviewer
+        // accepted rather than fixed never certifies, so this op trades one demotion for
+        // another and the rephrase is the only discharge that can reach `verified: true`.
         ops: codes.map(
           (code) =>
             ({
               op: 'waive',
               code,
-              ref: id,
+              refs: [id],
+              ...(contentHash !== undefined ? { contentHash } : {}),
               reason: 'reviewed: <why this finding does not apply>',
             }) satisfies DocumentOp,
         ),
@@ -234,8 +246,8 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return fromFindingMessage(demotion, context, 'FND_OPPOSITION_CANDIDATE')
 
     case 'opposite-polarity-near-duplicate':
-      // The FND_SIMILAR_SEMANTIC message carries the exact `glossary add` merge and the
-      // scoped waiver; the op is the always-safe waiver, the commands the merge first.
+      // The FND_SIMILAR_SEMANTIC message carries the exact `glossary add` merge; the commands
+      // carry it first. No op: the candidate is triage, never waivable (spec 007 AC-5-6).
       return fromFindingMessage(demotion, context, 'FND_SIMILAR_SEMANTIC')
 
     case 'quantity-alias-candidate':
@@ -243,34 +255,25 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
 
     case 'relational-reasoning-not-attempted':
       // Aggregate/cross-quantity reasoning was NOT ATTEMPTED — there is no command
-      // that attempts it. The only mechanical discharge is a reviewed waiver, which
-      // is legitimate here (unlike for a coverage FACT) because the author can
-      // genuinely hand-verify the aggregate. So: waive, with the reason slot left
-      // for the agent to fill from its own verification. Scoped to this demotion's
-      // requirements ({@link scopedWaive}), never document-wide.
+      // that attempts it, and FND_RELATIONAL_UNCHECKED is a disclosure, which no waiver
+      // discharges (decision D1, spec 007 AC-5-6): a waiver on "not compared" is a claim
+      // the tool cannot check. NO OPS. The discharge is restating the constraint in a form
+      // the solver compares, which needs the requirements read first.
       return {
-        ops: scopedWaive(
-          demotion,
-          context,
-          'FND_RELATIONAL_UNCHECKED',
-          'hand-verified: <the aggregate/relational constraint you checked>',
-        ),
-        commands: [`symspec check ${context.docPath}`],
+        ops: [],
+        commands: [
+          ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
+          `symspec check ${context.docPath}`,
+        ],
       }
 
     case 'numeric-bounds-uncompared':
       // The numeric tier declined to decide: the verdict depends on a reading (role,
       // temperature sense, unit) the sentences do not fix. No command decides it for the
-      // author. The honest primary repair is to restate the bounds, which needs the
-      // requirements read first; the reviewed waiver is the fallback for a pair the
-      // author has checked is consistent — scoped to that pair ({@link scopedWaive}).
+      // author, and the disclosure is never waivable (D1). NO OPS: the repair is to restate
+      // the bounds in one sense and one unit, which needs the requirements read first.
       return {
-        ops: scopedWaive(
-          demotion,
-          context,
-          'FND_NUMERIC_UNCOMPARED',
-          'reviewed: <why these bounds are consistent>',
-        ),
+        ops: [],
         commands: [
           ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
           `symspec check ${context.docPath}`,
@@ -279,16 +282,10 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
 
     case 'number-spelling-candidate':
       // Whether two separator spellings are one number is the author's decimal convention; no
-      // command decides it. The primary repair is to spell the number identically, which needs
-      // the requirements read first. The reviewed waiver, bound to this pair and its text, is
-      // the discharge for two numbers that really differ.
+      // command decides it, and a triage candidate is never waivable. NO OPS: the repair is to
+      // spell the numbers in one convention, which needs the requirements read first.
       return {
-        ops: scopedWaive(
-          demotion,
-          context,
-          'FND_NUMBER_SPELLING_CANDIDATE',
-          'reviewed: <why these are different numbers>',
-        ),
+        ops: [],
         commands: [
           ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
           `symspec check ${context.docPath}`,
@@ -424,7 +421,7 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
  * READ from the finding, never reconstructed — which means it cannot drift from what
  * the finding says, and a future change to the wording propagates for free.
  *
- * ## The ONE reason this reason's `ops` are only the WAIVER
+ * ## Why these reasons carry NO ops
  *
  * An opposition candidate's message deliberately offers TWO mutually-exclusive
  * remedies — an `antonym` link if the verbs are opposites, a `glossary` link if they
@@ -435,12 +432,11 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
  * catastrophic in one direction, and emitting one would be the tool picking — which is
  * exactly the propose/decide violation the architecture forbids. The commands carry
  * both, in the order the finding recommends trying them, for a reviewer to choose
- * from; the OP is the third, always-safe discharge: a reviewed WAIVER, which records
- * "I triaged this and it is not a conflict" without asserting anything about the
- * vocabulary.
+ * from. Before spec 007 AC-5-6 the op was a reviewed waiver of the candidate; every code
+ * raising these demotions is `triage` class, which is never waivable, so the fold now refuses
+ * that op and the repair offers none. A pair that is not a conflict is reworded.
  *
- * That is the honest shape: mechanically applicable where the choice is safe, prose
- * where a human or agent has to decide.
+ * That is the honest shape: nothing is applied blind where a human or agent has to decide.
  */
 /**
  * The finding of `code` that raised `demotion`: the one naming exactly its ids, else one
@@ -458,45 +454,6 @@ const raisingFinding = (
   )
 }
 
-/**
- * The reviewed-waiver op for a demotion whose only mechanical discharge is a waiver of `code`,
- * scoped to EXACTLY the finding that raised it: its full requirement set (`refs`) and the
- * content hash of their current text.
- *
- * A waiver is a claim that someone read these requirements, as written, and found them
- * consistent. Every wider scope claims more than that. A code-only waiver discharges every
- * finding of the code, so a review of "sound the siren within 2 seconds" / "for at least 30
- * seconds" certified a later "complete the infusion within 30 minutes" / "for at least 60
- * minutes". A one-requirement `ref` still discharges every finding that NAMES the ref: the
- * `FND_RELATIONAL_UNCHECKED` over a cluster a third siren requirement joined, or the same pair
- * after its partner was rewritten into a different bound. The exact set stops the first (a grown
- * cluster is a different set), and the hash the second (an edited pair is different text).
- * With no id to scope to, there is no op: an unscoped waiver is what this rules out.
- */
-const scopedWaive = (
-  demotion: CoverageDemotion,
-  context: RepairContext,
-  code: string,
-  reason: string,
-): DocumentOp[] => {
-  const finding = raisingFinding(
-    demotion,
-    context.findings.filter((f) => f.code === code),
-  )
-  const refs = [...new Set(finding?.requirementIds ?? demotion.requirementIds)].sort()
-  if (refs.length === 0) return []
-  const contentHash = context.contentHash?.(refs)
-  return [
-    {
-      op: 'waive',
-      code,
-      reason,
-      refs,
-      ...(contentHash !== undefined ? { contentHash } : {}),
-    } satisfies DocumentOp,
-  ]
-}
-
 const fromFindingMessage = (
   demotion: CoverageDemotion,
   context: RepairContext,
@@ -508,30 +465,21 @@ const fromFindingMessage = (
   const finding = raisingFinding(demotion, sameCode)
   if (finding === undefined) return NO_REPAIR
 
-  // The always-safe discharge, as a real op, scoped to EXACTLY this finding's pair and its
-  // current text ({@link scopedWaive}). A candidate is often a pair a base build PROVED, so a
-  // waiver reaching one pair further certifies a conflict nobody triaged: an unscoped one
-  // discharges every candidate of the code, and a one-requirement `ref` every candidate naming
-  // that requirement — the pair a third requirement forms with it, or the pair after an edit.
-  const waive = scopedWaive(
-    demotion,
-    context,
-    code,
-    'triaged: <why this candidate is not a conflict>',
-  )
-
-  // A `symspec waive` the message spells can scope to one requirement at most, which is the
-  // wider waiver the op above rules out; the op is the waiver, so the commands carry none.
+  // NO OPS. Every code that raises one of these demotions is a triage candidate, and a triage
+  // candidate is never waivable (spec 007 AC-5-6): it is discharged by committing the table
+  // entry it proposes, or by rewording, and either changes what the solver decides. Which entry
+  // is right is the propose/decide judgment no run can make, so the commands carry the
+  // finding's own alternatives for a reviewer to choose from, and nothing is applied for them.
+  //
+  // A `symspec waive` a message spells is dropped from the commands for the same reason.
   const advice = extractSymspecCommands(finding.message).filter(
     (command) => !command.startsWith('symspec waive'),
   )
   return {
-    ops: waive,
+    ops: [],
     commands: [
-      // The finding's own two alternatives FIRST, because deciding the vocabulary is
-      // the better outcome — a committed glossary or antonym link lets the solver
-      // PROVE or dismiss the conflict, where a waiver only records that someone
-      // looked. The waiver op is the fallback for when neither applies.
+      // The finding's own alternatives FIRST, in the order its reasoning recommends: a
+      // committed glossary or antonym link lets the solver PROVE or dismiss the conflict.
       ...advice,
       `symspec check ${context.docPath}`,
     ],

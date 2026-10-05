@@ -205,9 +205,9 @@ export function disclosureOfUnreadQuantities(
           `${one ? 'it' : 'them'}, so ${one ? 'it was' : 'they were'} never compared with any ` +
           "other requirement's bound. If it is a bound, restate it after one of the comparator " +
           `phrases the tier reads (${phrases}; a period as "at least once every <n> <unit>"), ` +
-          'so any conflict is proved. Otherwise, once you have checked that no other ' +
-          'requirement bounds the same quantity against it, waive this finding for this ' +
-          'requirement. This is a disclosure, not a verdict.',
+          'so any conflict is proved. Otherwise it stays disclosed: a number no bound covers ' +
+          'is a comparison that did not happen, and only a restatement the tier reads ' +
+          'discharges it. This is a disclosure, not a verdict.',
       }
     })
 }
@@ -829,8 +829,8 @@ export async function analyzeNumericBounds(
               `Requirements ${blamed.join(', ')} place numeric bounds on "${label}" (${sources}) ` +
               'that conflict under one reading of the sentences and not under another, so the ' +
               `numeric tier neither proved nor dismissed the conflict: ${disagreementOf(reading, marked)}. ` +
-              'If the bounds are consistent, waive this finding; if they are not, restate them so ' +
-              'they bound one quantity in one sense, and re-run `symspec check`. This is a ' +
+              'Restate them so they bound one quantity in one sense, and the tier decides the ' +
+              'conflict either way; then re-run `symspec check`. This is a ' +
               'disclosure, not a verdict.',
           })
         }
@@ -871,7 +871,8 @@ export async function analyzeNumericBounds(
             'that conflict if they apply at once, under guards whose own bounds cannot hold ' +
             'together, so the numeric tier did not report a conflict. If the guards can in fact ' +
             'hold at once, change one requirement so it no longer contradicts the other there; ' +
-            'if they cannot, waive this finding. Then re-run `symspec check`. This is a ' +
+            'if they cannot, it stays disclosed, because symspec has no way yet to record that ' +
+            'two guards never hold together. Then re-run `symspec check`. This is a ' +
             'disclosure, not a verdict.',
         })
       }
@@ -1043,8 +1044,8 @@ async function uncomparedPairs(
           ? `Requirements ${ids.join(', ')} place opposed numeric bounds on "${a.pred.label}" ` +
             `${pair} in units the numeric tier cannot convert between (${unitOf(a.pred)} and ` +
             `${unitOf(b.pred)}), so it never compared them. Restate both in one unit it ` +
-            'recognizes so any conflict is proved, or waive this finding if they are ' +
-            'consistent. This is a disclosure, not a verdict.'
+            'recognizes so any conflict is proved or dismissed; until then it stays ' +
+            'disclosed. This is a disclosure, not a verdict.'
           : shape === 'qualifiers' && clauses.length > 0
             ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
               'that conflict if each is the obligation on one quantity, but the numeric tier does ' +
@@ -1064,8 +1065,8 @@ async function uncomparedPairs(
               'introduces right after one noun, a plural included ("run the pump for at least <N> ' +
               'minutes"); or the verb alone on a time ("respond within <N> milliseconds"). Move a ' +
               'condition into the trigger or precondition ("While <condition>, the <system> shall ' +
-              'keep <quantity> below <N>"). Or waive this finding once you have checked they cannot ' +
-              'apply together. Then re-run `symspec check`. This is a disclosure, not a verdict.'
+              'keep <quantity> below <N>"), so the tier can tell where each bound applies. Then ' +
+              're-run `symspec check`. This is a disclosure, not a verdict.'
             : shape === 'qualifiers'
               ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
                 'that conflict if both apply at once to one thing, under different trailing text ' +
@@ -1073,13 +1074,14 @@ async function uncomparedPairs(
                 '(a condition on where a bound applies, or what it counts), so it never compared ' +
                 "them. Move each condition into the requirement's trigger or precondition, or " +
                 'restate both bounds on one referent, so the tier can tell where and to what each ' +
-                'bound applies; or waive this finding once you have checked they cannot apply ' +
-                'together. Then re-run `symspec check`. This is a disclosure, not a verdict.'
+                'bound applies, and the tier compares them. Then re-run `symspec check`. This is ' +
+                'a disclosure, not a verdict.'
               : `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
                 'that conflict if both apply at once, under guards no context group the numeric ' +
                 'tier checked asserts together, so it never compared them. If the two contexts ' +
                 'can hold at once, change one requirement so it no longer contradicts the other ' +
-                'there; if they cannot, waive this finding. Then re-run `symspec check`. This is ' +
+                'there; if they cannot, it stays disclosed, because symspec has no way yet to ' +
+                'record that two guards never hold together. Then re-run `symspec check`. This is ' +
                 'a disclosure, not a verdict.',
     })
   }
@@ -1253,15 +1255,16 @@ async function uncomparedProhibitionSets(
         'it happen. No solver call the numeric tier made asserted them together, because ' +
         'their guards are never live in one context group or the text after their bounds ' +
         'differs. If they can all apply at once, change one so it no longer contradicts the ' +
-        'others there; if they cannot, waive this finding. Then re-run `symspec check`. This ' +
+        'others there; if they cannot, it stays disclosed, because symspec has no way yet to ' +
+        'record that guards never hold together. Then re-run `symspec check`. This ' +
         'is a disclosure, not a verdict.' +
         occurring
           .filter((o) => o.loose === true)
           .map(
             (o) =>
               ` Requirement ${o.id} ("${o.sourceText}") was not read as doing ` +
-              `"${set[0]!.pred.label}", but holds its words, so it may: if it does not, waive ` +
-              'this finding; if it does, the prohibitions forbid what it requires.',
+              `"${set[0]!.pred.label}", but holds its words, so it may: if it does not, reword ` +
+              'it so it plainly names another action; if it does, the prohibitions forbid what it requires.',
           )
           .join(''),
     })

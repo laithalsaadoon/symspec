@@ -26,6 +26,7 @@ import {
 import { ESTABLISH_VERBS } from '../../domain/engine/formal/guard-implication.ts'
 import { deInflectHead } from '../../domain/engine/formal/lemma.ts'
 import type { MutateOptions } from '../../domain/requirements/mutate.ts'
+import { findingClassOf, WAIVABILITY } from '../../domain/waivability.ts'
 
 /**
  * The mutation-fold options: the injected normalizer and every write-time validator.
@@ -36,6 +37,18 @@ import type { MutateOptions } from '../../domain/requirements/mutate.ts'
  * legitimately knows about both.
  */
 export const MUTATE_OPTIONS: MutateOptions = {
+  /**
+   * The waivability policy (spec 007 AC-5-6), read off the published class table: a `never`
+   * class (verdict, disclosure, triage, hygiene, anchor) is refused in every scope, a code no
+   * catalog publishes has no class and is refused, and a `scoped` class (wording, structural)
+   * is accepted only over named requirements, stored with the hash of their current text.
+   * Every write channel folds under these options, so `apply`, `symspec waive` and `import`
+   * refuse the same waivers, and `compat.ts` holds a stored waiver to the same table at check.
+   */
+  waiverPolicy: (code) => {
+    const cls = findingClassOf(code)
+    return cls === undefined ? undefined : { class: cls, waivable: WAIVABILITY[cls] }
+  },
   // The atomizer's own normalizer, so a committed antonym head is EXACTLY the key the
   // atomizer looks up. Storing "Open" where the atomizer looks up "open" would make
   // the committed pair silently inert — a decision recorded and not applied.

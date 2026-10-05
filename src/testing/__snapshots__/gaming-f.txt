@@ -1,9 +1,8 @@
-waived-blocking-lint	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-waived-blocking-lint	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+waived-blocking-lint	(baseline)	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[waived-blocking-lint]
 dangling-target	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]
 dangling-target	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
-waived-blocking-lint	rename-system@first	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
-waived-blocking-lint	rename-system@second	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
+waived-blocking-lint	rename-system@first	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement,waived-blocking-lint]
+waived-blocking-lint	rename-system@second	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement,waived-blocking-lint]
 waived-blocking-lint	split-system	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison]
 waived-blocking-lint	alias-contraries-glossary@forward	inapplicable
 waived-blocking-lint	alias-contraries-glossary@reverse	inapplicable
@@ -22,24 +21,26 @@ waived-blocking-lint	glossary-over-term@equal-canonical/term-then-glossary	inapp
 waived-blocking-lint	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 waived-blocking-lint	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 waived-blocking-lint	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-waived-blocking-lint	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+waived-blocking-lint	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+waived-blocking-lint	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+waived-blocking-lint	waive-raw	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[waived-blocking-lint]
 waived-blocking-lint	unwaive	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison]
 waived-blocking-lint	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 waived-blocking-lint	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
-waived-blocking-lint	flip-negated@first	exit 1 verified=false signal=gone errors=[FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
-waived-blocking-lint	flip-negated@second	exit 1 verified=false signal=gone errors=[FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
-waived-blocking-lint	condition-into-response@first	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
-waived-blocking-lint	condition-into-response@second	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
-waived-blocking-lint	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-waived-blocking-lint	shall-to-should@first	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
-waived-blocking-lint	shall-to-should@second	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement]
-waived-blocking-lint	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+waived-blocking-lint	flip-negated@first	exit 1 verified=false signal=gone errors=[FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement,waived-blocking-lint]
+waived-blocking-lint	flip-negated@second	exit 1 verified=false signal=gone errors=[FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement,waived-blocking-lint]
+waived-blocking-lint	condition-into-response@first	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement,waived-blocking-lint]
+waived-blocking-lint	condition-into-response@second	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement,waived-blocking-lint]
+waived-blocking-lint	add-decoys	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[waived-blocking-lint]
+waived-blocking-lint	shall-to-should@first	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement,waived-blocking-lint]
+waived-blocking-lint	shall-to-should@second	exit 1 verified=false signal=gone errors=[GTWR_R7_VAGUE] demotions=[excluded-from-formal,no-decide-tier-comparison,uncovered-requirement,waived-blocking-lint]
+waived-blocking-lint	link-culprits	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[waived-blocking-lint]
 waived-blocking-lint	antonym-over-candidate	inapplicable
 waived-blocking-lint	add-bound-past-bystander	inapplicable
 waived-blocking-lint	add-bystander-negation	inapplicable
-waived-blocking-lint	add-negation	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal]
-waived-blocking-lint	add-equivalent@exact	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal]
-waived-blocking-lint	add-equivalent@case	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,GTWR_R7_VAGUE] demotions=[excluded-from-formal]
+waived-blocking-lint	add-negation	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal,waived-blocking-lint]
+waived-blocking-lint	add-equivalent@exact	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE,GTWR_R7_VAGUE] demotions=[excluded-from-formal,waived-blocking-lint]
+waived-blocking-lint	add-equivalent@case	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,GTWR_R7_VAGUE] demotions=[excluded-from-formal,waived-blocking-lint]
 waived-blocking-lint	branch-into-cycle	inapplicable
 waived-blocking-lint	supply-dangling-target	inapplicable
 waived-blocking-lint	unglossary	inapplicable
@@ -50,12 +51,12 @@ waived-blocking-lint	rebind-effect	inapplicable
 waived-blocking-lint	vacuous-initial	inapplicable
 waived-blocking-lint	release-frame	inapplicable
 waived-blocking-lint	unstate	inapplicable
-waived-blocking-lint	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
-waived-blocking-lint	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+waived-blocking-lint	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened,waived-blocking-lint]
+waived-blocking-lint	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped,waived-blocking-lint]
 waived-blocking-lint	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
 waived-blocking-lint	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
-waived-blocking-lint	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
-waived-blocking-lint	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+waived-blocking-lint	temporal-bound-1	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[waived-blocking-lint]
+waived-blocking-lint	temporal-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[waived-blocking-lint]
 dangling-target	rename-system@first	exit 1 verified=false signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[no-decide-tier-comparison,uncovered-requirement]
 dangling-target	rename-system@second	exit 1 verified=false signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[no-decide-tier-comparison,uncovered-requirement]
 dangling-target	split-system	exit 1 verified=false signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[no-decide-tier-comparison,uncovered-requirement]
@@ -76,7 +77,9 @@ dangling-target	glossary-over-term@equal-canonical/term-then-glossary	inapplicab
 dangling-target	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
 dangling-target	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
 dangling-target	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
-dangling-target	waive-by-code	CLEAN verified=true signal=gone errors=[] demotions=[]
+dangling-target	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+dangling-target	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+dangling-target	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_DANGLING_REFERENCE] demotions=[]
 dangling-target	unwaive	inapplicable
 dangling-target	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
 dangling-target	delete-requirement@second	exit 1 verified=true signal=gone errors=[FND_DANGLING_REFERENCE] demotions=[]
