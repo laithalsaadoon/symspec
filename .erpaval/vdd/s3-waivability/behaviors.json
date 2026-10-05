@@ -51,15 +51,17 @@
     ]
   },
   "S3-005": {
-    "title": "A waive op that carries no contentHash (refs with no hash, or a single ref, through apply, symspec waive or import) is handled as question 1 rules",
-    "origin": "question 1 (open)",
+    "title": "A waive op with refs but no contentHash, or a single ref, is accepted through apply, symspec waive and import: ref is normalized to refs [ref], the fold computes the contentHash from the current text, and the stored waiver always has refs and a contentHash",
+    "origin": "ruling R37 (question 1)",
     "class": "false certificate",
     "floor": 2,
     "components": [
       "waive-fold",
       "import-waivers"
     ],
-    "rulings": []
+    "rulings": [
+      "R37"
+    ]
   },
   "S3-006": {
     "title": "No waiver is ever stored as requirementId without a contentHash",
@@ -95,7 +97,8 @@
       "waive-fold"
     ],
     "rulings": [
-      "R9"
+      "R9",
+      "R37"
     ]
   },
   "S3-009": {
@@ -238,14 +241,16 @@
     ]
   },
   "S3-020": {
-    "title": "A stored single requirementId waiver that carries a matching contentHash is handled as question 3 rules",
-    "origin": "question 3 (open)",
+    "title": "A stored single requirementId with a matching contentHash qualifies as refs [id] plus that hash: it suppresses exactly its finding, with no diagnostic",
+    "origin": "ruling R39 (question 3)",
     "class": "false certificate",
     "floor": 1,
     "components": [
       "check-compat"
     ],
-    "rulings": []
+    "rulings": [
+      "R39"
+    ]
   },
   "S3-021": {
     "title": "A stored refs plus matching hash waiver of a scoped code qualifies and suppresses exactly its finding, with no diagnostic",
@@ -260,14 +265,16 @@
     ]
   },
   "S3-022": {
-    "title": "A stored waiver whose refs match no finding is disclosed as question 2 rules",
-    "origin": "question 2 (open)",
+    "title": "A stored waiver whose refs match no finding's id set suppresses nothing and is disclosed as waiver-inert (matches no finding) with its unwaive op, plus one scoped waive refs+current hash per finding it suppressed at base (unwaive only when it suppressed nothing at base)",
+    "origin": "ruling R38 (question 2)",
     "class": "reviewed-waiver loss",
     "floor": 1,
     "components": [
       "check-compat"
     ],
-    "rulings": []
+    "rulings": [
+      "R38"
+    ]
   },
   "S3-023": {
     "title": "waiver-inert is an info data.diagnostics entry that demotes nothing; deleting an inert waiver changes no finding, demotion or verified",
@@ -308,15 +315,17 @@
     ]
   },
   "S3-026": {
-    "title": "The reason a replacement waive op carries is as question 5 rules",
-    "origin": "question 5 (open)",
+    "title": "A replacement scoped waive op carries the legacy reason verbatim followed by one exported fixed provenance marker",
+    "origin": "ruling R41 (question 5)",
     "class": "reviewed-waiver loss",
     "floor": 1,
     "components": [
       "check-compat",
       "repair-advice"
     ],
-    "rulings": []
+    "rulings": [
+      "R41"
+    ]
   },
   "S3-027": {
     "title": "Every replacement op decodes and folds under MUTATE_OPTIONS on the checked document, and every named command parses under this build's CLI",
@@ -329,7 +338,8 @@
     ],
     "rulings": [
       "R20",
-      "R24"
+      "R24",
+      "R41"
     ]
   },
   "S3-028": {
@@ -345,14 +355,16 @@
     ]
   },
   "S3-029": {
-    "title": "What a data.ignoredWaivers entry offers beyond its fields is as question 6 rules",
-    "origin": "question 6 (open)",
+    "title": "A data.ignoredWaivers (stale hash) entry carries its unwaive op and a note that the requirement's text changed since review and must be re-reviewed, and no waive op at the new hash",
+    "origin": "ruling R42 (question 6)",
     "class": "reviewed-waiver loss",
     "floor": 1,
     "components": [
       "check-compat"
     ],
-    "rulings": []
+    "rulings": [
+      "R42"
+    ]
   },
   "S3-030": {
     "title": "No stored waiver the S3 fold would refuse as an op reaches the engine",
@@ -404,14 +416,16 @@
     ]
   },
   "S3-034": {
-    "title": "blocking-lint-both keeps its FND_CONTRADICTION error and verified false; its waived-blocking-lint rows and exit are as question 4 rules",
-    "origin": "question 4 (open)",
+    "title": "blocking-lint-both keeps its FND_CONTRADICTION error and verified false, gives one waived-blocking-lint demotion naming ORD-R1 and ORD-R2, and exits 1, because the error sets the exit before any demotion",
+    "origin": "ruling R40 (question 4)",
     "class": "false certificate",
     "floor": 1,
     "components": [
       "check-demotions"
     ],
-    "rulings": []
+    "rulings": [
+      "R40"
+    ]
   },
   "S3-035": {
     "title": "A waived blocking lint never yields verified true, even on a consistent pair, and --strict exits 3 when it is the only failure",
@@ -422,7 +436,8 @@
       "check-demotions"
     ],
     "rulings": [
-      "R26"
+      "R26",
+      "R40"
     ]
   },
   "S3-036": {
@@ -452,15 +467,17 @@
     ]
   },
   "S3-038": {
-    "title": "How the reproducer is red on base is as question 7 rules",
-    "origin": "question 7 (open)",
+    "title": "The reproducer is red on base on a minimal CAB+TNK document with the fixture embedder: at base the code-only FND_OPPOSITION_CANDIDATE waive is accepted and check returns verified: true; with S3 the waive is refused, the stored waiver is inert and the CAB and TNK pairs demote; the write-half assertion stays and AC-5-6 is not amended",
+    "origin": "ruling R43 (question 7)",
     "class": "false certificate",
     "floor": 1,
     "components": [
       "waive-fold",
       "check-compat"
     ],
-    "rulings": []
+    "rulings": [
+      "R43"
+    ]
   },
   "S3-039": {
     "title": "Every repair.ops op decodes and the S3 fold accepts it, and no offered waive names a never code",
@@ -489,15 +506,17 @@
     ]
   },
   "S3-041": {
-    "title": "The excluded-from-formal remedy for a blocking lint is as question 8 rules",
-    "origin": "question 8 (open)",
+    "title": "For a requirement excluded from the formal tier by a blocking scoped-class lint, the remedy offers rephrasing first and may offer the scoped waive refs+hash second, then saying the waiver re-admits it to the solver but demotes waived-blocking-lint, so the run cannot verify",
+    "origin": "ruling R44 (question 8)",
     "class": "instruction drift",
     "floor": 1,
     "components": [
       "repair-advice",
       "engine-prose"
     ],
-    "rulings": []
+    "rulings": [
+      "R44"
+    ]
   },
   "S3-042": {
     "title": "scope.ts coverageDemotion does not say or waived, and check:agents shows no drift",
@@ -564,14 +583,16 @@
     ]
   },
   "S3-047": {
-    "title": "A scoped FND_CYCLE waiver on derives-cycle is handled as question 9 rules",
-    "origin": "question 9 (open)",
+    "title": "A scoped, reviewed waiver of a scoped-class finding gets no KNOWN_ESCAPES row: the scoped-waive harness move runs on never-class fixtures only (refused at write, inert raw), and the derives-cycle FND_CYCLE scoped discharge is pinned by its own positive test",
+    "origin": "ruling R45 (question 9)",
     "class": "gate drift",
     "floor": 1,
     "components": [
       "gaming-harness"
     ],
-    "rulings": []
+    "rulings": [
+      "R45"
+    ]
   },
   "S3-048": {
     "title": "The 11 waive-by-code KNOWN_ESCAPES rows are deleted with the move still registered and exactness green on every shard",
@@ -630,17 +651,20 @@
       "release"
     ],
     "rulings": [
-      "R35"
+      "R35",
+      "R46"
     ]
   },
   "S3-053": {
-    "title": "Whether S3 bumps the version files is as question 10 rules",
-    "origin": "question 10 (open)",
+    "title": "S3 does not touch the version files; release-please bumps the four version files in the release PR",
+    "origin": "ruling R46 (question 10)",
     "class": "reviewed-waiver loss",
     "floor": 1,
     "components": [
       "release"
     ],
-    "rulings": []
+    "rulings": [
+      "R46"
+    ]
   }
 }

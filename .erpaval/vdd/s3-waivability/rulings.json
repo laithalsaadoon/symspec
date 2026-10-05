@@ -306,6 +306,100 @@
       "behaviors": [
         "S3-045"
       ]
+    },
+    {
+      "id": "R37",
+      "text": "R37 (Q1, S3-005): (a) Accept. A waive op with refs but no contentHash, or a single ref, is accepted: ref is normalized to refs [ref], and the fold computes the contentHash from the current text itself, as it does today (plan 5.3: 'ref is normalized to refs: [ref]' ... 'The fold computes contentHash itself, as it does today'). The stored waiver always has refs and a contentHash. A supplied hash that differs from the current text stays ERR_USAGE (S3-008). Applies to apply, symspec waive and import alike.",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-005",
+        "S3-008"
+      ],
+      "question": 1
+    },
+    {
+      "id": "R38",
+      "text": "R38 (Q2, S3-022): A well-formed stored waiver whose refs match no finding's id set suppresses nothing and is disclosed as waiver-inert (reason: matches no finding) with its unwaive op. It additionally carries one scoped waive refs+current-hash op per finding it suppressed at base (the migration's 'for every finding it matches today' rule, computed with base matching); when it suppressed nothing at base, unwaive only.",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-022"
+      ],
+      "question": 2
+    },
+    {
+      "id": "R39",
+      "text": "R39 (Q3, S3-020): (a) Qualifies. A stored single requirementId with a matching contentHash is the normalized form of refs [id] plus that hash: it suppresses exactly its finding, with no diagnostic. Only a single ref WITHOUT a hash goes inert (plan section 6).",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-020"
+      ],
+      "question": 3
+    },
+    {
+      "id": "R40",
+      "text": "R40 (Q4, S3-034): (b) One waived-blocking-lint demotion row naming both re-admitted requirements; exit 1, because the FND_CONTRADICTION error finding sets the exit before any demotion; --strict exit 3 only when demotions are the only failure (S3-035).",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-034",
+        "S3-035"
+      ],
+      "question": 4
+    },
+    {
+      "id": "R41",
+      "text": "R41 (Q5, S3-026): (a) The replacement scoped waive op carries the legacy reason verbatim followed by a fixed provenance marker (one exported constant, e.g. ' (rescoped from a legacy waiver)'), so the rescoped, narrower waiver keeps its reviewer's reason and says where it came from; it decodes and folds as is (S3-027).",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-026",
+        "S3-027"
+      ],
+      "question": 5
+    },
+    {
+      "id": "R42",
+      "text": "R42 (Q6, S3-029): (b) An ignoredWaivers entry (stale hash) carries its unwaive op and a note that the requirement's text changed since the waiver was reviewed and must be re-reviewed; it offers NO waive op at the new hash.",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-029"
+      ],
+      "question": 6
+    },
+    {
+      "id": "R43",
+      "text": "R43 (Q7, S3-038): (b) The reproducer is pinned on a minimal document holding only the CAB pair (heat/cool the cabin) and the TNK pair (fill/drain the tank) with the fixture embedder, where on base the code-only FND_OPPOSITION_CANDIDATE waiver is accepted and check returns verified: true (asserted on base, as AC-5-6's 'Today' says); with S3 the waive is refused and the stored waiver is inert, and the CAB and TNK pairs demote. AC-5-6's text is not amended. Keep the write-half assertion too.",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-038"
+      ],
+      "question": 7
+    },
+    {
+      "id": "R44",
+      "text": "R44 (Q8, S3-041): For a requirement excluded from the formal tier by a blocking (scoped-class) lint, the remedy offers rephrasing first; it may offer the scoped waive refs+hash second, and then must say that the waiver re-admits the requirement to the solver but demotes waived-blocking-lint, so the run cannot verify.",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-041"
+      ],
+      "question": 8
+    },
+    {
+      "id": "R45",
+      "text": "R45 (Q9, S3-047): (b) No KNOWN_ESCAPES row: a scoped, reviewed waiver of a scoped-class finding is a designed discharge, not an escape. The new scoped-waive harness move runs on never-class fixtures only (where it must be refused at write and inert raw); the derives-cycle FND_CYCLE scoped discharge is pinned by its own positive test.",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-047"
+      ],
+      "question": 9
+    },
+    {
+      "id": "R46",
+      "text": "R46 (Q10, S3-053): (a) S3 does not touch the version: release-please bumps the four version files in the release PR. The S3 build commit is feat! with a BREAKING CHANGE: footer (S3-052).",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-053",
+        "S3-052"
+      ],
+      "question": 10
     }
   ],
   "questions": [
@@ -320,7 +414,8 @@
         "(c) Accept refs, refuse bare ref",
         "Redirect with an example"
       ],
-      "ruled": null
+      "ruled": "a",
+      "ruling": "R37"
     },
     {
       "n": 2,
@@ -333,7 +428,8 @@
         "(c) Inert, unwaive plus two scoped waives",
         "Redirect with an example"
       ],
-      "ruled": null
+      "ruled": "redirect",
+      "ruling": "R38"
     },
     {
       "n": 3,
@@ -345,7 +441,8 @@
         "(b) Inert, with a replacement",
         "Redirect with an example"
       ],
-      "ruled": null
+      "ruled": "a",
+      "ruling": "R39"
     },
     {
       "n": 4,
@@ -358,7 +455,8 @@
         "(c) One row, exit 3",
         "Redirect with an example"
       ],
-      "ruled": null
+      "ruled": "b",
+      "ruling": "R40"
     },
     {
       "n": 5,
@@ -371,7 +469,8 @@
         "(c) Placeholder, refused until edited",
         "Redirect with an example"
       ],
-      "ruled": null
+      "ruled": "a",
+      "ruling": "R41"
     },
     {
       "n": 6,
@@ -384,7 +483,8 @@
         "(c) Fields only",
         "Redirect with an example"
       ],
-      "ruled": null
+      "ruled": "b",
+      "ruling": "R42"
     },
     {
       "n": 7,
@@ -397,7 +497,8 @@
         "(c) Also amend the AC's Today line",
         "Redirect with an example"
       ],
-      "ruled": null
+      "ruled": "b",
+      "ruling": "R43"
     },
     {
       "n": 8,
@@ -409,7 +510,8 @@
         "(b) Rephrase only",
         "Redirect with an example"
       ],
-      "ruled": null
+      "ruled": "redirect",
+      "ruling": "R44"
     },
     {
       "n": 9,
@@ -421,7 +523,8 @@
         "(b) Measure never-class fixtures only",
         "Redirect with an example"
       ],
-      "ruled": null
+      "ruled": "b",
+      "ruling": "R45"
     },
     {
       "n": 10,
@@ -433,7 +536,31 @@
         "(b) Bump to 2.0.0 in S3",
         "Redirect with an example"
       ],
-      "ruled": null
+      "ruled": "a",
+      "ruling": "R46"
+    }
+  ],
+  "assumptions": [
+    {
+      "id": "TA1",
+      "text": "CI and CODEOWNERS outside the agent's reach",
+      "owner": "Laith",
+      "status": "accepted until the next release after 2.0.0",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt"
+    },
+    {
+      "id": "TA2",
+      "text": "content hash collision resistance",
+      "owner": "Laith",
+      "status": "accepted until the next release after 2.0.0",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt"
+    },
+    {
+      "id": "TA3",
+      "text": "the corpus plus the gaming fixtures reach every advice site",
+      "owner": null,
+      "status": "not accepted: it is an evidence item, measured by the evidence role (list each advice and suggestion site and which corpus or fixture document reaches it)",
+      "source": "coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt"
     }
   ]
 }

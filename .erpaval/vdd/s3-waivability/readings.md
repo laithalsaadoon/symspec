@@ -669,7 +669,7 @@ open. A ruling is written under its question as `Ruled: (x).`, and as an R line 
    (c) refs with no hash are accepted with the computed hash, and a bare `ref` is refused [reading
    A's alternative].
    Options: (a) Accept, fold computes hash · (b) Refuse without a hash · (c) Accept refs, refuse bare ref · Redirect with an example.
-   Ruling: pending.
+   Ruling: R37, below. Ruled: (a).
 
 2. S3-022 · A stored waiver whose refs match no finding. Given lint-wrong-set.stored.json (GTWR_R5
    refs [LOG-R1, LOG-R2] + sha256:716cbd99…, while each GTWR_R5 finding names one requirement),
@@ -680,7 +680,7 @@ open. A ruling is written under its question as `Ruled: (x).`, and as an R line 
    (c) a waiver-inert diagnostic offers the unwaive op plus waives for [LOG-R1] sha256:fd8b2c50… and
    [LOG-R2] sha256:c2bd1271… [reading C].
    Options: (a) Silent · (b) Inert, unwaive only · (c) Inert, unwaive plus two scoped waives · Redirect with an example.
-   Ruling: pending.
+   Ruling: R38, below. Ruled: redirect (no lettered option; the ruling states the outcome).
 
 3. S3-020 · A stored single requirementId that carries a contentHash. Given
    hand-ref-with-hash.json (GTWR_R5, requirementId LOG-R1, contentHash sha256:fd8b2c50…, text
@@ -690,7 +690,7 @@ open. A ruling is written under its question as `Ruled: (x).`, and as an R line 
    (b) it is inert: GTWR_R5 on LOG-R1 comes back, and waiver-inert offers unwaive plus waive refs
    [LOG-R1] sha256:fd8b2c50… [reading B].
    Options: (a) Qualifies · (b) Inert, with a replacement · Redirect with an example.
-   Ruling: pending.
+   Ruling: R39, below. Ruled: (a).
 
 4. S3-034 · The demotion rows and exit for blocking-lint-both. Given blocking-lint-both.stored.json
    (GTWR_R7_VAGUE waived on ORD-R1 and on ORD-R2, each refs + hash), when `check --strict` runs,
@@ -700,7 +700,7 @@ open. A ruling is written under its question as `Ruled: (x).`, and as an R line 
    order: an error finding returns 1 before the strict gate's 3) [reading C allows either grouping];
    (c) there is one demotion naming both, and exit 3 [reading B].
    Options: (a) Two rows, exit 1 · (b) One row, exit 1 · (c) One row, exit 3 · Redirect with an example.
-   Ruling: pending.
+   Ruling: R40, below. Ruled: (b).
 
 5. S3-026 · The reason on a replacement waive op. Given lint-code-only.stored.json (code-only
    GTWR_R5 waiver, reason "indefinite articles are house style"), when check offers waive refs
@@ -710,7 +710,7 @@ open. A ruling is written under its question as `Ruled: (x).`, and as an R line 
    (c) a placeholder, and the fold refuses a waive whose reason still holds it [threat T19 puts this
    to a person].
    Options: (a) Legacy reason verbatim · (b) Placeholder, accepted as is · (c) Placeholder, refused until edited · Redirect with an example.
-   Ruling: pending.
+   Ruling: R41, below. Ruled: (a).
 
 6. S3-029 · What a stale-hash entry offers. Given lint-stale-hash.stored.json (GTWR_R5 refs [LOG-R1]
    at sha256:fd8b2c50…, while LOG-R1 now hashes to sha256:37bcc820…), when check runs, GTWR_R5 on
@@ -722,7 +722,7 @@ open. A ruling is written under its question as `Ruled: (x).`, and as an R line 
    [closest to reading C's "review-required replacement advice"];
    (c) nothing beyond those fields [threat T6 lists only them; reading B is silent].
    Options: (a) Unwaive plus waive at the new hash · (b) Unwaive plus a re-review note · (c) Fields only · Redirect with an example.
-   Ruling: pending.
+   Ruling: R42, below. Ruled: (b).
 
 7. S3-038 · How the AC-5-6 reproducer is red on base. All three readings measured
    repro-code-only.stored.json as `verified: false` at base: the engine's PAIR_BOUND_CODES already
@@ -735,7 +735,11 @@ open. A ruling is written under its question as `Ruled: (x).`, and as an R line 
    `verified`, recorded as already false at base [readings A and B, option b];
    (c) as (a), plus the AC's "Today" line is amended in spec.md.
    Options: (a) Write half only · (b) Also a CAB+TNK-only document · (c) Also amend the AC's Today line · Redirect with an example.
-   Ruling: pending.
+   Ruling: R43, below. Ruled: (b).
+   Reconciler note (not part of the ruling): readings A, B and C and intake ambiguity 5 measured that
+   base's PAIR_BOUND_CODES (`check.ts` ~:684, :711) does not apply a code-only FND_OPPOSITION_CANDIDATE
+   waiver, so at base the CAB pair still demotes open-opposition-candidate; R43's base assertion
+   `verified: true` must be measured on the CAB+TNK document before the contract pins it.
 
 8. S3-041 · The excluded-from-formal remedy for a blocking lint. Given base.json (ORD-R1 is
    excluded-from-formal because of GTWR_R7_VAGUE, error), when check prints that demotion's action
@@ -745,7 +749,7 @@ open. A ruling is written under its question as `Ruled: (x).`, and as an R line 
    here];
    (b) it offers only rephrasing ORD-R1, and no waive op [reading C].
    Options: (a) Scoped waive plus the demotion note · (b) Rephrase only · Redirect with an example.
-   Ruling: pending.
+   Ruling: R44, below. Ruled: redirect (no lettered option; the ruling states the outcome).
 
 9. S3-047 · A scoped FND_CYCLE waiver on the derives-cycle fixture. Given the gaming fixture
    derives-cycle (FND_CYCLE, structural, so scoped), when the new scoped-waive move (S3-049) waives
@@ -755,7 +759,7 @@ open. A ruling is written under its question as `Ruled: (x).`, and as an R line 
    (b) the scoped-waive move runs only on fixtures whose seeded finding is never-class, so it adds no
    clean pair and no row [threat T24 asks the person].
    Options: (a) List it as a designed escape · (b) Measure never-class fixtures only · Redirect with an example.
-   Ruling: pending.
+   Ruling: R45, below. Ruled: (b).
 
 10. S3-053 · Whether S3 bumps the version. Given the finished S3 branch with 1.2.1 in the four
     version files, then
@@ -763,7 +767,7 @@ open. A ruling is written under its question as `Ruled: (x).`, and as an R line 
     major is cut later with the dev line feat/controlled-vocabulary [reading C prefers];
     (b) S3 also sets the four version files to 2.0.0.
     Options: (a) Version stays, major cut later · (b) Bump to 2.0.0 in S3 · Redirect with an example.
-    Ruling: pending.
+    Ruling: R46, below. Ruled: (a).
 
 ## Rulings
 
@@ -803,6 +807,16 @@ R33: Every applied waiver is listed in the check payload with code, ids and reas
 R34: The 11 waive-by-code KNOWN_ESCAPES rows are deleted with the move kept and exactness green. The harness gains the scoped never-code and raw-channel measurements, adds no clean pair, and every report-corpus delta is attributable to AC-5-6. Source: the story; threats T20, T21, T25; reading C. Behaviors S3-048, S3-049, S3-050, S3-051.
 R35: Coordinator input (d): the S3 build commit is feat! with a BREAKING CHANGE: footer in its own body. Source: coordinator input (d). Behaviors S3-052.
 R36: `propose-vocabulary --rescope-waivers` is neither built nor named in S3. G4's "and the --rescope-waivers stream" waits for the slice that builds the command (S9); the waiver-inert diagnostics carry the ops now (reading C's Q8, intake ambiguity 17). Source: coordinator input (c); the story. Behaviors S3-045.
+R37 (Q1, S3-005): (a) Accept. A waive op with refs but no contentHash, or a single ref, is accepted: ref is normalized to refs [ref], and the fold computes the contentHash from the current text itself, as it does today (plan 5.3: 'ref is normalized to refs: [ref]' ... 'The fold computes contentHash itself, as it does today'). The stored waiver always has refs and a contentHash. A supplied hash that differs from the current text stays ERR_USAGE (S3-008). Applies to apply, symspec waive and import alike. Source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt. Behaviors S3-005, S3-008.
+R38 (Q2, S3-022): A well-formed stored waiver whose refs match no finding's id set suppresses nothing and is disclosed as waiver-inert (reason: matches no finding) with its unwaive op. It additionally carries one scoped waive refs+current-hash op per finding it suppressed at base (the migration's 'for every finding it matches today' rule, computed with base matching); when it suppressed nothing at base, unwaive only. Source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt. Behaviors S3-022.
+R39 (Q3, S3-020): (a) Qualifies. A stored single requirementId with a matching contentHash is the normalized form of refs [id] plus that hash: it suppresses exactly its finding, with no diagnostic. Only a single ref WITHOUT a hash goes inert (plan section 6). Source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt. Behaviors S3-020.
+R40 (Q4, S3-034): (b) One waived-blocking-lint demotion row naming both re-admitted requirements; exit 1, because the FND_CONTRADICTION error finding sets the exit before any demotion; --strict exit 3 only when demotions are the only failure (S3-035). Source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt. Behaviors S3-034, S3-035.
+R41 (Q5, S3-026): (a) The replacement scoped waive op carries the legacy reason verbatim followed by a fixed provenance marker (one exported constant, e.g. ' (rescoped from a legacy waiver)'), so the rescoped, narrower waiver keeps its reviewer's reason and says where it came from; it decodes and folds as is (S3-027). Source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt. Behaviors S3-026, S3-027.
+R42 (Q6, S3-029): (b) An ignoredWaivers entry (stale hash) carries its unwaive op and a note that the requirement's text changed since the waiver was reviewed and must be re-reviewed; it offers NO waive op at the new hash. Source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt. Behaviors S3-029.
+R43 (Q7, S3-038): (b) The reproducer is pinned on a minimal document holding only the CAB pair (heat/cool the cabin) and the TNK pair (fill/drain the tank) with the fixture embedder, where on base the code-only FND_OPPOSITION_CANDIDATE waiver is accepted and check returns verified: true (asserted on base, as AC-5-6's 'Today' says); with S3 the waive is refused and the stored waiver is inert, and the CAB and TNK pairs demote. AC-5-6's text is not amended. Keep the write-half assertion too. Source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt. Behaviors S3-038.
+R44 (Q8, S3-041): For a requirement excluded from the formal tier by a blocking (scoped-class) lint, the remedy offers rephrasing first; it may offer the scoped waive refs+hash second, and then must say that the waiver re-admits the requirement to the solver but demotes waived-blocking-lint, so the run cannot verify. Source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt. Behaviors S3-041.
+R45 (Q9, S3-047): (b) No KNOWN_ESCAPES row: a scoped, reviewed waiver of a scoped-class finding is a designed discharge, not an escape. The new scoped-waive harness move runs on never-class fixtures only (where it must be refused at write and inert raw); the derives-cycle FND_CYCLE scoped discharge is pinned by its own positive test. Source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt. Behaviors S3-047.
+R46 (Q10, S3-053): (a) S3 does not touch the version: release-please bumps the four version files in the release PR. The S3 build commit is feat! with a BREAKING CHANGE: footer (S3-052). Source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt. Behaviors S3-053, S3-052.
 
 ## Boundaries
 
@@ -817,12 +831,13 @@ KNOWN_ESCAPES rows; the other legacy escapes stay open (R5, G26). It adds no gat
 waiver of a wording or structural code, and the scope says so (T24). The embedding model and the
 npm publish are out of scope.
 
-Assumptions (from threat model v1; each needs an owner the person names when approving):
+Assumptions (from threat model v1; owners as the coordinator ruled, source: coordinator, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt):
 
 - TA1: CI runs `pnpm check` on a fresh clone, and symspec.config.json is CODEOWNED, so the gate's
-  own invocation is outside the agent's reach (D5, D8, R6). Owner: unassigned.
+  own invocation is outside the agent's reach (D5, D8, R6). Owner: Laith; accepted until the next release after 2.0.0.
 - TA2: requirementsContentHash is collision-resistant over meaningOf(requirement), so a waiver
-  cannot be bound to two different texts. Owner: unassigned.
+  cannot be bound to two different texts. Owner: Laith; accepted until the next release after 2.0.0.
 - TA3: The report corpus and the gaming fixtures together exercise every advice site that can emit
   a waive op or the word "waive" for a never code; a site neither reaches is unguarded (T14, T15).
-  Owner: unassigned.
+  Not accepted: it is an evidence item, measured by the evidence role (list each advice and suggestion
+  site and which corpus or fixture document reaches it).
