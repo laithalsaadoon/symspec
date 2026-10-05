@@ -1,0 +1,439 @@
+{
+  "_about": "Rulings and open questions of the S3 waivability readings (VDD run 2, reconciler job 849), as data; readings.md ## Questions and ## Rulings are the text they come from. A person's ruling sets ruled to the letter and adds an R line.",
+  "rulings": [
+    {
+      "id": "R1",
+      "text": "Every waive of a never-class code is refused with ERR_WAIVER_REFUSED, whatever its scope and hash.",
+      "source": "agreement (A, B, C); threats T1, T2",
+      "behaviors": [
+        "S3-001"
+      ]
+    },
+    {
+      "id": "R2",
+      "text": "D1: disclosure codes that mean \"not compared\" (FND_NUMERIC_UNCOMPARED, FND_RELATIONAL_UNCHECKED and their siblings) are never waivable; the discharge is rewording.",
+      "source": "decision D1",
+      "behaviors": [
+        "S3-001",
+        "S3-016",
+        "S3-039"
+      ]
+    },
+    {
+      "id": "R3",
+      "text": "G2: waivability is by meaning: verdict, triage, disclosure, hygiene and anchor are never; wording and structural are scoped. AC-5-6's \"formal-tier finding\" reads as every never class (reading B's Q4, intake ambiguity 15).",
+      "source": "gap G2",
+      "behaviors": [
+        "S3-001",
+        "S3-016"
+      ]
+    },
+    {
+      "id": "R4",
+      "text": "A refused waive aborts the whole atomic stream: nothing is written, exit 1.",
+      "source": "agreement",
+      "behaviors": [
+        "S3-002"
+      ]
+    },
+    {
+      "id": "R5",
+      "text": "A code-only waive is refused for every code, scoped classes included.",
+      "source": "agreement; threat T3",
+      "behaviors": [
+        "S3-003"
+      ]
+    },
+    {
+      "id": "R6",
+      "text": "A refs plus matching contentHash waive of a scoped-class code is accepted and stored as requirementIds plus that hash.",
+      "source": "agreement",
+      "behaviors": [
+        "S3-004"
+      ]
+    },
+    {
+      "id": "R7",
+      "text": "No waiver is ever stored as requirementId without a contentHash.",
+      "source": "agreement; threat T4",
+      "behaviors": [
+        "S3-006"
+      ]
+    },
+    {
+      "id": "R8",
+      "text": "A waive whose refs equal no finding's set is accepted at write and suppresses nothing at check.",
+      "source": "agreement (note 1)",
+      "behaviors": [
+        "S3-007"
+      ]
+    },
+    {
+      "id": "R9",
+      "text": "A supplied contentHash that differs from the current text is refused with ERR_USAGE, as at base, and nothing is written.",
+      "source": "agreement; threat T7",
+      "behaviors": [
+        "S3-008"
+      ]
+    },
+    {
+      "id": "R10",
+      "text": "A code with no own FINDING_CLASS row is refused at write and inert at check, and every published code has its own row.",
+      "source": "threat T22 (no reading contradicts)",
+      "behaviors": [
+        "S3-009"
+      ]
+    },
+    {
+      "id": "R11",
+      "text": "Case and whitespace variants of a never code are refused, inert and suppress nothing.",
+      "source": "threat T23 (no reading contradicts)",
+      "behaviors": [
+        "S3-010"
+      ]
+    },
+    {
+      "id": "R12",
+      "text": "The refusal message names the code and its never class, or the missing refs and hash.",
+      "source": "agreement",
+      "behaviors": [
+        "S3-011"
+      ]
+    },
+    {
+      "id": "R13",
+      "text": "Import folds every waiver record through apply's classifier: I1, I3 and I5 are refused into problems[], I4 is refused and never widened, the requirements are written and import exits 1; a refs plus contentHash record is accepted.",
+      "source": "agreement; threat T9",
+      "behaviors": [
+        "S3-012",
+        "S3-013",
+        "S3-014"
+      ]
+    },
+    {
+      "id": "R14",
+      "text": "Each waiver import refuses is named with its line, code, scope and replacement.",
+      "source": "threat T10 (no reading contradicts)",
+      "behaviors": [
+        "S3-015"
+      ]
+    },
+    {
+      "id": "R15",
+      "text": "D4: \"Legacy documents lose the waiver discharge for opposition candidates; they rewrite or opt into a vocabulary.\" A stored never-class waiver is inert whatever its scope and hash, disclosed once as waiver-inert, and the run equals the document with it deleted.",
+      "source": "decision D4; agreement; threat T8",
+      "behaviors": [
+        "S3-016",
+        "S3-025"
+      ]
+    },
+    {
+      "id": "R16",
+      "text": "A stored code-only waiver, a stored single requirementId with no hash and a stored requirementIds with no hash are inert; a stored refs plus matching hash waiver of a scoped code qualifies.",
+      "source": "agreement",
+      "behaviors": [
+        "S3-017",
+        "S3-018",
+        "S3-019",
+        "S3-021"
+      ]
+    },
+    {
+      "id": "R17",
+      "text": "waiver-inert is an info data.diagnostics entry that demotes nothing; deleting an inert waiver changes no finding, demotion or verified.",
+      "source": "agreement",
+      "behaviors": [
+        "S3-023"
+      ]
+    },
+    {
+      "id": "R18",
+      "text": "G4: ship as breaking with a waiver-inert migration diagnostic. For a scoped code it carries the exact unwaive op plus one scoped waive refs plus current contentHash per finding the waiver matches today.",
+      "source": "gap G4; agreement",
+      "behaviors": [
+        "S3-024"
+      ]
+    },
+    {
+      "id": "R19",
+      "text": "For a never code, waiver-inert carries the unwaive op and \"rewrite required\", and no waive op.",
+      "source": "agreement; decision D4; coordinator input (c)",
+      "behaviors": [
+        "S3-025"
+      ]
+    },
+    {
+      "id": "R20",
+      "text": "Every replacement op decodes and folds under MUTATE_OPTIONS, and every named command parses under this build's CLI.",
+      "source": "threat T18; coordinator input (c)",
+      "behaviors": [
+        "S3-027"
+      ]
+    },
+    {
+      "id": "R21",
+      "text": "A stale-hash waiver brings its finding back and is listed once in data.ignoredWaivers with code, requirement ids, stored hash and current hash under any output filter, and not as waiver-inert.",
+      "source": "agreement; threat T6",
+      "behaviors": [
+        "S3-028"
+      ]
+    },
+    {
+      "id": "R22",
+      "text": "No stored waiver the S3 fold would refuse as an op reaches the engine.",
+      "source": "threat T11, narrowed to the direction no reading contradicts (note 2)",
+      "behaviors": [
+        "S3-030"
+      ]
+    },
+    {
+      "id": "R23",
+      "text": "The engine-tier diff is prose only, and the engine still declines a stored code-only FND_OPPOSITION_CANDIDATE waiver.",
+      "source": "threat T26 (no reading contradicts)",
+      "behaviors": [
+        "S3-031"
+      ]
+    },
+    {
+      "id": "R24",
+      "text": "Coordinator input (c): `propose-vocabulary --rescope-waivers` and `vocab distinct` do not exist on this build (S7, S9, S17 are not built). Every waiver-inert replacement, repair suggestion, refusal message and engine remedy names only commands and ops this build has: for never codes, rewrite the requirement, or the existing `antonym` op where the pair really are contraries. A test guards it. This replaces plan 5.3's and section 10's \"name `vocab distinct`\" (reading A's Q13).",
+      "source": "coordinator input (c)",
+      "behaviors": [
+        "S3-011",
+        "S3-025",
+        "S3-027",
+        "S3-040",
+        "S3-045"
+      ]
+    },
+    {
+      "id": "R25",
+      "text": "isWaivedBlocking re-admits a requirement exactly when isWaived suppresses its blocking finding.",
+      "source": "threat T5 (property clause; no reading contradicts it)",
+      "behaviors": [
+        "S3-032"
+      ]
+    },
+    {
+      "id": "R26",
+      "text": "G3: a waived blocking lint keeps re-admitting its requirement, adds the waived-blocking-lint demotion, and never yields verified true.",
+      "source": "gap G3; agreement",
+      "behaviors": [
+        "S3-033",
+        "S3-035"
+      ]
+    },
+    {
+      "id": "R27",
+      "text": "The waived-blocking-lint set is the requirements excluded with no waivers minus those excluded under exactly toEngineDoc's waiver list; with no waivers the demotions equal base's.",
+      "source": "threats T12, T13 (no reading contradicts)",
+      "behaviors": [
+        "S3-036"
+      ]
+    },
+    {
+      "id": "R28",
+      "text": "The reproducer: the opposition waive is refused, and the un-waived CAB and TNK pairs demote separately; the stored reproducer's waiver is inert.",
+      "source": "agreement",
+      "behaviors": [
+        "S3-037"
+      ]
+    },
+    {
+      "id": "R29",
+      "text": "No repair op, demotion action, finding message or suggestion for a never code offers or says waive, at every site. Every repair op folds.",
+      "source": "agreement; threats T14, T15",
+      "behaviors": [
+        "S3-039",
+        "S3-040"
+      ]
+    },
+    {
+      "id": "R30",
+      "text": "\"or waived\" is absent from scope.ts.",
+      "source": "agreement",
+      "behaviors": [
+        "S3-042"
+      ]
+    },
+    {
+      "id": "R31",
+      "text": "Coordinator input (b): the installed skill body (craft.ts ~:244-249) calls the reviewed pair waiver the always-safe option for FND_OPPOSITION_CANDIDATE, a never-class code; it must change so it teaches no refused move.",
+      "source": "coordinator input (b); threat T16",
+      "behaviors": [
+        "S3-043"
+      ]
+    },
+    {
+      "id": "R32",
+      "text": "Coordinator input (a): WAIVABILITY_ENFORCED in signal-classes.ts flips to true with S3, so every published \"NOT enforced by this build\" statement (AGENTS.md through agents-doc, explain's waivableEnforced) changes with it, behind the existing two-halves flag test plus a negative guard.",
+      "source": "coordinator input (a); threat T17",
+      "behaviors": [
+        "S3-044"
+      ]
+    },
+    {
+      "id": "R33",
+      "text": "Every applied waiver is listed in the check payload with code, ids and reason, and the published scope says a content hash binds the text, not the reviewer.",
+      "source": "threat T24 (first two clauses)",
+      "behaviors": [
+        "S3-046"
+      ]
+    },
+    {
+      "id": "R34",
+      "text": "The 11 waive-by-code KNOWN_ESCAPES rows are deleted with the move kept and exactness green. The harness gains the scoped never-code and raw-channel measurements, adds no clean pair, and every report-corpus delta is attributable to AC-5-6.",
+      "source": "the story; threats T20, T21, T25; reading C",
+      "behaviors": [
+        "S3-048",
+        "S3-049",
+        "S3-050",
+        "S3-051"
+      ]
+    },
+    {
+      "id": "R35",
+      "text": "Coordinator input (d): the S3 build commit is feat! with a BREAKING CHANGE: footer in its own body.",
+      "source": "coordinator input (d)",
+      "behaviors": [
+        "S3-052"
+      ]
+    },
+    {
+      "id": "R36",
+      "text": "`propose-vocabulary --rescope-waivers` is neither built nor named in S3. G4's \"and the --rescope-waivers stream\" waits for the slice that builds the command (S9); the waiver-inert diagnostics carry the ops now (reading C's Q8, intake ambiguity 17).",
+      "source": "coordinator input (c); the story",
+      "behaviors": [
+        "S3-045"
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "n": 1,
+      "behavior": "S3-005",
+      "title": "A waive op that carries no contentHash",
+      "scenarios": "Given base.json, when an agent applies GTWR_R5 refs [LOG-R1] with no contentHash (lint-refs-no-hash), or ref LOG-R1 (lint-single-ref, `symspec waive GTWR_R5_INDEFINITE_ARTICLE --ref LOG-R1`, import I2 and I6), then (a) it is accepted: a `ref` becomes refs [LOG-R1], and the fold computes and stores sha256:fd8b2c50…; `symspec waive --ref` keeps working; import stores I2 and I6 (imported.waivers 2) [readings A and B]; (b) it is refused ERR_WAIVER_REFUSED, because an op must carry the hash it was raised on; so `symspec waive` would need new `--refs` and `--content-hash` flags to write any waiver; import stores no v4 waiver (imported.waivers 0) [reading C]; (c) refs with no hash are accepted with the computed hash, and a bare `ref` is refused [reading A's alternative].",
+      "options": [
+        "(a) Accept, fold computes hash",
+        "(b) Refuse without a hash",
+        "(c) Accept refs, refuse bare ref",
+        "Redirect with an example"
+      ],
+      "ruled": null
+    },
+    {
+      "n": 2,
+      "behavior": "S3-022",
+      "title": "A stored waiver whose refs match no finding",
+      "scenarios": "Given lint-wrong-set.stored.json (GTWR_R5 refs [LOG-R1, LOG-R2] + sha256:716cbd99…, while each GTWR_R5 finding names one requirement), when check runs, both findings stay (settled), and (a) nothing is disclosed: the waiver applies to nothing [reading A]; (b) a waiver-inert diagnostic says it matches no finding and offers the unwaive op only [reading B's option a]; (c) a waiver-inert diagnostic offers the unwaive op plus waives for [LOG-R1] sha256:fd8b2c50… and [LOG-R2] sha256:c2bd1271… [reading C].",
+      "options": [
+        "(a) Silent",
+        "(b) Inert, unwaive only",
+        "(c) Inert, unwaive plus two scoped waives",
+        "Redirect with an example"
+      ],
+      "ruled": null
+    },
+    {
+      "n": 3,
+      "behavior": "S3-020",
+      "title": "A stored single requirementId that carries a contentHash",
+      "scenarios": "Given hand-ref-with-hash.json (GTWR_R5, requirementId LOG-R1, contentHash sha256:fd8b2c50…, text unchanged), when check runs, then (a) it qualifies as [LOG-R1]: GTWR_R5 on LOG-R1 stays suppressed, with no diagnostic [readings A and C]; (b) it is inert: GTWR_R5 on LOG-R1 comes back, and waiver-inert offers unwaive plus waive refs [LOG-R1] sha256:fd8b2c50… [reading B].",
+      "options": [
+        "(a) Qualifies",
+        "(b) Inert, with a replacement",
+        "Redirect with an example"
+      ],
+      "ruled": null
+    },
+    {
+      "n": 4,
+      "behavior": "S3-034",
+      "title": "The demotion rows and exit for blocking-lint-both",
+      "scenarios": "Given blocking-lint-both.stored.json (GTWR_R7_VAGUE waived on ORD-R1 and on ORD-R2, each refs + hash), when `check --strict` runs, FND_CONTRADICTION (error) on ORD-R1, ORD-R2 is reported and `verified` is false (settled), and (a) there are two waived-blocking-lint demotions, [ORD-R1] and [ORD-R2], and exit 1 [reading A]; (b) there is one waived-blocking-lint demotion naming [ORD-R1, ORD-R2], and exit 1 (base exit order: an error finding returns 1 before the strict gate's 3) [reading C allows either grouping]; (c) there is one demotion naming both, and exit 3 [reading B].",
+      "options": [
+        "(a) Two rows, exit 1",
+        "(b) One row, exit 1",
+        "(c) One row, exit 3",
+        "Redirect with an example"
+      ],
+      "ruled": null
+    },
+    {
+      "n": 5,
+      "behavior": "S3-026",
+      "title": "The reason on a replacement waive op",
+      "scenarios": "Given lint-code-only.stored.json (code-only GTWR_R5 waiver, reason \"indefinite articles are house style\"), when check offers waive refs [LOG-R1] sha256:fd8b2c50… as a replacement, its reason is (a) \"indefinite articles are house style\", the legacy reason verbatim [reading C]; (b) a placeholder asking for a per-finding review, which the fold accepts unedited [threat T19]; (c) a placeholder, and the fold refuses a waive whose reason still holds it [threat T19 puts this to a person].",
+      "options": [
+        "(a) Legacy reason verbatim",
+        "(b) Placeholder, accepted as is",
+        "(c) Placeholder, refused until edited",
+        "Redirect with an example"
+      ],
+      "ruled": null
+    },
+    {
+      "n": 6,
+      "behavior": "S3-029",
+      "title": "What a stale-hash entry offers",
+      "scenarios": "Given lint-stale-hash.stored.json (GTWR_R5 refs [LOG-R1] at sha256:fd8b2c50…, while LOG-R1 now hashes to sha256:37bcc820…), when check runs, GTWR_R5 on LOG-R1 is back and `data.ignoredWaivers` holds one entry with code, ids and both hashes (settled), and the entry also offers (a) the unwaive op plus waive refs [LOG-R1] sha256:37bcc820… with a \"re-reviewed\" placeholder reason [reading A]; (b) the unwaive op and a note to review the new text before waiving again, with no waive op [closest to reading C's \"review-required replacement advice\"]; (c) nothing beyond those fields [threat T6 lists only them; reading B is silent].",
+      "options": [
+        "(a) Unwaive plus waive at the new hash",
+        "(b) Unwaive plus a re-review note",
+        "(c) Fields only",
+        "Redirect with an example"
+      ],
+      "ruled": null
+    },
+    {
+      "n": 7,
+      "behavior": "S3-038",
+      "title": "How the AC-5-6 reproducer is red on base",
+      "scenarios": "All three readings measured repro-code-only.stored.json as `verified: false` at base: the engine's PAIR_BOUND_CODES already declines the code-only opposition waiver, and the ORD pair's GTWR_R7 errors also demote. So AC-5-6's \"Today: `verified: true`\" does not hold on this fixture. Then (a) the write half carries the absence proof: at base the waive is accepted, and on S3 it is refused ERR_WAIVER_REFUSED; the check half (refusal, diagnostics, exact demotion ids) is a regression that also passes on base [reading A's option a; reading C]; (b) as (a), plus a document with only the CAB and TNK requirements, so the check half asserts `verified`, recorded as already false at base [readings A and B, option b]; (c) as (a), plus the AC's \"Today\" line is amended in spec.md.",
+      "options": [
+        "(a) Write half only",
+        "(b) Also a CAB+TNK-only document",
+        "(c) Also amend the AC's Today line",
+        "Redirect with an example"
+      ],
+      "ruled": null
+    },
+    {
+      "n": 8,
+      "behavior": "S3-041",
+      "title": "The excluded-from-formal remedy for a blocking lint",
+      "scenarios": "Given base.json (ORD-R1 is excluded-from-formal because of GTWR_R7_VAGUE, error), when check prints that demotion's action and repair.ops, then (a) it still offers a waive of GTWR_R7_VAGUE refs [ORD-R1] sha256:e376ee5c…, in the form the fold accepts, and says ORD-R1 will then demote waived-blocking-lint [reading A; reading B's E3 leans here]; (b) it offers only rephrasing ORD-R1, and no waive op [reading C].",
+      "options": [
+        "(a) Scoped waive plus the demotion note",
+        "(b) Rephrase only",
+        "Redirect with an example"
+      ],
+      "ruled": null
+    },
+    {
+      "n": 9,
+      "behavior": "S3-047",
+      "title": "A scoped FND_CYCLE waiver on the derives-cycle fixture",
+      "scenarios": "Given the gaming fixture derives-cycle (FND_CYCLE, structural, so scoped), when the new scoped-waive move (S3-049) waives FND_CYCLE over the cycle's exact ids and current hash, the run verifies by design, and (a) it is listed as a designed escape in KNOWN_ESCAPES, with the reason that a scoped waiver over the current text is the designed discharge; (b) the scoped-waive move runs only on fixtures whose seeded finding is never-class, so it adds no clean pair and no row [threat T24 asks the person].",
+      "options": [
+        "(a) List it as a designed escape",
+        "(b) Measure never-class fixtures only",
+        "Redirect with an example"
+      ],
+      "ruled": null
+    },
+    {
+      "n": 10,
+      "behavior": "S3-053",
+      "title": "Whether S3 bumps the version",
+      "scenarios": "Given the finished S3 branch with 1.2.1 in the four version files, then (a) the commits declare `feat!` with `BREAKING CHANGE:`, the four files stay at 1.2.1, and the major is cut later with the dev line feat/controlled-vocabulary [reading C prefers]; (b) S3 also sets the four version files to 2.0.0.",
+      "options": [
+        "(a) Version stays, major cut later",
+        "(b) Bump to 2.0.0 in S3",
+        "Redirect with an example"
+      ],
+      "ruled": null
+    }
+  ]
+}
