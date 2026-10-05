@@ -1148,3 +1148,66 @@ describe('every v4 field carries a description — the manifest has no second co
     expect(blankDeep(Nested, 'x')).toEqual(['x.outer[].naked'])
   })
 })
+
+// ---------------------------------------------------------------------------
+// Release hardening (VDD run 3, ruling RH-R3): format v4 is labelled experimental
+// ---------------------------------------------------------------------------
+
+/**
+ * On this build a docVersion 4 document with intent items and `vocabulary.frozenTables` loads,
+ * `add` accepts a requirement with neither `intentRef` nor `derived`, `glossary` writes into the
+ * "frozen" tables, and `check` reads none of it. So the schema's own descriptions, which the
+ * published surfaces derive from, must not say otherwise: each v4 key carries ONE exported
+ * statement, interpolated rather than retyped, and the two unqualified enforcement claims are
+ * gone (or rephrased as what a later release will do).
+ *
+ * The statement is read through the module namespace, so this file loads on a build that does
+ * not export it yet and fails there on an assertion rather than on an import.
+ */
+describe('[RH-007] the v4 schema says what this build does with the v4 keys', () => {
+  const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim()
+  const statementOf = async (): Promise<string> => {
+    const documentModule = await import('./document.ts')
+    const statement: unknown = Reflect.get(documentModule, 'V4_EXPERIMENTAL_STATEMENT')
+    expect(typeof statement, 'V4_EXPERIMENTAL_STATEMENT is exported as a string').toBe('string')
+    return String(statement)
+  }
+  const jsonSchema = () =>
+    Schema.toJsonSchemaDocument(RequirementsDocument) as unknown as {
+      schema: Node & { properties: Record<string, Node & { additionalProperties?: Node }> }
+    }
+
+  it('[RH-007] one exported constant states that v4 is experimental and read by no check tier', async () => {
+    const statement = await statementOf()
+    expect(statement).toMatch(/experimental/i)
+    expect(statement).toMatch(/no check tier/i)
+    expect(statement).toMatch(/preserved on save/i)
+  })
+
+  it('[RH-007] the vocabulary, intent and policy keys and the intentRef and derived fields interpolate it', async () => {
+    const said = collapse(await statementOf())
+    const { properties } = jsonSchema().schema
+    const requirement = properties.requirements?.additionalProperties?.properties ?? {}
+    const described = {
+      vocabulary: annotationOf(properties.vocabulary, 'description'),
+      intent: annotationOf(properties.intent, 'description'),
+      policy: annotationOf(properties.policy, 'description'),
+      intentRef: annotationOf(requirement.intentRef, 'description'),
+      derived: annotationOf(requirement.derived, 'description'),
+    }
+    const unlabelled = Object.entries(described)
+      .filter(([, text]) => typeof text !== 'string' || !collapse(text).includes(said))
+      .map(([key]) => key)
+    expect(unlabelled).toEqual([])
+  })
+
+  it('[RH-007] states neither unqualified enforcement claim anywhere in the document schema', () => {
+    const everything = collapse(JSON.stringify(jsonSchema()).replace(/\\n/g, ' '))
+    for (const claim of [
+      'Every requirement names one intent item, or is marked',
+      'With a vocabulary those two tables are frozen',
+    ]) {
+      expect(everything, claim).not.toContain(claim)
+    }
+  })
+})

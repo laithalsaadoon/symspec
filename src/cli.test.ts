@@ -1898,3 +1898,226 @@ describe('pinned run configuration — on the built CLI (AC-5-10, AC-5-13)', () 
     ])
   })
 })
+
+/**
+ * Release hardening (VDD run 3, rulings RH-R2 and RH-R3), on the SHIPPED bundle.
+ *
+ * RH-R2: with no config named, a git refusal other than "not a git repository" and other than
+ * the bare-repository refusal no longer stops a document that NO `symspec.config.json` could
+ * govern: the run is the no-repository run, and `data.run.config` discloses git's refusal. With
+ * a config in the document's directory or any ancestor the run still fails closed, naming the
+ * refusal. The refusal is produced by a `git` shim first on PATH, which prints git's real
+ * unsafe-ownership message (four lines) and exits 128, as git 2.35.2 and later do.
+ *
+ * RH-R3: `init --split` says, in its help and in its result, that nothing reads the anchors yet.
+ * The statement is ONE exported constant; it is read through the module namespace so this file
+ * loads on a build that does not have it yet, and fails there on an assertion.
+ */
+describe('release hardening — a git refusal and the v4 anchors, through the real process', () => {
+  const roots: string[] = []
+  const workDir = (): string => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'symspec-rh-')))
+    roots.push(dir)
+    return dir
+  }
+  afterAll(async () => {
+    const { rm } = await import('node:fs/promises')
+    await Promise.all(roots.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+  })
+
+  const CONFIG = 'symspec.config.json'
+  const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
+  const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim()
+  /** Every string anywhere inside a JSON value. */
+  const stringsIn = (value: unknown): string[] =>
+    typeof value === 'string'
+      ? [value]
+      : typeof value === 'object' && value !== null
+        ? Object.values(value).flatMap(stringsIn)
+        : []
+
+  /** The CLI with extra environment variables, parsed as one envelope. */
+  const runJsonEnv = (env: Record<string, string>, ...args: string[]) => {
+    const r = spawnSync(process.execPath, [BUNDLE, ...args], {
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
+    })
+    return { envelope: JSON.parse(r.stdout ?? '') as Record<string, unknown>, code: r.status ?? -1 }
+  }
+
+  /** An initialized (empty) document in `dir`, written with no git involved. */
+  const docIn = (dir: string): string => {
+    const doc = join(dir, 'requirements.json')
+    expect(run('init', doc).code).toBe(0)
+    return doc
+  }
+
+  /** A directory holding a `git` that refuses every directory the way an ownership check does. */
+  const refusingGit = (): string => {
+    const bin = workDir()
+    writeFileSync(
+      join(bin, 'git'),
+      [
+        '#!/bin/sh',
+        'here="$(pwd -P)"',
+        `printf '%s\\n' "fatal: detected dubious ownership in repository at '$here'" "To add an exception for this directory, call:" "" "	git config --global --add safe.directory $here" >&2`,
+        'exit 128',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    )
+    return bin
+  }
+  const refusalIn = (dir: string): string =>
+    `fatal: detected dubious ownership in repository at '${dir}'`
+  const SECOND_LINE = 'To add an exception for this directory, call:'
+
+  /** Every directory from `dir` up to `/`. */
+  const ancestorsOf = (dir: string): string[] => {
+    const out = [dir]
+    for (let at = dir; at !== join(at, '..'); at = join(at, '..')) out.push(join(at, '..'))
+    return out
+  }
+  /** The precondition RH-R2 (a) names: no config in the directory or any ancestor. */
+  const expectNoConfigAbove = (dir: string): void => {
+    expect(
+      ancestorsOf(dir).filter((d) => existsSync(join(d, CONFIG))),
+      'a symspec.config.json above the temp dir makes this fixture meaningless',
+    ).toEqual([])
+  }
+
+  /** The parts of a check report RH-R2 (a) holds identical to the no-git run. */
+  const verdictOf = (envelope: Record<string, unknown>) => {
+    const data = envelope.data as {
+      verified: boolean
+      findings: unknown[]
+      coverage: { demotions: unknown[] }
+    }
+    return { verified: data.verified, findings: data.findings, demotions: data.coverage.demotions }
+  }
+
+  it('[RH-003] with no config anywhere, a git refusal runs exactly as no repository and discloses the refusal', () => {
+    const dir = workDir()
+    const doc = docIn(dir)
+    expectNoConfigAbove(dir)
+    const noGit = runJsonEnv({ PATH: join(dir, 'no-such-bin') }, 'check', doc)
+    expect(noGit.envelope.type).toBe('check')
+    const refused = runJsonEnv({ PATH: `${refusingGit()}:${process.env.PATH ?? ''}` }, 'check', doc)
+    expect(refused.envelope.code, String(refused.envelope.error)).toBeUndefined()
+    expect(refused.code).toBe(noGit.code)
+    expect(refused.envelope.type).toBe('check')
+    expect(verdictOf(refused.envelope)).toEqual(verdictOf(noGit.envelope))
+    // The disclosure: the document's directory is the config root, and git's refusal is named
+    // by its first line, beside {path, source}.
+    const config = (refused.envelope.data as { run: { config?: Record<string, unknown> } }).run
+      .config
+    expect(config?.path).toBe(join(dir, CONFIG))
+    expect(config?.source).toBe('directory')
+    const disclosed = Object.entries(config ?? {})
+      .filter(([key]) => key !== 'path' && key !== 'source')
+      .flatMap(([, value]) => stringsIn(value))
+    expect(disclosed.some((text) => text.includes(refusalIn(dir)))).toBe(true)
+    expect(disclosed.some((text) => text.includes(SECOND_LINE))).toBe(false)
+  })
+
+  it('[RH-003] the no-config refusal run is the no-git run for a document in a subdirectory too', () => {
+    const dir = join(workDir(), 'specs', 'door')
+    mkdirSync(dir, { recursive: true })
+    const doc = docIn(dir)
+    expectNoConfigAbove(dir)
+    const noGit = runJsonEnv({ PATH: join(dir, 'no-such-bin') }, 'check', doc)
+    const refused = runJsonEnv({ PATH: `${refusingGit()}:${process.env.PATH ?? ''}` }, 'check', doc)
+    expect(refused.envelope.code, String(refused.envelope.error)).toBeUndefined()
+    expect(refused.code).toBe(noGit.code)
+    expect(verdictOf(refused.envelope)).toEqual(verdictOf(noGit.envelope))
+  })
+
+  it('[RH-004] a git refusal with a config beside the document fails closed, naming the refusal', () => {
+    const dir = workDir()
+    const doc = docIn(dir)
+    writeFileSync(join(dir, CONFIG), json({ configVersion: 1, gate: { temporalBound: 10 } }))
+    const refused = runJsonEnv({ PATH: `${refusingGit()}:${process.env.PATH ?? ''}` }, 'check', doc)
+    expect(refused.code).toBe(2)
+    expect(refused.envelope.code).toBe('ERR_CONFIG_INVALID')
+    expect(String(refused.envelope.error)).toContain(refusalIn(dir))
+  })
+
+  it('[RH-004] a git refusal with a config in an ANCESTOR fails closed, and never loads that config', () => {
+    const parent = workDir()
+    // A config that would demote the run if it were read; it must be neither read nor ignored.
+    writeFileSync(join(parent, CONFIG), json({ configVersion: 1, gate: { temporalBound: 10 } }))
+    const dir = join(parent, 'specs', 'door')
+    mkdirSync(dir, { recursive: true })
+    const doc = docIn(dir)
+    const refused = runJsonEnv(
+      { PATH: `${refusingGit()}:${process.env.PATH ?? ''}` },
+      'check',
+      doc,
+      '--temporal-bound',
+      '1',
+    )
+    expect(refused.code).toBe(2)
+    expect(refused.envelope.code).toBe('ERR_CONFIG_INVALID')
+    expect(String(refused.envelope.error)).toContain(refusalIn(dir))
+    expect(refused.envelope.data).toBeUndefined()
+  })
+
+  it('[RH-005] the bare-repository refusal stays ERR_CONFIG_INVALID even with no config anywhere', () => {
+    const root = workDir()
+    const fake = join(root, 'fake')
+    for (const sub of ['objects', 'refs', 'wt']) mkdirSync(join(fake, sub), { recursive: true })
+    writeFileSync(join(fake, 'HEAD'), 'ref: refs/heads/main\n')
+    writeFileSync(join(fake, 'config'), '[core]\n\trepositoryformatversion = 0\n\tworktree = wt\n')
+    const doc = docIn(join(fake, 'wt'))
+    expectNoConfigAbove(join(fake, 'wt'))
+    const { envelope, code } = runJson('check', doc)
+    expect(code).toBe(2)
+    expect(envelope.code).toBe('ERR_CONFIG_INVALID')
+    expect(String(envelope.error)).toContain('cannot use bare repository')
+  })
+
+  it('[RH-006] --config and SYMSPEC_CONFIG under a git refusal behave as they do today', () => {
+    const dir = workDir()
+    const doc = docIn(dir)
+    expectNoConfigAbove(dir)
+    const named = join(workDir(), 'named.json')
+    writeFileSync(named, json({ configVersion: 1, gate: {} }))
+    const shim = { PATH: `${refusingGit()}:${process.env.PATH ?? ''}` }
+    // Today the default location is still resolved (it decides which document a named config
+    // governs), so a refusal fails the run closed whichever way the config was named.
+    const byFlag = runJsonEnv(shim, 'check', doc, '--config', named)
+    expect(byFlag.code).toBe(2)
+    expect(byFlag.envelope.code).toBe('ERR_CONFIG_INVALID')
+    const byEnv = runJsonEnv({ ...shim, SYMSPEC_CONFIG: named }, 'check', doc)
+    expect(byEnv.code).toBe(2)
+    expect(byEnv.envelope.code).toBe('ERR_CONFIG_INVALID')
+    // And with git answering, the named config is read and disclosed, as today.
+    const answered = runJsonEnv({ PATH: join(dir, 'no-such-bin') }, 'check', doc, '--config', named)
+    expect(answered.code).not.toBe(2)
+    expect((answered.envelope.data as { run: { config?: unknown } }).run.config).toEqual({
+      path: named,
+      source: 'flag',
+    })
+  })
+
+  it('[RH-008] init --split says in its help, its manifest entry and its result that nothing reads the anchors yet', async () => {
+    const documentModule = await import('./domain/requirements/document.ts')
+    const statement: unknown = Reflect.get(documentModule, 'V4_EXPERIMENTAL_STATEMENT')
+    expect(typeof statement, 'V4_EXPERIMENTAL_STATEMENT is exported as a string').toBe('string')
+    const said = collapse(String(statement))
+    expect(collapse(helpFor('init'))).toContain(said)
+    const split = (
+      manifest.operations.find((op) => op.name === 'init')?.input as {
+        properties?: Record<string, { description?: string }>
+      }
+    ).properties?.split?.description
+    expect(collapse(split ?? '')).toContain(said)
+    const dir = workDir()
+    expectNoConfigAbove(dir)
+    const { envelope, code } = runJson('init', join(dir, 'requirements.json'), '--split')
+    expect(code).toBe(0)
+    expect(stringsIn(envelope.data).some((text) => collapse(text).includes(said))).toBe(true)
+    // The pins are enforced today: the config's own description is not labelled experimental.
+    expect(existsSync(join(dir, CONFIG))).toBe(true)
+  })
+})

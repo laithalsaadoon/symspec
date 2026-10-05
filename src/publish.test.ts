@@ -25,7 +25,7 @@
  * decision to press the button stays a human one.
  */
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { currentManifest } from './app/operations/index.ts'
@@ -146,8 +146,22 @@ describe('the package is publishable', () => {
     // path that does not exist breaks npm provenance, which matches the field
     // case-sensitively against the repo it was built from.
     expect(manifest.repository?.directory).toBeUndefined()
-    expect(manifest.homepage).toContain('github.com/theagenticguy/symspec')
+    // Which account owns the repository is pinned exactly by [RH-001] below.
+    expect(manifest.homepage).toContain('github.com/')
     expect(manifest.bugs?.url).toContain('issues')
+  })
+
+  /**
+   * Ruling RH-R1. The GitHub account `theagenticguy` was renamed to `laithalsaadoon` after
+   * v1.2.1 published. GitHub redirects the old URL, but the next publish's OIDC token carries
+   * the repository claim `laithalsaadoon/symspec`, and npm provenance compares
+   * `repository.url` with it EXACTLY: a stale account is an E422 at publish time, the one
+   * moment nothing can be fixed quietly.
+   */
+  it('[RH-001] names the repository the next publish is built from: laithalsaadoon/symspec', () => {
+    expect(manifest.repository?.url).toBe('git+https://github.com/laithalsaadoon/symspec.git')
+    expect(manifest.homepage).toBe('https://github.com/laithalsaadoon/symspec#readme')
+    expect(manifest.bugs?.url).toBe('https://github.com/laithalsaadoon/symspec/issues')
   })
 
   it('declares the node floor the bundle actually needs', () => {
@@ -738,5 +752,73 @@ describe('the README agrees with the tool about its own surface', () => {
       ...new Set(advertised.filter((name) => name !== undefined && !known.has(name))),
     ]
     expect(unknown).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Release hardening (VDD run 3): the renamed account, and the v4 statement in the README
+// ---------------------------------------------------------------------------
+
+describe('[RH-002] no live reference names the renamed GitHub account', () => {
+  /** The account GitHub renamed; CHANGELOG.md is release-please's history and is not read. */
+  const STALE = 'theagenticguy'
+  const NEW = 'laithalsaadoon/symspec'
+
+  /** Every non-test file under src/, relative to the repository root. */
+  const productSources = (): string[] =>
+    readdirSync(fileURLToPath(new URL('.', import.meta.url)), { recursive: true })
+      .map(String)
+      .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+      .map((file) => `src/${file}`)
+
+  it('[RH-002] package.json, README.md, RELEASING.md, AGENTS.md and src/ never say theagenticguy', () => {
+    const sources = productSources()
+    // Anti-vacuity: the walk reached the product code.
+    expect(sources).toContain('src/cli.ts')
+    const stale = ['package.json', 'README.md', 'RELEASING.md', 'AGENTS.md', ...sources].filter(
+      (file) => read(file).includes(STALE),
+    )
+    expect(stale).toEqual([])
+  })
+
+  it('[RH-002] the install, clone and trusted-publisher commands name laithalsaadoon/symspec', () => {
+    const readme = read('README.md')
+    expect(readme).toContain(
+      `pnpm add -g --allow-build='symspec@git+https://github.com/${NEW}.git'`,
+    )
+    expect(readme).toContain(`git+https://github.com/${NEW}.git`)
+    expect(readme).toContain(`git clone https://github.com/${NEW}.git`)
+    expect(read('RELEASING.md').replace(/\s+/g, ' ')).toContain(
+      `npm trust github symspec \\ --repo ${NEW} \\ --file`,
+    )
+  })
+})
+
+describe('[RH-009] the README claims no v4 enforcement this build does not perform', () => {
+  const readme = read('README.md')
+  const collapse = (text: string): string => text.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim()
+
+  it('[RH-009] the unqualified enforcement claims are absent', () => {
+    const prose = collapse(readme)
+    for (const claim of [
+      'Every requirement names one intent item, or is marked',
+      'With a vocabulary those two tables are frozen',
+      'the intent and policy files it names under code-owner review',
+    ]) {
+      expect(prose, claim).not.toContain(claim)
+    }
+  })
+
+  it('[RH-009] every README paragraph about v4, intent.json, policy.json or init --split carries the statement', async () => {
+    const documentModule = await import('./domain/requirements/document.ts')
+    const statement: unknown = Reflect.get(documentModule, 'V4_EXPERIMENTAL_STATEMENT')
+    expect(typeof statement, 'V4_EXPERIMENTAL_STATEMENT is exported as a string').toBe('string')
+    const said = collapse(String(statement))
+    const about = /init --split|intent\.json|policy\.json|intentRef|docVersion:? ?4|format v4/
+    const unlabelled = readme
+      .split(/\n\s*\n/)
+      .map((paragraph) => collapse(paragraph.replace(/^>\s?/gm, '')))
+      .filter((paragraph) => about.test(paragraph) && !paragraph.includes(said))
+    expect(unlabelled).toEqual([])
   })
 })
