@@ -1,0 +1,2544 @@
+{
+  "schemaVersion": 1,
+  "role": "reviewer",
+  "run": 2,
+  "swarm": "vdd-2-s3-waivability",
+  "boardItem": {
+    "id": 183,
+    "key": "review-c"
+  },
+  "change": {
+    "base": "0fca0433eb82431936c8edd81f7ccf3464d6f52e",
+    "head": "7afb20e6bfbd4b937465662ceaba3c60742e9bc2",
+    "evidence": "64986bb2df83165da22a8cde3e375ff6e87d2b6b",
+    "scope": [
+      "all changed product paths outside .erpaval",
+      "readings.md",
+      "behaviors.json",
+      "contract.md",
+      "threat-model.json"
+    ],
+    "treeHash": "1d191a3ee51a"
+  },
+  "independence": {
+    "reviewer": "Codex/OpenAI job 1027",
+    "builder": {
+      "job": 976,
+      "model": "opus",
+      "family": "Anthropic",
+      "verifiedBy": "metadata-only db query; no goal/result/transcript read"
+    },
+    "helpers": [
+      {
+        "job": 1030,
+        "model": "codex",
+        "family": "OpenAI",
+        "lens": "published honesty, engine, release"
+      },
+      {
+        "job": 1031,
+        "model": "codex",
+        "family": "OpenAI",
+        "lens": "tests and snapshot integrity"
+      },
+      {
+        "job": 1033,
+        "model": "codex",
+        "family": "OpenAI",
+        "lens": "correctness and legacy migration"
+      }
+    ],
+    "buildTranscriptSeen": false,
+    "buildResultsSeen": false,
+    "note": "The board claim automatically returned evidence-c input; build results, build mail and build transcripts were not read. Code comments were treated as untrusted review data. Native collaboration spawn failed on unknown configured default model; webapp Codex sub-jobs were used instead."
+  },
+  "rulings": {
+    "source": "readings.md R1-R51 and assigned goal R52/R53",
+    "R52": "README may change for code count, verbatim Honest scope quotes and examples showing a refused waive.",
+    "R53": "waived-blocking-lint follows fewer-than-two-requirements vacuity; the two waived-blocking-lint x delete-requirement KNOWN_ESCAPES stay, owned by AC-5-2.",
+    "R43a": "review-b mentions this identifier but readings.md has R43 only; clarification requested from coordinator, no new finding based on the base-reproducer assertion."
+  },
+  "findings": [
+    {
+      "id": "R1",
+      "lens": "gaming / correctness / tests",
+      "severity": "blocking",
+      "priority": "major",
+      "status": "open",
+      "behaviors": [
+        "S3-030"
+      ],
+      "rulings": [
+        "R22"
+      ],
+      "threats": [
+        "T11"
+      ],
+      "claim": "The check-time waiver boundary forwards schema-valid stored waivers that the S3 fold refuses. A waiver carrying both requirementId and requirementIds loses its single-id restriction in scopeOf/toEngineDoc; a whitespace-only reason also crosses despite the fold rejecting it. On derives-cycle, each malformed waiver suppresses FND_CYCLE and changes the strict exit from 1 to 0.",
+      "files": [
+        "src/domain/compat.ts:154",
+        "src/domain/compat.ts:166",
+        "src/domain/compat.ts:386",
+        "src/domain/compat.test.ts:549"
+      ],
+      "repro": {
+        "command": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027 && export PATH=$HOME/.local/share/mise/installs/node/24/bin:$HOME/.local/share/mise/installs/pnpm/11.21.0:$PATH SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1 && cd review-copy && pnpm exec tsx .review/cycle.ts",
+        "supplementalCommand": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027 && export PATH=$HOME/.local/share/mise/installs/node/24/bin:$HOME/.local/share/mise/installs/pnpm/11.21.0:$PATH SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1 && cd review-copy && pnpm exec tsx .review/probes.ts",
+        "sources": [
+          ".review/cycle.ts",
+          ".review/probes.ts"
+        ],
+        "input": "The committed derives-cycle fixture; use current hash over CYC-A/CYC-C, add requirementId=CYC-B while retaining requirementIds=[A,C], or keep the exact scope but set reason to three spaces. Decode through RequirementsDocument, run strict check with the fixture embedder, and fold the same op with MUTATE_OPTIONS."
+      },
+      "output": [
+        {
+          "label": "legitimate",
+          "baseline": {
+            "exit": 1,
+            "verified": true,
+            "cycles": 1
+          },
+          "waivers": [
+            {
+              "code": "FND_CYCLE",
+              "requirementIds": [
+                "10000000-0000-4000-8000-000000000001",
+                "10000000-0000-4000-8000-000000000003"
+              ],
+              "contentHash": "sha256:8fb2abf249495063700d59d55db70f928ad1dc70030dc704c20935afbb0b8a31",
+              "reason": "reviewed: intended mutual refinement"
+            }
+          ],
+          "apply": {
+            "noop": false
+          },
+          "check": {
+            "exit": 0,
+            "verified": true,
+            "waived": 1,
+            "diagnostics": [],
+            "appliedWaivers": [
+              {
+                "code": "FND_CYCLE",
+                "requirementIds": [
+                  "10000000-0000-4000-8000-000000000001",
+                  "10000000-0000-4000-8000-000000000003"
+                ],
+                "reason": "reviewed: intended mutual refinement"
+              }
+            ]
+          },
+          "forwarded": [
+            {
+              "code": "FND_CYCLE",
+              "reason": "reviewed: intended mutual refinement",
+              "requirementIds": [
+                "10000000-0000-4000-8000-000000000001",
+                "10000000-0000-4000-8000-000000000003"
+              ],
+              "textBound": true
+            }
+          ]
+        },
+        {
+          "label": "dual-scope",
+          "baseline": {
+            "exit": 1,
+            "verified": true,
+            "cycles": 1
+          },
+          "waivers": [
+            {
+              "code": "FND_CYCLE",
+              "requirementIds": [
+                "10000000-0000-4000-8000-000000000001",
+                "10000000-0000-4000-8000-000000000003"
+              ],
+              "contentHash": "sha256:8fb2abf249495063700d59d55db70f928ad1dc70030dc704c20935afbb0b8a31",
+              "reason": "reviewed: intended mutual refinement",
+              "requirementId": "10000000-0000-4000-8000-000000000002"
+            }
+          ],
+          "apply": {
+            "code": "ERR_USAGE",
+            "error": "A `waive` op takes \"ref\" or \"refs\", not both.",
+            "suggestions": [
+              "\"ref\" waives every finding of the code that names one requirement; \"refs\" waives only the finding over exactly those requirements, as they are written now."
+            ]
+          },
+          "check": {
+            "exit": 0,
+            "verified": true,
+            "waived": 1,
+            "diagnostics": [],
+            "appliedWaivers": [
+              {
+                "code": "FND_CYCLE",
+                "requirementIds": [
+                  "10000000-0000-4000-8000-000000000001",
+                  "10000000-0000-4000-8000-000000000003"
+                ],
+                "reason": "reviewed: intended mutual refinement"
+              }
+            ]
+          },
+          "forwarded": [
+            {
+              "code": "FND_CYCLE",
+              "reason": "reviewed: intended mutual refinement",
+              "requirementIds": [
+                "10000000-0000-4000-8000-000000000001",
+                "10000000-0000-4000-8000-000000000003"
+              ],
+              "textBound": true
+            }
+          ]
+        },
+        {
+          "label": "blank-reason",
+          "baseline": {
+            "exit": 1,
+            "verified": true,
+            "cycles": 1
+          },
+          "waivers": [
+            {
+              "code": "FND_CYCLE",
+              "requirementIds": [
+                "10000000-0000-4000-8000-000000000001",
+                "10000000-0000-4000-8000-000000000003"
+              ],
+              "contentHash": "sha256:8fb2abf249495063700d59d55db70f928ad1dc70030dc704c20935afbb0b8a31",
+              "reason": "   "
+            }
+          ],
+          "apply": {
+            "code": "ERR_USAGE",
+            "error": "A `waive` op requires a non-empty code and reason.",
+            "suggestions": [
+              "The reason is the audit trail that distinguishes a reviewed waiver from neglect — write the actual justification."
+            ]
+          },
+          "check": {
+            "exit": 0,
+            "verified": true,
+            "waived": 1,
+            "diagnostics": [],
+            "appliedWaivers": [
+              {
+                "code": "FND_CYCLE",
+                "requirementIds": [
+                  "10000000-0000-4000-8000-000000000001",
+                  "10000000-0000-4000-8000-000000000003"
+                ],
+                "reason": "   "
+              }
+            ]
+          },
+          "forwarded": [
+            {
+              "code": "FND_CYCLE",
+              "reason": "   ",
+              "requirementIds": [
+                "10000000-0000-4000-8000-000000000001",
+                "10000000-0000-4000-8000-000000000003"
+              ],
+              "textBound": true
+            }
+          ]
+        }
+      ],
+      "impact": "Strict exit is 0 for an op shape the write fence rejects with ERR_USAGE. Baseline verified is already true because the fixture has a structural error; this finding claims the observed strict-exit 1-to-0 transition, not a false-to-true verified transition. The legitimate scoped waiver control remains accepted, as R45 requires.",
+      "testGap": "The existing S3-030 asOp helper itself drops requirementId when requirementIds exists and supplies reason r; its finite shape matrix cannot expose these disagreements.",
+      "refutation": {
+        "status": "pending",
+        "note": "Reviewer does not close findings. Coordinator/fresh refuter must decide the contract classification."
+      },
+      "reviews": [
+        "job-1027",
+        "job-1033"
+      ]
+    },
+    {
+      "id": "R2",
+      "lens": "breaking change / correctness",
+      "severity": "blocking",
+      "priority": "major",
+      "status": "open",
+      "behaviors": [
+        "S3-024",
+        "S3-027"
+      ],
+      "rulings": [
+        "R18",
+        "R20"
+      ],
+      "threats": [
+        "T18",
+        "T23"
+      ],
+      "claim": "The new waiver-inert migration can offer an unwaive that does not remove the stored waiver it names. A padded stored code is trimmed by applyUnwaive; a missing single requirementId resolves to undefined. Each target is left behind, and a coexisting code-only waiver at the normalized key is deleted instead.",
+      "files": [
+        "src/domain/compat.ts:215",
+        "src/domain/compat.ts:238",
+        "src/domain/requirements/mutate.ts:1140"
+      ],
+      "repro": {
+        "command": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027 && export PATH=$HOME/.local/share/mise/installs/node/24/bin:$HOME/.local/share/mise/installs/pnpm/11.21.0:$PATH SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1 && cd review-copy && pnpm exec tsx .review/probes.ts",
+        "collateralCommand": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027 && export PATH=$HOME/.local/share/mise/installs/node/24/bin:$HOME/.local/share/mise/installs/pnpm/11.21.0:$PATH SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1 && cd review-copy && pnpm exec tsx .review/cleanup-collateral.ts",
+        "sources": [
+          ".review/probes.ts",
+          ".review/cleanup-collateral.ts",
+          ".review/cleanup-active.ts"
+        ],
+        "input": "First check a schema-valid raw waiver with code \" FND_CONTRADICTION \", and one with GTWR_R5_INDEFINITE_ARTICLE plus a deleted UUID in requirementId. Decode and fold exactly the diagnostic ops. Repeat with a code-only waiver of the trimmed/same code and a distinct reason beside the intended target.",
+        "activeReviewedCommand": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027 && export PATH=$HOME/.local/share/mise/installs/node/24/bin:$HOME/.local/share/mise/installs/pnpm/11.21.0:$PATH SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1 && cd review-copy && pnpm exec tsx .review/cleanup-active.ts"
+      },
+      "output": {
+        "checkAndFold": [
+          {
+            "label": "whitespace-code",
+            "schemaAccepted": true,
+            "waiver": {
+              "code": " FND_CONTRADICTION ",
+              "reason": "old writer"
+            },
+            "standing": {
+              "kind": "inert",
+              "cause": "unclassified"
+            },
+            "forwarded": [],
+            "apply": {
+              "code": "ERR_WAIVER_REFUSED",
+              "error": "`FND_CONTRADICTION` is a verdict-class finding, and a verdict finding is never waivable, in any scope: only a change to what the document says discharges it.",
+              "suggestions": [
+                "Read the finding's message and demotion action (`symspec check`), then rewrite the requirement it names (`symspec update`), or commit the `symspec antonym` or `symspec glossary` entry it proposes where the two phrasings really are contraries or one action.",
+                "`symspec explain FND_CONTRADICTION` states what the code means and how it is discharged."
+              ]
+            },
+            "check": {
+              "exit": 1,
+              "waived": 0,
+              "verified": false,
+              "appliedWaivers": [],
+              "diagnostics": [
+                {
+                  "kind": "waiver-inert",
+                  "severity": "info",
+                  "detail": "The stored waiver of  FND_CONTRADICTION  is inert: no catalog publishes that code, so it has no waivability class and `check` never applies it. The op below removes it.",
+                  "waiver": {
+                    "code": " FND_CONTRADICTION ",
+                    "reason": "old writer"
+                  },
+                  "ops": [
+                    {
+                      "op": "unwaive",
+                      "code": " FND_CONTRADICTION "
+                    }
+                  ]
+                }
+              ]
+            },
+            "replacementResult": {
+              "write": false,
+              "results": [
+                {
+                  "index": 0,
+                  "op": "unwaive",
+                  "ok": true,
+                  "noop": true
+                }
+              ],
+              "waiversRemaining": [
+                {
+                  "code": " FND_CONTRADICTION ",
+                  "reason": "old writer"
+                }
+              ]
+            }
+          },
+          {
+            "label": "missing-single-id",
+            "schemaAccepted": true,
+            "waiver": {
+              "code": "GTWR_R5_INDEFINITE_ARTICLE",
+              "requirementId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              "contentHash": "sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0",
+              "reason": "deleted requirement"
+            },
+            "standing": {
+              "kind": "inert",
+              "cause": "missing-requirement",
+              "class": "wording"
+            },
+            "forwarded": [],
+            "apply": {
+              "code": "ERR_NOT_FOUND",
+              "error": "No requirement matches \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\" (tried it as a UUID, then as a stable key).",
+              "suggestions": [
+                "Run `symspec list` to see every requirement with its key and UUID."
+              ]
+            },
+            "check": {
+              "exit": 1,
+              "waived": 0,
+              "verified": false,
+              "appliedWaivers": [],
+              "diagnostics": [
+                {
+                  "kind": "waiver-inert",
+                  "severity": "info",
+                  "detail": "The stored waiver of GTWR_R5_INDEFINITE_ARTICLE names a requirement the document no longer has, so its content hash binds no text and it is inert. The op below removes it.",
+                  "requirementIds": [
+                    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+                  ],
+                  "waiver": {
+                    "code": "GTWR_R5_INDEFINITE_ARTICLE",
+                    "requirementId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                    "contentHash": "sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0",
+                    "reason": "deleted requirement"
+                  },
+                  "ops": [
+                    {
+                      "op": "unwaive",
+                      "code": "GTWR_R5_INDEFINITE_ARTICLE",
+                      "ref": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+                    }
+                  ]
+                }
+              ]
+            },
+            "replacementResult": {
+              "write": false,
+              "results": [
+                {
+                  "index": 0,
+                  "op": "unwaive",
+                  "ok": true,
+                  "noop": true
+                }
+              ],
+              "waiversRemaining": [
+                {
+                  "code": "GTWR_R5_INDEFINITE_ARTICLE",
+                  "requirementId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                  "contentHash": "sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0",
+                  "reason": "deleted requirement"
+                }
+              ]
+            }
+          }
+        ],
+        "collateral": [
+          {
+            "target": {
+              "code": " FND_CONTRADICTION ",
+              "reason": "target padded code"
+            },
+            "collateral": {
+              "code": "FND_CONTRADICTION",
+              "reason": "other audit record, not the target"
+            },
+            "ops": [
+              {
+                "op": "unwaive",
+                "code": " FND_CONTRADICTION "
+              }
+            ],
+            "results": [
+              {
+                "index": 0,
+                "op": "unwaive",
+                "ok": true
+              }
+            ],
+            "remaining": [
+              {
+                "code": " FND_CONTRADICTION ",
+                "reason": "target padded code"
+              }
+            ],
+            "targetRemains": true,
+            "collateralRemoved": true
+          },
+          {
+            "target": {
+              "code": "GTWR_R5_INDEFINITE_ARTICLE",
+              "requirementId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              "contentHash": "sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0",
+              "reason": "target deleted requirement"
+            },
+            "collateral": {
+              "code": "GTWR_R5_INDEFINITE_ARTICLE",
+              "reason": "other audit record, not the target"
+            },
+            "ops": [
+              {
+                "op": "unwaive",
+                "code": "GTWR_R5_INDEFINITE_ARTICLE",
+                "ref": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+              }
+            ],
+            "results": [
+              {
+                "index": 0,
+                "op": "unwaive",
+                "ok": true
+              }
+            ],
+            "remaining": [
+              {
+                "code": "GTWR_R5_INDEFINITE_ARTICLE",
+                "requirementId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "contentHash": "sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0",
+                "reason": "target deleted requirement"
+              }
+            ],
+            "targetRemains": true,
+            "collateralRemoved": true
+          }
+        ],
+        "activeReviewedCollision": {
+          "valid": {
+            "code": "GTWR_R5_INDEFINITE_ARTICLE",
+            "requirementIds": [
+              "5a1e0000-0000-4000-8000-0000000000a1"
+            ],
+            "contentHash": "sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0",
+            "reason": "active reviewed decision"
+          },
+          "target": {
+            "code": "GTWR_R5_INDEFINITE_ARTICLE",
+            "requirementId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "requirementIds": [
+              "5a1e0000-0000-4000-8000-0000000000a1"
+            ],
+            "reason": "inert legacy dual scope"
+          },
+          "diagnostic": {
+            "kind": "waiver-inert",
+            "severity": "info",
+            "detail": "The stored waiver of GTWR_R5_INDEFINITE_ARTICLE over 5a1e0000-0000-4000-8000-0000000000a1 carries no content hash, so it is bound to no reviewed text and is inert. It reaches no finding today, so it offers no re-scoped waiver. The op below removes it.",
+            "requirementIds": [
+              "5a1e0000-0000-4000-8000-0000000000a1"
+            ],
+            "waiver": {
+              "code": "GTWR_R5_INDEFINITE_ARTICLE",
+              "requirementId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              "requirementIds": [
+                "5a1e0000-0000-4000-8000-0000000000a1"
+              ],
+              "reason": "inert legacy dual scope"
+            },
+            "ops": [
+              {
+                "op": "unwaive",
+                "code": "GTWR_R5_INDEFINITE_ARTICLE",
+                "ref": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "refs": [
+                  "5a1e0000-0000-4000-8000-0000000000a1"
+                ]
+              }
+            ]
+          },
+          "results": [
+            {
+              "index": 0,
+              "op": "unwaive",
+              "ok": true
+            }
+          ],
+          "remaining": [
+            {
+              "code": "GTWR_R5_INDEFINITE_ARTICLE",
+              "requirementId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              "requirementIds": [
+                "5a1e0000-0000-4000-8000-0000000000a1"
+              ],
+              "reason": "inert legacy dual scope"
+            }
+          ],
+          "activeRemoved": true,
+          "targetRemains": true
+        }
+      },
+      "impact": "With only the target, the op reports ok/noop and it remains. With the second audit row, the op reports ok and deletes that other row while leaving the target. Existing unwaive semantics predate S3; the new exact migration promise exposes them. The active-waiver variant also deletes a valid reviewed current-hash waiver when an inert dual-scope target carries an absent single ref. Root fold repro and helper built-CLI apply repro agree.",
+      "scopeNote": "readings.md excludes changing unwaive semantics. This may require a coordinator scope ruling to fix the migration; this review neither changes that boundary nor closes the finding.",
+      "refutation": {
+        "status": "pending"
+      },
+      "reviews": [
+        "job-1027",
+        "job-1033"
+      ],
+      "contractPrecision": "Every emitted record decodes and folds; the failure is incorrect deletion effect, primarily R18/S3-024 exact unwaive. S3-027 is operation context, not a claim that decoding failed."
+    },
+    {
+      "id": "R3",
+      "lens": "published honesty",
+      "severity": "blocking",
+      "priority": "medium",
+      "status": "open",
+      "behaviors": [
+        "S3-011",
+        "S3-027",
+        "S3-045"
+      ],
+      "rulings": [
+        "R12",
+        "R20",
+        "R24"
+      ],
+      "threats": [
+        "T18"
+      ],
+      "claim": "New waiver-refusal suggestions print `symspec explain CODE`, but this build requires --code; following the suggestion exits with missing required flag. The changed public opposition description also retains `symspec antonym add <verbA> <verbB>`, which this CLI rejects.",
+      "files": [
+        "src/domain/requirements/mutate.ts:1029",
+        "src/domain/requirements/mutate.ts:1039",
+        "src/domain/engine/formal/codes.ts:283",
+        "AGENTS.md:919"
+      ],
+      "repro": {
+        "command": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027 && python3 cli-prose.py",
+        "sources": [
+          "cli-prose.py"
+        ],
+        "steps": [
+          "Run the built CLI waive FND_OPPOSITION_CANDIDATE --ref CAB-R1 --reason reviewed --file fixture --dry-run and read its suggestion.",
+          "Run explain FND_OPPOSITION_CANDIDATE verbatim; compare explain --code FND_OPPOSITION_CANDIDATE.",
+          "Read the latter description and run antonym add heat cool --dry-run; compare antonym heat cool --dry-run."
+        ]
+      },
+      "output": [
+        {
+          "args": [
+            "waive",
+            "FND_OPPOSITION_CANDIDATE",
+            "--ref",
+            "CAB-R1",
+            "--reason",
+            "reviewed",
+            "--file",
+            "src/testing/__fixtures__/s3-waivability/base.json",
+            "--dry-run"
+          ],
+          "exit": 2,
+          "stdout": "{\"apiVersion\":1,\"type\":\"error\",\"error\":\"`FND_OPPOSITION_CANDIDATE` is a triage-class finding, and a triage finding is never waivable, in any scope: only a change to what the document says discharges it.\",\"code\":\"ERR_WAIVER_REFUSED\",\"suggestions\":[\"Read the finding's message and demotion action (`symspec check`), then rewrite the requirement it names (`symspec update`), or commit the `symspec antonym` or `symspec glossary` entry it proposes where the two phrasings really are contraries or one action.\",\"`symspec explain FND_OPPOSITION_CANDIDATE` states what the code means and how it is discharged.\"]}\n",
+          "stderr": ""
+        },
+        {
+          "args": [
+            "explain",
+            "FND_OPPOSITION_CANDIDATE"
+          ],
+          "exit": 1,
+          "stdout": "DESCRIPTION\n  Explain one stable diagnostic code (ERR_*, FND_*, or GTWR_*): its severity, meaning, and remedy\n\nUSAGE\n  symspec explain [flags]\n\nFLAGS\n  --pretty          Render human-readable prose instead of the default JSON envelope. Opt-in: JSON is the zero-flag default so an agent never needs a flag to get parseable output. Never changes the exit code.\n  --dense           Minify the envelope and elide the heavy `evidence` payload — token economy for an agent, in the SAME typed shape (no key is ever abbreviated). Never changes the exit code.\n  --evidence        Keep the `evidence` payload under --dense. The escape hatch for a real investigation into a finding`s proof.\n  --field string    Project the envelope down to comma-separated dotted paths (e.g. `data.verified,data.findings.0.code`), so a fix loop can read one value without a JSON tool. The result nests to mirror the requested paths; an unresolved path is omitted. Never changes the exit code.\n  --code string     A stable diagnostic code from any of the three catalogs — an operational error (ERR_SOLVER_MISSING), a check finding (FND_CONTRADICTION), or a GtWR lint rule (GTWR_R7_VAGUE). Case-sensitive; an unknown code returns ERR_NOT_FOUND with did-you-mean suggestions ranked across all 90 (24 ERR_*, 42 FND_*, 24 GTWR_*).\n\nGLOBAL FLAGS\n  --help, -h                                                          Show help information\n  --version, -v                                                       Show version information\n  --wizard                                                            Start wizard mode for a command\n  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)\n  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)\n",
+          "stderr": "\nERROR\n  Missing required flag: --code\n"
+        },
+        {
+          "args": [
+            "explain",
+            "--code",
+            "FND_OPPOSITION_CANDIDATE"
+          ],
+          "exit": 0,
+          "stdout": "{\"apiVersion\":1,\"type\":\"codeExplanation\",\"data\":{\"code\":\"FND_OPPOSITION_CANDIDATE\",\"family\":\"FND\",\"severity\":\"info\",\"tier\":\"formal\",\"class\":\"triage\",\"waivable\":\"never\",\"waivableEnforced\":true,\"description\":\"info — two same-system responses that may conflict but share no exact key: they share an object phrase but differ on the leading verb (e.g. \\\"open the valve\\\" vs \\\"shut the valve\\\"), a LIKELY antonym pair the seed/committed antonym tables have not unified; or they are one verb at opposite polarity, or two contraries, whose objects differ only in their prepositions (e.g. \\\"stop the pump on Monday\\\" vs \\\"shall not stop the pump Monday\\\"). Propose-only, and DEMOTES `verified`: make the pair provable with the edit the message names (`symspec antonym add <verbA> <verbB>`, the rewording, or a glossary entry). A triage candidate is discharged only by an edit that lets the solver decide the pair, never by accepting it as written. Never a verdict.\",\"meaning\":\"two same-system responses that may conflict but share no exact key: they share an object phrase but differ on the leading verb (e.g. \\\"open the valve\\\" vs \\\"shut the valve\\\"), a LIKELY antonym pair the seed/committed antonym tables have not unified; or they are one verb at opposite polarity, or two contraries, whose objects differ only in their prepositions (e.g. \\\"stop the pump on Monday\\\" vs \\\"shall not stop the pump Monday\\\"). Propose-only, and DEMOTES `verified`: make the pair provable with the edit the message names (`symspec antonym add <verbA> <verbB>`, the rewording, or a glossary entry). A triage candidate is discharged only by an edit that lets the solver decide the pair, never by accepting it as written. Never a verdict.\",\"suggestions\":[],\"commands\":[\"symspec antonym <verbA> <verbB>\"],\"example\":\"\\\"open the valve\\\" vs \\\"shut the valve\\\"\"}}\n",
+          "stderr": ""
+        },
+        {
+          "args": [
+            "antonym",
+            "add",
+            "heat",
+            "cool",
+            "--file",
+            "src/testing/__fixtures__/s3-waivability/base.json",
+            "--dry-run"
+          ],
+          "exit": 1,
+          "stdout": "DESCRIPTION\n  Commit or remove a polar-opposite verb pair — the opposition twin of the glossary\n\nUSAGE\n  symspec antonym [flags] <a> <b>\n\nARGUMENTS\n  a string    One response verb-head, normalized to the key the atomizer looks up. Example: \"open\".\n  b string    The polar-opposite verb-head, normalized the same way. Example: \"shut\".\n\nFLAGS\n  --pretty          Render human-readable prose instead of the default JSON envelope. Opt-in: JSON is the zero-flag default so an agent never needs a flag to get parseable output. Never changes the exit code.\n  --dense           Minify the envelope and elide the heavy `evidence` payload — token economy for an agent, in the SAME typed shape (no key is ever abbreviated). Never changes the exit code.\n  --evidence        Keep the `evidence` payload under --dense. The escape hatch for a real investigation into a finding`s proof.\n  --field string    Project the envelope down to comma-separated dotted paths (e.g. `data.verified,data.findings.0.code`), so a fix loop can read one value without a JSON tool. The result nests to mirror the requested paths; an unresolved path is omitted. Never changes the exit code.\n  --remove          Remove the pair instead of adding it. The pair is UNORDERED, so either order matches.\n  --file string     Path to the requirements document to edit.\nResolution precedence, in order: the supplied path, then the SYMSPEC_DOC environment variable, then the ./requirements.json default.\nExample: ./requirements.json\n  --dry-run         Preview only: compute the result and report exactly what WOULD change, then write nothing.\nThe payload is identical to a real run apart from `written: false`, so an agent can inspect\nper-op outcomes, minted ids, and no-ops before committing to a file.\n\nGLOBAL FLAGS\n  --help, -h                                                          Show help information\n  --version, -v                                                       Show version information\n  --wizard                                                            Start wizard mode for a command\n  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)\n  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)\n",
+          "stderr": "\nERROR\n  Unexpected positional argument: \"cool\"\n"
+        },
+        {
+          "args": [
+            "antonym",
+            "heat",
+            "cool",
+            "--file",
+            "src/testing/__fixtures__/s3-waivability/base.json",
+            "--dry-run"
+          ],
+          "exit": 0,
+          "stdout": "{\"apiVersion\":1,\"type\":\"antonym\",\"data\":{\"path\":\"src/testing/__fixtures__/s3-waivability/base.json\",\"written\":false,\"requirements\":6,\"results\":[{\"index\":0,\"op\":\"antonym\",\"ok\":true}],\"summary\":{\"total\":1,\"ok\":1,\"failed\":0,\"noop\":0},\"write\":true}}\n",
+          "stderr": ""
+        }
+      ],
+      "impact": "New explain suggestion: exit 1, Missing required flag: --code; correct form exits 0. Retained antonym add prose: exit 1, Unexpected positional argument: cool; flat form exits 0. The latter spelling was present at base and remains in an S3-edited description; catalog commands already contains the correct flat form. No solver bypass is claimed for this finding.",
+      "reviews": [
+        "job-1027",
+        "job-1030"
+      ],
+      "refutation": {
+        "status": "pending"
+      }
+    },
+    {
+      "id": "R4",
+      "lens": "correctness / published honesty",
+      "severity": "blocking",
+      "priority": "medium",
+      "status": "open",
+      "behaviors": [
+        "S3-021"
+      ],
+      "rulings": [
+        "R3",
+        "R16"
+      ],
+      "threats": [
+        "T11",
+        "T24"
+      ],
+      "claim": "A valid scoped, current-hash waiver of wording-class FND_ACRONYM_UNDEFINED is accepted and forwarded but never suppresses its matching terminology finding. check also leaves diagnostics, appliedWaivers and ignoredWaivers empty, so the accepted waiver has no disclosed outcome.",
+      "files": [
+        "src/domain/waiver-accounting.ts:127",
+        "src/app/operations/check.ts:1085",
+        "src/domain/waivability.ts:241"
+      ],
+      "repro": {
+        "command": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027 && export PATH=$HOME/.local/share/mise/installs/node/24/bin:$HOME/.local/share/mise/installs/pnpm/11.21.0:$PATH SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1 && cd review-copy && pnpm exec tsx .review/terminology.ts",
+        "sources": [
+          ".review/terminology.ts"
+        ],
+        "input": "Two added requirements, one saying record the XYZ status. Run check with orthogonal fixture embedder, take the FND_ACRONYM_UNDEFINED finding, fold its exact refs with a reason, and check again."
+      },
+      "output": {
+        "finding": {
+          "code": "FND_ACRONYM_UNDEFINED",
+          "severity": "info",
+          "tier": "formal",
+          "requirementIds": [
+            "10000000-0000-4000-8000-000000000001"
+          ],
+          "message": "The acronym \"XYZ\" is used in 10000000-0000-4000-8000-000000000001 but appears in neither the glossary nor the terms table, so nothing records what it expands to.",
+          "suggestion": "Define it with `symspec glossary \"<expansion>\" \"XYZ\"`, which records the expansion and also makes the two spellings canonicalize to one atom."
+        },
+        "fold": [
+          {
+            "index": 0,
+            "op": "waive",
+            "ok": true
+          }
+        ],
+        "stored": [
+          {
+            "code": "FND_ACRONYM_UNDEFINED",
+            "requirementIds": [
+              "10000000-0000-4000-8000-000000000001"
+            ],
+            "contentHash": "sha256:ba79344d244865fa6307e8c940711b88a0e42ecc3aa8ea0bf6cd104845fdc560",
+            "reason": "XYZ is reviewed as the subsystem name"
+          }
+        ],
+        "forwarded": [
+          {
+            "code": "FND_ACRONYM_UNDEFINED",
+            "reason": "XYZ is reviewed as the subsystem name",
+            "requirementIds": [
+              "10000000-0000-4000-8000-000000000001"
+            ],
+            "textBound": true
+          }
+        ],
+        "after": {
+          "sameFindingRemains": true,
+          "waived": 0,
+          "diagnostics": [],
+          "appliedWaivers": [],
+          "ignoredWaivers": []
+        }
+      },
+      "impact": "Fold ok; scoped hash stored and forwarded; matching finding remains, waived=0, diagnostics=[], appliedWaivers=[], ignoredWaivers=[]. The terminology tier sits outside engine waiver application; the new others exemption in accountWaivers hides the unused waiver. This is a pre-existing non-application behavior conflicting with the new S3-021 promise, not an introduced false-certificate regression. Only FND_ACRONYM_UNDEFINED was executed; no claim that FND_TERM_INCONSISTENT was reproduced.",
+      "refutation": {
+        "status": "pending"
+      },
+      "baselineEvidence": "Root executed the head-only XYZ repro. Pre-existing classification is supported by unchanged separate terminology processing at base and by the supplied evidence-c input; no root base execution is claimed."
+    },
+    {
+      "id": "R5",
+      "lens": "tests / gaming harness",
+      "severity": "non-blocking",
+      "priority": "minor",
+      "status": "open",
+      "behaviors": [
+        "S3-049"
+      ],
+      "rulings": [
+        "R34"
+      ],
+      "threats": [
+        "T20"
+      ],
+      "claim": "waive-raw derives its code-only probes from scopedNeverWaivers, which excludes every idless finding. It therefore omits distinct never-class baseline codes with no requirement IDs, despite the raw move and contract promising a code-only probe per never code.",
+      "files": [
+        "src/testing/gaming.ts:1178",
+        "src/testing/gaming.ts:1269"
+      ],
+      "repro": {
+        "command": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027 && export PATH=$HOME/.local/share/mise/installs/node/24/bin:$HOME/.local/share/mise/installs/pnpm/11.21.0:$PATH SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1 && pnpm --dir ../job-1031/run-repo test src/testing/raw-move-review.test.ts",
+        "sourceArtifact": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1031/raw-move-review.test.ts",
+        "input": "Actual runMatrix baseline for existing one-trigger-contradiction, followed by the real MOVES waive-raw edit."
+      },
+      "output": {
+        "exit": 1,
+        "testsFailed": 1,
+        "baselineNeverCodes": [
+          "FND_CONTRADICTION",
+          "FND_REACHABILITY_NOT_CHECKED"
+        ],
+        "actualRawCodeOnlyCodes": [
+          "FND_CONTRADICTION"
+        ],
+        "missing": [
+          "FND_REACHABILITY_NOT_CHECKED"
+        ],
+        "unmodifiedHarnessBaseline": {
+          "files": 13,
+          "passed": 117,
+          "failed": 0
+        }
+      },
+      "impact": "Reproduced harness-coverage gap; no production bypass or false certificate demonstrated. The distinct idless-code case is absent from the new unit test. The coordinator/refuter should determine whether this measurement gap requires contract closure before receipt.",
+      "reviews": [
+        "job-1031"
+      ],
+      "refutation": {
+        "status": "pending"
+      }
+    }
+  ],
+  "canaries": [
+    {
+      "id": "C1-import-policy",
+      "lens": "gaming,correctness,tests",
+      "file": "src/app/operations/import.ts",
+      "plant": {
+        "before": "applyOp(snapshotOf(state), op, timestamp, MUTATE_OPTIONS)",
+        "after": "applyOp(snapshotOf(state), op, timestamp, op.op === 'waive' ? {} : MUTATE_OPTIONS)"
+      },
+      "baseline": {
+        "exit": 0,
+        "passed": 98,
+        "failed": 0,
+        "failedNames": []
+      },
+      "result": {
+        "exit": 1,
+        "passed": 90,
+        "failed": 8,
+        "failedNames": [
+          "round trip: hex-bonk 'agent-run-triggers' [S3-012] [S3-003] refuses every unscoped v4 waiver the source carried with ERR_WAIVER_REFUSED, on its line, and imports no waiver",
+          "fold semantics [S3-005] resolves a waiver scope written as a KEY into the stored UUID, as refs [id] plus the hash of its text",
+          "side-table records pass the fences `apply` runs writes the side tables EXACTLY as `apply` folds the same records",
+          "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-012] v4-waivers.txt: I1 (code-only), I3 and I5 (never class) are refused ERR_WAIVER_REFUSED into problems[], and the six requirements are written",
+          "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-012] [S3-005] v4-waivers.txt: I2 and I6 are accepted as refs [id] plus the computed hash (imported.waivers 2)",
+          "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-013] v4-waivers.txt: I4, whose --ref matches no requirement, is refused and never widened to a document-wide GTWR_R7_VAGUE waiver",
+          "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-015] each refused waiver is named with its line, its finding code, its scope as written and a replacement, and no remedy this build lacks",
+          "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-012] import folds waivers exactly as apply does: each record refused or stored the same way under MUTATE_OPTIONS"
+        ]
+      },
+      "caught": true,
+      "scope": "scratch-only",
+      "restored": true
+    },
+    {
+      "id": "C2-never-forward",
+      "lens": "gaming,correctness,tests",
+      "file": "src/domain/compat.ts",
+      "plant": {
+        "before": "if (WAIVABILITY[cls] === 'never') return { kind: 'inert', cause: 'never', class: cls }",
+        "after": "if (false) return { kind: 'inert', cause: 'never', class: cls }"
+      },
+      "baseline": {
+        "exit": 0,
+        "passed": 98,
+        "failed": 0,
+        "failedNames": []
+      },
+      "result": {
+        "exit": 1,
+        "passed": 88,
+        "failed": 10,
+        "failedNames": [
+          "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-016] each stored never-class waiver has exactly one waiver-inert diagnostic, and the run equals the document with that waiver deleted",
+          "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-016] never-verdict.stored reports FND_CONTRADICTION (error) on ORD-R1, ORD-R2 again",
+          "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-016] a stale-hash waiver of a never code is disclosed once, as waiver-inert, and not in ignoredWaivers",
+          "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-023] waiver-inert is an info data.diagnostics entry that demotes nothing",
+          "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-023] [S3-036] deleting any inert waiver from any fixture document leaves findings, demotions and verified unchanged",
+          "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-025] [S3-045] a never-code waiver-inert carries the unwaive op and \"rewrite required\", no waive op, and names no vocab distinct or --rescope-waivers",
+          "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-027] every op on every waiver-inert and ignoredWaivers entry decodes and folds under MUTATE_OPTIONS on the checked document, and every command named parses under this build",
+          "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-030] a stored never-class waiver over the exact ids and current hash suppresses nothing at check: blocking-lint-both plus a raw FND_CONTRADICTION waiver still reports the contradiction",
+          "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-046] every waiver the engine applied is listed in data.appliedWaivers with its code, requirement ids and reason, and no inert one is",
+          "S3: the AC-5-6 reproducer [S3-037] repro-scoped.stored and repro-single-ref.stored are inert too, and the CAB finding and demotion come back"
+        ]
+      },
+      "caught": true,
+      "scope": "scratch-only",
+      "restored": true
+    },
+    {
+      "id": "C3",
+      "lens": "published honesty",
+      "file": "src/app/runtime/signal-classes.ts",
+      "plant": {
+        "before": "export const WAIVABILITY_ENFORCED: boolean = true",
+        "after": "export const WAIVABILITY_ENFORCED: boolean = false"
+      },
+      "baseline": {
+        "exit": 0,
+        "passed": 29,
+        "failed": 0
+      },
+      "result": {
+        "exit": 1,
+        "passed": 25,
+        "failed": 4,
+        "failedNames": [
+          "waivability enforcement — the published flag is what the build does write time: `apply`s fold accepts a never-class waiver exactly when the flag says it is not enforced",
+          "waivability enforcement — the published flag is what the build does check time: a stored never-class waiver suppresses its finding exactly when the flag says it is not enforced",
+          "[S3-044] waivability is enforced, and nothing publishes otherwise [S3-044] WAIVABILITY_ENFORCED is true",
+          "[S3-044] waivability is enforced, and nothing publishes otherwise [S3-044] no surface says \"NOT enforced\": the statement, the manifest, AGENTS.md and explain"
+        ]
+      },
+      "caught": true,
+      "scope": "scratch-only",
+      "restored": true
+    },
+    {
+      "id": "C4",
+      "lens": "tests",
+      "file": "src/app/operations/import.test.ts",
+      "plant": "skip an S3-012 test",
+      "baseline": {
+        "addedDisabledTests": 0
+      },
+      "result": {
+        "addedDisabledTests": 1,
+        "matches": [
+          "+  it.skip('[S3-012] [S3-003] refuses every unscoped v4 waiver the source carried with ERR_WAIVER_REFUSED, on its line, and imports no waiver', () => {"
+        ]
+      },
+      "caught": true,
+      "scope": "scratch-only",
+      "restored": true
+    },
+    {
+      "id": "C5",
+      "lens": "engine",
+      "file": "src/domain/engine/pipeline/check.ts",
+      "plant": "isWaived pair-bound refusal returns true",
+      "baseline": {
+        "isWaivedEqualBase": true
+      },
+      "result": {
+        "isWaivedEqualBase": false,
+        "diff": "diff --git a/src/domain/engine/pipeline/check.ts b/src/domain/engine/pipeline/check.ts\nindex 93c39b2..70acc7e 100644\n--- a/src/domain/engine/pipeline/check.ts\n+++ b/src/domain/engine/pipeline/check.ts\n@@ -682,7 +682,7 @@ const COVERAGE_GAP_FND_CODES: ReadonlySet<string> = new Set<FndCode>([\n  */\n function isWaived(f: CheckFinding, w: Waiver): boolean {\n   if (PAIR_BOUND_CODES.has(f.code) && (w.requirementIds === undefined || w.textBound !== true)) {\n-    return false\n+    return true\n   }\n   return reachesFinding(f, w)\n }\n"
+      },
+      "caught": true,
+      "scope": "scratch-only",
+      "restored": true
+    },
+    {
+      "id": "C6",
+      "lens": "breaking change",
+      "plant": "remove BREAKING CHANGE footer from captured build message (no git history changed)",
+      "baseline": {
+        "valid": true
+      },
+      "result": {
+        "valid": false,
+        "breakingFooters": 0
+      },
+      "caught": true,
+      "scope": "scratch-only",
+      "restored": true
+    }
+  ],
+  "validation": {
+    "install": "pnpm install --offline --frozen-lockfile exit 0 in throwaway clone",
+    "build": "pnpm build exit 0 in throwaway clone",
+    "rootBaseline": [
+      {
+        "files": [
+          "src/app/operations/import.test.ts",
+          "src/app/operations/check-waivers.test.ts"
+        ],
+        "passed": 98,
+        "failed": 0
+      },
+      {
+        "files": [
+          "src/app/operations/waivability.test.ts",
+          "src/app/runtime/signal-classes.test.ts"
+        ],
+        "passed": 29,
+        "failed": 0
+      }
+    ],
+    "reproRepeat": "probes.ts rerun after all C1/C2 source restoration; probes.log and probes-restored.log byte-identical",
+    "fullGateClaimed": false,
+    "canaryLimits": "C1-C3 are executed behavioral test detections. C4 is an added-disabled-test diff check, C5 checks the unchanged pair-bound function against base plus a precise diff, C6 audits an altered captured commit message. They are known planted canaries, not a claim of blinded calibration. C3 initial setup string omitted the boolean annotation and asserted before any mutation; corrected using its recorded green baseline.",
+    "helpers": [
+      {
+        "job": 1030,
+        "passed": 802,
+        "failed": 0,
+        "files": 13,
+        "commands": [
+          "11-file targeted command recorded in job-1030/review-report.md",
+          "2-file supplementary command recorded there"
+        ],
+        "note": "Targeted tests; not a full gate."
+      },
+      {
+        "job": 1031,
+        "passed": 117,
+        "failed": 0,
+        "files": 13,
+        "command": "pnpm test src/testing/gaming src/testing/report-corpus.test.ts src/testing/engine-waivers-s3.test.ts",
+        "note": "Executed before separate R5 repro; overlaps other selections, so counts are not summed."
+      },
+      {
+        "job": 1033,
+        "legacyMigration": {
+          "label": "hex-bonk-cli-roundtrip",
+          "applyStatus": 0,
+          "summary": {
+            "total": 99,
+            "ok": 99,
+            "failed": 0,
+            "noop": 0
+          },
+          "written": true,
+          "savedWaivers": 91,
+          "checkStatus": 0,
+          "ignoredWaivers": [],
+          "diagnostics": [],
+          "appliedWaivers": 91,
+          "hashMismatches": 0
+        },
+        "note": "Real hex-bonk imported document with eight legacy waivers: 99 replacement ops accepted by built CLI; 91 scoped waivers saved/applied, no remaining diagnostics/ignored waivers/hash mismatches."
+      }
+    ],
+    "legacyMigrationArtifact": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1033/review-report.md",
+    "release": {
+      "base": "0fca0433eb82431936c8edd81f7ccf3464d6f52e",
+      "head": "7afb20e6bfbd4b937465662ceaba3c60742e9bc2",
+      "commits": [
+        {
+          "hash": "7afb20e6bfbd4b937465662ceaba3c60742e9bc2",
+          "subject": "feat(waivers)!: enforce waivability: refuse never-class and unscoped waivers, inert stored ones",
+          "feat_bang": true,
+          "breaking_footer_count": 1
+        },
+        {
+          "hash": "ae177c2e09f27b2c5a18d62c13788b5f0899e6c6",
+          "subject": "test(waivers): re-pin the scope corpus for S3-046 (R51)",
+          "feat_bang": false,
+          "breaking_footer_count": 0
+        },
+        {
+          "hash": "2c71aa9b5391978c8c2dc914ba6727970208c814",
+          "subject": "test(waivers): absence for the re-pins",
+          "feat_bang": false,
+          "breaking_footer_count": 0
+        },
+        {
+          "hash": "1fa7a8b0edba876722e4f5a127b9ac27c7bfa941",
+          "subject": "test(waivers): re-pin counts and lists for S3 (R47-R50)",
+          "feat_bang": false,
+          "breaking_footer_count": 0
+        },
+        {
+          "hash": "683d8a7310e727efe038aa6e62c72599cd2d0be1",
+          "subject": "test(waivers): absence record for S3",
+          "feat_bang": false,
+          "breaking_footer_count": 0
+        },
+        {
+          "hash": "3f3c33d6fd05d4258ad42e98d9e62090ea5f54f8",
+          "subject": "test(waivers): pin S3 waivability (AC-5-6) as a failing contract",
+          "feat_bang": false,
+          "breaking_footer_count": 0
+        },
+        {
+          "hash": "d2a852b7e68cc17d5f83934d015979723712e3f9",
+          "subject": "docs(erpaval): S3 rulings R37-R46",
+          "feat_bang": false,
+          "breaking_footer_count": 0
+        },
+        {
+          "hash": "4360511bf7248ac32a05f8da10943f00e6734e60",
+          "subject": "docs(erpaval): S3 readings reconciled",
+          "feat_bang": false,
+          "breaking_footer_count": 0
+        },
+        {
+          "hash": "7ac48bab3c103f4588c3e9a6a7cae44ffd35e830",
+          "subject": "docs(erpaval): S3 threat model v1, the agent as adversary against the waiver path",
+          "feat_bang": false,
+          "breaking_footer_count": 0
+        },
+        {
+          "hash": "08fc9dcbd79f3c03537e690331c5b5581ea36735",
+          "subject": "docs(erpaval): intake for the S3 waivability VDD run",
+          "feat_bang": false,
+          "breaking_footer_count": 0
+        }
+      ],
+      "feat_bang_count": 1,
+      "breaking_footer_count": 1,
+      "version_checks": [
+        {
+          "path": "package.json",
+          "base": "1.2.1",
+          "head": "1.2.1",
+          "same_version": true,
+          "entire_file_unchanged": false
+        },
+        {
+          "path": "src/app/runtime/version.ts",
+          "base": [
+            "export const VERSION = '1.2.1' // x-release-please-version"
+          ],
+          "head": [
+            "export const VERSION = '1.2.1' // x-release-please-version"
+          ],
+          "same_version": true,
+          "entire_file_unchanged": true
+        },
+        {
+          "path": "README.md",
+          "base": [
+            "`1.2.1` <!-- x-release-please-version -->"
+          ],
+          "head": [
+            "`1.2.1` <!-- x-release-please-version -->"
+          ],
+          "same_version": true,
+          "entire_file_unchanged": false
+        },
+        {
+          "path": "AGENTS.md",
+          "base": [
+            "**Version:** `1.2.1` · **Envelope apiVersion:** `1` <!-- x-release-please-version -->"
+          ],
+          "head": [
+            "**Version:** `1.2.1` · **Envelope apiVersion:** `1` <!-- x-release-please-version -->"
+          ],
+          "same_version": true,
+          "entire_file_unchanged": false
+        }
+      ],
+      "release_manifest_unchanged": true,
+      "release_config_unchanged": true
+    },
+    "engineProseOnly": {
+      "method": "precise complete unified diff review, with complete source reads at head; no blanket literal stripping",
+      "engine_changed_files": [
+        {
+          "file": "src/domain/engine/formal/codes.ts",
+          "hunks": [
+            "@@ -280,7 +280,7 @@",
+            "@@ -295,7 +295,7 @@",
+            "@@ -305,7 +305,7 @@"
+          ],
+          "unified_diff_lines": 31,
+          "finding": "Only human-facing prose changes in the exact diff; see per-file explanation in review-report.md."
+        },
+        {
+          "file": "src/domain/engine/formal/number-spelling.ts",
+          "hunks": [
+            "@@ -115,7 +115,8 @@",
+            "@@ -123,7 +124,8 @@"
+          ],
+          "unified_diff_lines": 24,
+          "finding": "Only human-facing prose changes in the exact diff; see per-file explanation in review-report.md."
+        },
+        {
+          "file": "src/domain/engine/formal/numeric-contradiction.ts",
+          "hunks": [
+            "@@ -205,9 +205,9 @@",
+            "@@ -829,8 +829,8 @@",
+            "@@ -871,7 +871,8 @@",
+            "@@ -1043,8 +1044,8 @@",
+            "@@ -1064,8 +1065,8 @@",
+            "@@ -1073,13 +1074,14 @@",
+            "@@ -1253,15 +1255,16 @@"
+          ],
+          "unified_diff_lines": 98,
+          "finding": "Only human-facing prose changes in the exact diff; see per-file explanation in review-report.md."
+        },
+        {
+          "file": "src/domain/engine/formal/quantity-alias.ts",
+          "hunks": [
+            "@@ -251,7 +251,9 @@"
+          ],
+          "unified_diff_lines": 15,
+          "finding": "Only human-facing prose changes in the exact diff; see per-file explanation in review-report.md."
+        },
+        {
+          "file": "src/domain/engine/formal/semantic.ts",
+          "hunks": [
+            "@@ -532,10 +532,6 @@",
+            "@@ -566,7 +562,7 @@",
+            "@@ -951,7 +947,7 @@"
+          ],
+          "unified_diff_lines": 33,
+          "finding": "Only human-facing prose changes in the exact diff; see per-file explanation in review-report.md."
+        },
+        {
+          "file": "src/domain/engine/pipeline/check.ts",
+          "hunks": [
+            "@@ -730,8 +730,8 @@",
+            "@@ -2126,10 +2126,12 @@",
+            "@@ -2141,9 +2143,8 @@",
+            "@@ -2156,9 +2157,9 @@",
+            "@@ -2173,13 +2174,11 @@",
+            "@@ -2193,7 +2192,7 @@",
+            "@@ -2220,9 +2219,8 @@",
+            "@@ -2276,8 +2274,8 @@"
+          ],
+          "unified_diff_lines": 105,
+          "finding": "Only human-facing prose changes in the exact diff; see per-file explanation in review-report.md."
+        }
+      ],
+      "logic_changes_observed": [],
+      "prose_local_deletion": {
+        "path": "src/domain/engine/formal/semantic.ts",
+        "base_declaration_line": 538,
+        "base_only_use_line": 569,
+        "declaration": "const waiver = \"the demotion's repair waiver, which is scoped to exactly this pair\"",
+        "only_use": "template interpolation in the emitted near-duplicate message",
+        "new_replacement": "literal prose, no new condition or effect"
+      },
+      "scope": "This is a syntax/diff review of the six changed engine files, not a new equivalence proof of the engine."
+    },
+    "testAndSnapshotAudit": {
+      "knownEscapes": "62 -> 51, exactly 11 waive-by-code removals, zero additions and no changes to retained metadata. Both R53 delete-requirement rows retained under AC-5-2.",
+      "reportCorpus": "53 keys retained; exactly two waived-blocking-lint rows gain the ruled demotion; no other row changes.",
+      "newDisabledTests": 0,
+      "evidenceFiles": [
+        "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1031/known-escapes-audit.json",
+        "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1031/snapshot-audit.json",
+        "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1031/test-declarations-summary.json"
+      ]
+    }
+  },
+  "linesRead": {
+    "scope": "All changed product files in git diff 0fca0433eb82..7afb20e -- . :!.erpaval; plus the four intent files separately.",
+    "files": 112,
+    "fullSourceLines": 42198,
+    "fullSourceLinesRead": 42198,
+    "addedLines": 7518,
+    "addedLinesRead": 7518,
+    "removedLines": 880,
+    "removedLinesRead": 880,
+    "coveragePercent": 100,
+    "intentFiles": [
+      {
+        "path": ".erpaval/vdd/s3-waivability/readings.md",
+        "fullLines": 848
+      },
+      {
+        "path": ".erpaval/vdd/s3-waivability/behaviors.json",
+        "fullLines": 670
+      },
+      {
+        "path": ".erpaval/vdd/s3-waivability/contract.md",
+        "fullLines": 570
+      },
+      {
+        "path": ".erpaval/vdd/s3-waivability/threat-model.json",
+        "fullLines": 506
+      }
+    ],
+    "intentLinesRead": 2594,
+    "byFile": [
+      {
+        "file": "AGENTS.md",
+        "lines": 969,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "62c366336fbb0615e345db4f6e4e8fe6931a649270ebe15e66e5a8988c781c07",
+        "addedLinesRead": 16,
+        "removedLinesRead": 16,
+        "fullFileRead": true
+      },
+      {
+        "file": "README.md",
+        "lines": 947,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "66a32c364994f4849fb47a3d1a86823c239726ae421d1e34cc2f6e491c1e5cdb",
+        "addedLinesRead": 13,
+        "removedLinesRead": 11,
+        "fullFileRead": true
+      },
+      {
+        "file": "package.json",
+        "lines": 96,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "07ef853608f0b77ba950fb8098b2ab183600aec8133138cc46451f7085a38523",
+        "addedLinesRead": 1,
+        "removedLinesRead": 1,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/check-waivers.test.ts",
+        "lines": 712,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "d4bb875992a2f3a4f2e693829f3073f490b62e5a5c90f2f0c167febef43cc932",
+        "addedLinesRead": 712,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/check.test.ts",
+        "lines": 2068,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "6e8e78113a2bc0b77c56789f08ed65b59dbcfd4ace8e896f17b1bc36681e169c",
+        "addedLinesRead": 97,
+        "removedLinesRead": 136,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/check.ts",
+        "lines": 1336,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "99995a11695133c4cc1161a910104f5e2114dada961d9473575a9eaf626c8673",
+        "addedLinesRead": 101,
+        "removedLinesRead": 5,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/import.test.ts",
+        "lines": 809,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "8c8ad443ead4602d70acd7391b562137f60d5aae26e998f5af694aa21ec1b751",
+        "addedLinesRead": 181,
+        "removedLinesRead": 17,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/import.ts",
+        "lines": 931,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "55068a2a58fb1773f19035444ffce59bbda7962906932e18022104bc94dd0fce",
+        "addedLinesRead": 30,
+        "removedLinesRead": 27,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/index.test.ts",
+        "lines": 458,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "6ab3067cc2d0f30bac8eebfdb597f8769a6e3d4f9fceb269d38e5e49e476fcd8",
+        "addedLinesRead": 3,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/mutate-options.ts",
+        "lines": 149,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "44cb6342f2a4b5b071db1aec3611965e416cf7b51b6f78ace7e847a6478e5e79",
+        "addedLinesRead": 13,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/mutation.test.ts",
+        "lines": 651,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "86a10144238849bbdf8a0923f1f79be1fd522aefe235b65e8a568bac1c7f2487",
+        "addedLinesRead": 6,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/mutation.ts",
+        "lines": 1493,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "1ce67a02c4b137cac93868431a5c9281b2005e638d879be96ac56e62ae51b2b0",
+        "addedLinesRead": 15,
+        "removedLinesRead": 7,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/roundtrip.test.ts",
+        "lines": 381,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "6533c73c9e677ae74f7ce122714ff963f77fd532c324f0371c29bbdf11d1a857",
+        "addedLinesRead": 25,
+        "removedLinesRead": 10,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/waivability.test.ts",
+        "lines": 236,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "cee38e3e15a58bbaa3a49afbcd465cdc815e2416518f1d4346b507612ffe1195",
+        "addedLinesRead": 98,
+        "removedLinesRead": 1,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/operations/waive-fold.test.ts",
+        "lines": 346,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "cbfbdedfbe0710fcbd4ec88679e8275cdd69b2283b50fc48570c39cbabb05380",
+        "addedLinesRead": 346,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/runtime/agents-doc.test.ts",
+        "lines": 325,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "950c3c15cc6b851ff195ca00b11d420493d05d63741b73ee1e0ba5e45c1f32b9",
+        "addedLinesRead": 4,
+        "removedLinesRead": 3,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/runtime/catalog.test.ts",
+        "lines": 431,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "533b61f08d105212f488ccbfd84e6fe5651244160a4732c86078bee4329d7f27",
+        "addedLinesRead": 34,
+        "removedLinesRead": 17,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/runtime/craft.test.ts",
+        "lines": 985,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "f8fc5549713bfa52edeb320fd4e93708a4940a4317f6b5334de5337f17681488",
+        "addedLinesRead": 61,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/runtime/craft.ts",
+        "lines": 948,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "0cc4d725268eded901276a21d8d0968f62d3c046b0db5f76617757f32724c18f",
+        "addedLinesRead": 4,
+        "removedLinesRead": 6,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/runtime/errors.test.ts",
+        "lines": 397,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "1ded2d31c39c683f23ddb67fd25f4144c318220f3fc5416e4d7b3968ff43d919",
+        "addedLinesRead": 13,
+        "removedLinesRead": 8,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/runtime/scope.test.ts",
+        "lines": 160,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "455a538cd12f6c6094d9d195866c42d2fa2a6289fc40ca34c93caca5369fafbe",
+        "addedLinesRead": 33,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/runtime/scope.ts",
+        "lines": 101,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "4ce3deebacf72164025c9e740e909047d9b0b48e75ce51899283100710f00753",
+        "addedLinesRead": 1,
+        "removedLinesRead": 1,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/runtime/signal-classes.test.ts",
+        "lines": 495,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "42386f423665d3490cfbb13a6371b8f48779721c71f057895353ccc564fda3d8",
+        "addedLinesRead": 10,
+        "removedLinesRead": 1,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/app/runtime/signal-classes.ts",
+        "lines": 598,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "475c836d2db84544f9e96ccdbc7914ed22a367ee38046d88e4131b243dd49d4b",
+        "addedLinesRead": 44,
+        "removedLinesRead": 277,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/cli.test.ts",
+        "lines": 2056,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "1934f6d50593851a7676fb549788cc37752be266f49f4454d357a892f3561db5",
+        "addedLinesRead": 164,
+        "removedLinesRead": 8,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/advice/repair.test.ts",
+        "lines": 1034,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "d90ccfe191b01bf2c414e153acaac80ffd77befbb740b0a5302832f08d40f786",
+        "addedLinesRead": 230,
+        "removedLinesRead": 35,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/advice/repair.ts",
+        "lines": 522,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "9a4d45ebe34c00f1262c9fea623ee0bc98a1a716fcaa4b0c6e109704907a6ea8",
+        "addedLinesRead": 48,
+        "removedLinesRead": 100,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/compat.test.ts",
+        "lines": 581,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "38e725439bde9058a145adae1046eadf71ae7cda29bf7fb9d2d9f79a90ec447c",
+        "addedLinesRead": 195,
+        "removedLinesRead": 20,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/compat.ts",
+        "lines": 392,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "8397480be837cd65c3f51b0396c21286cbaf7381ab28fb9bded1cee74c4b3624",
+        "addedLinesRead": 256,
+        "removedLinesRead": 22,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/engine/formal/codes.ts",
+        "lines": 343,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "10b2f677a6e89508929d7930edca87f28685d8498384af8a9a8cbad47c00d4d7",
+        "addedLinesRead": 3,
+        "removedLinesRead": 3,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/engine/formal/number-spelling.ts",
+        "lines": 138,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "e9b6409316a8dbd16bf27b7f0ff591e11353557c66b8b833836ad0a440e6154f",
+        "addedLinesRead": 4,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/engine/formal/numeric-contradiction.ts",
+        "lines": 1358,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "e74f963a3bf19a98e02bd8631e894f5f932e7069d9eb739b4312eab7b6e0d28c",
+        "addedLinesRead": 19,
+        "removedLinesRead": 16,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/engine/formal/quantity-alias.ts",
+        "lines": 267,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "85012ff0b3d4fa36b0e339a1869e63281f5230aaba27b3b73a4e1cfb1e9b9c15",
+        "addedLinesRead": 3,
+        "removedLinesRead": 1,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/engine/formal/semantic.ts",
+        "lines": 1011,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "ad32291a94cf3381c617979cbc8aed1dce15e4248b37a88ee31051a7b6caa42e",
+        "addedLinesRead": 2,
+        "removedLinesRead": 6,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/engine/pipeline/check.ts",
+        "lines": 2512,
+        "reviewers": [
+          1030
+        ],
+        "sha256": "e74cefcab41341cf08c3efc36a2c2fda09d2148e9b87f9115aa4e989f09cfbd3",
+        "addedLinesRead": 20,
+        "removedLinesRead": 22,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/requirements/document.test.ts",
+        "lines": 1150,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "7fedacb3cd609989df523c1f74095ebe758967428e4a5c8dd95e354b255a3f91",
+        "addedLinesRead": 2,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/requirements/document.ts",
+        "lines": 1818,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "0dca184f0d101b1422924dfba7e3b4c902f207b0bcb85c9a997cceaa3529fa65",
+        "addedLinesRead": 28,
+        "removedLinesRead": 11,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/requirements/mutate.ts",
+        "lines": 1839,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "319795063a6ea37ccbe553dd67cb2ccae071d07d546866bd7dcec64772b095e8",
+        "addedLinesRead": 82,
+        "removedLinesRead": 1,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/requirements/ops.ts",
+        "lines": 631,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "fb79dafc9ad6feb00bfef7d80c4a365cb1e67327824c19d15cf4bdd80e4b8c72",
+        "addedLinesRead": 5,
+        "removedLinesRead": 3,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/waivability.ts",
+        "lines": 297,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "5840fc725d7705bb0987d918ac22600dc6d11e25729a7b07a9b5e9d9395992b6",
+        "addedLinesRead": 297,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/domain/waiver-accounting.ts",
+        "lines": 137,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "9c772944ac53d750ac80b2e3ef384cb010b8f95ca2c6038e39868263ffc2539d",
+        "addedLinesRead": 137,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/ports/errors.ts",
+        "lines": 596,
+        "reviewers": [
+          1033
+        ],
+        "sha256": "97bbf0cd29542d2a960e85799011727a4a1bab58f6194e880efdb92be6c1ffe8",
+        "addedLinesRead": 14,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/publish.test.ts",
+        "lines": 756,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "ac49631e862bdb54f7959cd8a92bf9fa10abb75a66eb4e41452eb8bc897675f0",
+        "addedLinesRead": 14,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/base.json",
+        "lines": 120,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "781fff9406a424db0da4f1dc778f47b953a7316ad4e98d9ead78c8d8a2efad7f",
+        "addedLinesRead": 120,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/base.ops.jsonl",
+        "lines": 12,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "7d5a434d65326fc03cac0dee629e1ed5188cf3035e274c8e5e9481934c6d86a3",
+        "addedLinesRead": 12,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/blocking-lint-both.ops.jsonl",
+        "lines": 3,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "921df972bb3fc29aecdf2357e7a4d3370cf7d2bf34e9885ea4348869350ff805",
+        "addedLinesRead": 3,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/blocking-lint-both.stored.json",
+        "lines": 137,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "6c7daeba59456605bf53dbf93d8b9a642c39ef85dc7943a52126e2bd08629821",
+        "addedLinesRead": 137,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/blocking-lint-one.ops.jsonl",
+        "lines": 2,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "dd6155ea763a91bfd65899a5585d0c83fcd90b13a51df358e7d87452e1d81821",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/blocking-lint-one.stored.json",
+        "lines": 129,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "ab5561e5155230e8376a3b0a718df80d30de80b5504a194173b8434a63832bbd",
+        "addedLinesRead": 129,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/hand-never-code-only.json",
+        "lines": 125,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "d77f03c8aedd1bc18c6eef6edd93615e4f62df43977373ae9ff4d5366da01485",
+        "addedLinesRead": 125,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/hand-ref-with-hash.json",
+        "lines": 127,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "ada292db7fa4b84fc5fd5c41d8456720dd22f1a98bfc53254d1866f449a02733",
+        "addedLinesRead": 127,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/hand-refs-no-hash.json",
+        "lines": 128,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "2eb8d5a24cb6f16ab82027b6ee95bc5ec843113791ce0b7f304ee33b37b813d7",
+        "addedLinesRead": 128,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/hand-unknown-code.json",
+        "lines": 125,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "8d5fca572b396b674a7cb99eb675819932e74936f076b568215467a1926bf543",
+        "addedLinesRead": 125,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-code-only.ops.jsonl",
+        "lines": 2,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "413814230eaf825c8b686763e440b5951297469a6f236616598be533a15470b0",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-code-only.stored.json",
+        "lines": 125,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "02f8e2762919883aabf3a475dd5c427195539d413bf99cc092d6546164b3567c",
+        "addedLinesRead": 125,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-hash-mismatch.ops.jsonl",
+        "lines": 3,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "e115fa97d124cef41c407f3530ca0e1f4a70d46cd0dcb44f59523370da3c4469",
+        "addedLinesRead": 3,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-refs-no-hash.ops.jsonl",
+        "lines": 2,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "adba5e3f218967917d7d7a4630db4303a02dec60da0735303f08668198e2c4cc",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-refs-no-hash.stored.json",
+        "lines": 129,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "de07c479870f7f97487752d55a8b6f61eda0b67d54987ad8aff3e28114d4b76c",
+        "addedLinesRead": 129,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-scoped.ops.jsonl",
+        "lines": 2,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "0d9b83e4fd91243dc57c089271071ebfa98ca7d447424eb6ff0feb4fea613131",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-scoped.stored.json",
+        "lines": 129,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "de07c479870f7f97487752d55a8b6f61eda0b67d54987ad8aff3e28114d4b76c",
+        "addedLinesRead": 129,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-single-ref.ops.jsonl",
+        "lines": 2,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "b6f9979701e346b7cfc86c57199b6c5891581210b8562c1d4cf77aabac096cd0",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-single-ref.stored.json",
+        "lines": 126,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "d5820fd3b0b082915fd1d4775c3f67e4bb82b162d7edc02e7cf999b6e132c2b9",
+        "addedLinesRead": 126,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-stale-hash.ops.jsonl",
+        "lines": 3,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "82f6db8e86fee556a267e090b258ed907037e262ba93576afb33de94b84dfd32",
+        "addedLinesRead": 3,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-stale-hash.stored.json",
+        "lines": 129,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "6d941f370f5935ef220103d82f77ac2df4307696493e6c74dbb3057023d759fb",
+        "addedLinesRead": 129,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-wrong-set.ops.jsonl",
+        "lines": 2,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "b43a9454cc7b4ac32a79e5e1b04dc484e0fb0e34b0290a9c0273c60bb1c16c26",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/lint-wrong-set.stored.json",
+        "lines": 130,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "527a0169502f22e0f9f25596280a29bfc5c3b4aeed7036682e1ee41a8383bc06",
+        "addedLinesRead": 130,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/never-hygiene.ops.jsonl",
+        "lines": 3,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "af90be6ec7db1dd1a0945cb06fc6c5c5e1a0064e39a29d654af153f0a425019a",
+        "addedLinesRead": 3,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/never-hygiene.stored.json",
+        "lines": 134,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "5c87638c7ee8163047c7c9b4bb752adee8e6964162425534039ea54dd727df76",
+        "addedLinesRead": 134,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/never-verdict.ops.jsonl",
+        "lines": 4,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "689a657ae78c593b6bc1e7f6372b47f6a69da6d2e5d99ca0ef44b00eb8927f7a",
+        "addedLinesRead": 4,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/never-verdict.stored.json",
+        "lines": 146,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "aa6d831a41b24e47159483cc6278c3351e570de12d691e2b2a639e27e6744c65",
+        "addedLinesRead": 146,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/repro-code-only.ops.jsonl",
+        "lines": 5,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "079c029673ef3caa7f0613b63510f6d24ec5bf3f36a3c8470b6ea7a2da69212e",
+        "addedLinesRead": 5,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/repro-code-only.stored.json",
+        "lines": 161,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "a768af1fc91f2df4b746dbe46a263dd9442fcc3042f81958a68469fda714cbb3",
+        "addedLinesRead": 161,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/repro-scoped.ops.jsonl",
+        "lines": 5,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "2b597a2c355da6cd75a0bd398252fc8e12d02b25b78547957a6998db371526f6",
+        "addedLinesRead": 5,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/repro-scoped.stored.json",
+        "lines": 166,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "a18b63381d0a1d88fa4c2720a26528e7aaddafd3a1eaaf5b78e4ceb60358b9ab",
+        "addedLinesRead": 166,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/repro-single-ref.ops.jsonl",
+        "lines": 4,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "321695bd831fbac8763d58618e91738913834acba5d9592b501ab5a5e2ddbcba",
+        "addedLinesRead": 4,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/repro-single-ref.stored.json",
+        "lines": 162,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "eb5e68efe26f35e9f2216a5d4c5314f502e7e1d1688db772f611a3d37b0c8a66",
+        "addedLinesRead": 162,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/structural-cycle-code-only.ops.jsonl",
+        "lines": 6,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "815c8f3273c08cbdeb84ba11e807a17157dddcd8209e138845da5cd64e28a81f",
+        "addedLinesRead": 6,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/structural-cycle-code-only.stored.json",
+        "lines": 163,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "436c6a5a0959b9f24eecfb2541d3279be4c0d0fa5ca653607c7a5401dfe37bdf",
+        "addedLinesRead": 163,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/structural-cycle-scoped.ops.jsonl",
+        "lines": 6,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "cba150593c9c17aaf3b43b4416ae72a000523f0096c110bcc27c419b687071ae",
+        "addedLinesRead": 6,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/cases/structural-cycle-scoped.stored.json",
+        "lines": 168,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "9165808b807af2227134e6483f7036c0fc07f6e09d4d2a709cfeb7addd14a82a",
+        "addedLinesRead": 168,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/embedder.json",
+        "lines": 7,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "dd00bb27ec5ac923bd92bd37f9392c80ead7f2c6e0e3208cb72b2db319e5d7fd",
+        "addedLinesRead": 7,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/import/scoped-record.txt",
+        "lines": 4,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "c49ed70f31aaabde45d2715ce7f2cece579e9a03eaf18697b2d0b21c4f77d348",
+        "addedLinesRead": 4,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/import/v4-waivers.txt",
+        "lines": 20,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "eb6ef319d28f409989a2802a0bc5f46aefab00d2e147e0fda3c9bf18bc1a4c82",
+        "addedLinesRead": 20,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/legacy-mixed.json",
+        "lines": 152,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "e1108c71e2cdbd33f6664cba8054a39217398ca305b86e5d28ddb6c48c4d8a79",
+        "addedLinesRead": 152,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__fixtures__/s3-waivability/legacy-mixed.ops.jsonl",
+        "lines": 12,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "d1f8ae855a3110ae5a779e05f41bba00e5280cf7d88a038ea55f4c393a4c150f",
+        "addedLinesRead": 12,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/gaming-a.txt",
+        "lines": 115,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "550ddf6a46469ede7125017a88d3179caed4ceb943f32a5de86c7a04b6b10f92",
+        "addedLinesRead": 6,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/gaming-b.txt",
+        "lines": 116,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "28348a5eeea6429338e33dfea89c706b5d9d9862e378b15f679ed12a92865d4a",
+        "addedLinesRead": 6,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/gaming-c.txt",
+        "lines": 115,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "159905e2e54f4a8943524555654fc1b79e7b2b7088e7eb3903a97887052c4c62",
+        "addedLinesRead": 6,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/gaming-d.txt",
+        "lines": 116,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "3ce24ee40799f2505b0ea1e4b011a820e5c7f6c29db33817b4983d56768e95c3",
+        "addedLinesRead": 6,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/gaming-e.txt",
+        "lines": 58,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "16dbda94c69855220df13ad2e7e39b5606dc740bd84983232968c36aee5d0a74",
+        "addedLinesRead": 3,
+        "removedLinesRead": 1,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/gaming-f.txt",
+        "lines": 115,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "4861d3c855c7abf8199c76c503da4d43c81de6abe58f310fb4243e2a2735ab90",
+        "addedLinesRead": 24,
+        "removedLinesRead": 21,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/gaming-g.txt",
+        "lines": 116,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "9890b001f7e8686e42ed6cbc72747cdff72a512f6bd4c116f01fb74002036ff4",
+        "addedLinesRead": 6,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/gaming-h.txt",
+        "lines": 115,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "3e1d7f0d29dcd79dddd76d73cb032c95bd5c24525e9a7baf17d5514baeb1031e",
+        "addedLinesRead": 6,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/gaming-i.txt",
+        "lines": 115,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "df74e428a1cdd042aa9c98fa90d10dda46e6753193e250f6ce25f683ea3415d7",
+        "addedLinesRead": 6,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/gaming-moves.txt",
+        "lines": 62,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "d608890a581a7e803b4644dc893bb722fc15df0cfe0e9104e231f3ed848ec5e6",
+        "addedLinesRead": 3,
+        "removedLinesRead": 1,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/__snapshots__/report-corpus.txt",
+        "lines": 53,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "247e4ae6034cc5b2dc30df7d770a0ea97e0e0bef61b15d02e92cbcced33fde44",
+        "addedLinesRead": 2,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/engine-waivers-s3.test.ts",
+        "lines": 94,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "51fa92df4fdd0abaed69ec49ed995224478484c65280f1738172c0330be261fe",
+        "addedLinesRead": 94,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming-waivers.test.ts",
+        "lines": 110,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "e75a54aa8613202456abbb3bc7f7bdc56cfaeb4bcac78d0ff21e2eb0885a3d6f",
+        "addedLinesRead": 110,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.shard-a.test.ts",
+        "lines": 40,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "a57c0c6c6dcd42c567e04bea9d772a965ebe61908054dfcfd6e3a8b2db692166",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.shard-b.test.ts",
+        "lines": 40,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "4a6cf1888e481cfbfdcd6b3a658845e24d1b5a84f2440202e7a26d6284bad218",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.shard-c.test.ts",
+        "lines": 40,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "54dd6fb724b4eeac1b96081defc9f0270972ae7d44b8bf84a268c99f5b3105d5",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.shard-d.test.ts",
+        "lines": 40,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "61cb94082ae62c3fb900576d32f2eac0fc6f3f97b622749b4a5bff9cc48c4c52",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.shard-e.test.ts",
+        "lines": 40,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "2d2a7fe3affb2a9f7bb9c88ac65d6c3471fb8583f32e7eda5db59f14b65da19a",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.shard-f.test.ts",
+        "lines": 40,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "42fcda8526201d75d7104408d1e5a44cd193e716903edd3cc6856889d8dbfbad",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.shard-g.test.ts",
+        "lines": 40,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "94a7a539053631bb7b2d91bc102cfca5dabc21a37d7c324ba4769fd5f3c5e272",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.shard-h.test.ts",
+        "lines": 40,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "f3e2a75e98dc53e7a529216d0a8ecd22b7836bfbeafc884a5216421e23bef1b1",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.shard-i.test.ts",
+        "lines": 40,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "9264741ebbcc2346c69c9116e9b5a3caf2a9a1e029cc4e94d2780a8cd6c92d35",
+        "addedLinesRead": 2,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.test.ts",
+        "lines": 435,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "97a93c8ea4a690d9e61be1a3c2ed36a75a81e4bc5cc725d395a3a7529dbfc452",
+        "addedLinesRead": 148,
+        "removedLinesRead": 3,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/gaming.ts",
+        "lines": 2894,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "8101752433cbb39ea7970797714f515899fcf9b770858a11fd0fb848e9955e49",
+        "addedLinesRead": 189,
+        "removedLinesRead": 32,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/report-corpus.test.ts",
+        "lines": 286,
+        "reviewers": [
+          1030,
+          1031
+        ],
+        "sha256": "dd585b9326f13e1e3a12e658faf61bc3323fa866578a19561517857e955b4bc1",
+        "addedLinesRead": 209,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/report-corpus.ts",
+        "lines": 182,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "6d683ce913d608660f86b532d9aafebfece1ca92c7bf601e08c00fbc48d47345",
+        "addedLinesRead": 11,
+        "removedLinesRead": 2,
+        "fullFileRead": true
+      },
+      {
+        "file": "src/testing/waiver-fixture.ts",
+        "lines": 261,
+        "reviewers": [
+          1031
+        ],
+        "sha256": "637a868d6130e1654b5408d9d6d6666aa7abbff84fc6ebcd3062e47abf032895",
+        "addedLinesRead": 261,
+        "removedLinesRead": 0,
+        "fullFileRead": true
+      }
+    ],
+    "evidence": [
+      "job-1030/read-inventory.json and numbered shell reads",
+      "job-1031/files-read-manifest.json and reads.jsonl (actual emitted numbered read spans)",
+      "job-1033/coverage.json and complete source/diff shell reads"
+    ],
+    "verification": "All credited file line counts, hashes and added/removed line counts independently matched pinned 7afb20e bytes in this finalization. Duplicate panel reads count once. Root additionally read a losslessly deduplicated fixture packet; no extra coverage credit was needed."
+  },
+  "artifacts": {
+    "root": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027",
+    "helper1030": "../job-1030/review-report.md",
+    "helper1031": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1031/review-report.md",
+    "helper1033": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1033/review-report.md",
+    "fixtureReadPacket": "fixture-lossless.json; every file reconstructs byte-for-byte from the printed unique line dictionary and per-file order map"
+  },
+  "reproSources": {
+    ".review/probes.ts": "import { writeFileSync } from 'node:fs'\nimport { Effect, Schema } from 'effect'\nimport { solverServiceLayer } from '../src/adapters/z3/solver-service.ts'\nimport { toEngineDoc, waiverStanding } from '../src/domain/compat.ts'\nimport { RequirementsDocument } from '../src/domain/requirements/document.ts'\nimport { foldOps, applyOp } from '../src/domain/requirements/mutate.ts'\nimport { decodeOp } from '../src/domain/requirements/ops.ts'\nimport { checkDocument, fixtureDoc, ID, HASH } from '../src/testing/waiver-fixture.ts'\nimport { exitCodeForEnvelope } from '../src/app/runtime/exit.ts'\nimport { runOperation } from '../src/app/runtime/operation.ts'\nimport { checkOp } from '../src/app/operations/check.ts'\nimport { MUTATE_OPTIONS } from '../src/app/operations/mutate-options.ts'\nconst wiring={check:(input:any)=>runOperation(checkOp,input).pipe(Effect.map(e=>({exit:exitCodeForEnvelope(e),data:e.data as unknown}))), solver:solverServiceLayer}\nconst base=fixtureDoc('base.json');const out:any[]=[]\nconst waivers:any[]=[\n {label:'dual-scope',code:'GTWR_R5_INDEFINITE_ARTICLE',requirementId:ID['LOG-R2'],requirementIds:[ID['LOG-R1']],contentHash:HASH['LOG-R1'],reason:'reviewed only the intersection'},\n {label:'whitespace-code',code:' FND_CONTRADICTION ',reason:'old writer'},\n {label:'missing-single-id',code:'GTWR_R5_INDEFINITE_ARTICLE',requirementId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',contentHash:HASH['LOG-R1'],reason:'deleted requirement'},\n {label:'blank-reason',code:'GTWR_R5_INDEFINITE_ARTICLE',requirementIds:[ID['LOG-R1']],contentHash:HASH['LOG-R1'],reason:'   '},\n]\nfor(const {label,...waiver} of waivers){\n const doc=Schema.decodeUnknownSync(RequirementsDocument)({...base,waivers:[waiver]})\n const run=await checkDocument(wiring,doc)\n const rawOp={op:'waive',code:waiver.code,reason:waiver.reason,...(waiver.requirementId===undefined?{}:{ref:waiver.requirementId}),...(waiver.requirementIds===undefined?{}:{refs:waiver.requirementIds}),...(waiver.contentHash===undefined?{}:{contentHash:waiver.contentHash})}\n const op=Effect.runSync(decodeOp(rawOp));const applied=applyOp(base,op,'2026-10-05T00:00:00.000Z',MUTATE_OPTIONS)\n const diagnostics=run.data.diagnostics.filter(d=>d.kind==='waiver-inert')\n const replacements=diagnostics.flatMap(d=>d.ops??[])\n const folded=foldOps(doc,replacements.map(o=>Effect.runSync(decodeOp(o))),'2026-10-05T00:00:00.000Z',MUTATE_OPTIONS)\n const result={label,schemaAccepted:true,waiver,standing:waiverStanding(doc,doc.waivers[0]!),forwarded:toEngineDoc(doc).waivers,apply:('code' in applied?applied:{noop:applied.noop}),check:{exit:run.exit,waived:run.data.waived,verified:run.data.verified,appliedWaivers:run.data.appliedWaivers,diagnostics},replacementResult:{write:folded.write,results:folded.results,waiversRemaining:folded.document.waivers}}\n out.push(result);console.log(JSON.stringify(result))\n}\nwriteFileSync(new URL('../../probes.json',import.meta.url),JSON.stringify(out,null,2)+'\\n')\n",
+    ".review/cleanup-active.ts": "import { Effect, Schema } from 'effect'\nimport { fixtureDoc, HASH, ID } from '../src/testing/waiver-fixture.ts'\nimport { RequirementsDocument } from '../src/domain/requirements/document.ts'\nimport { inertWaiverDiagnostic, waiverStanding } from '../src/domain/compat.ts'\nimport { foldOps } from '../src/domain/requirements/mutate.ts'\nimport { decodeOp } from '../src/domain/requirements/ops.ts'\nimport { MUTATE_OPTIONS } from '../src/app/operations/mutate-options.ts'\nconst valid={code:'GTWR_R5_INDEFINITE_ARTICLE',requirementIds:[ID['LOG-R1']],contentHash:HASH['LOG-R1'],reason:'active reviewed decision'}\nconst target={code:valid.code,requirementId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',requirementIds:valid.requirementIds,reason:'inert legacy dual scope'}\nconst doc=Schema.decodeUnknownSync(RequirementsDocument)({...fixtureDoc('base.json'),waivers:[valid,target]})\nconst standing=waiverStanding(doc,doc.waivers[1]!);if(standing.kind!=='inert')throw Error('not inert')\nconst diagnostic=inertWaiverDiagnostic(doc,doc.waivers[1]!,standing,[])\nconst result=foldOps(doc,diagnostic.ops!.map(o=>Effect.runSync(decodeOp(o))),'2026-10-05T00:00:00.000Z',MUTATE_OPTIONS)\nconsole.log(JSON.stringify({valid,target,diagnostic,results:result.results,remaining:result.document.waivers,activeRemoved:!result.document.waivers.some(w=>w.reason===valid.reason),targetRemains:result.document.waivers.some(w=>w.reason===target.reason)}))\n",
+    ".review/terminology.ts": "import { writeFileSync } from 'node:fs'\nimport { Effect, Schema } from 'effect'\nimport { solverServiceLayer } from '../src/adapters/z3/solver-service.ts'\nimport { toEngineDoc, waiverStanding } from '../src/domain/compat.ts'\nimport { RequirementsDocument } from '../src/domain/requirements/document.ts'\nimport { foldOps, applyOp } from '../src/domain/requirements/mutate.ts'\nimport { decodeOp } from '../src/domain/requirements/ops.ts'\nimport { checkDocument, fixtureDoc, ID, HASH } from '../src/testing/waiver-fixture.ts'\nimport { exitCodeForEnvelope } from '../src/app/runtime/exit.ts'\nimport { runOperation } from '../src/app/runtime/operation.ts'\nimport { checkOp } from '../src/app/operations/check.ts'\nimport { MUTATE_OPTIONS } from '../src/app/operations/mutate-options.ts'\nconst wiring={check:(input:any)=>runOperation(checkOp,input).pipe(Effect.map(e=>({exit:exitCodeForEnvelope(e),data:e.data as unknown}))), solver:solverServiceLayer}\nimport { buildDoc } from '../src/testing/gaming.ts'\nconst base=buildDoc([\n {op:'add',id:'10000000-0000-4000-8000-000000000001',key:'XYZ-R1',patternType:'event-driven',trigger:'the operator opens the session',systemName:'gateway',systemResponse:'record the XYZ status'},\n {op:'add',id:'10000000-0000-4000-8000-000000000002',key:'XYZ-R2',patternType:'event-driven',trigger:'the operator opens the session',systemName:'gateway',systemResponse:'store the session token'}\n],MUTATE_OPTIONS)\nconst before=await checkDocument(wiring,base,{},[])\nconst finding=before.data.findings.find(f=>f.code==='FND_ACRONYM_UNDEFINED')\nif(!finding)throw Error('Fixture did not reach acronym finding: '+JSON.stringify(before.data.findings))\nconst result=foldOps(base,[Effect.runSync(decodeOp({op:'waive',code:finding.code,refs:finding.requirementIds,reason:'XYZ is reviewed as the subsystem name'}))],'2026-10-05T00:00:00.000Z',MUTATE_OPTIONS)\nconst after=await checkDocument(wiring,result.document,{},[])\nconsole.log(JSON.stringify({finding,fold:result.results,stored:result.document.waivers,forwarded:toEngineDoc(result.document).waivers,after:{sameFindingRemains:after.data.findings.some(f=>f.code===finding.code),waived:after.data.waived,diagnostics:after.data.diagnostics,appliedWaivers:after.data.appliedWaivers,ignoredWaivers:after.data.ignoredWaivers}}))\n",
+    ".review/cycle.ts": "import { writeFileSync } from 'node:fs'\nimport { Effect, Schema } from 'effect'\nimport { solverServiceLayer } from '../src/adapters/z3/solver-service.ts'\nimport { toEngineDoc, waiverStanding } from '../src/domain/compat.ts'\nimport { RequirementsDocument } from '../src/domain/requirements/document.ts'\nimport { foldOps, applyOp } from '../src/domain/requirements/mutate.ts'\nimport { decodeOp } from '../src/domain/requirements/ops.ts'\nimport { checkDocument, fixtureDoc, ID, HASH } from '../src/testing/waiver-fixture.ts'\nimport { exitCodeForEnvelope } from '../src/app/runtime/exit.ts'\nimport { runOperation } from '../src/app/runtime/operation.ts'\nimport { checkOp } from '../src/app/operations/check.ts'\nimport { MUTATE_OPTIONS } from '../src/app/operations/mutate-options.ts'\nconst wiring={check:(input:any)=>runOperation(checkOp,input).pipe(Effect.map(e=>({exit:exitCodeForEnvelope(e),data:e.data as unknown}))), solver:solverServiceLayer}\nimport { buildDoc, FIXTURES } from '../src/testing/gaming.ts'\nimport { requirementsContentHash } from '../src/domain/requirements/content-hash.ts'\nconst fixture=FIXTURES.find(f=>f.id==='derives-cycle')!;const base=buildDoc(fixture.ops,MUTATE_OPTIONS)\nconst baseline=await checkDocument(wiring,base,{strict:true},[])\nconst cycles=baseline.data.findings.filter(f=>f.code==='FND_CYCLE')\nconst bystander=Object.values(base.requirements).find(r=>r.key==='CYC-B')!.id\nconst out:any[]=[]\nfor(const label of ['legitimate','dual-scope','blank-reason']){\n const waivers=cycles.map(f=>({code:f.code,requirementIds:f.requirementIds,contentHash:requirementsContentHash(base,f.requirementIds)!,reason:label==='blank-reason'?'   ':'reviewed: intended mutual refinement',...(label==='dual-scope'?{requirementId:bystander}:{})}))\n const doc=Schema.decodeUnknownSync(RequirementsDocument)({...base,waivers});const run=await checkDocument(wiring,doc,{strict:true},[])\n const w=waivers[0]!;const op=Effect.runSync(decodeOp({op:'waive',code:w.code,refs:w.requirementIds,contentHash:w.contentHash,reason:w.reason,...('requirementId' in w?{ref:w.requirementId}:{})}))\n const apply=applyOp(base,op,'2026-10-05T00:00:00.000Z',MUTATE_OPTIONS)\n const row={label,baseline:{exit:baseline.exit,verified:baseline.data.verified,cycles:cycles.length},waivers,apply:('code'in apply?apply:{noop:apply.noop}),check:{exit:run.exit,verified:run.data.verified,waived:run.data.waived,diagnostics:run.data.diagnostics,appliedWaivers:run.data.appliedWaivers},forwarded:toEngineDoc(doc).waivers}\n out.push(row);console.log(JSON.stringify(row));writeFileSync(new URL('../../cycle-'+label+'.json',import.meta.url),JSON.stringify(doc,null,2)+'\\n')\n}\nwriteFileSync(new URL('../../cycle-results.json',import.meta.url),JSON.stringify(out,null,2)+'\\n')\n",
+    ".review/cleanup-collateral.ts": "import { Effect, Schema } from 'effect'\nimport { fixtureDoc, HASH } from '../src/testing/waiver-fixture.ts'\nimport { RequirementsDocument } from '../src/domain/requirements/document.ts'\nimport { inertWaiverDiagnostic, waiverStanding } from '../src/domain/compat.ts'\nimport { foldOps } from '../src/domain/requirements/mutate.ts'\nimport { decodeOp } from '../src/domain/requirements/ops.ts'\nimport { MUTATE_OPTIONS } from '../src/app/operations/mutate-options.ts'\nconst base=fixtureDoc('base.json')\nfor(const target of [\n {code:' FND_CONTRADICTION ',reason:'target padded code'},\n {code:'GTWR_R5_INDEFINITE_ARTICLE',requirementId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',contentHash:HASH['LOG-R1'],reason:'target deleted requirement'},\n]){\n const collateral={code:target.code.trim(),reason:'other audit record, not the target'}\n const doc=Schema.decodeUnknownSync(RequirementsDocument)({...base,waivers:[target,collateral]});const standing=waiverStanding(doc,doc.waivers[0]!)\n if(standing.kind!=='inert')throw Error('must be inert')\n const diagnostic=inertWaiverDiagnostic(doc,doc.waivers[0]!,standing,[])\n const result=foldOps(doc,diagnostic.ops!.map(o=>Effect.runSync(decodeOp(o))),'2026-10-05T00:00:00.000Z',MUTATE_OPTIONS)\n console.log(JSON.stringify({target,collateral,ops:diagnostic.ops,results:result.results,remaining:result.document.waivers,targetRemains:result.document.waivers.some(w=>w.reason===target.reason),collateralRemoved:!result.document.waivers.some(w=>w.reason===collateral.reason)}))\n}\n",
+    "helper/raw-move-review.test.ts": "/**\n * THE SCOPED DISCHARGE the gaming gate does not list as an escape (ruling R45, S3-047).\n *\n * A scoped, reviewed waiver of a SCOPED-class finding — its code over the exact requirement ids it\n * was raised on and the hash of their current text — is the designed way to accept it, not a\n * gaming move. So `waive-scoped-never` and `waive-raw` run only on never-class fixtures, and the\n * one fixture whose seeded finding is scoped-class (`derives-cycle`, FND_CYCLE) is pinned here,\n * positively: the discharge is accepted at write and the run is clean.\n *\n * Wired like a shard: `testing/` may not name `app/` or `adapters/` (`../package-boundary.test.ts`).\n */\n\nimport { Effect } from 'effect'\nimport { describe, expect, it } from 'vitest'\nimport { embedderServiceLayer } from '../adapters/embedding/embedder.ts'\nimport { solverServiceLayer } from '../adapters/z3/solver-service.ts'\nimport { checkOp } from '../app/operations/check.ts'\nimport { MUTATE_OPTIONS } from '../app/operations/mutate-options.ts'\nimport { exitCodeForEnvelope } from '../app/runtime/exit.ts'\nimport { runOperation } from '../app/runtime/operation.ts'\nimport {\n  dCovers,\n  dDisplaced,\n  equivalencesOf,\n  verdictBearingOf,\n  waivabilityOf,\n} from '../app/runtime/signal-classes.ts'\nimport { requirementsContentHash } from '../domain/requirements/content-hash.ts'\nimport { buildDoc, FIXTURES, type GamingWiring, MOVES, runMatrix } from './gaming.ts'\n\nconst wiring: GamingWiring = {\n  check: (input) =>\n    runOperation(checkOp, input).pipe(\n      Effect.map((envelope) => ({ exit: exitCodeForEnvelope(envelope), data: envelope.data })),\n    ),\n  solver: solverServiceLayer,\n  envEmbedder: embedderServiceLayer,\n  mutateOptions: MUTATE_OPTIONS,\n  verdictBearing: {\n    of: verdictBearingOf,\n    equivalences: equivalencesOf,\n    covers: dCovers,\n    displaced: dDisplaced,\n  },\n  waivability: waivabilityOf,\n}\n\nit('review S3-049: raw move includes every never-class baseline code, including idless disclosures', async () => {\n  const fixture = FIXTURES.find(f => f.id === 'one-trigger-contradiction')!\n  const matrix = await runMatrix(wiring, [fixture], [])\n  const baseline = matrix.baselines.get(fixture.id)!\n  expect(baseline.kind).toBe('ran')\n  if (baseline.kind !== 'ran') throw new Error('baseline did not run')\n  const expected = [...new Set(baseline.findings.filter(f => waivabilityOf(f.code) === 'never').map(f => f.code))].sort()\n  const edit = MOVES.find(m => m.id === 'waive-raw')!.edit({fixture, doc: buildDoc(fixture.ops, MUTATE_OPTIONS), baselineCodes: baseline.codes, baselineFindings: baseline.findings, waivability: waivabilityOf})\n  expect(edit.kind).toBe('raw-waivers')\n  if (edit.kind !== 'raw-waivers') throw new Error('raw move did not run')\n  const actual = edit.waivers.filter(w => w.requirementId === undefined && w.requirementIds === undefined).map(w => w.code).sort()\n  console.log(JSON.stringify({fixture: fixture.id, neverFindings: baseline.findings.filter(f => waivabilityOf(f.code) === 'never'), expected, actual, missing: expected.filter(c => !actual.includes(c))},null,2))\n  expect(actual).toEqual(expected)\n}, 120000)\n"
+  },
+  "supportingScripts": {
+    "cli-prose.py": "import pathlib,subprocess,os,json\nroot=pathlib.Path('/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027');repo=root/'review-copy'\nenv=os.environ.copy();env['PATH']=f\"{env['HOME']}/.local/share/mise/installs/node/24/bin:{env['HOME']}/.local/share/mise/installs/pnpm/11.21.0:\"+env['PATH'];env.update(SYMSPEC_EMBED_STUB='1',NO_COLOR='1',CI='1')\nrows=[]\nfor args in [\n ['waive','FND_OPPOSITION_CANDIDATE','--ref','CAB-R1','--reason','reviewed','--file','src/testing/__fixtures__/s3-waivability/base.json','--dry-run'],\n ['explain','FND_OPPOSITION_CANDIDATE'],\n ['explain','--code','FND_OPPOSITION_CANDIDATE'],\n ['antonym','add','heat','cool','--file','src/testing/__fixtures__/s3-waivability/base.json','--dry-run'],\n ['antonym','heat','cool','--file','src/testing/__fixtures__/s3-waivability/base.json','--dry-run']]:\n p=subprocess.run(['node','dist/cli.mjs',*args],cwd=repo,env=env,text=True,capture_output=True)\n row={'args':args,'exit':p.returncode,'stdout':p.stdout,'stderr':p.stderr};rows.append(row)\n try:\n  d=json.loads(p.stdout);summary={k:d[k] for k in ['code','error','suggestions'] if k in d}\n  if args[0]=='explain':summary={k:d.get('data',{}).get(k) for k in ['description','commands']}\n except:summary={'stderr':p.stderr,'stdout':p.stdout[:300]}\n print(json.dumps({'args':args,'exit':p.returncode,'summary':summary}))\n(root/'cli-prose.json').write_text(json.dumps(rows,indent=2)+'\\n')\n",
+    "canaries.py": "import os, pathlib, subprocess, json\nroot=pathlib.Path('/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027')\nrepo=root/'review-copy'\nenv=os.environ.copy(); env['PATH']=f\"{env['HOME']}/.local/share/mise/installs/node/24/bin:{env['HOME']}/.local/share/mise/installs/pnpm/11.21.0:\"+env['PATH'];env.update(SYMSPEC_EMBED_STUB='1',NO_COLOR='1',CI='1')\ntests=['src/app/operations/import.test.ts','src/app/operations/check-waivers.test.ts']\nrows=[]\ndef run(name):\n p=subprocess.run(['pnpm','exec','vitest','run',*tests,'--reporter=json'],cwd=repo,env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)\n (root/(name+'.stdout')).write_text(p.stdout);(root/(name+'.stderr')).write_text(p.stderr)\n try:\n  j=json.loads(p.stdout[p.stdout.index('{'):]); failed=[a['fullName'] for t in j['testResults'] for a in t['assertionResults'] if a['status']=='failed']; out={'exit':p.returncode,'passed':j['numPassedTests'],'failed':j['numFailedTests'],'failedNames':failed}\n except Exception: out={'exit':p.returncode,'stderr':p.stderr[-3000:],'stdout':p.stdout[-3000:]}\n print(name,json.dumps(out),flush=True);return out\nbaseline=run('canary-baseline');assert baseline['exit']==0\nfor name, file, before, after, lens in [\n ('C1-import-policy', 'src/app/operations/import.ts','applyOp(snapshotOf(state), op, timestamp, MUTATE_OPTIONS)','applyOp(snapshotOf(state), op, timestamp, op.op === \\'waive\\' ? {} : MUTATE_OPTIONS)','gaming,correctness,tests'),\n ('C2-never-forward', 'src/domain/compat.ts',\"if (WAIVABILITY[cls] === 'never') return { kind: 'inert', cause: 'never', class: cls }\",\"if (false) return { kind: 'inert', cause: 'never', class: cls }\",'gaming,correctness,tests')]:\n path=repo/file; original=path.read_text();assert before in original\n try:\n  path.write_text(original.replace(before,after));out=run(name);rows.append({'id':name,'lens':lens,'file':file,'plant':{'before':before,'after':after},'baseline':baseline,'result':out,'caught':out['exit']!=0})\n finally:path.write_text(original)\n(root/'canaries.json').write_text(json.dumps(rows,indent=2)+'\\n')\nassert all(x['caught'] for x in rows)\n",
+    "canaries-more.py": "import os,pathlib,subprocess,json,re\nroot=pathlib.Path('/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1027');repo=root/'review-copy'\nenv=os.environ.copy();env['PATH']=f\"{env['HOME']}/.local/share/mise/installs/node/24/bin:{env['HOME']}/.local/share/mise/installs/pnpm/11.21.0:\"+env['PATH'];env.update(SYMSPEC_EMBED_STUB='1',NO_COLOR='1',CI='1')\nrows=[]\ndef test(name):\n p=subprocess.run(['pnpm','exec','vitest','run','src/app/operations/waivability.test.ts','src/app/runtime/signal-classes.test.ts','--reporter=json'],cwd=repo,env=env,text=True,capture_output=True)\n (root/(name+'.stdout')).write_text(p.stdout);(root/(name+'.stderr')).write_text(p.stderr)\n j=json.loads(p.stdout[p.stdout.index('{'):]);return {'exit':p.returncode,'passed':j['numPassedTests'],'failed':j['numFailedTests'],'failedNames':[a['fullName'] for t in j['testResults'] for a in t['assertionResults'] if a['status']=='failed']}\nj=json.loads((root/'C3-baseline.stdout').read_text());baseline={'exit':0,'passed':j['numPassedTests'],'failed':j['numFailedTests']};assert baseline['failed']==0\np=repo/'src/app/runtime/signal-classes.ts';raw=p.read_text();old='export const WAIVABILITY_ENFORCED: boolean = true';new='export const WAIVABILITY_ENFORCED: boolean = false';assert old in raw\ntry:\n p.write_text(raw.replace(old,new));result=test('C3-published-enforcement');rows.append({'id':'C3','lens':'published honesty','file':str(p.relative_to(repo)),'plant':{'before':old,'after':new},'baseline':baseline,'result':result,'caught':result['exit']!=0})\nfinally:p.write_text(raw)\np=repo/'src/app/operations/import.test.ts';raw=p.read_text();old=\"it('[S3-012]\";assert old in raw\n# Same diff scan on clean and planted source; intentional changes have no added skip/only.\ndef added_skip():\n diff=subprocess.check_output(['git','diff','0fca0433eb82','--','src/app/operations/import.test.ts'],cwd=repo,text=True)\n return [l for l in diff.splitlines() if l.startswith('+') and re.search(r'\\bit\\.(skip|only)\\(',l)]\nassert not added_skip()\ntry:\n p.write_text(raw.replace(old,\"it.skip('[S3-012]\",1));hits=added_skip();rows.append({'id':'C4','lens':'tests','file':str(p.relative_to(repo)),'plant':'skip an S3-012 test','baseline':{'addedDisabledTests':0},'result':{'addedDisabledTests':len(hits),'matches':hits},'caught':bool(hits)})\nfinally:p.write_text(raw)\np=repo/'src/domain/engine/pipeline/check.ts';raw=p.read_text();pattern=r'function isWaived\\(f: CheckFinding, w: Waiver\\): boolean \\{[\\s\\S]*?\\n\\}'\ntrusted=subprocess.check_output(['git','show','0fca0433eb82:src/domain/engine/pipeline/check.ts'],cwd=repo,text=True)\nbasefn=re.search(pattern,trusted).group(0);fn=re.search(pattern,raw).group(0);assert basefn==fn\nplant=fn.replace('return false','return true');assert plant!=fn\ntry:\n p.write_text(raw.replace(fn,plant));now=re.search(pattern,p.read_text()).group(0);diff=subprocess.check_output(['git','diff','--unified=3','--',str(p.relative_to(repo))],cwd=repo,text=True)\n rows.append({'id':'C5','lens':'engine','file':str(p.relative_to(repo)),'plant':'isWaived pair-bound refusal returns true','baseline':{'isWaivedEqualBase':True},'result':{'isWaivedEqualBase':now==basefn,'diff':diff},'caught':now!=basefn})\nfinally:p.write_text(raw)\nmessage=subprocess.check_output(['git','show','-s','--format=%B','7afb20e'],cwd=repo,text=True)\ndef release_check(s):return bool(re.match(r'^feat(?:\\([^\\n]+\\))?!:',s)) and len(re.findall(r'^BREAKING CHANGE:',s,re.M))==1\nassert release_check(message)\nplant=message.replace('BREAKING CHANGE:','Migration:')\nrows.append({'id':'C6','lens':'breaking change','plant':'remove BREAKING CHANGE footer from captured build message (no git history changed)','baseline':{'valid':release_check(message)},'result':{'valid':release_check(plant),'breakingFooters':len(re.findall(r'^BREAKING CHANGE:',plant,re.M))},'caught':not release_check(plant)})\n(root/'canaries-more.json').write_text(json.dumps(rows,indent=2)+'\\n');print(json.dumps(rows,indent=2));assert all(r['caught'] for r in rows)\n"
+  },
+  "disposition": "Findings remain open for fresh-context refutation and coordinator reruns; no finding is closed and no release/merge verdict is supplied."
+}
