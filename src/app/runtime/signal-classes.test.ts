@@ -184,7 +184,7 @@ describe('WAIVABILITY — the waiver scope', () => {
 })
 
 describe('DEMOTION_CLASS', () => {
-  it('pins every demotion reason with its class', () => {
+  it('[S3-033] pins every demotion reason with its class, waived-blocking-lint as coverage (R48)', () => {
     expect(
       Object.fromEntries(
         Object.entries(DEMOTION_CLASS).map(([reason, row]) => [reason, row.class]),
@@ -195,6 +195,10 @@ describe('DEMOTION_CLASS', () => {
       'no-decide-tier-comparison': 'coverage',
       'semantic-tier-skipped': 'disclosure',
       'excluded-from-formal': 'coverage',
+      // R48: the class of `excluded-from-formal`, which it replaces for the same requirement:
+      // the requirement reaches the solver only on a reviewer's waiver of a blocking wording
+      // defect, so its comparison cannot certify.
+      'waived-blocking-lint': 'coverage',
       'quantity-alias-candidate': 'conflict-signal',
       'relational-reasoning-not-attempted': 'disclosure',
       'numeric-bounds-uncompared': 'disclosure',
@@ -215,6 +219,11 @@ describe('DEMOTION_CLASS', () => {
       'reachability-frame-undeclared': 'disclosure',
       'reachability-cross-check-incomplete': 'disclosure',
     })
+    // R48: coverage with drift false, the same row shape as `excluded-from-formal`.
+    const rows = DEMOTION_CLASS as Record<string, { class: string; drift: boolean } | undefined>
+    expect(rows['waived-blocking-lint']).toMatchObject({ class: 'coverage', drift: false })
+    expect(rows['waived-blocking-lint']?.class).toBe(rows['excluded-from-formal']?.class)
+    expect(rows['waived-blocking-lint']?.drift).toBe(rows['excluded-from-formal']?.drift)
   })
 
   it('marks drift on exactly the conflict-signal reasons, and gives every row a reason', () => {

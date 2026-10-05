@@ -146,3 +146,18 @@ src/domain/advice/repair.test.ts > [S3-040] the engine never advises a waiver of
 src/domain/advice/repair.test.ts > [S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/number-spelling.ts: no string literal says "waive"
 src/domain/advice/repair.test.ts > [S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/quantity-alias.ts: no string literal says "waive"
 src/domain/advice/repair.test.ts > [S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] pipeline/check.ts: no never-code demotion action spells a waiver
+src/app/operations/index.test.ts > explain — AC-A-3: every code through the operation [S3-001] resolves every code the MANIFEST publishes, across all three catalogs, ERR_WAIVER_REFUSED included (R47)
+src/app/runtime/agents-doc.test.ts > every code is projected, in all three families [S3-001] names every code from every catalog: all 90, ERR_WAIVER_REFUSED included (R47)
+src/app/runtime/catalog.test.ts > nearestCodesAll ranks across all three families [S3-001] draws from all 90 code strings, ERR_WAIVER_REFUSED included (R47)
+src/app/runtime/catalog.test.ts > the unified catalog spans all three code families [S3-001] holds exactly 24 ERR_* / 42 FND_* / 24 GTWR_* = 90, the S3 append included (R47)
+src/app/runtime/catalog.test.ts > the unified catalog spans all three code families [S3-001] lists the families in order, each in its own append-only order, ERR_WAIVER_REFUSED last of the ERR rows (R47)
+src/app/runtime/catalog.test.ts > the unified catalog spans all three code families [S3-001] resolves EVERY code in every catalog, ERR_WAIVER_REFUSED included (R47)
+src/app/runtime/errors.test.ts > append-only ERR_* catalog [S3-001] holds the 21 v4 codes plus the greenfield appends, ERR_WAIVER_REFUSED last (R47)
+src/app/runtime/errors.test.ts > append-only ERR_* catalog [S3-001] keeps every shipped code at its original index (R47)
+src/app/runtime/errors.test.ts > append-only ERR_* catalog [S3-001] matches the snapshot as a PREFIX — appends allowed, reorders are not (R47)
+src/app/runtime/errors.test.ts > append-only ERR_* catalog [S3-001] may only GROW in length — a shorter list means a code was removed (R47)
+src/app/runtime/errors.test.ts > append-only ERR_* catalog the guard fires (negative controls) [S3-001] passes on an APPEND (the one permitted change) (R47)
+src/app/runtime/errors.test.ts > append-only ERR_* catalog the guard fires (negative controls) [S3-001] passes on the real catalog (R47)
+src/app/runtime/signal-classes.test.ts > DEMOTION_CLASS [S3-033] pins every demotion reason with its class, waived-blocking-lint as coverage (R48)
+src/domain/requirements/document.test.ts > closed vocabularies are frozen — append-only, never renamed or reordered [S3-023] DIAGNOSTIC_KINDS, waiver-inert appended (R49)
+src/publish.test.ts > the README agrees with the tool about its own surface [S3-001] README and package.json state the post-S3 count, not the pre-S3 "89 stable codes" (R47, R50)

@@ -99,11 +99,12 @@ describe('every operation is projected, with the table`s own summary', () => {
   })
 })
 
-describe('all 89 codes are projected, in all three families', () => {
-  it('names every code from every catalog', () => {
+describe('every code is projected, in all three families', () => {
+  it('[S3-001] names every code from every catalog: all 90, ERR_WAIVER_REFUSED included (R47)', () => {
     const rendered = doc()
     const codes = allCodes()
-    expect(codes).toHaveLength(89)
+    expect(codes).toHaveLength(90)
+    expect(rendered).toContain('`ERR_WAIVER_REFUSED`')
     for (const row of codes) {
       expect(rendered, `${row.code} is missing`).toContain(`\`${row.code}\``)
     }

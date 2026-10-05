@@ -400,6 +400,38 @@
         "S3-052"
       ],
       "question": 10
+    },
+    {
+      "id": "R47",
+      "text": "ERR_WAIVER_REFUSED is a real catalog code (an ERR_CLASSES append in src/ports/errors.ts and the catalog), so the catalog holds 24 ERR / 42 FND / 24 GTWR = 90 codes. Re-pin every count and list that S3's additions move: src/app/runtime/catalog.test.ts (the 23/89 counts, 'resolves EVERY code' length, 'draws from all 89 code strings'), src/app/runtime/errors.test.ts (ERR_CODES length 24 and ERR_CODES_SNAPSHOT with the append), src/app/operations/index.test.ts (explain resolves every manifest code, length 90), src/app/runtime/agents-doc.test.ts (all 90 codes projected), src/publish.test.ts (README '**90 stable codes**' and package.json's description '90 stable codes'). Prefer deriving the expected number from the catalog where the test's purpose allows (CLAUDE.md: a derivable number in prose is a bug), and keep or add the NEGATIVE half: the stale literal '89 stable codes' is ABSENT from README.md and package.json, and '23' ERR is not what the catalog reports.",
+      "source": "coordinator (job 815), contract loop-back contract-2 after build job 893's 'contract gap', under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-001"
+      ]
+    },
+    {
+      "id": "R48",
+      "text": "the 'waived-blocking-lint' demotion reason is class 'coverage' with drift false, the class of 'excluded-from-formal', which it replaces for the same requirement (the requirement now reaches the solver only on a reviewer's waiver of a blocking wording defect, so its comparison cannot certify). Re-pin src/app/runtime/signal-classes.test.ts 'DEMOTION_CLASS > pins every demotion reason with its class' with that row.",
+      "source": "coordinator (job 815), contract loop-back contract-2 after build job 893's 'contract gap', under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-033"
+      ]
+    },
+    {
+      "id": "R49",
+      "text": "'waiver-inert' is appended to DIAGNOSTIC_KINDS in src/domain/requirements/document.ts (plan S3 file list: 'DIAGNOSTIC_KINDS append'); re-pin src/domain/requirements/document.test.ts 'DIAGNOSTIC_KINDS' as ['unknown-top-level-key', 'sentence-drift', 'waiver-inert'].",
+      "source": "coordinator (job 815), contract loop-back contract-2 after build job 893's 'contract gap', under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-023"
+      ]
+    },
+    {
+      "id": "R50",
+      "text": "the builder may change README.md's code count and package.json's \"description\" code count, and nothing else in either file, to keep the published count agreeing with the catalog.",
+      "source": "coordinator (job 815), contract loop-back contract-2 after build job 893's 'contract gap', under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-001"
+      ]
     }
   ],
   "questions": [

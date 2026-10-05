@@ -235,12 +235,13 @@ describe('explain — success', () => {
  * `FND_CONTRADICTION` from `check` could list it in the manifest and not explain it.
  */
 describe('explain — AC-A-3: every code through the operation', () => {
-  it('resolves every code the MANIFEST publishes, across all three catalogs', async () => {
+  it('[S3-001] resolves every code the MANIFEST publishes, across all three catalogs, ERR_WAIVER_REFUSED included (R47)', async () => {
     const manifest = currentManifest()
     const published = [...manifest.errorCodes, ...manifest.findingCodes, ...manifest.lintCodes].map(
       (row) => row.code,
     )
-    expect(published).toHaveLength(89)
+    expect(published).toHaveLength(90)
+    expect(published).toContain('ERR_WAIVER_REFUSED')
 
     for (const code of published) {
       const env = await Effect.runPromise(runOperation(explainOp, { code }))

@@ -765,8 +765,8 @@ describe('closed vocabularies are frozen — append-only, never renamed or reord
   it('STATE_VAR_TYPES', () => {
     expect(STATE_VAR_TYPES).toEqual(['bool', 'int', 'enum'])
   })
-  it('DIAGNOSTIC_KINDS', () => {
-    expect(DIAGNOSTIC_KINDS).toEqual(['unknown-top-level-key', 'sentence-drift'])
+  it('[S3-023] DIAGNOSTIC_KINDS, waiver-inert appended (R49)', () => {
+    expect(DIAGNOSTIC_KINDS).toEqual(['unknown-top-level-key', 'sentence-drift', 'waiver-inert'])
   })
   it('every RELATION is an edge array on the requirement schema', () => {
     for (const relation of RELATIONS) {

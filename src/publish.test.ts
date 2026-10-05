@@ -685,6 +685,20 @@ describe('the README agrees with the tool about its own surface', () => {
     expect(readme).not.toContain(`${manifestNow.lintCodes.length + 1} INCOSE rules`)
   })
 
+  it('[S3-001] README and package.json state the post-S3 count, not the pre-S3 "89 stable codes" (R47, R50)', () => {
+    // R47: `ERR_WAIVER_REFUSED` is a real catalog code, so the published count moved by one.
+    // R50: the builder changes README.md's count and package.json's description count, and
+    // nothing else in either file. The positive half is derived; the NEGATIVE half names the
+    // stale literal itself, because a derived `codeCount - 1` only guards the next append.
+    expect(manifestNow.errorCodes.map((row) => row.code)).toContain('ERR_WAIVER_REFUSED')
+    const description = JSON.parse(read('package.json')).description as string
+    expect(readme).toContain(`**${codeCount} stable codes**`)
+    expect(description).toContain(`${codeCount} stable codes`)
+    expect(readme).not.toContain('**89 stable codes**')
+    expect(readme).not.toContain('89 stable codes')
+    expect(description).not.toContain('89 stable codes')
+  })
+
   it('does not ship a stale code count to the npm registry', () => {
     // `package.json`'s `description` is the registry listing — the most-read sentence this
     // package has and the only count with no gate at all. It said `81 stable codes` while

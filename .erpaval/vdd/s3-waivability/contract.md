@@ -3,7 +3,7 @@
 Base code: 0fca0433eb82 (the branch's docs commits only add `.erpaval/`). Every test whose name
 carries an `[S3-0nn]` id pins that behavior. Expected outcomes come from `readings.md`
 (## Settled examples, ## Rulings R1-R46). The failing list on base is
-`contract-failing-on-base.txt` (148 tests, every one by assertion or file-snapshot mismatch; none
+`contract-failing-on-base.txt` (148 tests from job 863 plus the 15 contract-2 re-pins below, every one by assertion or file-snapshot mismatch; none
 by a compile error, a missing import or a TypeError).
 
 ## Names the builder implements (the tests read them)
@@ -88,6 +88,47 @@ the installed skill body drops the reviewed-waiver advice for opposition candida
 - `src/domain/advice/repair.test.ts`: five pair-repair tests -> `[S3-039] ...` (R29);
   `src/app/runtime/scope.test.ts`: `FROZEN.coverageDemotion` drops ", or waived" (R30).
 - `src/testing/report-corpus.test.ts`: the gaming-control count adds the kept twin.
+
+## Loop-back contract-2 (job 929): counts and lists the S3 additions move (R47-R50)
+
+Build job 893 stopped on a contract gap: earlier tests pinned counts and lists that any correct S3
+build moves. Rulings R47-R50 (coordinator, job 815) settle them; each re-pinned test now carries its
+behavior id and ruling in its name and fails on base by assertion (15 tests, appended to
+`contract-failing-on-base.txt`). The scan for further pins: a scratch clone with the four additions
+simulated (an `ErrWaiverRefused` class appended to `ERR_CLASSES`, a `waived-blocking-lint` row in
+`DEMOTION_CLASS`, `waiver-inert` appended to `DIAGNOSTIC_KINDS`, `ignoredWaivers: []` and
+`appliedWaivers: []` on check's data) ran the whole suite: exactly 13 earlier tests went red, all
+covered below, plus `agents-doc.test.ts` 'is byte-identical to a fresh render', which is the builder's
+`pnpm gen:agents` and no pin. With the re-pinned tests copied in, README/package.json at 90 (R50) and
+AGENTS.md regenerated, all 7 files pass (295 tests).
+
+- R47 (S3-001), `ERR_WAIVER_REFUSED` is an `ERR_CLASSES` append, 24 ERR / 42 FND / 24 GTWR = 90:
+  - `src/app/runtime/catalog.test.ts`: '[S3-001] holds exactly 24 ERR_* / 42 FND_* / 24 GTWR_* = 90 ...'
+    (literal counts, plus `ERR` is not 23 and `ERR_WAIVER_REFUSED` resolves as family ERR);
+    '[S3-001] resolves EVERY code ...' (length derived from `catalogCounts().total`, contains the
+    append); '[S3-001] lists the families in order ...' (offsets derived from the family lists, the last
+    two ERR rows are `ERR_CONFIG_INVALID`, `ERR_WAIVER_REFUSED`); '[S3-001] draws from all 90 code strings ...'.
+  - `src/app/runtime/errors.test.ts`: `ERR_CODES_SNAPSHOT` gains `ERR_WAIVER_REFUSED` at index 23;
+    '[S3-001] holds the 21 v4 codes plus the greenfield appends ...' (24, not 23, last is the append);
+    '[S3-001] keeps every shipped code at its original index', '[S3-001] may only GROW ...',
+    '[S3-001] matches the snapshot as a PREFIX ...', and the negative controls '[S3-001] passes on the
+    real catalog', '[S3-001] passes on an APPEND ...' (red on base because base lacks the append). The
+    removal, rename, reorder and prepend controls keep their names and stay green.
+  - `src/app/operations/index.test.ts`: '[S3-001] resolves every code the MANIFEST publishes ...' (90,
+    contains the append).
+  - `src/app/runtime/agents-doc.test.ts`: describe renamed to 'every code is projected, in all three
+    families' (no count in prose; its sibling tests keep their status); '[S3-001] names every code from
+    every catalog: all 90, ERR_WAIVER_REFUSED included' (90, and the rendered doc names the code).
+- R47 + R50 (S3-001): `src/publish.test.ts` new '[S3-001] README and package.json state the post-S3
+  count, not the pre-S3 "89 stable codes"': derived positive half (`**${codeCount} stable codes**`,
+  `${codeCount} stable codes`), the stale literal `89 stable codes` ABSENT from README.md and the
+  description, and the manifest's ERR list contains the append. The two derived tests beside it are
+  unchanged: they pass on base and go red after the build until the builder makes the R50 edit.
+- R48 (S3-033): `src/app/runtime/signal-classes.test.ts` '[S3-033] pins every demotion reason with its
+  class, waived-blocking-lint as coverage': the row `'waived-blocking-lint': 'coverage'`, drift false,
+  the same class and drift as `excluded-from-formal`.
+- R49 (S3-023): `src/domain/requirements/document.test.ts` '[S3-023] DIAGNOSTIC_KINDS, waiver-inert
+  appended': `['unknown-top-level-key', 'sentence-drift', 'waiver-inert']`.
 
 ## Not pinned by a vitest test
 
