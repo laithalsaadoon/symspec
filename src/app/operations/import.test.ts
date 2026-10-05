@@ -637,13 +637,16 @@ describe('side-table records pass the fences `apply` runs', () => {
   it('writes the side tables EXACTLY as `apply` folds the same records', () => {
     // Parity, not a list of refusals: any fence `apply` gains, and any normalization it
     // applies, reaches `import` because both fold through one `applyOp` under one options set.
+    // Ruling R10 (S3-009): a code with no own FINDING_CLASS row is refused at write, so the
+    // waivers name a PUBLISHED rule code; the bare prefix `GTWR_R6` this test used before is
+    // not one, and both folds would refuse it rather than show parity.
     const records: readonly DocumentOp[] = [
       { op: 'glossary', canonical: 'Issue a Token', alias: 'grant a token' },
       { op: 'glossary', canonical: 'issue a token', alias: 'mint a token' },
       { op: 'antonym', a: 'Lock', b: 'Unlatch' },
       { op: 'antonym', a: 'unlatch', b: 'lock' },
-      { op: 'waive', code: 'GTWR_R6', reason: 'reviewed', ref: 'G1' },
-      { op: 'waive', code: 'GTWR_R6', reason: 'reviewed again', ref: 'G1' },
+      { op: 'waive', code: 'GTWR_R6_MISSING_UNITS', reason: 'reviewed', ref: 'G1' },
+      { op: 'waive', code: 'GTWR_R6_MISSING_UNITS', reason: 'reviewed again', ref: 'G1' },
     ]
     const imported = fold(
       [addLine({ id: ID_A, key: 'G1' }), ...records.map((r) => JSON.stringify(r))].join('\n'),
@@ -652,6 +655,8 @@ describe('side-table records pass the fences `apply` runs', () => {
     const applied = foldOps(base, records, TIMESTAMP, MUTATE_OPTIONS)
     expect(applied.abortedAt).toBeUndefined()
     expect(imported.problems).toEqual([])
+    // Not vacuous: the second waive is a no-op on the first, so exactly one waiver is folded.
+    expect(applied.document.waivers).toHaveLength(1)
     expect({
       glossary: imported.document.glossary,
       antonyms: imported.document.antonyms,

@@ -3,7 +3,7 @@
 Base code: 0fca0433eb82 (the branch's docs commits only add `.erpaval/`). Every test whose name
 carries an `[S3-0nn]` id pins that behavior. Expected outcomes come from `readings.md`
 (## Settled examples, ## Rulings R1-R46). The failing list on base is
-`contract-failing-on-base.txt` (148 tests from job 863 plus the 15 contract-2 re-pins below, every one by assertion or file-snapshot mismatch; none
+`contract-failing-on-base.txt` (148 tests from job 863, the 15 contract-2 re-pins and the 1 contract-3 re-pin below, every one by assertion or file-snapshot mismatch; none
 by a compile error, a missing import or a TypeError).
 
 ## Names the builder implements (the tests read them)
@@ -48,7 +48,8 @@ a never-class code says `waive`; the excluded-from-formal remedy says rephrase f
 offers the waive, offers `refs` + `contentHash` and says the run then demotes `waived-blocking-lint`
 (R44; the round-trip tests pin that the waive IS offered); nothing names `vocab distinct`,
 `propose-vocabulary` or `--rescope-waivers`; `scope.ts` drops "or waived" and gains one sentence that a
-content hash binds the text, not the reviewer (re-pin it in `scope.test.ts` `FROZEN` in the same edit);
+content hash binds the text, not the reviewer (R51: the exact sentence is now pinned in `scope.test.ts`
+`FROZEN`; write it into `scope.ts` byte for byte);
 the installed skill body drops the reviewed-waiver advice for opposition candidates;
 `WAIVABILITY_ENFORCED` is true and "NOT enforced" is absent everywhere (run `pnpm gen:agents`).
 
@@ -130,6 +131,73 @@ AGENTS.md regenerated, all 7 files pass (295 tests).
 - R49 (S3-023): `src/domain/requirements/document.test.ts` '[S3-023] DIAGNOSTIC_KINDS, waiver-inert
   appended': `['unknown-top-level-key', 'sentence-drift', 'waiver-inert']`.
 
+
+## Loop-back contract-3 (job 945): the scope corpus re-pin (R51) and the feasibility pass
+
+Build job 935 stopped on a contract gap: `scope.test.ts` '[S3-042] matches the frozen corpus VERBATIM'
+pinned `FROZEN.coverageDemotion` with no content-hash sentence, while '[S3-046] the published scope
+says a content hash binds the text, not the reviewer' needs one in `scopeParagraphs()`.
+
+- R51 (S3-042, S3-046): `FROZEN.coverageDemotion` ends with the ruled sentence, appended after
+  "-> re-check -> exit 0.": "A waiver's content hash binds the text it was reviewed on, not the
+  reviewer: any writer can mint a waiver whose hash matches, so a scoped waiver of a wording or
+  structural finding records that the current text was accepted, not who accepted it." The ", or
+  waived" clause stays out of FROZEN and the negative guard is kept. The builder writes the same
+  coverageDemotion string into `src/app/runtime/scope.ts`. Test names are unchanged; on base the three
+  scope tests stay red by assertion, as before.
+
+Earlier tests a correct S3 build turns red, found by the feasibility simulation below and re-pinned
+under the ruling they follow:
+
+- R13 (S3-012): `src/cli.test.ts` 'import --dry-run reports everything and writes NOTHING' expected
+  exit 0 on the agent-run-triggers stream, whose non-dry-run import R13 already pins at exit 1 (its 8
+  code-only waivers are refused). Renamed '[S3-012] import --dry-run reports everything, refusing the
+  8 unscoped waivers (exit 1), and writes NOTHING (R13)': exit 1, `written: false`, 25 requirements,
+  `imported.waivers` 0, 8 problems naming `ERR_WAIVER_REFUSED`, no file. Red on base by assertion
+  (`expected +0 to be 1`); appended to `contract-failing-on-base.txt` (163 -> 164).
+- R10 (S3-009): `src/app/operations/import.test.ts` 'writes the side tables EXACTLY as `apply` folds
+  the same records' waived the bare prefix `GTWR_R6`, which is no published code, so the S3 fold under
+  `MUTATE_OPTIONS` refuses it and the parity test would fail on `abortedAt`. It now waives the published
+  `GTWR_R6_MISSING_UNITS` and asserts exactly one folded waiver (not vacuous). Name unchanged; it is a
+  parity guard and passes on base and under the simulation.
+
+Feasibility simulation (scratch clone of 2c71aa9 plus these test edits, never committed): the fold
+refuses a never-class, unpublished or code-only waive and normalizes `ref` to `refs` + hash, gated by
+a flag only `MUTATE_OPTIONS` carries; `toEngineDoc` forwards only scoped-class waivers with ids and a
+matching hash; `WAIVABILITY_ENFORCED` true; `scope.ts` per R30 + R51; README's honest-scope quote
+updated; `pnpm gen:agents`. Full vitest: 3491 tests, 113 failed. Every failure is either a test in
+`contract-failing-on-base.txt` that needs product work the simulation did not do (111), the simulation's
+own domain -> app import (`package-boundary.test.ts`, the real build moves the class table into a
+domain module), or `report-corpus.test.ts` '[S3-039] every repair op decodes and folds' (repair advice
+still offers never-code waives until the builder changes `repair.ts`). 52 contract tests already pass.
+Without the README quote edit, `publish.test.ts` 'quotes EVERY scope claim verbatim' fails (see below).
+
+Constraints the builder must respect (each measured or read, none a test edit):
+- Waive refusal and `ref` normalization go behind a `MutateOptions` hook that `MUTATE_OPTIONS`
+  supplies, not into the bare `applyWaive`: ungated (first simulation run), 7 `mutate.test.ts`
+  side-table tests and the V27 reachability guard ('`waive` preserves the whole state model') went red;
+  the S3-016 block in `check.test.ts` also stores its legacy waivers through the bare `foldOps`.
+- The classifier needs an own-row lookup (`Object.hasOwn`) and `GTWR_CODES` membership: the current
+  `findingClassOf` maps any `GTWR_` prefix to wording (S3-009, `GTWR_R99_NOT_A_RULE`).
+- `waived-blocking-lint` stays out of the engine's `CoverageDemotion['reason']` union:
+  `src/domain/advice/repair.test.ts:211` types `REASONS` as `Record<CoverageDemotion['reason'], true>`
+  without it, and test files are type-checked. Widen `AppDemotionReason` instead (R48).
+- `waived-blocking-lint` carries no repair ops (roundtrip's fixed-point loop), and follows the
+  existing fewer-than-two-requirements vacuity: base emits no coverage demotion on a one-requirement
+  document, and the S3-036 formula reads `excluded-from-formal` demotions. If the build emitted it on a
+  one-requirement document, the shard f rows `waived-blocking-lint × delete-requirement@first/@second`
+  in `KNOWN_ESCAPES` (gaming.ts:1911, :1931) would stop escaping and '[S3-048] every KNOWN_ESCAPES row
+  still escapes' would fail.
+
+Open for the coordinator (not fixable in the contract role):
+- `src/publish.test.ts` 'quotes EVERY scope claim verbatim, and nothing else, as the section says'
+  (green on base) requires README.md's '## Honest scope' blockquotes to equal `scopeParagraphs()`. After
+  R30 and R51 the coverageDemotion quote (README.md:829-849 at 2c71aa9) must drop ", or waived" and gain the R51
+  sentence, but R50 lets the builder change only the code count in README.md. Needs a ruling that lets
+  the builder update that blockquote to quote `scope.ts` verbatim.
+- README.md:386-403 and :444 still show and recommend a waive of FND_QUANTITY_ALIAS_CANDIDATE (a
+  disclosure, never class). No test reads that prose; after S3 it teaches an op the fold refuses.
+
 ## Not pinned by a vitest test
 
 - S3-051: a test cannot attribute a snapshot delta to AC-5-6 without the regenerated snapshot; a person
@@ -206,6 +274,7 @@ AGENTS.md regenerated, all 7 files pass (295 tests).
 
 ### S3-012 — Import folds every waiver record through apply's classifier: refused records go to problems[] with ERR_WAIVER_REFUSED, the requirements are written, and import exits 1
 - `src/cli.test.ts` — the document lifecycle end to end [S3-012] imports the agent-run-triggers stream from --file, with exact counts, refusing its 8 unscoped waivers (exit 1) — FAILS on base
+- `src/cli.test.ts` — the document lifecycle end to end [S3-012] import --dry-run reports everything, refusing the 8 unscoped waivers (exit 1), and writes NOTHING (R13) — FAILS on base
 - `src/cli.test.ts` — S3: waive, apply and import refuse never-class and unscoped waivers through the CLI [S3-012] [S3-013] import v4-waivers.txt writes the six requirements, refuses I1, I3, I4 and I5 into problems[], and exits 1 — FAILS on base
 - `src/app/operations/import.test.ts` — round trip: hex-bonk 'agent-run-triggers' [S3-012] [S3-003] refuses every unscoped v4 waiver the source carried with ERR_WAIVER_REFUSED, on its line, and imports no waiver — FAILS on base
 - `src/app/operations/import.test.ts` — round trip: hex-bonk 'schedule-management' [S3-012] [S3-003] refuses every unscoped v4 waiver the source carried with ERR_WAIVER_REFUSED, on its line, and imports no waiver — passes on base (regression)

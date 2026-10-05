@@ -432,6 +432,15 @@
       "behaviors": [
         "S3-001"
       ]
+    },
+    {
+      "id": "R51",
+      "text": "append exactly this sentence as the last sentence of FROZEN.coverageDemotion (and so of the published coverageDemotion claim): \"A waiver's content hash binds the text it was reviewed on, not the reviewer: any writer can mint a waiver whose hash matches, so a scoped waiver of a wording or structural finding records that the current text was accepted, not who accepted it.\" Keep the ', or waived' negative guard.",
+      "source": "coordinator (job 815), contract loop-back contract-3 after build job 935's 'contract gap' (scope.test.ts [S3-042] FROZEN VERBATIM vs [S3-046] content-hash sentence), under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-042",
+        "S3-046"
+      ]
     }
   ],
   "questions": [

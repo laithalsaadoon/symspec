@@ -701,7 +701,11 @@ describe('the document lifecycle end to end', () => {
     expect((runJson('list', doc).envelope.data as { count: number }).count).toBe(42)
   })
 
-  it('import --dry-run reports everything and writes NOTHING', () => {
+  it('[S3-012] import --dry-run reports everything, refusing the 8 unscoped waivers (exit 1), and writes NOTHING (R13)', () => {
+    // Ruling R13 (S3-012) replaces this test's old exit 0, as it did for the non-dry-run import
+    // of the same stream above: every v4 waiver in it is code-only, apply's classifier refuses a
+    // code-only waive (R5), and a refused record makes import exit 1. A dry run reports the same
+    // refusals and still writes nothing.
     const dir = work()
     const doc = join(dir, 'never-written.json')
     const { envelope, code } = runJson(
@@ -712,10 +716,17 @@ describe('the document lifecycle end to end', () => {
       doc,
       '--dry-run',
     )
-    expect(code).toBe(0)
-    const data = envelope.data as { written: boolean; imported: Record<string, number> }
+    expect(code).toBe(1)
+    const data = envelope.data as {
+      written: boolean
+      imported: Record<string, number>
+      problems: { line: number; detail: string }[]
+    }
     expect(data.written).toBe(false)
     expect(data.imported.requirements).toBe(25)
+    expect(data.imported.waivers).toBe(0)
+    expect(data.problems).toHaveLength(8)
+    for (const p of data.problems) expect(p.detail).toContain('ERR_WAIVER_REFUSED')
     expect(existsSync(doc)).toBe(false)
   })
 

@@ -161,3 +161,4 @@ src/app/runtime/errors.test.ts > append-only ERR_* catalog the guard fires (nega
 src/app/runtime/signal-classes.test.ts > DEMOTION_CLASS [S3-033] pins every demotion reason with its class, waived-blocking-lint as coverage (R48)
 src/domain/requirements/document.test.ts > closed vocabularies are frozen — append-only, never renamed or reordered [S3-023] DIAGNOSTIC_KINDS, waiver-inert appended (R49)
 src/publish.test.ts > the README agrees with the tool about its own surface [S3-001] README and package.json state the post-S3 count, not the pre-S3 "89 stable codes" (R47, R50)
+src/cli.test.ts > the document lifecycle end to end [S3-012] import --dry-run reports everything, refusing the 8 unscoped waivers (exit 1), and writes NOTHING (R13)
