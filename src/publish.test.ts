@@ -796,7 +796,10 @@ describe('[RH-002] no live reference names the renamed GitHub account', () => {
 
 describe('[RH-009] the README claims no v4 enforcement this build does not perform', () => {
   const readme = read('README.md')
-  const collapse = (text: string): string => text.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim()
+  /** Flattened prose: blockquote markers, emphasis and line breaks removed, so a hard-wrapped
+   * quote cannot hide a phrase behind a `> ` (the first version of this guard passed on base so). */
+  const collapse = (text: string): string =>
+    text.replace(/^>\s?/gm, '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim()
 
   it('[RH-009] the unqualified enforcement claims are absent', () => {
     const prose = collapse(readme)
@@ -817,7 +820,7 @@ describe('[RH-009] the README claims no v4 enforcement this build does not perfo
     const about = /init --split|intent\.json|policy\.json|intentRef|docVersion:? ?4|format v4/
     const unlabelled = readme
       .split(/\n\s*\n/)
-      .map((paragraph) => collapse(paragraph.replace(/^>\s?/gm, '')))
+      .map(collapse)
       .filter((paragraph) => about.test(paragraph) && !paragraph.includes(said))
     expect(unlabelled).toEqual([])
   })
