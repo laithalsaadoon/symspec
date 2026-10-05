@@ -104,9 +104,10 @@ export const IntentItem = Schema.Struct({
   }),
   text: NonEmpty.annotate({
     description: lines(
-      'The item, in the owner`s words. This is the text the specification is checked against, so',
-      'an edit to it is a change of what the specification is for.',
+      'The item, in the owner`s words. A later release will hold the specification to this text,',
+      'so an edit to it changes what the specification is for.',
       "Example: 'The doors stay closed while the train is moving.'",
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   }),
   kind: Schema.optionalKey(
@@ -145,8 +146,10 @@ export const Intent = Schema.Struct({
   }),
   items: Schema.Array(IntentItem).annotate({
     description: lines(
-      'The intent items, in the owner`s order. Every requirement names one of them through',
-      '`intentRef`, or is marked `derived`. Item ids are unique.',
+      'The intent items, in the owner`s order. Item ids are unique. A later release will require',
+      'each requirement to name one of them through `intentRef` or be marked `derived`; this one',
+      'decodes a requirement with neither.',
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   }),
   source: Schema.optionalKey(

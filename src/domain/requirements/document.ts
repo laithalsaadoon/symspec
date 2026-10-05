@@ -1221,8 +1221,10 @@ const symbolBase = (kind: SymbolKind, what: string) => ({
   id: SymbolId.annotate({
     description: lines(
       'The symbol`s stable id: lowercase snake case, a leading letter, at most 64 characters.',
-      'Unique within the vocabulary. Requirements are checked against the symbol through this id,',
-      "so it never changes. Examples: 'sys_door_controller'; 'act_open_door'; 'qty_dwell_time'.",
+      'Unique within the vocabulary. A later release will resolve requirements to the symbol',
+      "through this id, so it never changes. Examples: 'sys_door_controller'; 'act_open_door';",
+      "'qty_dwell_time'.",
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   }),
   kind: Schema.Literal(kind).annotate({ description: `Discriminant: ${what}` }),
@@ -1396,8 +1398,9 @@ const SymbolDistinct = Schema.Struct({
   .annotate({
     description: lines(
       'A triage record stating that two symbols are different things, with the reason. Unordered.',
-      'It stores no basis: whether the distinction is supported is decided when the document is',
-      'checked, not recorded here.',
+      'It stores no basis. A later release will decide whether the distinction is supported; this',
+      'one records the pair and its reason, and no check tier reads either.',
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   })
   .pipe(Schema.check(refuseSelfPair))
