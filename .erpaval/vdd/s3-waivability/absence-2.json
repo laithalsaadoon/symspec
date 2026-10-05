@@ -1,0 +1,486 @@
+{
+ "base": "0fca0433eb82431936c8edd81f7ccf3464d6f52e",
+ "contract_commit": "1fa7a8b",
+ "first_absence_record": ".erpaval/vdd/s3-waivability/absence.json (contract 3f3c33d)",
+ "ran_at": "2026-10-05T20:32:26Z",
+ "product_src_untouched": "HEAD 1fa7a8b changes only *.test.ts and .erpaval/ over base product code; src/ product code is still the base",
+ "run": {
+  "build": "pnpm build exit 0",
+  "vitest": "node_modules/.bin/vitest run once; Tests 163 failed | 3325 passed (3488)"
+ },
+ "verdict": "clean",
+ "verdict_reason": "All 15 re-pinned tests fail on base by assertion (AssertionError, none broken, none crashed). No earlier test regressed: the only earlier tests red are the same 10 gaming shard and gaming-moves snapshot mismatches, expected red. The failing set equals contract-failing-on-base.txt (163) name for name. Under the coordinator's ruling on the first absence, S3-named tests green on base (159) are the declared @existing regression guards; the 5 ids with no red test (S3-004, S3-008, S3-031, S3-032, S3-047) are unchanged from the first record.",
+ "counts": {
+  "tests_total": 3488,
+  "failed_total": 163,
+  "passed_total": 3325,
+  "s3_named_total": 312,
+  "s3_named_red": 153,
+  "s3_named_green_existing_guards": 159,
+  "s3_named_broken": 0,
+  "repinned_total": 15,
+  "repinned_red_by_assertion": 15,
+  "repinned_green": 0,
+  "repinned_broken": 0,
+  "earlier_total": 3176,
+  "earlier_failed": 10,
+  "earlier_failed_are_expected_gaming_snapshots": 10,
+  "earlier_passed": 3166,
+  "failure_kinds": {
+   "AssertionError": 153,
+   "snapshot_mismatch_Error": 10
+  },
+  "contract_failing_list": 163
+ },
+ "repinned": [
+  {
+   "test": "explain — AC-A-3: every code through the operation [S3-001] resolves every code the MANIFEST publishes, across all three catalogs, ERR_WAIVER_REFUSED included (R47)",
+   "file": "src/app/operations/index.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'ERR_USAGE', …(88) ] to have a length of 90 but got 89"
+  },
+  {
+   "test": "every code is projected, in all three families [S3-001] names every code from every catalog: all 90, ERR_WAIVER_REFUSED included (R47)",
+   "file": "src/app/runtime/agents-doc.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { code: 'ERR_USAGE', …(10) }, …(88) ] to have a length of 90 but got 89"
+  },
+  {
+   "test": "nearestCodesAll ranks across all three families [S3-001] draws from all 90 code strings, ERR_WAIVER_REFUSED included (R47)",
+   "file": "src/app/runtime/catalog.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'ERR_USAGE', …(88) ] to have a length of 90 but got 89"
+  },
+  {
+   "test": "the unified catalog spans all three code families [S3-001] holds exactly 24 ERR_* / 42 FND_* / 24 GTWR_* = 90, the S3 append included (R47)",
+   "file": "src/app/runtime/catalog.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected { ERR: 23, FND: 42, GTWR: 24, …(1) } to deeply equal { ERR: 24, FND: 42, GTWR: 24, …(1) }"
+  },
+  {
+   "test": "the unified catalog spans all three code families [S3-001] lists the families in order, each in its own append-only order, ERR_WAIVER_REFUSED last of the ERR rows (R47)",
+   "file": "src/app/runtime/catalog.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'ERR_CLAUSE_UNBOUND', …(1) ] to deeply equal [ 'ERR_CONFIG_INVALID', …(1) ]"
+  },
+  {
+   "test": "the unified catalog spans all three code families [S3-001] resolves EVERY code in every catalog, ERR_WAIVER_REFUSED included (R47)",
+   "file": "src/app/runtime/catalog.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'ERR_USAGE', …(88) ] to include 'ERR_WAIVER_REFUSED'"
+  },
+  {
+   "test": "append-only ERR_* catalog [S3-001] holds the 21 v4 codes plus the greenfield appends, ERR_WAIVER_REFUSED last (R47)",
+   "file": "src/app/runtime/errors.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'ERR_USAGE', …(22) ] to have a length of 24 but got 23"
+  },
+  {
+   "test": "append-only ERR_* catalog [S3-001] keeps every shipped code at its original index (R47)",
+   "file": "src/app/runtime/errors.test.ts",
+   "status": "red",
+   "failure": "AssertionError: code at index 23 changed: expected undefined to be 'ERR_WAIVER_REFUSED' // Object.is equality"
+  },
+  {
+   "test": "append-only ERR_* catalog [S3-001] matches the snapshot as a PREFIX — appends allowed, reorders are not (R47)",
+   "file": "src/app/runtime/errors.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'ERR_USAGE', …(22) ] to deeply equal [ 'ERR_USAGE', …(23) ]"
+  },
+  {
+   "test": "append-only ERR_* catalog [S3-001] may only GROW in length — a shorter list means a code was removed (R47)",
+   "file": "src/app/runtime/errors.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected 23 to be greater than or equal to 24"
+  },
+  {
+   "test": "append-only ERR_* catalog the guard fires (negative controls) [S3-001] passes on an APPEND (the one permitted change) (R47)",
+   "file": "src/app/runtime/errors.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected false to be true // Object.is equality"
+  },
+  {
+   "test": "append-only ERR_* catalog the guard fires (negative controls) [S3-001] passes on the real catalog (R47)",
+   "file": "src/app/runtime/errors.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected false to be true // Object.is equality"
+  },
+  {
+   "test": "DEMOTION_CLASS [S3-033] pins every demotion reason with its class, waived-blocking-lint as coverage (R48)",
+   "file": "src/app/runtime/signal-classes.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected { …(24) } to deeply equal { …(25) }"
+  },
+  {
+   "test": "closed vocabularies are frozen — append-only, never renamed or reordered [S3-023] DIAGNOSTIC_KINDS, waiver-inert appended (R49)",
+   "file": "src/domain/requirements/document.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'unknown-top-level-key', …(1) ] to deeply equal [ 'unknown-top-level-key', …(2) ]"
+  },
+  {
+   "test": "the README agrees with the tool about its own surface [S3-001] README and package.json state the post-S3 count, not the pre-S3 \"89 stable codes\" (R47, R50)",
+   "file": "src/publish.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'ERR_USAGE', …(22) ] to include 'ERR_WAIVER_REFUSED'"
+  }
+ ],
+ "unchanged": false,
+ "unchanged_meaning": "true only if the first record's tests keep their status and the failing set is identical; the statuses are unchanged, the set grew by exactly the re-pins",
+ "differences_from_first_absence": {
+  "status_changes_among_the_297_first_record_S3_tests": 0,
+  "first_record_S3_tests_missing_now": 0,
+  "s3_named_tests": "297 -> 312 (+15: 14 earlier tests renamed to carry an S3 id and re-pinned, 1 brand new in src/publish.test.ts)",
+  "s3_named_red": "138 -> 153 (+15 re-pins, all red by assertion)",
+  "s3_named_green": "159 -> 159",
+  "earlier_tests": "3190 -> 3176 (-14, the renamed re-pins moved to the S3-named group); earlier passed 3180 -> 3166, earlier failed 10 -> 10 (same gaming snapshots)",
+  "failed_total": "148 -> 163",
+  "tests_total": "3487 -> 3488 (+1 new test)",
+  "regressions": "[] -> []",
+  "broken": "[] -> []",
+  "per_id_changes": {
+   "S3-001": "5 tests (4 red, 1 green) -> 18 (17 red, 1 green)",
+   "S3-023": "2 red -> 3 red",
+   "S3-033": "3 red -> 4 red"
+  },
+  "ids_no_red_test": "unchanged: S3-004, S3-008, S3-031, S3-032, S3-047; ids_no_test_name unchanged: S3-051, S3-052, S3-053"
+ },
+ "difference_from_contract_list": {
+  "extra_failing_here": [],
+  "missing_from_here": [],
+  "note": "the 163 failing tests equal contract-failing-on-base.txt name for name (file > full name)"
+ },
+ "earlier": {
+  "passed": 3166,
+  "failed": 10,
+  "expected_red_snapshot_tests": [
+   "src/testing/gaming.shard-a.test.ts > GAMING shard a — feature-interaction, state-invariant the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-b.test.ts > GAMING shard b — one-trigger-contradiction, contrary-pair the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-c.test.ts > GAMING shard c — numeric-conflict, temporal-conflict the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-d.test.ts > GAMING shard d — glossary-bridged, term-bridged the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-e.test.ts > GAMING shard e — registered-contrary the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-f.test.ts > GAMING shard f — waived-blocking-lint, dangling-target the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-g.test.ts > GAMING shard g — overlapping-contrary, opposition-candidate the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-h.test.ts > GAMING shard h — derives-cycle, numeric-bystander the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-i.test.ts > GAMING shard i — opposition-negated, opposition-split the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.test.ts > the gaming registry reports every move with its status, derived from the tables"
+  ]
+ },
+ "regressions": [],
+ "broken": [],
+ "behaviors": {
+  "per_id": {
+   "S3-001": {
+    "tests": 18,
+    "red": 17,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-002": {
+    "tests": 5,
+    "red": 5,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-003": {
+    "tests": 4,
+    "red": 3,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-004": {
+    "tests": 1,
+    "red": 0,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-005": {
+    "tests": 5,
+    "red": 5,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-006": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-007": {
+    "tests": 2,
+    "red": 1,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-008": {
+    "tests": 1,
+    "red": 0,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-009": {
+    "tests": 4,
+    "red": 3,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-010": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-011": {
+    "tests": 4,
+    "red": 4,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-012": {
+    "tests": 7,
+    "red": 6,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-013": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-014": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-015": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-016": {
+    "tests": 18,
+    "red": 16,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-017": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-018": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-019": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-020": {
+    "tests": 3,
+    "red": 2,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-021": {
+    "tests": 3,
+    "red": 1,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-022": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-023": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-024": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-025": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-026": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-027": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-028": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-029": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-030": {
+    "tests": 7,
+    "red": 7,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-031": {
+    "tests": 1,
+    "red": 0,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-032": {
+    "tests": 1,
+    "red": 0,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-033": {
+    "tests": 4,
+    "red": 4,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-034": {
+    "tests": 2,
+    "red": 1,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-035": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-036": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-037": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-038": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-039": {
+    "tests": 45,
+    "red": 40,
+    "green": 5,
+    "broken": 0
+   },
+   "S3-040": {
+    "tests": 20,
+    "red": 10,
+    "green": 10,
+    "broken": 0
+   },
+   "S3-041": {
+    "tests": 5,
+    "red": 3,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-042": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-043": {
+    "tests": 6,
+    "red": 4,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-044": {
+    "tests": 6,
+    "red": 5,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-045": {
+    "tests": 123,
+    "red": 4,
+    "green": 119,
+    "broken": 0
+   },
+   "S3-046": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-047": {
+    "tests": 2,
+    "red": 0,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-048": {
+    "tests": 19,
+    "red": 8,
+    "green": 11,
+    "broken": 0
+   },
+   "S3-049": {
+    "tests": 11,
+    "red": 8,
+    "green": 3,
+    "broken": 0
+   },
+   "S3-050": {
+    "tests": 10,
+    "red": 8,
+    "green": 2,
+    "broken": 0
+   }
+  },
+  "ids_no_test_name": [
+   "S3-051",
+   "S3-052",
+   "S3-053"
+  ],
+  "ids_no_red_test": [
+   "S3-004",
+   "S3-008",
+   "S3-031",
+   "S3-032",
+   "S3-047"
+  ]
+ }
+}
