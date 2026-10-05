@@ -326,17 +326,22 @@ const NOT_A_REPOSITORY =
 /** Whether `git rev-parse` stderr (trimmed) says only that no repository encloses the directory. */
 export const isNotARepository = (stderr: string): boolean => NOT_A_REPOSITORY.test(stderr)
 
-/**
- * Whether `git rev-parse` stderr is (or might be) git refusing an implicit bare repository. A
- * SUBSTRING match, deliberately the opposite of {@link isNotARepository}: this one only ever
- * makes a run fail closed, so a refusal quoting a path that spells the phrase is read as the
- * bare refusal and stays `ERR_CONFIG_INVALID`.
- */
-const isBareRepositoryRefusal = (stderr: string): boolean =>
-  stderr.includes('cannot use bare repository')
-
 /** The first line of git's stderr, verbatim (git's refusals continue with advice lines). */
 const firstLineOf = (stderr: string): string => stderr.split('\n', 1)[0] ?? ''
+
+/** How git's bare-repository refusal opens: `die()`'s prefix, the message, the quoted path. */
+const BARE_REFUSAL_PREFIX = "fatal: cannot use bare repository '"
+
+/**
+ * Whether `git rev-parse` stderr is git refusing an implicit bare repository, recognised from
+ * git's message form: its FIRST line opens with {@link BARE_REFUSAL_PREFIX}. Not a substring of
+ * the whole stderr, because other refusals quote a path, and a path is committable: an ownership
+ * refusal for a directory named "fatal: cannot use bare repository '" carries the phrase inside
+ * its quoted path, on its first line or (with a newline in the name) at the start of a later
+ * one, and stays the ordinary refusal that falls back when no config could govern the run.
+ */
+const isBareRepositoryRefusal = (stderr: string): boolean =>
+  firstLineOf(stderr).startsWith(BARE_REFUSAL_PREFIX)
 
 /** A git refusal: the directory it was asked in, its exit code and its (trimmed) stderr. */
 interface GitRefusal {
@@ -519,15 +524,32 @@ export const docStoreLayer = Layer.effect(DocStore)(
       })
 
     /**
+     * Whether a directory entry named `candidate` is there at all, for a lookup that only ever
+     * REFUSES. A dangling symlink is present (ruling RH-R4: the run cannot tell which config it
+     * meant, and a committed dangling link must not steer discovery), and so is a path whose
+     * existence cannot be determined (an unreadable directory, a self-symlink's ELOOP). Only
+     * "no such entry" reads as absent.
+     */
+    const entryPresent = (candidate: string): Effect.Effect<boolean> =>
+      fs.exists(candidate).pipe(
+        Effect.flatMap((found) =>
+          found ? Effect.succeed(true) : Effect.as(fs.readLink(candidate), true),
+        ),
+        Effect.catchTag('PlatformError', (cause) =>
+          Effect.succeed(cause.reason._tag !== 'NotFound'),
+        ),
+      )
+
+    /**
      * The first `symspec.config.json` in `dir` or any ancestor, or `undefined` when there is
-     * none. Only ever used to REFUSE: the file is never read. A path whose existence cannot be
-     * determined counts as present, so an unreadable directory fails closed.
+     * none. Only ever used to REFUSE: the file is never read. An entry counts as present when
+     * {@link entryPresent} says so, so a dangling link or an unreadable directory fails closed.
      */
     const configAtOrAbove = (dir: string): Effect.Effect<string | undefined> =>
       Effect.gen(function* () {
         for (let at = dir; ; at = path.dirname(at)) {
           const candidate = path.join(at, CONFIG_FILE_NAME)
-          if (yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => true))) return candidate
+          if (yield* entryPresent(candidate)) return candidate
           if (path.dirname(at) === at) return undefined
         }
       })
