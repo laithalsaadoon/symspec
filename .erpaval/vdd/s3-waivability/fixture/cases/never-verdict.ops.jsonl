@@ -1,0 +1,4 @@
+# blocking-lint-both, then a scoped waiver of the verdict the re-admitted pair can raise.
+{"op":"waive","code":"GTWR_R7_VAGUE","reason":"the service level agreement defines the deadline","refs":["ORD-R1"],"contentHash":"sha256:e376ee5c3ca6dfa2b6aab589e457c1a3c818dcbaffa9401002cc761478ba15b1"}
+{"op":"waive","code":"GTWR_R7_VAGUE","reason":"the service level agreement defines the deadline","refs":["ORD-R2"],"contentHash":"sha256:447120f0804d769c9c5e1c0b473058543e1cc9dcbf30776a0d6f16b5956067e3"}
+{"op":"waive","code":"FND_CONTRADICTION","reason":"ORD-R2 is the legacy path and is being retired","refs":["ORD-R1","ORD-R2"],"contentHash":"sha256:743432fc769be93bf7293a2c26d788d48cf18b44e5970eee0c671df5d45eb21d"}

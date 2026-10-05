@@ -1,0 +1,4 @@
+# The reproducer with the waiver scoped to one requirement of the pair (ref, no hash).
+{"op":"waive","code":"FND_OPPOSITION_CANDIDATE","reason":"heating and cooling are separate climate modes","ref":"CAB-R1"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000d1","key":"TNK-R1","patternType":"event-driven","trigger":"the level sensor reports low","systemName":"pump controller","systemResponse":"fill the tank"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000d2","key":"TNK-R2","patternType":"event-driven","trigger":"the level sensor reports low","systemName":"pump controller","systemResponse":"drain the tank"}

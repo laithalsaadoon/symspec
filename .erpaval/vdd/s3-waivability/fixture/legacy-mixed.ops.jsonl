@@ -1,0 +1,12 @@
+# Stored waivers of a legacy document, every one accepted by `apply` at base 0fca043.
+# Applied to base.json to make legacy-mixed.json. One per shape the story names.
+# W1 wording, code-only:
+{"op":"waive","code":"GTWR_R5_INDEFINITE_ARTICLE","reason":"indefinite articles are house style"}
+# W2 wording, single ref, no hash:
+{"op":"waive","code":"GTWR_R5_INDEFINITE_ARTICLE","reason":"'a shift summary' is the one summary per shift","ref":"LOG-R2"}
+# W3 triage (opposition candidate), refs + hash: the pre-S3 designed discharge (decision D4):
+{"op":"waive","code":"FND_OPPOSITION_CANDIDATE","reason":"heating and cooling are separate climate modes","refs":["CAB-R1","CAB-R2"],"contentHash":"sha256:7092d13706b6f9b5b8c407fe8fa96a6d50603b68e6749122534d5e5fb1c08817"}
+# W4 blocking wording, refs + hash (re-admits ORD-R1 to the solver at base):
+{"op":"waive","code":"GTWR_R7_VAGUE","reason":"the service level agreement defines the deadline","refs":["ORD-R1"],"contentHash":"sha256:e376ee5c3ca6dfa2b6aab589e457c1a3c818dcbaffa9401002cc761478ba15b1"}
+# W5 hygiene disclosure, single ref, no hash:
+{"op":"waive","code":"FND_EXCLUDED_FROM_FORMAL","reason":"ORD-R2 is reviewed by hand","ref":"ORD-R2"}

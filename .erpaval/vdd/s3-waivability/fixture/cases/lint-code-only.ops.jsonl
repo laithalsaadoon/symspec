@@ -1,0 +1,2 @@
+# A wording waiver by code alone. In base.json the code is raised on LOG-R1, LOG-R2, ORD-R1, ORD-R2.
+{"op":"waive","code":"GTWR_R5_INDEFINITE_ARTICLE","reason":"indefinite articles are house style"}

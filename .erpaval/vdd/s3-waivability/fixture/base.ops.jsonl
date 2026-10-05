@@ -1,0 +1,12 @@
+# S3 waivability shared fixture: the base document (six requirements, three pairs).
+# Fixed ids so every reader, test and stored document names the same UUIDs.
+# CAB: an opposition-candidate pair (heat/cool, not a seed antonym pair).
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000c1","key":"CAB-R1","patternType":"event-driven","trigger":"the driver selects automatic climate","systemName":"climate controller","systemResponse":"heat the cabin"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000c2","key":"CAB-R2","patternType":"event-driven","trigger":"the driver selects automatic climate","systemName":"climate controller","systemResponse":"cool the cabin"}
+# LOG: two consistent requirements, each carrying one non-blocking wording finding.
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000a1","key":"LOG-R1","patternType":"event-driven","trigger":"the operator closes the shift","systemName":"audit logger","systemResponse":"store an audit record"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000a2","key":"LOG-R2","patternType":"event-driven","trigger":"the operator closes the shift","systemName":"audit logger","systemResponse":"store a shift summary"}
+# ORD: two requirements excluded from the formal tier by a BLOCKING wording finding,
+# which, if both reached the solver, demand opposite things under one trigger.
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000b1","key":"ORD-R1","patternType":"event-driven","trigger":"the operator submits the order","systemName":"order service","systemResponse":"record the order in a timely manner"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000b2","key":"ORD-R2","patternType":"event-driven","trigger":"the operator submits the order","systemName":"order service","systemResponse":"record the order in a timely manner","negated":true}
