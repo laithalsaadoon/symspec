@@ -32,11 +32,11 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/theagenticguy/symspec.git"
+    "url": "git+https://github.com/laithalsaadoon/symspec.git"
   },
-  "homepage": "https://github.com/theagenticguy/symspec#readme",
+  "homepage": "https://github.com/laithalsaadoon/symspec#readme",
   "bugs": {
-    "url": "https://github.com/theagenticguy/symspec/issues"
+    "url": "https://github.com/laithalsaadoon/symspec/issues"
   },
   "bin": {
     "symspec": "./bin/symspec.mjs"

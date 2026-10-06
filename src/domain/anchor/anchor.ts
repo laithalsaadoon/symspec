@@ -40,6 +40,18 @@ import { Schema } from 'effect'
 /** Multi-line description builder. */
 const lines = (...xs: readonly string[]): string => xs.join('\n')
 
+/**
+ * What THIS release does with document format v4's vocabulary, intent and policy, and with a
+ * requirement's `intentRef` and `derived`: it decodes them and writes them back, and no check
+ * tier reads them. ONE constant, interpolated into every surface that describes them (the
+ * schema descriptions the manifest and AGENTS.md derive from, `init --split`'s help and result,
+ * the README), so no copy can drift into an enforcement claim (ruling RH-R3). Defined in this
+ * leaf module because the intent and policy descriptions below carry it and this file imports
+ * nothing from the repository; `document.ts` re-exports it.
+ */
+export const V4_EXPERIMENTAL_STATEMENT =
+  'Experimental in this release: decoded and preserved on save, read by no check tier yet; its shape may change in a minor release.'
+
 /** A non-empty string. */
 const NonEmpty = Schema.String.pipe(Schema.check(Schema.isMinLength(1)))
 
@@ -92,9 +104,10 @@ export const IntentItem = Schema.Struct({
   }),
   text: NonEmpty.annotate({
     description: lines(
-      'The item, in the owner`s words. This is the text the specification is checked against, so',
-      'an edit to it is a change of what the specification is for.',
+      'The item, in the owner`s words. A later release will hold the specification to this text,',
+      'so an edit to it changes what the specification is for.',
       "Example: 'The doors stay closed while the train is moving.'",
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   }),
   kind: Schema.optionalKey(
@@ -133,8 +146,10 @@ export const Intent = Schema.Struct({
   }),
   items: Schema.Array(IntentItem).annotate({
     description: lines(
-      'The intent items, in the owner`s order. Every requirement names one of them through',
-      '`intentRef`, or is marked `derived`. Item ids are unique.',
+      'The intent items, in the owner`s order. Item ids are unique. A later release will require',
+      'each requirement to name one of them through `intentRef` or be marked `derived`; this one',
+      'decodes a requirement with neither.',
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   }),
   source: Schema.optionalKey(
@@ -154,6 +169,7 @@ export const Intent = Schema.Struct({
     description: lines(
       'What the specification is for: the obligations, assumptions and goals its requirements serve.',
       'Inline in the document (format v4) or in its own file. Written by its owner; no op writes it.',
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   })
   .pipe(
@@ -225,6 +241,7 @@ export const Policy = Schema.Struct({
     description: lines(
       'How much each intent item matters: ordered criticality levels and the level of each item.',
       'Inline in the document (format v4) or in its own file. Written by its owner; no op writes it.',
+      V4_EXPERIMENTAL_STATEMENT,
     ),
   })
   .pipe(

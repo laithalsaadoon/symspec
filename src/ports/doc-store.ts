@@ -50,6 +50,17 @@ export interface ConfigLocation {
   readonly source: ConfigSource
 }
 
+/**
+ * The config location a run discloses when git refused to say where the config lives and no
+ * `symspec.config.json` exists in the document's directory or any ancestor: the document's
+ * directory, as with no repository, and the first line of git's refusal.
+ */
+export interface UnresolvedConfigLocation extends ConfigLocation {
+  readonly source: 'directory'
+  /** The first line of git's stderr, verbatim. */
+  readonly gitRefusal: string
+}
+
 /** An explicitly named config: `--config` or {@link CONFIG_PATH_ENV_VAR}. */
 export interface ExplicitConfig extends ConfigLocation {
   readonly source: 'flag' | 'env'
@@ -159,6 +170,13 @@ export interface LoadedConfig extends ConfigLocation {
 export interface DocumentBundle {
   readonly loaded: LoadedDocument
   readonly config?: LoadedConfig
+  /**
+   * Present only when no config was named, git refused the document's directory for a reason
+   * other than "not a git repository" and the bare-repository refusal, and no
+   * `symspec.config.json` exists in that directory or any ancestor: no config could govern the
+   * run, so it runs as with no repository and discloses git's refusal here.
+   */
+  readonly unresolvedConfig?: UnresolvedConfigLocation
   readonly intent?: LoadedAnchor<Intent>
   readonly policy?: LoadedAnchor<Policy>
 }
@@ -212,9 +230,13 @@ export interface DocStoreShape {
    * policy.
    *
    * `ERR_CONFIG_INVALID` when the config or a split file it names cannot be read and decoded,
-   * when an explicit config does not exist, or when the document carries an inline intent (or
-   * policy) and the config names a split one too. It fails CLOSED: a config that cannot be read
-   * is never read as no config.
+   * when an explicit config does not exist, when the document carries an inline intent (or
+   * policy) and the config names a split one too, or when {@link DocStore.configPath} fails. It
+   * fails CLOSED: a config that cannot be read is never read as no config. The one exception:
+   * with no config named, a git refusal other than the bare-repository refusal, and no
+   * `symspec.config.json` in the document's directory or any ancestor (so no config could
+   * govern the run), the bundle is the no-repository one plus
+   * {@link DocumentBundle.unresolvedConfig}. An ancestor config is never loaded.
    */
   readonly loadBundle: (
     path: string,
@@ -229,7 +251,10 @@ export interface DocStoreShape {
    * toplevel `git rev-parse --show-toplevel` prints in its directory (`toplevel`), or in that
    * directory when git names no repository there (`directory`). Never a search for the nearest
    * config. `ERR_CONFIG_INVALID` when git fails for any reason other than "not a repository":
-   * the location cannot be known, so it is refused rather than guessed.
+   * the location cannot be known, so it is refused rather than guessed. (Only
+   * {@link DocStore.loadBundle} with no config named relaxes this, and only when no config
+   * exists in the document's directory or any ancestor; see
+   * {@link DocumentBundle.unresolvedConfig}.)
    */
   readonly configPath: (path: string) => Effect.Effect<DefaultConfigLocation, ErrConfigInvalid>
   /**

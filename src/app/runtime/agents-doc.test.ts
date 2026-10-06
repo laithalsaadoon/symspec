@@ -30,7 +30,7 @@ import { GENERATED_BANNER, renderAgentsDoc } from './agents-doc.ts'
 import { allCodes } from './catalog.ts'
 import { CRAFT_SECTIONS } from './craft.ts'
 import { API_VERSION } from './envelope.ts'
-import { SCOPE_KEYS, scopeParagraphs } from './scope.ts'
+import { SCOPE, SCOPE_KEYS, scopeParagraphs } from './scope.ts'
 import { VERSION } from './version.ts'
 
 const doc = (): string => renderAgentsDoc(currentManifest())
@@ -321,5 +321,60 @@ describe('the committed AGENTS.md matches the generator', () => {
     // but cannot pass this.
     const bytes = committed().length
     expect(bytes).toBeGreaterThan(30_000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Release hardening (VDD run 3, ruling RH-R3): the v4 anchors are labelled experimental
+// ---------------------------------------------------------------------------
+
+/**
+ * Document format v4's vocabulary, intent and policy decode and survive a save, and no check
+ * tier reads them in this release. Wherever AGENTS.md tells an agent about them it says so, in
+ * the words of ONE exported constant (never retyped), and it makes none of the unqualified
+ * enforcement claims. The config's pins ARE enforced, so the paragraphs about them are not
+ * labelled.
+ */
+describe('[RH-009] AGENTS.md labels the v4 anchors experimental and claims no enforcement', () => {
+  const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim()
+  const statementOf = async (): Promise<string> => {
+    const documentModule = await import('../../domain/requirements/document.ts')
+    const statement: unknown = Reflect.get(documentModule, 'V4_EXPERIMENTAL_STATEMENT')
+    expect(typeof statement, 'V4_EXPERIMENTAL_STATEMENT is exported as a string').toBe('string')
+    return collapse(String(statement))
+  }
+  const paragraphs = (): string[] =>
+    doc()
+      .split(/\n\s*\n/)
+      .map(collapse)
+
+  it('[RH-009] every paragraph about init --split, intent.json, policy.json or format v4 carries the statement', async () => {
+    const said = await statementOf()
+    const about = /init --split|intent\.json|policy\.json|intentRef|docVersion:? ?4|format v4/
+    const matched = paragraphs().filter((p) => about.test(p))
+    // Anti-vacuity: the Pinned runs section describes what `init --split` writes.
+    expect(matched.length).toBeGreaterThan(0)
+    expect(matched.filter((p) => !p.includes(said))).toEqual([])
+  })
+
+  it('[RH-009] the unqualified enforcement claims are absent', () => {
+    const prose = collapse(doc())
+    for (const claim of [
+      'Every requirement names one intent item, or is marked',
+      'With a vocabulary those two tables are frozen',
+      'the intent and policy files it names under code-owner review',
+    ]) {
+      expect(prose, claim).not.toContain(claim)
+    }
+  })
+
+  it('[RH-009] the config`s pins are not labelled experimental', async () => {
+    const said = await statementOf()
+    const pins = paragraphs().filter(
+      (p) => p.includes('pins the run settings the gate uses') || p.startsWith('| Knob |'),
+    )
+    expect(pins.length).toBeGreaterThan(0)
+    expect(pins.filter((p) => p.includes(said))).toEqual([])
+    expect(collapse(SCOPE.pinnedConfig)).not.toContain(said)
   })
 })

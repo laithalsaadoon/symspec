@@ -58,8 +58,8 @@ installed `symspec` points at nothing. The allowlist key is `<name>@<git-url>`, 
 `symspec` does not match. Add `#<branch>`, `#<tag>`, or `#<commit>` to pin a revision.
 
 ```bash
-pnpm add -g --allow-build='symspec@git+https://github.com/theagenticguy/symspec.git' \
-  git+https://github.com/theagenticguy/symspec.git
+pnpm add -g --allow-build='symspec@git+https://github.com/laithalsaadoon/symspec.git' \
+  git+https://github.com/laithalsaadoon/symspec.git
 
 symspec version   # "command not found"? run `pnpm setup` — pnpm 11 puts global bins in
                   # $PNPM_HOME/bin, and `pnpm setup` is what adds it to PATH
@@ -68,7 +68,7 @@ symspec version   # "command not found"? run `pnpm setup` — pnpm 11 puts globa
 A clone you can edit needs no allowlist, because the build is yours rather than a dependency's:
 
 ```bash
-git clone https://github.com/theagenticguy/symspec.git
+git clone https://github.com/laithalsaadoon/symspec.git
 cd symspec && pnpm install && pnpm build && npm install -g .
 ```
 
@@ -812,8 +812,7 @@ cannot drift apart. The second claim is the one to read if you read only one.
 > error severity because it MASKS violations rather than merely failing to prove one.
 
 > The pinned run configuration is a gate only inside a boundary: a CI job that checks a fresh
-> clone, with `symspec.config.json` and the intent and policy files it names under code-owner
-> review. There the config is read from one place, `symspec.config.json` at the toplevel `git
+> clone, with `symspec.config.json` under code-owner review. There the config is read from one place, `symspec.config.json` at the toplevel `git
 > rev-parse --show-toplevel` prints for the document's real directory (symlinks resolved),
 > asked with `safe.bareRepository=explicit` so a committed directory laid out as a bare
 > repository is refused as ERR_CONFIG_INVALID rather than taken for a toplevel (git 2.38 or
@@ -916,15 +915,15 @@ above is enforced by a test, so you can read the gate instead of the sentence.
 
 | Claim | Where it is enforced |
 |---|---|
-| `manifest` and `--help` cannot disagree | [`src/cli.test.ts`](https://github.com/theagenticguy/symspec/blob/main/src/cli.test.ts) — *drift — manifest summaries vs root `--help`* spawns the built binary and diffs both directions. *Every flag description reaches BOTH surfaces* covers the flags. Both tests carry negative controls that corrupt a summary and assert the guard fires. |
-| This README cannot outrun the tool | [`src/publish.test.ts`](https://github.com/theagenticguy/symspec/blob/main/src/publish.test.ts) — *the README agrees with the tool about its own surface* checks the operation count, the code count, the presence of every operation in the table above, and that no command is named which the tool does not have. The last check was verified by sabotage, because its first version passed against a deliberately broken table. |
-| `AGENTS.md` is generated, never hand-edited | [`src/app/runtime/agents-doc.test.ts`](https://github.com/theagenticguy/symspec/blob/main/src/app/runtime/agents-doc.test.ts) — *the committed AGENTS.md matches the generator*, byte for byte. The `check:agents` script re-renders and diffs it, so editing the committed file fails the build. |
+| `manifest` and `--help` cannot disagree | [`src/cli.test.ts`](https://github.com/laithalsaadoon/symspec/blob/main/src/cli.test.ts) — *drift — manifest summaries vs root `--help`* spawns the built binary and diffs both directions. *Every flag description reaches BOTH surfaces* covers the flags. Both tests carry negative controls that corrupt a summary and assert the guard fires. |
+| This README cannot outrun the tool | [`src/publish.test.ts`](https://github.com/laithalsaadoon/symspec/blob/main/src/publish.test.ts) — *the README agrees with the tool about its own surface* checks the operation count, the code count, the presence of every operation in the table above, and that no command is named which the tool does not have. The last check was verified by sabotage, because its first version passed against a deliberately broken table. |
+| `AGENTS.md` is generated, never hand-edited | [`src/app/runtime/agents-doc.test.ts`](https://github.com/laithalsaadoon/symspec/blob/main/src/app/runtime/agents-doc.test.ts) — *the committed AGENTS.md matches the generator*, byte for byte. The `check:agents` script re-renders and diffs it, so editing the committed file fails the build. |
 | The honest-scope claims are the tool's own words | `src/publish.test.ts` — *quotes EVERY scope claim verbatim* parses the blockquotes in that section and asserts them equal, as a list, to `src/app/runtime/scope.ts`, which is the same corpus `symspec manifest` publishes. `src/app/runtime/scope.test.ts` pins the corpus itself against a frozen copy. Softening a claim here, or leaving a stale copy beside the new one, fails a test. |
-| Every command it tells you to run, runs | [`src/domain/advice/repair.test.ts`](https://github.com/theagenticguy/symspec/blob/main/src/domain/advice/repair.test.ts) sweeps every `symspec …` literal in the tree, and `src/app/operations/check.test.ts` sweeps a whole serialized `check` envelope. Both assert that no command names a subcommand the flat CLI surface cannot parse. |
+| Every command it tells you to run, runs | [`src/domain/advice/repair.test.ts`](https://github.com/laithalsaadoon/symspec/blob/main/src/domain/advice/repair.test.ts) sweeps every `symspec …` literal in the tree, and `src/app/operations/check.test.ts` sweeps a whole serialized `check` envelope. Both assert that no command names a subcommand the flat CLI surface cannot parse. |
 | `--version`, this README, `AGENTS.md` and the source agree | `src/publish.test.ts` — *the release config bumps every place the version appears*, checked in both directions. |
 
 All of it runs in `pnpm check`, which is the whole gate. The same command runs in
-[CI](https://github.com/theagenticguy/symspec/blob/main/.github/workflows/check.yml) and in the
+[CI](https://github.com/laithalsaadoon/symspec/blob/main/.github/workflows/check.yml) and in the
 pre-push hook, in the same order.
 
 ---

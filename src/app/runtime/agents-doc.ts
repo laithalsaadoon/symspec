@@ -44,6 +44,7 @@
  */
 
 import { CONFIG_FILE_NAME } from '../../domain/config/config.ts'
+import { V4_EXPERIMENTAL_STATEMENT } from '../../domain/requirements/document.ts'
 import { CONFIG_PATH_CONVENTION } from '../../ports/doc-store.ts'
 import { allCodes, type CodeEntry } from './catalog.ts'
 import { renderCraft } from './craft.ts'
@@ -257,14 +258,21 @@ ${CONFIG_PATH_CONVENTION}
 
 A config dropped beside the document inside a repository is not read, and git is asked with
 \`safe.bareRepository=explicit\`, so a document that resolves into a committed directory laid out
-as a bare repository fails closed as \`ERR_CONFIG_INVALID\`. \`data.run.config\` is
+as a bare repository fails closed as \`ERR_CONFIG_INVALID\`. Any other git refusal (unsafe
+ownership, an unreadable \`.git\`) fails closed too, unless no config is named and no
+\`${CONFIG_FILE_NAME}\` exists in the document's directory or any ancestor: then no config could
+govern the run, so it runs as with no repository and \`data.run.config\` adds \`gitRefusal\`, the
+first line of git's refusal. \`data.run.config\` is
 \`{path, source}\`, where \`source\` is \`toplevel\`, \`directory\`, \`flag\` or \`env\`. The pins are
 authoritative in a CI job on a fresh clone that asserts \`source\` is \`toplevel\` and \`path\` is its
 checkout's config. A local agent that can write \`.git/\`, pass \`--config\` or set
 \`SYMSPEC_CONFIG\` can change what a local run reads, and that run discloses it there.
 
 \`symspec init --split\` writes one pinning every knob at its default, beside skeleton intent
-and policy files, and never overwrites any of the three. A \`check\` below a pin is demoted
+and policy files, and never overwrites any of the three. The intent and policy files:
+${V4_EXPERIMENTAL_STATEMENT}
+
+A \`check\` below a pin is demoted
 \`run-weakened\` once per knob and listed in \`data.run.belowPinned\` next to
 \`data.run.pinned\`; every such demotion carries the one command that runs at all the pins,
 built from the pins rather than the run's flags, so running it leaves \`belowPinned\` empty. The

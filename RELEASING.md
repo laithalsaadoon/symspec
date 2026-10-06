@@ -84,7 +84,7 @@ NODE_AUTH_TOKEN=<token> pnpm publish --no-git-checks --tag latest
 # 3. Register the trusted publisher now that the package exists. `--file` takes a bare
 #    filename, not a path.
 npm trust github symspec \
-  --repo theagenticguy/symspec \
+  --repo laithalsaadoon/symspec \
   --file release-please.yml \
   --allow-publish
 

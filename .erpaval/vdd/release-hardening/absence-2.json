@@ -1,0 +1,34 @@
+{
+  "build": "ca83661",
+  "contract_commit": "527e38a",
+  "role": "absence-2 (loop-back) and independent refutation of review findings R1-R3",
+  "run": "throwaway clones under job-899 scratch (git clone --no-hardlinks repo3, pnpm install --offline --frozen-lockfile); pnpm build 0; node_modules/.bin/vitest run once: exit 1, Test Files 2 failed | 106 passed (108), Tests 4 failed | 3278 passed (3282). src/ product files unchanged since ca83661.",
+  "verdict": "ok (the 4 new tests are red on ca83661 by assertion; every earlier test passes; RH-010's ELOOP guards kill the reviewer's R1 mutant)",
+  "new": [
+    {"id": "RH-010", "test": "[RH-010] a DANGLING config symlink beside the document counts as present under a git refusal and fails closed (RH-R4)", "file": "src/cli.test.ts", "status": "red", "failure": "AssertionError: expected +0 to be 2 // Object.is equality"},
+    {"id": "RH-010", "test": "[RH-010] a DANGLING config symlink in an ANCESTOR counts as present under a git refusal and fails closed (RH-R4)", "file": "src/cli.test.ts", "status": "red", "failure": "AssertionError: expected +0 to be 2 // Object.is equality"},
+    {"id": "RH-011", "test": "[RH-011] an ownership refusal quoting a directory that spells the bare-repository phrase runs exactly as no repository", "file": "src/cli.test.ts", "status": "red", "failure": "AssertionError: expected [3 runs] to deeply equal [3 runs]: received code ERR_CONFIG_INVALID, exit false; expected code null, exit true (same as no-git)"},
+    {"id": "RH-012", "test": "[RH-012] every description, at every nesting level, states no unqualified enforcement claim, and every description of the five v4 keys carries the statement", "file": "src/domain/requirements/document.test.ts", "status": "red", "failure": "AssertionError: expected [ ...(9) ] to deeply equal []: vocabulary.symbols.items.anyOf.0..3.properties.id.allOf.1 /(is|are) checked against/ (4), vocabulary.distinct.items /when the document is checked/, intent.items.items.text.allOf.0 /(is|are) checked against/, intent.items /every requirement names/ and others"}
+  ],
+  "guards": [
+    {"id": "RH-010", "test": "[RH-010] guard (existing): a config beside the document whose existence cannot be determined (a self-symlink, ELOOP) fails closed under a git refusal", "status": "green on ca83661"},
+    {"id": "RH-010", "test": "[RH-010] guard (existing): a self-symlinked config in an ANCESTOR fails closed under a git refusal too", "status": "green on ca83661"}
+  ],
+  "earlier": {"passed": 3278, "failed": 0, "note": "3282 tests total; the only 4 failures are the new tests above; the 2 RH-010 ELOOP guards and all earlier RH-001..RH-009 tests pass"},
+  "refutation": {
+    "R1": {
+      "verdict": "confirmed (the reviewer's gap was real; now guarded)",
+      "evidence": "In a throwaway clone at 527e38a, src/adapters/fs/store.ts:530 fs.exists(candidate).pipe(Effect.orElseSucceed(() => true)) changed to () => false (one-line diff), pnpm build 0. vitest run src/cli.test.ts -t 'RH-010': Tests 4 failed | 108 skipped; both ELOOP guards go RED ('expected +0 to be 2', the mutant accepts the run with exit 0) together with the 2 dangling tests. With -t 'RH-0': 5 failed | 7 passed, so the 7 earlier RH CLI tests stay green, reproducing the reviewer's finding that they could not catch it, and the RH-010 guards do."
+    },
+    "R2": {
+      "verdict": "confirmed",
+      "evidence": "On ca83661 the RH-011 test fails by assertion: an ownership refusal quoting a directory that spells 'cannot use bare repository' makes all three runs exit with ERR_CONFIG_INVALID where the no-git run exits normally (expected code null / exit true, received ERR_CONFIG_INVALID / false). The bare-phrase match is a substring, not the first line of stderr."
+    },
+    "R3": {
+      "verdict": "confirmed",
+      "evidence": "On ca83661 the RH-012 test fails by assertion with 9 offending schema descriptions, the nested ones the reviewer named: vocabulary.symbols.items.anyOf.0..3.properties.id.allOf.1 (/(is|are) checked against/), vocabulary.distinct.items (/when the document is checked/), intent.items.items.text.allOf.0 (/(is|are) checked against/) and intent.items (/every requirement names/), plus the rest of the 9."
+    }
+  },
+  "extra": "The RH-010 dangling-symlink tests (RH-R4) are red on ca83661 independently of R1: a dangling config symlink is treated as absent (exit 0) by fs.exists, which the contract rules as present and fail closed. This is a build obligation beyond the reviewer's R1 mutant.",
+  "counts": {"new_red": 4, "new_green": 0, "guards_green": 2, "earlier_passed": 3278, "earlier_failed": 0, "refutations_confirmed": 3, "refutations_refuted": 0}
+}

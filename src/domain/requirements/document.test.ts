@@ -1204,3 +1204,199 @@ describe('S3 closure: a stored waiver the fold could never have written is refus
     expect(loads({ ...valid, reason: '' })).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Release hardening (VDD run 3, ruling RH-R3): format v4 is labelled experimental
+// ---------------------------------------------------------------------------
+
+/**
+ * On this build a docVersion 4 document with intent items and `vocabulary.frozenTables` loads,
+ * `add` accepts a requirement with neither `intentRef` nor `derived`, `glossary` writes into the
+ * "frozen" tables, and `check` reads none of it. So the schema's own descriptions, which the
+ * published surfaces derive from, must not say otherwise: each v4 key carries ONE exported
+ * statement, interpolated rather than retyped, and the two unqualified enforcement claims are
+ * gone (or rephrased as what a later release will do).
+ *
+ * The statement is read through the module namespace, so this file loads on a build that does
+ * not export it yet and fails there on an assertion rather than on an import.
+ */
+describe('[RH-007] the v4 schema says what this build does with the v4 keys', () => {
+  const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim()
+  const statementOf = async (): Promise<string> => {
+    const documentModule = await import('./document.ts')
+    const statement: unknown = Reflect.get(documentModule, 'V4_EXPERIMENTAL_STATEMENT')
+    expect(typeof statement, 'V4_EXPERIMENTAL_STATEMENT is exported as a string').toBe('string')
+    return String(statement)
+  }
+  const jsonSchema = () =>
+    Schema.toJsonSchemaDocument(RequirementsDocument) as unknown as {
+      schema: Node & { properties: Record<string, Node & { additionalProperties?: Node }> }
+    }
+
+  it('[RH-007] one exported constant states that v4 is experimental and read by no check tier', async () => {
+    const statement = await statementOf()
+    expect(statement).toMatch(/experimental/i)
+    expect(statement).toMatch(/no check tier/i)
+    expect(statement).toMatch(/preserved on save/i)
+  })
+
+  it('[RH-007] the vocabulary, intent and policy keys and the intentRef and derived fields interpolate it', async () => {
+    const said = collapse(await statementOf())
+    const { properties } = jsonSchema().schema
+    const requirement = properties.requirements?.additionalProperties?.properties ?? {}
+    const described = {
+      vocabulary: annotationOf(properties.vocabulary, 'description'),
+      intent: annotationOf(properties.intent, 'description'),
+      policy: annotationOf(properties.policy, 'description'),
+      intentRef: annotationOf(requirement.intentRef, 'description'),
+      derived: annotationOf(requirement.derived, 'description'),
+    }
+    const unlabelled = Object.entries(described)
+      .filter(([, text]) => typeof text !== 'string' || !collapse(text).includes(said))
+      .map(([key]) => key)
+    expect(unlabelled).toEqual([])
+  })
+
+  it('[RH-007] states neither unqualified enforcement claim anywhere in the document schema', () => {
+    const everything = collapse(JSON.stringify(jsonSchema()).replace(/\\n/g, ' '))
+    for (const claim of [
+      'Every requirement names one intent item, or is marked',
+      'With a vocabulary those two tables are frozen',
+    ]) {
+      expect(everything, claim).not.toContain(claim)
+    }
+  })
+})
+
+/**
+ * Review finding R3 (review ledger, commit fc203db): `[RH-007]` read the five keys' own
+ * descriptions and two exact phrases, but the projection carries nested descriptions too, and
+ * four nested source descriptions still claimed what no tier does (symbols are checked through
+ * their id, intent text is what the specification is checked against, distinct pairs are decided
+ * when the document is checked, every requirement names an intent item), projecting into nine
+ * schema descriptions while the decoder accepts a requirement with neither `intentRef` nor
+ * `derived`. RH-012 walks EVERY description at every nesting level of the projected schema.
+ */
+describe('[RH-012] no description anywhere in the projected document schema claims what no tier does', () => {
+  const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim()
+  /** A JSON-Schema value, loosely: anything an object node can hold. */
+  type Json = { readonly [key: string]: unknown }
+  const isObject = (value: unknown): value is Json =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+
+  /** Every `description` string at any depth, with its JSON path. */
+  const descriptionsIn = (value: unknown, at = '$'): { path: string; text: string }[] => {
+    if (Array.isArray(value))
+      return value.flatMap((child, i) => descriptionsIn(child, `${at}.${i}`))
+    if (!isObject(value)) return []
+    return Object.entries(value).flatMap(([key, child]) =>
+      key === 'description' && typeof child === 'string'
+        ? [{ path: `${at}.description`, text: collapse(child) }]
+        : descriptionsIn(child, `${at}.${key}`),
+    )
+  }
+
+  /**
+   * The descriptions the projection attaches to one property's OWN node: the node, its
+   * `allOf`/`anyOf`/`oneOf` branches at any depth, and a `$ref` target, but not its nested
+   * properties or items (those are other fields, held to the claim list instead).
+   */
+  const ownDescriptions = (
+    node: unknown,
+    definitions: Json,
+    at: string,
+    seen = new Set<unknown>(),
+  ): { path: string; text: string }[] => {
+    if (!isObject(node) || seen.has(node)) return []
+    seen.add(node)
+    const own =
+      typeof node.description === 'string' ? [{ path: at, text: collapse(node.description) }] : []
+    const ref =
+      typeof node.$ref === 'string'
+        ? definitions[node.$ref.replace(/^#\/(?:\$defs|definitions)\//, '')]
+        : undefined
+    const branches = (['allOf', 'anyOf', 'oneOf'] as const).flatMap((k) => {
+      const list = node[k]
+      return Array.isArray(list)
+        ? list.map((child, i) => ownDescriptions(child, definitions, `${at}.${k}.${i}`, seen))
+        : []
+    })
+    return [...own, ...branches.flat(), ...ownDescriptions(ref, definitions, `${at}.$ref`, seen)]
+  }
+
+  /** Every place a property named `name` occurs anywhere in the projection, with its path. */
+  const propertiesNamed = (
+    value: unknown,
+    name: string,
+    at = '$',
+  ): { path: string; node: unknown }[] => {
+    if (Array.isArray(value))
+      return value.flatMap((child, i) => propertiesNamed(child, name, `${at}.${i}`))
+    if (!isObject(value)) return []
+    const props = value.properties
+    const here =
+      isObject(props) && name in props
+        ? [{ path: `${at}.properties.${name}`, node: props[name] }]
+        : []
+    return [
+      ...here,
+      ...Object.entries(value).flatMap(([key, child]) =>
+        propertiesNamed(child, name, `${at}.${key}`),
+      ),
+    ]
+  }
+
+  /**
+   * The unqualified enforcement claims: ruling RH-R3's two sentences and the four the review
+   * found, each as the claim rather than its exact wording, so a synonym-free rewording that
+   * keeps the claim still matches. A later release's plan ("A later release will check ...")
+   * matches none of them.
+   */
+  const CLAIMS: readonly RegExp[] = [
+    /every requirement names one intent item, or is marked/i,
+    /with a vocabulary those two tables are frozen/i,
+    /\btables are frozen\b/i,
+    /\bevery requirement names\b/i,
+    /\b(?:is|are) checked against\b/i,
+    /\bwhen the document is checked\b/i,
+  ]
+  const V4_KEYS = ['vocabulary', 'intent', 'policy', 'intentRef', 'derived'] as const
+
+  it('[RH-012] every description, at every nesting level, states no unqualified enforcement claim, and every description of the five v4 keys carries the statement', async () => {
+    const documentModule = await import('./document.ts')
+    const statement: unknown = Reflect.get(documentModule, 'V4_EXPERIMENTAL_STATEMENT')
+    expect(typeof statement, 'V4_EXPERIMENTAL_STATEMENT is exported as a string').toBe('string')
+    const said = collapse(String(statement))
+    const projected = Schema.toJsonSchemaDocument(RequirementsDocument) as unknown as Json
+    const definitions = isObject(projected.definitions) ? projected.definitions : {}
+
+    const all = descriptionsIn(projected)
+    // Anti-vacuity: the walk reaches nested union and refinement branches inside the v4 keys.
+    expect(
+      all.some(
+        (d) =>
+          d.path.includes('.vocabulary.') &&
+          d.path.includes('.anyOf.') &&
+          d.path.includes('.allOf.'),
+      ),
+      'the walk must reach descriptions nested inside the vocabulary symbol union',
+    ).toBe(true)
+    expect(all.some((d) => d.path.includes('.intent.properties.items.items.'))).toBe(true)
+
+    const claimed = all.flatMap((d) =>
+      CLAIMS.filter((claim) => claim.test(d.text)).map((claim) => `${d.path}: ${String(claim)}`),
+    )
+    const unlabelled = V4_KEYS.flatMap((key) => {
+      const places = propertiesNamed(projected, key)
+      if (places.length === 0) return [`${key}: not in the projected schema`]
+      return places.flatMap(({ path, node }) => {
+        const own = ownDescriptions(node, definitions, path)
+        if (own.length === 0) return [`${path}: no description`]
+        return own
+          .filter((d) => !d.text.includes(said))
+          .map((d) => `${d.path}: lacks the statement`)
+      })
+    })
+    expect([...claimed, ...unlabelled]).toEqual([])
+  })
+})

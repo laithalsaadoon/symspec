@@ -35,7 +35,7 @@ const FROZEN: Record<(typeof SCOPE_KEYS)[number], string> = {
   reachabilityModelScoped:
     'The unbounded reachability tier proves a declared constraint over EVERY reachable state with no bound on path length (Z3 Spacer), every proof is independently re-verified by three plain-SMT obligations so a claim never rests on trusting the solver, and a violation carries the counterexample trace naming which requirements fired, in order. But the claim is about the STATE MODEL you declared, not about the requirement text: the `classify` expressions ARE the model, so a mis-declared effect yields a sound proof of the wrong thing. It runs only when a state model is committed (otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not run), every proof over a small model is ALSO re-decided by an independent explicit-state search (a disagreement is FND_CERTIFICATE_DISAGREES and withdraws the proof, and a search that stops without showing the model is too large to cover withholds the proof as FND_REACHABILITY_UNKNOWN), a proof that needs variables held fixed is FND_REACHABILITY_UNDER_HYPOTHESES only when the document DECLARES them `frame: stable` — and demotes verified — while one that needs undeclared frames is FND_REACHABILITY_UNKNOWN naming them, a write outside a declared range is FND_RANGE_VIOLATION rather than a silently disabled step, and an unsatisfiable initial state makes every constraint hold vacuously, reported at error severity because it MASKS violations rather than merely failing to prove one.',
   pinnedConfig:
-    "The pinned run configuration is a gate only inside a boundary: a CI job that checks a fresh clone, with `symspec.config.json` and the intent and policy files it names under code-owner review. There the config is read from one place, `symspec.config.json` at the toplevel `git rev-parse --show-toplevel` prints for the document's real directory (symlinks resolved), asked with `safe.bareRepository=explicit` so a committed directory laid out as a bare repository is refused as ERR_CONFIG_INVALID rather than taken for a toplevel (git 2.38 or later honors that setting; an older git ignores it), nothing is searched, so a config committed beside the document is not read, and `data.run.config` reports `{path, source}` for the job to assert (`source` is `toplevel` and `path` is its checkout's config). Outside that boundary it is a disclosure, not a guard: a local agent that can write `.git/`, pass `--config` or set `SYMSPEC_CONFIG` can change which config a local run reads, and that run names what it read and why in `data.run.config`. A run below any pin is demoted `run-weakened`, so a config can only push `verified` toward false.",
+    "The pinned run configuration is a gate only inside a boundary: a CI job that checks a fresh clone, with `symspec.config.json` under code-owner review. There the config is read from one place, `symspec.config.json` at the toplevel `git rev-parse --show-toplevel` prints for the document's real directory (symlinks resolved), asked with `safe.bareRepository=explicit` so a committed directory laid out as a bare repository is refused as ERR_CONFIG_INVALID rather than taken for a toplevel (git 2.38 or later honors that setting; an older git ignores it), nothing is searched, so a config committed beside the document is not read, and `data.run.config` reports `{path, source}` for the job to assert (`source` is `toplevel` and `path` is its checkout's config). Outside that boundary it is a disclosure, not a guard: a local agent that can write `.git/`, pass `--config` or set `SYMSPEC_CONFIG` can change which config a local run reads, and that run names what it read and why in `data.run.config`. A run below any pin is demoted `run-weakened`, so a config can only push `verified` toward false.",
   // Ruling R30 (S3-042) replaces the frozen clause "(committed via ... , or waived)": an opposition
   // candidate is triage, never waivable. Ruling R51 (S3-046) appends the content-hash sentence as the
   // last sentence of this claim, word for word.
@@ -54,9 +54,22 @@ describe('the scope corpus is pinned, claim by claim', () => {
   // Ruling R30 (S3-042) replaces the pinned "or waived" in FROZEN.coverageDemotion; ruling R51
   // (S3-046) appends the content-hash sentence to it.
   it('[S3-042] matches the frozen corpus VERBATIM, claim by claim', () => {
-    for (const key of SCOPE_KEYS) {
+    // `pinnedConfig` is compared by [RH-009] below, the ruling that reworded it.
+    for (const key of SCOPE_KEYS.filter((k) => k !== 'pinnedConfig')) {
       expect(SCOPE[key], `${key} was reworded`).toBe(FROZEN[key])
     }
+  })
+
+  /**
+   * Ruling RH-R3. No check tier reads the intent or the policy in this release, so putting
+   * them "under code-owner review" as part of the gate's boundary told a reader they guard
+   * something. The claim keeps the config, whose pins ARE enforced (run-weakened), and drops
+   * the anchors; it is still compared byte for byte.
+   */
+  it('[RH-009] the pinned-config claim puts the config, and nothing no tier reads, under code-owner review', () => {
+    expect(SCOPE.pinnedConfig, 'pinnedConfig was reworded').toBe(FROZEN.pinnedConfig)
+    expect(SCOPE.pinnedConfig).toContain('`symspec.config.json` under code-owner review')
+    expect(SCOPE.pinnedConfig).not.toContain('intent and policy files')
   })
 
   /**
