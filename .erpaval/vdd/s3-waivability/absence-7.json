@@ -1,0 +1,612 @@
+{
+  "schemaVersion": 1,
+  "role": "contract",
+  "boardItem": {
+    "id": 247,
+    "key": "contract-7"
+  },
+  "job": 1227,
+  "product": "6f7e95799ae7e107b99aee110aea5096469918f8 (HEAD ea1503a adds only .erpaval/ ledger commits); this item adds src/shell-sites.test.ts and src/testing/shell-sites.ts only",
+  "commands": [
+    "pnpm build",
+    "node_modules/.bin/vitest run"
+  ],
+  "env": "SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1, node 24.21.0, typescript 6.0.3 (devDependency)",
+  "ranAt": "2026-10-06T05:31:14.152087+00:00",
+  "totals": {
+    "tests": 3705,
+    "failed": 22,
+    "passed": 3683,
+    "brokenSuites": 0
+  },
+  "brokenSuites": [],
+  "earlierTests": {
+    "failed": 0,
+    "failedList": []
+  },
+  "newTests": {
+    "total": 48,
+    "red": 22,
+    "green": 26
+  },
+  "failureKinds": [
+    "AssertionError"
+  ],
+  "verdict": "clean",
+  "guard": {
+    "filesRead": 121,
+    "sitesInspected": 302,
+    "recordedFloor": 302,
+    "proseMentions": 29,
+    "flaggedSites": 95,
+    "flaggedDistinctLines": 86,
+    "flagged": [
+      "src/app/operations/check.ts:626  symspec check ${path} --timeout-ms 2000  =>  ${path} does not pass through shellWord/shellQuoted",
+      "src/app/operations/check.ts:632  symspec check ${path} --reachability-timeout-ms 8000  =>  ${path} does not pass through shellWord/shellQuoted",
+      "src/app/operations/check.ts:638  symspec check ${path} --solver-budget-ms 0  =>  ${path} does not pass through shellWord/shellQuoted",
+      "src/app/operations/check.ts:644  symspec check ${path} --fail-on-unmatched 0  =>  ${path} does not pass through shellWord/shellQuoted",
+      "src/app/operations/check.ts:650  symspec check ${path} --temporal-bound <1..${MAX_TEMPORAL_BOUND}>  =>  ${path} does not pass through shellWord/shellQuoted",
+      "src/app/operations/check.ts:664  symspec check ${path} --temporal-bound <1..${MAX_TEMPORAL_BOUND}>  =>  ${path} does not pass through shellWord/shellQuoted",
+      "src/app/operations/check.ts:778  symspec state <name> --type <bool|int|enum> --file ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/app/operations/check.ts:779  symspec classify <ref> --kind constraint --expression \"<predicate>\" --file ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/app/operations/index.ts:275  symspec explain --code ${near[0]}  =>  ${near[0]} does not pass through shellWord/shellQuoted",
+      "src/app/operations/install.ts:287  symspec install --mode print --target ${TARGETS[0]?.id ?? SKILL_NAME}  =>  ${TARGETS[0]?.id ?? SKILL_NAME} does not pass through shellWord/shellQuoted",
+      "src/app/operations/install.ts:300  symspec install --mode print --target ${TARGETS[0]?.id ?? SKILL_NAME}  =>  ${TARGETS[0]?.id ?? SKILL_NAME} does not pass through shellWord/shellQuoted",
+      "src/app/operations/mutation.ts:1101  symspec state --name ${input.name} --type bool  =>  ${input.name} does not pass through shellWord/shellQuoted",
+      "src/app/operations/mutation.ts:1344  symspec classify ${input.ref} --kind constraint --expression \"not (lock_held and pending)\"  =>  ${input.ref} does not pass through shellWord/shellQuoted",
+      "src/app/runtime/agents-doc.ts:69  symspec ${op.name}  =>  ${op.name} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:198  symspec show ${id} ${context.docPath}  =>  ${id} does not pass through shellWord/shellQuoted; ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:236  symspec show ${id} ${context.docPath}  =>  ${id} does not pass through shellWord/shellQuoted; ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:237  symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:268  symspec show ${id} ${context.docPath}  =>  ${id} does not pass through shellWord/shellQuoted; ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:269  symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:281  symspec show ${id} ${context.docPath}  =>  ${id} does not pass through shellWord/shellQuoted; ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:282  symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:293  symspec show ${id} ${context.docPath}  =>  ${id} does not pass through shellWord/shellQuoted; ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:294  symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:305  symspec check ${context.docPath} --solver-budget-ms ${raisedBudget(context.solverBudgetMs, context.recommendedBudgetMs)}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:320  symspec check ${context.docPath} --timeout-ms ${raisedTimeout(context.timeoutMs)}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:334  SYMSPEC_EMBED_STUB=0 symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:335  symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:348  symspec check ${context.docPath} --semantic  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:349  SYMSPEC_EMBED_ALLOW_REMOTE=1 symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:360  symspec show ${id} ${context.docPath}  =>  ${id} does not pass through shellWord/shellQuoted; ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:361  symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:374  symspec show ${id} ${context.docPath}  =>  ${id} does not pass through shellWord/shellQuoted; ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:375  symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:385  symspec list ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:409  symspec show ${id} ${context.docPath}  =>  ${id} does not pass through shellWord/shellQuoted; ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:410  symspec list ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:411  symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/advice/repair.ts:487  symspec check ${context.docPath}  =>  ${context.docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/config/config.ts:524  ${...env} symspec check ${docPath} ${...config} ${...args}  =>  ${...env} does not pass through shellWord/shellQuoted; ${docPath} does not pass through shellWord/shellQuoted; ${...config} does not pass through shellWord/shellQuoted; ${...args} does not pass through shellWord/shellQuoted",
+      "src/domain/engine/formal/graph.ts:205  symspec derive ${lo} ${hi}  =>  ${lo} does not pass through shellWord/shellQuoted; ${hi} does not pass through shellWord/shellQuoted",
+      "src/domain/engine/formal/semantic.ts:957  symspec update --ref ${b.id} systemResponse ${shellQuoted(a.systemResponse)}  =>  ${b.id} does not pass through shellWord/shellQuoted",
+      "src/domain/engine/formal/semantic.ts:969  symspec update --ref ${b.id} systemResponse ${shellQuoted(aligned)}  =>  ${b.id} does not pass through shellWord/shellQuoted",
+      "src/domain/engine/formal/semantic.ts:980  symspec update --ref ${b.id} systemResponse ${shellQuoted(a.systemResponse)}  =>  ${b.id} does not pass through shellWord/shellQuoted",
+      "src/domain/engine/formal/semantic.ts:983  symspec update --ref ${b.id} systemResponse ${shellQuoted(phraseOf(`${headB}_${restA}`))}  =>  ${b.id} does not pass through shellWord/shellQuoted",
+      "src/domain/glossary/glossary-plan.ts:1027  symspec show ${a.requirementIds[0] ?? '<id>'}  =>  ${a.requirementIds[0] ?? '<id>'} does not pass through shellWord/shellQuoted",
+      "src/domain/glossary/glossary-plan.ts:1028  symspec show ${b.requirementIds[0] ?? '<id>'}  =>  ${b.requirementIds[0] ?? '<id>'} does not pass through shellWord/shellQuoted",
+      "src/domain/glossary/glossary-plan.ts:1115  symspec show ${a.requirementIds[0] ?? '<id>'}  =>  ${a.requirementIds[0] ?? '<id>'} does not pass through shellWord/shellQuoted",
+      "src/domain/glossary/glossary-plan.ts:1116  symspec show ${b.requirementIds[0] ?? '<id>'}  =>  ${b.requirementIds[0] ?? '<id>'} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-codes.ts:190  symspec state <name> --type bool|int|enum  =>  `|` outside quotes; `|` outside quotes",
+      "src/domain/reachability/reachability-report.ts:180  symspec state <variable> --type bool --file ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:181  symspec check ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:195  symspec list ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:196  symspec classify <requirement> --kind constraint --expression \"<predicate>\" --file ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:197  symspec check ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:303  symspec list ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:304  symspec state-initial \"<satisfiable predicate>\" ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:305  symspec state-initial --clear ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:326  symspec list ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:326  symspec check ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:360  symspec show ${result.label} ${docPath}  =>  ${result.label} does not pass through shellWord/shellQuoted; ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:360  symspec list ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:370  symspec check ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:404  symspec list ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:404  symspec check ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:437  symspec show ${result.label} ${docPath}  =>  ${result.label} does not pass through shellWord/shellQuoted; ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:437  symspec list ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:472  symspec check ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:538  symspec show ${result.label} ${docPath}  =>  ${result.label} does not pass through shellWord/shellQuoted; ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:538  symspec check ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:578  symspec show ${result.label} ${docPath}  =>  ${result.label} does not pass through shellWord/shellQuoted; ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:578  symspec check ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:613  symspec check ${docPath} --reachability-timeout-ms ${report.timeoutMs * 4}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:631  symspec check ${docPath} --reachability-timeout-ms ${report.timeoutMs * 4}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:636  symspec show ${result.label} ${docPath}  =>  ${result.label} does not pass through shellWord/shellQuoted; ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:684  symspec show ${check.label} ${docPath}  =>  ${check.label} does not pass through shellWord/shellQuoted; ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:684  symspec list ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:709  symspec check ${docPath} --reachability-timeout-ms ${report.timeoutMs * 4}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:715  symspec check ${docPath} --reachability-timeout-ms ${report.timeoutMs * 4}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:718  symspec show ${check.label} ${docPath}  =>  ${check.label} does not pass through shellWord/shellQuoted; ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:752  symspec state <name> --type <bool|int|enum> --file ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:752  symspec classify <ref> --kind constraint --expression \"<predicate>\" --file ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:753  symspec classify <ref> --kind constraint --expression \"<predicate>\" --file ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/reachability/reachability-report.ts:783  symspec check ${docPath}  =>  ${docPath} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/mutate.ts:1030  symspec explain --code ${code}  =>  ${code} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/mutate.ts:1040  symspec explain --code ${code}  =>  ${code} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/mutate.ts:1081  symspec waive ${code} --ref <id> --reason \"…\"  =>  ${code} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/mutate.ts:1119  symspec show ${id}  =>  ${id} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/mutate.ts:1334  symspec classify ${label} --retract  =>  ${label} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/mutate.ts:1334  symspec update state${kind === 'effect' ? 'Effect' : 'Constraint'} \"<new expression>\" --ref ${label}  =>  ${label} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/mutate.ts:1622  symspec classify ${target.key ?? target.id} --kind effect --expression \"lock_held := true\"  =>  ${target.key ?? target.id} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/mutate.ts:1623  symspec classify ${target.key ?? target.id} --kind constraint --expression \"not (lock_held and pending)\"  =>  ${target.key ?? target.id} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/mutate.ts:1625  symspec classify ${target.key ?? target.id} --retract  =>  ${target.key ?? target.id} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/resolve.ts:156  symspec show ${near[0]}  =>  ${near[0]} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/state-expr.ts:736  symspec state --name <name> --type bool|int|enum  =>  `|` outside quotes; `|` outside quotes",
+      "src/ports/command-form.ts:39  symspec ${operation}  =>  ${operation} does not pass through shellWord/shellQuoted"
+    ]
+  },
+  "plantedInProductCode": {
+    "where": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1227/demo (git clone --no-hardlinks of the run clone at ea1503a plus this diff; node_modules symlinked); plants appended to src/domain/requirements/resolve.ts and a new file src/domain/plant-new-file.ts, then reverted",
+    "sitesBefore": 302,
+    "sitesAfter": 315,
+    "flaggedBefore": 95,
+    "flaggedAfter": 107,
+    "newFlags": [
+      "src/domain/plant-new-file.ts:4  symspec glossary \"${shellQuoted(t)}\" \"b\"  =>  ${shellQuoted(t)} is interpolated inside a quoted region",
+      "src/domain/requirements/resolve.ts:162  symspec show ${id}  =>  ${id} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/resolve.ts:163  symspec check ${p}  =>  ${p} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/resolve.ts:164  symspec show ${id}  =>  ${id} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/resolve.ts:167  symspec update --ref ${id} systemResponse \"x\"  =>  ${id} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/resolve.ts:169  symspec check ${p}  =>  ${p} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/resolve.ts:170  symspec show ${id}  =>  ${id} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/resolve.ts:173  symspec show ${id}  =>  ${id} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/resolve.ts:176  echo ${x} | symspec apply  =>  ${x} does not pass through shellWord/shellQuoted",
+      "src/domain/requirements/resolve.ts:177  symspec glossary \"${t}\" \"b\"  =>  ${t} is interpolated inside a quoted region",
+      "src/domain/requirements/resolve.ts:178  symspec state <name> --type bool|int|enum  =>  `|` outside quotes; `|` outside quotes",
+      "src/domain/requirements/resolve.ts:179  symspec show $1  =>  `$` outside quotes"
+    ],
+    "safeControl": "src/domain/plant-new-file.ts:5 `symspec glossary ${shellQuoted(t)} \"b\"` is a site and is not flagged",
+    "baselineFlagsLost": 0
+  },
+  "harnessSabotage": [
+    {
+      "what": "concat-blind",
+      "redTests": [
+        "[S3-045] the guard reads every non-test .ts file under src/ and inspects at least the recorded floor of command sites (R63 anti-vacuity)",
+        "[S3-027] [S3-045] every `symspec` command rendered anywhere in src/ interpolates only shell words, inert typed values or `<…>` placeholders, and its literal text is shell-inert (R63, review R8, R9)",
+        "[S3-045] the floor check itself fails on an empty scan and on a scan under the floor (planted)",
+        "[S3-045] flags 'string-concat' ('concat') at its file:line",
+        "[S3-045] flags 'template-concat-over-lines' ('concat') at its file:line"
+      ]
+    },
+    {
+      "what": "helper-blind",
+      "redTests": [
+        "[S3-045] the guard reads every non-test .ts file under src/ and inspects at least the recorded floor of command sites (R63 anti-vacuity)",
+        "[S3-027] [S3-045] every `symspec` command rendered anywhere in src/ interpolates only shell words, inert typed values or `<…>` placeholders, and its literal text is shell-inert (R63, review R8, R9)",
+        "[S3-045] accepts the safe twin 'helper-direct' ('template')",
+        "[S3-045] accepts the safe twin 'helper-const-alias' ('template')",
+        "[S3-045] accepts the safe twin 'const-bound-to-helper' ('template')",
+        "[S3-045] accepts the safe twin 'placeholder-fallback' ('template')"
+      ]
+    },
+    {
+      "what": "accept-all",
+      "redTests": [
+        "[S3-045] the guard reads every non-test .ts file under src/ and inspects at least the recorded floor of command sites (R63 anti-vacuity)",
+        "[S3-027] [S3-045] every `symspec` command rendered anywhere in src/ interpolates only shell words, inert typed values or `<…>` placeholders, and its literal text is shell-inert (R63, review R8, R9)",
+        "[S3-045] the floor check itself fails on an empty scan and on a scan under the floor (planted)",
+        "[S3-045] flags 'template-span' ('template') at its file:line",
+        "[S3-045] flags 'template-whole' ('template') at its file:line",
+        "[S3-045] flags 'array-join' ('join') at its file:line",
+        "[S3-045] flags 'string-concat' ('concat') at its file:line",
+        "[S3-045] flags 'template-concat-over-lines' ('concat') at its file:line",
+        "[S3-045] flags 'program-name-parameter' ('template') at its file:line",
+        "[S3-045] flags 'environment-prefix-value' ('template') at its file:line",
+        "[S3-045] flags 'fenced-line' ('template') at its file:line",
+        "[S3-045] flags 'pipeline-producer' ('template') at its file:line",
+        "[S3-045] flags 'raw-value-in-double-quotes' ('template') at its file:line",
+        "[S3-045] flags 'helper-value-in-double-quotes' ('template') at its file:line",
+        "[S3-045] flags 'const-bound-to-a-raw-value' ('template') at its file:line",
+        "[S3-045] accepts the safe twin 'helper-direct' ('template')",
+        "[S3-045] accepts the safe twin 'helper-const-alias' ('template')",
+        "[S3-045] accepts the safe twin 'const-bound-to-helper' ('template')",
+        "[S3-045] accepts the safe twin 'number' ('template')",
+        "[S3-045] accepts the safe twin 'literal-union' ('template')",
+        "[S3-045] accepts the safe twin 'placeholder-fallback' ('template')",
+        "[S3-045] accepts a value typed with a brand the shell-word module declares, and only that module"
+      ]
+    },
+    {
+      "what": "lexer-blind",
+      "redTests": [
+        "[S3-027] [S3-045] every `symspec` command rendered anywhere in src/ interpolates only shell words, inert typed values or `<…>` placeholders, and its literal text is shell-inert (R63, review R8, R9)",
+        "[S3-045] flags 'choice-token' ('string') at its file:line",
+        "[S3-045] flags 'literal-dollar' ('string') at its file:line"
+      ]
+    },
+    {
+      "what": "line-rule-off",
+      "redTests": [
+        "[S3-045] the guard reads every non-test .ts file under src/ and inspects at least the recorded floor of command sites (R63 anti-vacuity)",
+        "[S3-027] [S3-045] every `symspec` command rendered anywhere in src/ interpolates only shell words, inert typed values or `<…>` placeholders, and its literal text is shell-inert (R63, review R8, R9)",
+        "[S3-045] the floor check itself fails on an empty scan and on a scan under the floor (planted)",
+        "[S3-045] flags 'fenced-line' ('template') at its file:line",
+        "[S3-045] accepts the safe twin 'literal-pipeline-and-comment' ('template')"
+      ]
+    },
+    {
+      "what": "join-blind",
+      "redTests": [
+        "[S3-045] the guard reads every non-test .ts file under src/ and inspects at least the recorded floor of command sites (R63 anti-vacuity)",
+        "[S3-027] [S3-045] every `symspec` command rendered anywhere in src/ interpolates only shell words, inert typed values or `<…>` placeholders, and its literal text is shell-inert (R63, review R8, R9)",
+        "[S3-045] the floor check itself fails on an empty scan and on a scan under the floor (planted)",
+        "[S3-045] flags 'array-join' ('join') at its file:line"
+      ]
+    },
+    {
+      "what": "walk-skips-dir",
+      "redTests": [
+        "[S3-045] the guard reads every non-test .ts file under src/ and inspects at least the recorded floor of command sites (R63 anti-vacuity)",
+        "[S3-045] an independent line reader finds no backticked `symspec` command line the scan did not inspect (R63 anti-vacuity)",
+        "[S3-027] [S3-045] every `symspec` command rendered anywhere in src/ interpolates only shell words, inert typed values or `<…>` placeholders, and its literal text is shell-inert (R63, review R8, R9)",
+        "[S3-045] the floor check itself fails on an empty scan and on a scan under the floor (planted)"
+      ]
+    }
+  ],
+  "redList": [
+    "src/shell-sites.test.ts > the static shell-safety guard over every rendered command (R63) [S3-027] [S3-045] every `symspec` command rendered anywhere in src/ interpolates only shell words, inert typed values or `<…>` placeholders, and its literal text is shell-inert (R63, review R8, R9)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding a double quote: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding a dollar: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding a command substitution: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding a backtick: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding a pipe: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding all five at once: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding a double quote: the example command parses and hands the name over whole (R8, mutation.ts state)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding a dollar: the example command parses and hands the name over whole (R8, mutation.ts state)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding a command substitution: the example command parses and hands the name over whole (R8, mutation.ts state)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding a backtick: the example command parses and hands the name over whole (R8, mutation.ts state)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding a pipe: the example command parses and hands the name over whole (R8, mutation.ts state)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding all five at once: the example command parses and hands the name over whole (R8, mutation.ts state)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding a double quote: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding a dollar: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding a command substitution: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding a backtick: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding a pipe: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+    "src/shell-sites.test.ts > review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding all five at once: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+    "src/shell-sites.test.ts > review R9: a choice list is one placeholder, never shell words (R63) [S3-027] [S3-045] an undeclared state variable: every `symspec state` command the refusal names is one invocation, parses, and gives --type one word (R9, state-expr.ts undeclared)",
+    "src/shell-sites.test.ts > review R9: a choice list is one placeholder, never shell words (R63) [S3-027] [S3-045] explain FND_REACHABILITY_NOT_CHECKED: the state command its description names is one invocation, parses, and gives --type one word (R9 sibling, reachability-codes.ts)",
+    "src/shell-sites.test.ts > found while pinning R9: `state` takes its name as a positional, so no printed command may pass --name (R56, R63) [S3-045] a missing enum member: the `symspec state` command the refusal names parses with the built parser (state-expr.ts enum member)"
+  ],
+  "rows": [
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the static shell-safety guard over every rendered command (R63) [S3-045] the guard reads every non-test .ts file under src/ and inspects at least the recorded floor of command sites (R63 anti-vacuity)",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the static shell-safety guard over every rendered command (R63) [S3-045] an independent line reader finds no backticked `symspec` command line the scan did not inspect (R63 anti-vacuity)",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the static shell-safety guard over every rendered command (R63) [S3-027] [S3-045] every `symspec` command rendered anywhere in src/ interpolates only shell words, inert typed values or `<…>` placeholders, and its literal text is shell-inert (R63, review R8, R9)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(95) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the static shell-safety guard over every rendered command (R63) [S3-045] the floor check itself fails on an empty scan and on a scan under the floor (planted)",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'template-span' ('template') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'template-whole' ('template') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'string-concat' ('concat') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'template-concat-over-lines' ('concat') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'array-join' ('join') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'program-name-parameter' ('template') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'fenced-line' ('template') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'pipeline-producer' ('template') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'raw-value-in-double-quotes' ('template') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'helper-value-in-double-quotes' ('template') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'const-bound-to-a-raw-value' ('template') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'environment-prefix-value' ('template') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'choice-token' ('string') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] flags 'literal-dollar' ('string') at its file:line",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] accepts the safe twin 'helper-direct' ('template')",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] accepts the safe twin 'helper-const-alias' ('template')",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] accepts the safe twin 'const-bound-to-helper' ('template')",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] accepts the safe twin 'number' ('template')",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] accepts the safe twin 'literal-union' ('template')",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] accepts the safe twin 'placeholder-fallback' ('template')",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] accepts the safe twin 'choice-placeholder' ('string')",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] accepts the safe twin 'literal-pipeline-and-comment' ('template')",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "the guard is red on a planted site in each syntactic form it covers (R63) [S3-045] accepts a value typed with a brand the shell-word module declares, and only that module",
+      "kind": "new",
+      "statusOn6f7e957": "passed",
+      "firstFailure": null
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding a double quote: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding a dollar: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding a command substitution: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding a backtick: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding a pipe: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] waive of an unknown code holding all five at once: the `symspec explain --code` it suggests parses and hands the code over whole (R8, mutate.ts waiverClassRefusal)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding a double quote: the example command parses and hands the name over whole (R8, mutation.ts state)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding a dollar: the example command parses and hands the name over whole (R8, mutation.ts state)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding a command substitution: the example command parses and hands the name over whole (R8, mutation.ts state)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding a backtick: the example command parses and hands the name over whole (R8, mutation.ts state)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding a pipe: the example command parses and hands the name over whole (R8, mutation.ts state)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] state without --type, the name holding all five at once: the example command parses and hands the name over whole (R8, mutation.ts state)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding a double quote: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding a dollar: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding a command substitution: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding a backtick: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding a pipe: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R8: refusal and usage-error commands carry the user value as one argument (R63) [S3-027] [S3-045] classify without --kind, the ref holding all five at once: the example command parses and hands the ref over whole (R8, mutation.ts classify)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R9: a choice list is one placeholder, never shell words (R63) [S3-027] [S3-045] an undeclared state variable: every `symspec state` command the refusal names is one invocation, parses, and gives --type one word (R9, state-expr.ts undeclared)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ …(3) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "review R9: a choice list is one placeholder, never shell words (R63) [S3-027] [S3-045] explain FND_REACHABILITY_NOT_CHECKED: the state command its description names is one invocation, parses, and gives --type one word (R9 sibling, reachability-codes.ts)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    {
+      "file": "src/shell-sites.test.ts",
+      "test": "found while pinning R9: `state` takes its name as a positional, so no printed command may pass --name (R56, R63) [S3-045] a missing enum member: the `symspec state` command the refusal names parses with the built parser (state-expr.ts enum member)",
+      "kind": "new",
+      "statusOn6f7e957": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    }
+  ]
+}

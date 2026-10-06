@@ -772,3 +772,100 @@ FND_EXCLUDED_FROM_FORMAL's description needs `pnpm gen:agents` (check:agents).
   that carry no text or user value (R60 scopes exactness to those arguments).
 - RH10 has no registry id of its own; its tests carry RH-008 (init --split's result data), the
   nearest. behaviors.json is not written by this item.
+
+## Loop-back contract-7 (closure loop 3 after review ledger ea1503a, R8 and R9; job 1227)
+
+Ruling R63 (rulings.json, readings.md ## Rulings, word for word). Product 6f7e957; this item adds
+`src/shell-sites.test.ts` (tests) and `src/testing/shell-sites.ts` (harness) and nothing else. Record:
+`absence-7.json`.
+
+### The guard (`src/testing/shell-sites.ts`, TypeScript compiler API and type checker, typescript 6.0.3)
+
+It walks every non-test `.ts` file under `src/` (121 at 6f7e957, `src/testing/` included), flattens
+every string-valued expression into literal text and holes, and finds each rendered `symspec`
+command. Forms covered, each planted in the test file and each red at its file:line: template
+literal (backticked span, whole string, fenced line of a multi-line template, the right side of a
+` | ` pipeline), string literal, `+` concatenation (also of templates over several lines), array
+`[...].join(' ')`, a program name threaded as a parameter defaulted to `'symspec'` (the skill body's
+`binName`), an environment prefix (`NAME=value symspec ...`). A hole whose value is a compile-time
+string (a const bound to a literal, a single literal type) is inlined and judged as literal text.
+
+A hole inside a command is accepted only when it is (a) a call of `shellWord`/`shellQuoted` from
+`src/domain/engine/core/shell-word.ts`, a const alias of one (`const quoted = shellQuoted`), a const
+bound to such a call (`const shellPath = shellWord(path)`), or a conditional / `??` / `||` whose
+every branch is accepted; (b) typed with a brand DECLARED IN that module (none exists yet; a brand
+declared elsewhere is refused, planted); (c) typed so it cannot carry shell syntax: number, bigint,
+boolean, or a union of string literals each a bare word or a `<...>` placeholder. Inside a quoted
+region of the literal text only (c) is accepted (raw `"${t}"` is R8's defect; a helper's output
+inside quotes is quoted twice). The literal text must be shell-inert outside quotes: no `|`
+glued to words (a choice list is one placeholder, `<bool|int|enum>`; ` | ` between words is a
+pipeline and each side is judged), `;`, `&`, `(`, `)`, `>`, `$`, glob or brace characters, no `<`
+that opens no placeholder, no `~` starting a word, no newline, no open quote; `#` starting a word
+ends the command (a shell comment).
+
+Interpretation for the coordinator: R63 says "passes through the one shell-word helper or is a
+fixed placeholder token". (c) also accepts numbers and literal-word unions (`--timeout-ms
+${report.timeoutMs * 4}`, `--kind ${wanted}`), and (b) a brand of the helper module: both are
+statically proven unable to carry shell syntax, and (b) is the route for values quoted upstream
+(`RepairContext.docPath`, `pinnedInvocation`'s `docPath`), which the guard cannot otherwise prove.
+A ruling can narrow either.
+
+Anti-vacuity: the test fails when the files read differ from a second, independent walk
+(`readdirSync({recursive})`), when 0 sites are inspected or fewer than the recorded floor 302, when
+fewer than 10 holes are recognised as helper calls on the real tree, and when an independent line
+reader (comments stripped, raw-text regex for a backticked `symspec`) finds a command line the scan
+did not inspect (231 lines at 6f7e957, 0 missed). The floor check is itself planted (empty scan,
+under-floor scan, short file list).
+
+### What it flags at 6f7e957 (95 sites at 82 lines; the builder fixes all of them)
+
+R8's four (mutate.ts:1030, mutation.ts:1101, mutation.ts:1344, and mutate.ts:1040, the never-class
+arm of the same refusal) and R9's (state-expr.ts:736), plus R9's catalog sibling
+reachability-codes.ts:190 (`FND_REACHABILITY_NOT_CHECKED` description) and every command that
+interpolates a value not proven a shell word: reachability-report.ts (34, `docPath`, `result.label`,
+`check.label`), repair.ts (24, `context.docPath`, `id`), mutate.ts (9 in all), check.ts (8: `path` in
+the knob table, `docPath` in the no-state-model disclosure), semantic.ts (4, `b.id`), glossary-plan.ts
+(4, `requirementIds[0] ?? '<id>'`), install.ts (2), index.ts:275, agents-doc.ts:69 (`op.name`),
+config.ts:524 (the `pinnedInvocation` join), graph.ts:205, resolve.ts:156, command-form.ts:39. The
+full list with each problem is `absence-7.json` `guard.flagged`.
+
+### R8 and R9 through the built CLI (all red on 6f7e957)
+
+- R8 waive of an unknown code holding each hazard (`"`, `$`, `$( )`, a backtick, `|`, all five):
+  the suggested `symspec explain --code ...` passes `bash -n` and the parser and hands the code over
+  whole (6 tests). State without `--type` and classify without `--kind`, the name/ref holding each
+  hazard: same (12 tests).
+- R9: the `symspec state` commands of an undeclared-variable refusal, and of
+  `explain --code FND_REACHABILITY_NOT_CHECKED`, are one invocation each, parse, and give `--type`
+  exactly one word (a filled slot or bool/int/enum) (2 tests).
+- Found while pinning R9 (an R56 escape): `symspec state` takes the name as a POSITIONAL;
+  `--name` is not a flag (`Unrecognized flag: --name in command symspec state`). The refusal at
+  state-expr.ts:734/736, the usage error at mutation.ts:1101 and the enum-member suggestion at
+  state-expr.ts:808 all print `--name`. Pinned: the undeclared-variable test above, and
+  `a missing enum member: the symspec state command the refusal names parses` (1 test).
+
+### Planted-form demonstrations in the product tree (throwaway clone job-1227/demo, reverted)
+
+Twelve unsafe sites appended to `src/domain/requirements/resolve.ts` and one in a new file
+`src/domain/plant-new-file.ts`: sites 302 -> 315, flags 95 -> 107, each new flag at its exact
+line (template span :162, whole :163, concat :164, concat over lines :167, join :169, program-name
+parameter :170, fenced line :173, pipeline producer :176, raw value in quotes :177, choice token
+:178, literal `$1` :179, helper output in quotes plant-new-file.ts:4); the safe control
+plant-new-file.ts:5 (`${shellQuoted(t)}` unquoted) is a site and not flagged; no baseline flag lost.
+
+### Harness sabotage (the same clone, one at a time)
+
+concat blind (`+` chains not flattened): floor (301 < 302) and both concat plants red. Helper
+blind: helper-count anti-vacuity and the four helper twins red. Accept every hole: the 12 hole-bearing bad plants,
+the six hole-bearing twins and the brand test red. Lexer blind: choice-token and literal-dollar plants red. Line rule
+off: floor, fenced-line plant and the fenced safe twin red. Join blind: floor and the join plant
+red. Walker skips `reachability/`: the file-list check and the independent line reader red.
+
+### Not pinned (and why)
+
+- The `#`-comment and ` | ` pipeline exemptions are literal text the author wrote, not values;
+  they carry no interpolation the guard accepts by them (each side of a pipeline is judged).
+- A command assembled across function boundaries (a helper returning `symspec x` without its
+  holes, concatenated by its caller into one command) is judged per string expression: each part's
+  holes are judged, but a command split over two separate expressions is two sites. None exists at
+  6f7e957 (the independent reader's 0 missed lines).

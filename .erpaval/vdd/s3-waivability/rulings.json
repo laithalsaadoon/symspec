@@ -560,6 +560,15 @@
       "behaviors": [
         "S3-045"
       ]
+    },
+    {
+      "id": "R63",
+      "text": "(review R8, R9): example tests cannot find every site, so the guard is static. A test walks every non-test .ts file under src/ (the TypeScript compiler API is available through the typescript devDependency; a careful scanner of template literals and string concatenations is acceptable if it is shown to find a planted site in each syntactic form), finds every string or template literal that renders a `symspec ` command (including ones assembled by concatenation or a helper), and fails unless every interpolated value in it passes through the one shell-word helper (src/domain/engine/core/shell-word.ts) or is a fixed placeholder token of the form `<...>` (a choice list is one placeholder, e.g. `<bool|int|enum>`). The test must name each offending file:line, must count the sites it inspected and fail when that count is zero or drops below a recorded floor (anti-vacuity), and must be shown red on a planted unquoted interpolation in each syntactic form it claims to cover. Plus example tests for R8 and R9 through the built CLI: each command those sites print passes bash -n and the parser, and a value with \", $, $( ), backticks or | survives as one argument.",
+      "source": "coordinator (job 815), closure loop 3 contract-7 after review ledger ea1503a (review R8, R9) on build 6f7e957, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-027",
+        "S3-045"
+      ]
     }
   ],
   "questions": [
