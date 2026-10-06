@@ -496,6 +496,9 @@ const raiseOne = <K extends Knob>(
  * `configFlag` is the config the run named with `--config`: the command names it too, so it
  * reads the pins it was built from. A config named by the environment is read again by a
  * command run in that environment, as the embedder's is.
+ *
+ * `docPath` and `configFlag` arrive as shell words (`shellWord`, R60): the caller quotes a path a
+ * shell would mangle, so the joined command hands each one over whole.
  */
 export const pinnedInvocation = (
   docPath: string,

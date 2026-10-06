@@ -241,7 +241,9 @@ const notCheckedReason = (report: ReachabilityReport): string | undefined => {
  * Project a finished run onto findings and demotions.
  *
  * `docPath` is threaded in only so every command is copy-pasteable as-is — the same
- * reason `RepairContext` carries it. Nothing here reads the filesystem.
+ * reason `RepairContext` carries it, and in the same form: one shell word (`shellWord`, R60),
+ * so a path with a space, a quote or `$` reaches the shell whole. Nothing here reads the
+ * filesystem.
  */
 export const projectReachability = (
   report: ReachabilityReport,
@@ -747,7 +749,7 @@ export const projectReachability = (
       requirementIds: ids,
       action: `Reachability was not fully checked: ${gap}. ${
         report.variables === 0
-          ? `Declare the state variables (\`symspec state <name> --type bool|int|enum --file ${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> --kind constraint --expression "<predicate>" --file ${docPath}\`).`
+          ? `Declare the state variables (\`symspec state <name> --type <bool|int|enum> --file ${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> --kind constraint --expression "<predicate>" --file ${docPath}\`).`
           : `Classify the responses that touch the declared variables: \`symspec classify <ref> --kind constraint --expression "<predicate>" --file ${docPath}\`.`
       }`,
       repair: notCheckedRepair(report, docPath),

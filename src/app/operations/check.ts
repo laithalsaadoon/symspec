@@ -75,6 +75,7 @@ import {
   type RunSettings,
   resolveReachabilityTimeoutMs,
 } from '../../domain/config/config.ts'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import type { Embedder } from '../../domain/engine/formal/embed.ts'
 import { DEFAULT_SEMANTIC_THRESHOLD } from '../../domain/engine/formal/semantic.ts'
 import type {
@@ -774,7 +775,7 @@ const noStateModelDisclosure = (docPath: string): ReachabilityFinding => ({
     'The unbounded reachability tier did not run: no state model is committed, so no ' +
     'reachability question was asked. This is a coverage DISCLOSURE, not a defect, and it does ' +
     'not demote `verified` (the tier is opt-in). To have `check` prove invariants over every ' +
-    'reachable state, declare the state variables (`symspec state <name> --type bool|int|enum ' +
+    'reachable state, declare the state variables (`symspec state <name> --type <bool|int|enum> ' +
     `--file ${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> ` +
     `--kind constraint --expression "<predicate>" --file ${docPath}\`).`,
 })
@@ -894,7 +895,7 @@ const pinnedRunOf = (
     docPath,
     run,
     pinned,
-    config.source === 'flag' ? config.path : undefined,
+    config.source === 'flag' ? shellWord(config.path) : undefined,
   )
   return {
     disclosure: {
@@ -935,8 +936,11 @@ export const checkOp = defineOperation({
       const docPath = yield* DocPath
       const store = yield* DocStore
       const path = docPath.resolve(input.file)
+      // The path as one shell word (R60): every command this run names carries it, so a path
+      // with a space, a quote, `$` or a newline is handed to the shell whole.
+      const shellPath = shellWord(path)
 
-      yield* validate(input, path)
+      yield* validate(input, shellPath)
 
       // The document, plus the pinned config (named explicitly, or at its default location) and
       // the split anchors (spec 007 AC-5-10). A config that cannot be read fails closed with
@@ -988,11 +992,11 @@ export const checkOp = defineOperation({
             suggestions: [
               'Raise --solver-budget-ms, or lower --timeout-ms so individual solvers give up sooner.',
               'If --temporal-bound is set, lower it — the temporal encoding is superlinear in the bound.',
-              `Run \`symspec list ${path}\` to see how large the document is.`,
+              `Run \`symspec list ${shellPath}\` to see how large the document is.`,
             ],
             repair: {
               ops: [],
-              commands: [`symspec check ${path} --solver-budget-ms 30000`],
+              commands: [`symspec check ${shellPath} --solver-budget-ms 30000`],
             },
           }),
       })
@@ -1026,7 +1030,7 @@ export const checkOp = defineOperation({
           : undefined
 
       const reachabilityProjection =
-        reachabilityRun !== undefined ? projectReachability(reachabilityRun, path) : undefined
+        reachabilityRun !== undefined ? projectReachability(reachabilityRun, shellPath) : undefined
 
       // The TERMINOLOGY tier — set-level vocabulary consistency, propose-only.
       //
@@ -1158,7 +1162,7 @@ export const checkOp = defineOperation({
       // and would leave the exit contract reading only one of them. Filtered only where
       // they join `findings[]` below: `counts` is the FULL post-waiver tally, filter or not.
       const reachabilityFindings: readonly CheckFinding[] = (
-        reachabilityProjection?.findings ?? [noStateModelDisclosure(path)]
+        reachabilityProjection?.findings ?? [noStateModelDisclosure(shellPath)]
       ).map(
         (f): CheckFinding => ({
           code: f.code,
@@ -1228,7 +1232,7 @@ export const checkOp = defineOperation({
               bundle.config,
               bundle.config.config.gate,
               runSettingsOf(input, full.run),
-              path,
+              shellPath,
             )
           : undefined
 
@@ -1238,7 +1242,7 @@ export const checkOp = defineOperation({
           full.findings,
           full.excluded,
           input,
-          path,
+          shellPath,
           budgetHint?.recommendedBudgetMs,
           full.run,
           loaded.document,

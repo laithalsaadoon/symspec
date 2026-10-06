@@ -126,7 +126,10 @@ export interface RepairContext {
    * that undoes the weakening actually present. Absent for a caller with no run to report.
    */
   readonly run?: RunDisclosure
-  /** The document path, so every command is copy-pasteable as-is. */
+  /**
+   * The document path as one shell word (`shellWord`, R60), so every command is
+   * copy-pasteable as-is: a path with a space, a quote, `$` or a newline reaches the shell whole.
+   */
   readonly docPath: string
   /**
    * The content hash of the requirements a finding names, as a pair waiver binds it

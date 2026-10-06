@@ -17,6 +17,7 @@
  * be unsound. Pairs already unified by atomize are skipped (nothing to bridge).
  */
 
+import { shellQuoted, shellWord } from '../core/shell-word.ts'
 import { ANTONYM_INDEX, type AntonymEntry } from './antonyms.ts'
 import {
   type Atomize,
@@ -520,7 +521,7 @@ export async function findSimilarSemantic(
         antonymHint =
           headA !== '' && headB !== '' && headA !== headB
             ? ` These fire under the SAME trigger, so if they are polar OPPOSITES rather than ` +
-              `synonyms, run \`symspec antonym ${headA} ${headB}\` instead — the formal tier ` +
+              `synonyms, run \`symspec antonym ${shellWord(headA)} ${shellWord(headB)}\` instead — the formal tier ` +
               'will then treat them as contraries (they cannot both hold) and can prove the conflict.'
             : ' These fire under the SAME trigger, so if these responses are opposites rather than ' +
               'synonyms, register an antonym instead (see `symspec antonym <verbA> <verbB>`).'
@@ -538,8 +539,8 @@ export async function findSimilarSemantic(
       const merge = suggestMerge(a, b, atomA, atomB, options)
       const mergeAdvice =
         merge !== undefined
-          ? ` If they mean the same thing, run \`symspec glossary "${merge.canonical}" ` +
-            `"${merge.alias}"\` so the formal tier treats them as one atom, then re-run ` +
+          ? ` If they mean the same thing, run \`symspec glossary ${shellQuoted(merge.canonical)} ` +
+            `${shellQuoted(merge.alias)}\` so the formal tier treats them as one atom, then re-run ` +
             '`symspec check` to surface any conflict the shared atom exposes.'
           : ' No glossary merge is proposed: every merge of these phrasings either aliases a ' +
             'phrase to its own opposite under the committed antonyms (which turns the conflict ' +
@@ -953,8 +954,8 @@ function variantMessage(
       `${lo} and ${hi} respond under the same system with the same verb ("${headA}"), one of them ` +
       `under "shall not", over objects that differ only by prepositions ${objects}. ${why} If they ` +
       'name ONE object, make the pair provable: align the preposition with ' +
-      `\`symspec update --ref ${b.id} systemResponse "${a.systemResponse}"\`, or commit the two ` +
-      `phrasings as one action with \`symspec glossary "${a.systemResponse}" "${b.systemResponse}"\`; ` +
+      `\`symspec update --ref ${b.id} systemResponse ${shellQuoted(a.systemResponse)}\`, or commit the two ` +
+      `phrasings as one action with \`symspec glossary ${shellQuoted(a.systemResponse)} ${shellQuoted(b.systemResponse)}\`; ` +
       'either puts both on one atom at opposite polarity, and the solver decides the conflict.' +
       tail
     )
@@ -965,8 +966,8 @@ function variantMessage(
       `${lo} and ${hi} respond under the same system with verbs an antonym row relates ` +
       `("${headA}" vs "${headB}") over objects that differ only by prepositions ${objects}. ${why} ` +
       'If they name ONE object, make the pair provable: align the preposition with ' +
-      `\`symspec update --ref ${b.id} systemResponse "${aligned}"\`, or commit the rewording as ` +
-      `one action with \`symspec glossary "${aligned}" "${b.systemResponse}"\`; either puts ` +
+      `\`symspec update --ref ${b.id} systemResponse ${shellQuoted(aligned)}\`, or commit the rewording as ` +
+      `one action with \`symspec glossary ${shellQuoted(aligned)} ${shellQuoted(b.systemResponse)}\`; either puts ` +
       'both on one key on opposite sides of the row, and the solver decides the conflict.' +
       tail
     )
@@ -976,11 +977,11 @@ function variantMessage(
   // contraries once the objects are aligned.
   const repair = shape.sameSide
     ? `If they ARE one action on one object, rewrite one requirement in the other's words ` +
-      `(\`symspec update --ref ${b.id} systemResponse "${a.systemResponse}"\`), so the two share ` +
+      `(\`symspec update --ref ${b.id} systemResponse ${shellQuoted(a.systemResponse)}\`), so the two share ` +
       'one atom and the solver decides the conflict.'
     : 'If they are opposites acting on one object, align the preposition ' +
-      `(\`symspec update --ref ${b.id} systemResponse "${phraseOf(`${headB}_${restA}`)}"\`) and ` +
-      `commit the pair (\`symspec antonym ${headA} ${headB}\`), so the solver decides the conflict.`
+      `(\`symspec update --ref ${b.id} systemResponse ${shellQuoted(phraseOf(`${headB}_${restA}`))}\`) and ` +
+      `commit the pair (\`symspec antonym ${shellWord(headA)} ${shellWord(headB)}\`), so the solver decides the conflict.`
   return (
     `${lo} and ${hi} respond under the same system with verbs one antonym class holds but no row ` +
     `relates ("${headA}" vs "${headB}"), over objects that differ only by prepositions ${objects}. ` +
@@ -1002,9 +1003,9 @@ function oppositionMessage(
     `${lo} and ${hi} respond under the same system with the same object but different ` +
     `leading verbs ("${headA}" vs "${headB}"). These verbs differ, but embeddings CANNOT ` +
     'tell opposites (open/shut) from synonyms (delete/remove) — decide which these are: ' +
-    `if they are polar OPPOSITES, run \`symspec antonym ${headA} ${headB}\` (the formal ` +
+    `if they are polar OPPOSITES, run \`symspec antonym ${shellWord(headA)} ${shellWord(headB)}\` (the formal ` +
     'tier will then treat them as contraries — they cannot both hold — and can prove a conflict); ' +
-    `if they are SYNONYMS, run \`symspec glossary "${a.systemResponse}" "${b.systemResponse}"\` ` +
+    `if they are SYNONYMS, run \`symspec glossary ${shellQuoted(a.systemResponse)} ${shellQuoted(b.systemResponse)}\` ` +
     'instead. Committing the WRONG one manufactures a false contradiction, so confirm the ' +
     `direction before applying.${through} This is a suggestion, not a verdict.`
   )

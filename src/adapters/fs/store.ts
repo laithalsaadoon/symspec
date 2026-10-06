@@ -85,6 +85,7 @@ import { Effect, FileSystem, Layer, Path, Schema, Stream } from 'effect'
 import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
 import { Intent, Policy } from '../../domain/anchor/anchor.ts'
 import { CONFIG_FILE_NAME, decodeConfig } from '../../domain/config/config.ts'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import {
   ACCEPTED_DOC_VERSIONS,
   DOC_VERSION,
@@ -178,7 +179,7 @@ export const parseDocumentText = (
           error: `${path} is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
           suggestions: [
             'Check the path points at a symspec requirements document (JSON).',
-            `Run \`symspec init ${path}\` to create a fresh v${DOC_VERSION} document.`,
+            `Run \`symspec init ${shellWord(path)}\` to create a fresh v${DOC_VERSION} document.`,
           ],
         }),
     })
@@ -193,7 +194,7 @@ export const parseDocumentText = (
           suggestions: [
             'Fix the offending JSON path named in the message above.',
             'Run `symspec manifest` to see the exact field shapes, including which fields are optional.',
-            `Or re-create the document from source: \`symspec init ${path}\` then \`symspec import\`.`,
+            `Or re-create the document from source: \`symspec init ${shellWord(path)}\` then \`symspec import\`.`,
           ],
         }),
     )
@@ -382,7 +383,7 @@ export const docStoreLayer = Layer.effect(DocStore)(
             new ErrDocNotFound({
               error: `Could not read a requirements document at ${target}.`,
               suggestions: [
-                `Run \`symspec init ${target}\` to create one.`,
+                `Run \`symspec init ${shellWord(target)}\` to create one.`,
                 `Or point ${DOC_PATH_ENV_VAR} at an existing document.`,
                 DOC_PATH_CONVENTION,
               ],

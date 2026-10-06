@@ -58,6 +58,7 @@
  * those are distinct quantities that merely start the same, not a verb split.
  */
 
+import { shellQuoted } from '../core/shell-word.ts'
 import { normalize, normalizeScope } from './atomize.ts'
 import {
   type NumericPredicate,
@@ -246,7 +247,7 @@ export function findQuantityAliasCandidates(
           'the completion of what the duration measures. '
       const advice =
         'If both bounds constrain the SAME ' +
-        `physical quantity, run \`symspec glossary "${labelLo}" "${labelHi}"\` so the numeric ` +
+        `physical quantity, run \`symspec glossary ${shellQuoted(labelLo)} ${shellQuoted(labelHi)}\` so the numeric ` +
         (roles === ''
           ? 'tier keys them together and can prove any conflict, then re-run `symspec check`. '
           : 'tier keys them together, then re-run `symspec check`. ') +

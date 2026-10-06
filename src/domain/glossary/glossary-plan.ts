@@ -48,6 +48,7 @@
 
 import type { Doc } from '../engine/core/doc.ts'
 import { listRequirements } from '../engine/core/doc.ts'
+import { shellQuoted, shellWord } from '../engine/core/shell-word.ts'
 import {
   ANTONYM_INDEX,
   type AntonymEntry,
@@ -1076,7 +1077,7 @@ const signalFor = (
   return undefined
 }
 
-const quoted = (s: string) => `"${s}"`
+const quoted = shellQuoted
 
 /** The remedies for one ambiguous pair, in the order worth trying them. */
 const remediesFor = (
@@ -1096,7 +1097,7 @@ const remediesFor = (
   const asAntonyms: Remedy = {
     kind: 'as-antonyms',
     ops: [{ op: 'antonym', a: verbs[0], b: verbs[1] }],
-    commands: [`symspec antonym ${verbs[0]} ${verbs[1]}`],
+    commands: [`symspec antonym ${shellWord(verbs[0])} ${shellWord(verbs[1])}`],
     consequence:
       'The verbs become contraries — two atoms that cannot both hold — so a conflict between ' +
       'them becomes provable rather than invisible.',

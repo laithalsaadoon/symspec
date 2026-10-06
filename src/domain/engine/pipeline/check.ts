@@ -82,6 +82,7 @@ import type { Doc } from '../core/doc.ts'
 import { listRequirements } from '../core/doc.ts'
 import { renderSentence } from '../core/render.ts'
 import type { Requirement, Waiver } from '../core/schema.ts'
+import { shellQuoted } from '../core/shell-word.ts'
 import { detectAmbiguity } from '../formal/ambiguity.ts'
 import { type AntonymEntry, buildAntonymIndexWithDoc } from '../formal/antonyms.ts'
 import {
@@ -2245,7 +2246,10 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       const canonical = stored?.canonical ?? entry.canonical.replace(/_/g, ' ')
       const removals = [...new Set(entry.contraries.flat())]
         .filter((phrase) => phrase !== entry.canonical)
-        .map((phrase) => `\`symspec glossary "${canonical}" "${spelled(phrase)}" --remove\``)
+        .map(
+          (phrase) =>
+            `\`symspec glossary ${shellQuoted(canonical)} ${shellQuoted(spelled(phrase))} --remove\``,
+        )
       demotions.push({
         reason: 'contrary-glossary-alias',
         requirementIds: ids,

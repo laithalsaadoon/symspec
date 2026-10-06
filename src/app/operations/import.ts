@@ -81,6 +81,7 @@
  */
 
 import { Effect, Schema } from 'effect'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import {
   type AntonymPair,
   DOC_VERSION,
@@ -878,7 +879,7 @@ export const importOp = defineOperation({
               'Pass --dry-run to see what the import would produce without writing anything.',
               'The existing file was NOT modified.',
             ],
-            repair: { ops: [], commands: [`symspec list ${target}`] },
+            repair: { ops: [], commands: [`symspec list ${shellWord(target)}`] },
           }),
         )
       }

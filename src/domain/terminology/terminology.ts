@@ -55,6 +55,7 @@
  * pair for consistency.
  */
 
+import { shellQuoted } from '../engine/core/shell-word.ts'
 import { normalize, normalizeScope } from '../engine/formal/atomize.ts'
 import { cosine, type Embedder } from '../engine/formal/embed.ts'
 import { ACRONYM_PATTERN, COMMON_ACRONYMS } from '../engine/lint/gtwr.ts'
@@ -216,8 +217,8 @@ const committedKeysOf = (document: RequirementsDocument): readonly CommittedKey[
  */
 const splitCommandsFor = (key: CommittedKey): string =>
   key.table === 'terms'
-    ? `\`symspec term "<canonical>" "${key.phrase}" --remove\`, then two \`symspec term\` commands naming the two concepts separately`
-    : `\`symspec glossary "<canonical>" "${key.phrase}" --remove\`, then two \`symspec glossary\` commands naming the two concepts separately`
+    ? `\`symspec term "<canonical>" ${shellQuoted(key.phrase)} --remove\`, then two \`symspec term "<canonical>" "<alias>"\` commands naming the two concepts separately`
+    : `\`symspec glossary "<canonical>" ${shellQuoted(key.phrase)} --remove\`, then two \`symspec glossary "<canonical>" "<alias>"\` commands naming the two concepts separately`
 
 /**
  * Run the terminology tier.
@@ -368,7 +369,7 @@ export const runTerminology = async (
         `but appears in neither the glossary nor the terms table, so nothing records what it ` +
         `expands to.`,
       suggestion:
-        `Define it with \`symspec glossary "<expansion>" "${acronym}"\`, which records the ` +
+        `Define it with \`symspec glossary "<expansion>" ${shellQuoted(acronym)}\`, which records the ` +
         `expansion and also makes the two spellings canonicalize to one atom.`,
     })
   }

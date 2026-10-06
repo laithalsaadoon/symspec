@@ -44,6 +44,7 @@
  * already worked this way.
  */
 
+import { shellQuoted, shellWord } from '../engine/core/shell-word.ts'
 import { requirementsContentHash } from './content-hash.ts'
 import {
   type AntonymPair,
@@ -354,7 +355,7 @@ const applyUpdate = (
       return usage(
         `${target.key ?? target.id} is classified ${target.responseKind}, so setting \`${op.attr}\` would store an expression nothing reads.`,
         [
-          `Reclassify and set the expression in one step: \`symspec classify ${target.key ?? target.id} --kind ${wanted} --expression "${op.value}"\`.`,
+          `Reclassify and set the expression in one step: \`symspec classify ${shellWord(target.key ?? target.id)} --kind ${wanted} --expression ${shellQuoted(op.value)}\`.`,
         ],
       )
     }
@@ -545,7 +546,7 @@ const applyGlossary = (
       'ERR_USAGE',
       `"${alias}" is already an alias of "${otherOwner.canonical}", so it cannot also be an alias of "${canonical}".`,
       [
-        `Free it first: \`symspec glossary "${otherOwner.canonical}" "${alias}" --remove\`.`,
+        `Free it first: \`symspec glossary ${shellQuoted(otherOwner.canonical)} ${shellQuoted(alias)} --remove\`.`,
         `Or point this entry at "${otherOwner.canonical}" instead, if that is the reading you meant.`,
       ],
     )
@@ -562,7 +563,7 @@ const applyGlossary = (
       `"${canonical}" is already an alias of "${canonicalIsAlias.canonical}", so it cannot also be a canonical.`,
       [
         'Alias resolution is one hop, so this chain would never resolve.',
-        `Use "${canonicalIsAlias.canonical}" as the canonical: \`symspec glossary "${canonicalIsAlias.canonical}" "${alias}"\`.`,
+        `Use "${canonicalIsAlias.canonical}" as the canonical: \`symspec glossary ${shellQuoted(canonicalIsAlias.canonical)} ${shellQuoted(alias)}\`.`,
       ],
     )
   }
@@ -836,7 +837,7 @@ const applyTerm = (
       'ERR_USAGE',
       `"${alias}" is already a term alias of "${otherOwner.canonical}", so it cannot also be an alias of "${canonical}".`,
       [
-        `Free it first: \`symspec term "${otherOwner.canonical}" "${alias}" --remove\`.`,
+        `Free it first: \`symspec term ${shellQuoted(otherOwner.canonical)} ${shellQuoted(alias)} --remove\`.`,
         `Or point this entry at "${otherOwner.canonical}" instead, if that is the reading you meant.`,
       ],
     )
@@ -851,7 +852,7 @@ const applyTerm = (
       `"${canonical}" is already a term alias of "${canonicalIsAlias.canonical}", so it cannot also be a canonical.`,
       [
         'Term substitution is one pass, so this chain would never resolve.',
-        `Use "${canonicalIsAlias.canonical}" as the canonical: \`symspec term "${canonicalIsAlias.canonical}" "${alias}"\`.`,
+        `Use "${canonicalIsAlias.canonical}" as the canonical: \`symspec term ${shellQuoted(canonicalIsAlias.canonical)} ${shellQuoted(alias)}\`.`,
       ],
     )
   }

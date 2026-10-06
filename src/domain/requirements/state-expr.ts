@@ -80,6 +80,7 @@
  * carries.
  */
 
+import { shellQuoted, shellWord } from '../engine/core/shell-word.ts'
 import type { StateModel, StateVariable } from './document.ts'
 
 // ---------------------------------------------------------------------------
@@ -804,7 +805,7 @@ export const resolveExpr = (expr: Expr, vars: DeclaredVars, expected?: Sort): Ty
           `"${expr.name}" is not a member of enum ${expected.enumOf}'s declared domain.`,
           [
             `Declared domain of ${expected.enumOf}: ${[...domain].join(', ')}.`,
-            `Add the member with \`symspec state --name ${expected.enumOf} --type enum --domain "${[...domain, expr.name].join(',')}"\`, or fix the spelling.`,
+            `Add the member with \`symspec state --name ${shellWord(expected.enumOf)} --type enum --domain ${shellQuoted([...domain, expr.name].join(','))}\`, or fix the spelling.`,
           ],
         )
       }

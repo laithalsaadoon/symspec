@@ -26,6 +26,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path'
 import { Effect, Schema } from 'effect'
 import { INTENT_VERSION, POLICY_VERSION } from '../../domain/anchor/anchor.ts'
 import { CONFIG_FILE_NAME, skeletonConfig } from '../../domain/config/config.ts'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import {
   DOC_VERSION,
   type DocumentDiagnostic,
@@ -261,9 +262,9 @@ export const initOp = defineOperation({
             suggestions: [
               'Pass --force to recreate it, or choose a different path.',
               'The existing file was NOT modified.',
-              `Run \`symspec list ${path}\` to see what is in it.`,
+              `Run \`symspec list ${shellWord(path)}\` to see what is in it.`,
             ],
-            repair: { ops: [], commands: [`symspec list ${path}`] },
+            repair: { ops: [], commands: [`symspec list ${shellWord(path)}`] },
           }),
         )
       }

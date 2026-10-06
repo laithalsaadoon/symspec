@@ -285,7 +285,7 @@ export const FndCodeMeta = {
   FND_EXCLUDED_FROM_FORMAL: {
     code: 'FND_EXCLUDED_FROM_FORMAL',
     description:
-      'info — a requirement was excluded from the formal (SMT) tier because an error-severity lint or parse finding blocked its surface, so no cross-requirement analysis covered it. A LOUD coverage signal that DEMOTES `verified` (silence over an unchecked requirement is not a consistency certificate); discharge by fixing the blocking finding (rephrase) — waiving the finding alone does NOT restore formal coverage.',
+      'info — a requirement was excluded from the formal (SMT) tier because an error-severity lint or parse finding blocked its surface, so no cross-requirement analysis covered it. A LOUD coverage signal that DEMOTES `verified` (silence over an unchecked requirement is not a consistency certificate); discharge by fixing the blocking finding (rephrase) — suppressing the blocking finding without a rephrase does NOT restore formal coverage.',
   },
   FND_QUANTITY_ALIAS_CANDIDATE: {
     code: 'FND_QUANTITY_ALIAS_CANDIDATE',
