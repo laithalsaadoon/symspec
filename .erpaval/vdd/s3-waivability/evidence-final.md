@@ -159,3 +159,98 @@ git log --no-merges --format='%h %s' v1.2.1..HEAD                         # rele
 ```
 
 Scripts and logs are in `/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1116/` (`check.log`, `install.log`, `pack.out`, `esc-base.json`, `esc-fresh.json`, `rep/`).
+
+## After the final closure
+
+Role: evidence (release), board item evidence-final-3 (#246, input build-6), job 1204 for the coordinator, job 815.
+Tree measured: `6f7e95799ae7e107b99aee110aea5096469918f8` (`fix(cli): every printed command is shell-safe and names full arguments (R60, R61)`), branch `vdd/s3-waivability`, on top of be4516f (R59), 772aee6 (tests for R59-R62), 19bd46f, bc9a87d and cf4f3bc; `v1.2.1-232-g6f7e957`.
+Environment: node 24.21.0, pnpm 11.21.0, `SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1`. Everything ran in throwaway `git clone --no-hardlinks` copies under `/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1204/` (`fresh` at 6f7e957, `base` at 0fca043, `v121` at the v1.2.1 tag); the run clone was only read, and `git status` of `fresh` was empty before and after every leg. Nothing here edits code, tests or other docs, and no gap below is marked ruled. Logs: `check.log`, `install.log`, `pack.out`, `list-*.txt`, `pipe.py`, `e-head.json`, `e-base.json` in that folder.
+
+### A. `.github/workflows/check.yml` on 6f7e957
+
+The workflow is unchanged from section 1 (checkout, pnpm/action-setup from `packageManager`, node 24, `pnpm install --frozen-lockfile`, one `pnpm check`). Install: exit 0, 3.8 s, `prepare` ran tsdown. `pnpm check` = `biome ci . && tsc --noEmit && pnpm run check:agents && pnpm run gate:reachability && pnpm run build && vitest run && pnpm run knip`: **exit 0**, 2 min 58 s wall.
+
+| leg | verdict | count |
+|---|---|---|
+| `biome ci .` | pass | 243 files checked, no fixes applied (242 at 2d3e5fe; the new file is `src/domain/engine/core/shell-word.ts`) |
+| `tsc --noEmit` | pass | exit 0 |
+| `check:agents` | pass | `gen-agents --stdout` equals the committed AGENTS.md (build-6 regenerated one row) |
+| `gate:reachability` | pass | FEASIBLE: 12 variables, clean PROVED_UNDER_HYPOTHESES, buggy VIOLATED, clean 876 ms, buggy 776 ms, budget 5000 ms |
+| `build` (tsdown) | pass | `dist/cli.mjs` 2.77 MB, `dist/model-cache-PZRCo9qP.mjs` 7.02 kB |
+| `vitest run` | pass | 112 files (112), **3654 tests passed (3654)**, 0 failed, 157 s |
+| `knip --no-progress` | pass | no output, exit 0 |
+
+### B. 3654 versus 3651
+
+Three numbers are in play: 3587 (the whole tree at 2d3e5fe, and still at 19bd46f), 3651 (absence-6.json, `totals.tests`: 3621 passed, 30 failed, run on the tests of 772aee6 with the product files of 2d3e5fe) and 3654 (6f7e957). I listed every test with `vitest list` at 2d3e5fe, 19bd46f, 772aee6, be4516f and 6f7e957 (same environment, stub embedder) and compared the full names.
+
+| commit | listed tests |
+|---|---|
+| 2d3e5fe | 3587 |
+| 19bd46f | 3587 |
+| 772aee6 | 3651 (2d3e5fe plus exactly 64 names, none removed: matches absence-6 `newTests.total` 64) |
+| be4516f | 3651 (R59 changed no test names) |
+| 6f7e957 | 3654 |
+
+Sorted-name diff 772aee6 to 6f7e957: exactly three added names and none removed, all in `src/domain/advice/repair.test.ts`, all one per source file of a source-walking test:
+- `[S3-045] no source string names a command this build lacks (static) > [S3-045] src/domain/engine/core/shell-word.ts`
+- `no source file spells a command the CLI cannot run > src/domain/engine/core/shell-word.ts`
+- `no source string hand-types a count of the tool's own surface > src/domain/engine/core/shell-word.ts`
+
+Cause: build-6 added the new source file `src/domain/engine/core/shell-word.ts` (R60), and those three tests are generated once per file under `src/`, so each adds one test for it. 3651 + 3 = 3654; the 30 reds of absence-6 are green and the count of tests did not change by any other route. No test file was touched by build-6. So the difference is explained and is not a lost or skipped test.
+
+### C. `npm pack --dry-run` on 6f7e957
+
+Exit 0 (`prepack`/`prepare` ran tsdown). `symspec@1.2.1`, `symspec-1.2.1.tgz`, **6 files**, package size 790.5 kB, unpacked 2.8 MB: LICENSE 11.4 kB, README.md 55.1 kB, bin/symspec.mjs 223 B, dist/cli.mjs 2.8 MB, dist/model-cache-PZRCo9qP.mjs 7.0 kB, package.json 2.7 kB. No `src/`, `.erpaval/`, tests or fixtures ship (package size was 787.4 kB at 2d3e5fe; the difference is the build-6 code in `dist/cli.mjs`).
+
+| field | value | verdict |
+|---|---|---|
+| version | 1.2.1 | as expected, release-please bumps it |
+| repository.url | `git+https://github.com/laithalsaadoon/symspec.git` | ok |
+| homepage | `https://github.com/laithalsaadoon/symspec#readme` | ok |
+| bugs.url | `https://github.com/laithalsaadoon/symspec/issues` | ok |
+| description | ends `... typed JSON envelopes and 90 stable codes.` | ok |
+
+Code count: `node bin/symspec.mjs manifest` gives 24 errorCodes, 42 findingCodes, 24 lintCodes = 90; README has one `90 stable codes`, no `89 stable`. Version carriers all read 1.2.1: `.release-please-manifest.json`, package.json, `src/app/runtime/version.ts`, README.md:933, AGENTS.md:12.
+
+### D. KNOWN_ESCAPES and the release-please preview on 6f7e957
+
+Method as in section 5: `KNOWN_ESCAPES` imported with tsx from `src/testing/gaming.ts` in a clone at 0fca043 and in `fresh`.
+
+| | rows |
+|---|---|
+| base 0fca043 | 62 (62 distinct) |
+| HEAD 6f7e957 | **51** (51 distinct) |
+| left | 11, exactly the `x waive-by-code` rows closedBy AC-5-6 (one-trigger-contradiction, contrary-pair, registered-contrary, numeric-conflict, temporal-conflict, glossary-bridged, term-bridged, waived-blocking-lint, dangling-target, overlapping-contrary, derives-cycle) |
+| added | 0 |
+
+Unchanged from 2d3e5fe (62 to 51).
+
+`git log --no-merges v1.2.1..HEAD` (tag `v1.2.1` = `532eea7a28b18d10cbd05c7746f754ba2ae9ff19`, same in Laith's checkout read-only): 232 commits in the range, 32 merges, 200 non-merge: fix 132, test 49, docs 14, feat 4, **feat! 1**. The breaking markers searched two ways (subject `type(scope)!:`, and a line starting `BREAKING CHANGE` or `BREAKING-CHANGE` in any message body): **exactly one commit, 7afb20e `feat(waivers)!: ...`**, both ways; the six commits since 2d3e5fe (cf4f3bc to 6f7e957) add none. So release-please computes **2.0.0** from 1.2.1. I did not run the release-please action (no token); this is a count by its published commit rules, as in section 6.
+
+### E. Piped CLI output cut at the pipe size: regression or pre-existing?
+
+The reviewer saw JSON cut at 8192 bytes through a pipe with a slow reader while a regular file was complete. I built `0fca043` (base), the `v1.2.1` tag commit (`532eea7`) and 6f7e957 (`pnpm install --frozen-lockfile`, prepare builds `dist/`) and ran each with stdout to a pipe whose reader starts after a delay. Two inputs: a large `check` result, and `manifest`.
+
+Setup: `pipe.py` creates the pipe, sets its capacity with F_SETPIPE_SZ, starts the CLI, sleeps 1 s and then reads to EOF; the shell form `| (sleep 1; wc -c)` gives the same numbers at the default 64 KiB capacity. The large document `d-<build>.json` was built by `import` of 200 generated `add` ops (`big.ops.jsonl`); `check` on it exits 1 and prints 639,899 bytes (base), 638,685 (v1.2.1), 712,960 (HEAD) to a file. The small case is `check` on the fixture `base.json` (exit 1): 9,470 bytes (base), 7,938 (v1.2.1), 10,252 (HEAD) to a file.
+
+| build | large `check`, file | large `check`, default 64 KiB pipe, slow reader | fixture `check` (full size), pipe capacity 8192 | fixture `check`, capacity 16384 | fixture `check`, capacity 4096 | `manifest` (exit 0), capacity 4096 |
+|---|---|---|---|---|---|---|
+| base 0fca043 | 639,899 | **65,536** | **8,192** of 9,470 | 9,470 | 4,096 | 109,764 of 109,764 |
+| v1.2.1 | 638,685 | **65,536** | 7,938 of 7,938 (fits) | 7,938 | 4,096 of 7,938 | 71,167 of 71,167 |
+| HEAD 6f7e957 | 712,960 | **65,536** | **8,192** of 10,252 | 10,252 | 4,096 | 112,090 of 112,090 |
+
+Reading: the cut lands exactly at the pipe's capacity, on all three builds, and only for output that exits non-zero (`check` exit 1); an exit-0 command (`manifest`, 71 KB to 112 KB) arrives whole through a 4096-byte pipe on all three; `import` results are 380 to 384 bytes and never reach the limit. The 8192 the reviewer saw is a pipe of that capacity (or a reader that lets 8192 bytes fill the pipe before it drains it). v1.2.1 is not cut at 8192 on the fixture only because its 7,938-byte output fits; at a 4096 pipe, and at the default 64 KiB pipe with the large document, it is cut the same way. `src/main.ts` is identical on base, v1.2.1 and HEAD (`NodeRuntime.runMain` tears down with a non-zero exit code); the mechanism (exit before the stdout write drains) is my inference from that, not something I traced in a debugger.
+
+Verdict: **a pre-existing defect, not a regression**: identical cut points on 0fca043, v1.2.1 and 6f7e957. It is outside S3 waivability's behaviors and I changed nothing. It matters to any consumer that pipes `check` output of more than the pipe capacity (stdout to a pipe with a slow reader, exit 1): it gets truncated, invalid JSON.
+
+### F. Gaps (none marked ruled)
+
+New from this job:
+- G7 (new, pre-existing on base and v1.2.1): non-zero-exit CLI output larger than the pipe capacity is truncated when the reader is slow (section E). Not a behavior of this change; no test pins it; a person decides whether it is a follow-up issue.
+
+Measured and closed by this job: the 3654 versus 3651 question (section B), the pack contents and metadata (C), the 62 to 51 burn down and the single breaking commit (D), the full gate (A).
+
+Carried, not re-measured (a note on each: no commit since 2d3e5fe addresses it by name, and R59-R61 changed only unwaive ref resolution, printed command quoting and some help/catalog prose): G2 (TA3 not discharged; R60 and R61 touched its repair arms and prose, so it may be narrower than written; the attack and review ledgers decide), G3 (S3-012 import equals apply has example evidence only), G4 (S3-052 and S3-053 inspection only: the one `feat!` with its footer, and the four version carriers still at 1.2.1, both re-inspected in C and D), G5 (S3-026 provenance marker may be empty, survivor 18), G6 (R43's base assertion is false for the code-only waiver; a record correction).
+
+Not re-run in this job: the AC-5-6 and B3 reproducers of sections 3 and 4 (they need the real embedder); the 3654 tests include their test forms, all green.
