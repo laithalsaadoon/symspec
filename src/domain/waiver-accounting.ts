@@ -79,6 +79,18 @@ export const lintFindingScopes = (doc: Doc): readonly FindingScope[] => {
 }
 
 /**
+ * Whether a crossed waiver suppresses `f` — for a tier the engine never sees (terminology), so
+ * the boundary applies the engine's own rule itself: the same code over EXACTLY the finding's
+ * requirement set. Every crossed waiver is an exact set bound to its text ({@link waiverStanding}),
+ * so a qualifying scoped waiver of a terminology finding discharges exactly that finding and is
+ * accounted for like any other (ruling R57).
+ */
+export const suppressedByCrossed = (doc: Doc, f: FindingScope): boolean =>
+  (doc.waivers ?? []).some(
+    (w) => w.requirementIds !== undefined && matchesFinding(w.code, w.requirementIds, [f]),
+  )
+
+/**
  * The requirements a waived blocking lint re-admitted to the solver: those the AC-3-7 gate
  * excludes with no waiver, minus those it excludes under exactly the waivers `doc` carries
  * (`toEngineDoc`'s list), sorted. Empty with no waiver, so a document with none demotes exactly
@@ -102,9 +114,10 @@ export const waivedBlockingIds = (doc: Doc): readonly string[] => {
  * `preWaiver` are the findings before any crossed waiver applied (see the module header): a
  * crossed waiver applied exactly when one of them names its code and exactly its set.
  * `findings` are the run's findings, every tier, unfiltered: an inert legacy waiver is offered
- * one re-scoped waive per finding it reaches among them. `others` are the findings of tiers the
- * engine's waivers never reach (reachability, terminology); a crossed waiver matching one of
- * them is not disclosed as matching nothing, because it does match a finding.
+ * one re-scoped waive per finding it reaches among them. `others` are the findings of tiers no
+ * waiver reaches (reachability); a crossed waiver matching one of them is not disclosed as
+ * matching nothing, because it does match a finding. The terminology tier's findings belong in
+ * `preWaiver`: the boundary applies crossed waivers to them ({@link suppressedByCrossed}).
  */
 export const accountWaivers = (
   document: RequirementsDocument,

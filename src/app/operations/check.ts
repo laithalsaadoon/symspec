@@ -104,6 +104,7 @@ import {
   accountWaivers,
   isLintCode,
   lintFindingScopes,
+  suppressedByCrossed,
   waivedBlockingIds,
 } from '../../domain/waiver-accounting.ts'
 import { runnableInProse } from '../../ports/command-form.ts'
@@ -1094,15 +1095,16 @@ export const checkOp = defineOperation({
               }),
           })).findings.filter((f) => !isLintCode(f.code))
         : []
+      // The terminology tier runs here, outside the engine, so the engine never applied a waiver
+      // to its findings: the boundary does, by the engine's exact-set rule (ruling R57). Its
+      // findings never depend on a waiver, so the whole set is pre-waiver.
+      const terminologyAll = terminology?.findings ?? []
+      const terminologyKept = terminologyAll.filter((f) => !suppressedByCrossed(engineDoc, f))
       const waiverAccount = accountWaivers(
         loaded.document,
-        [...lintFindingScopes(engineDoc), ...preWaiverOther],
-        [
-          ...full.findings,
-          ...(reachabilityProjection?.findings ?? []),
-          ...(terminology?.findings ?? []),
-        ],
-        [...(reachabilityProjection?.findings ?? []), ...(terminology?.findings ?? [])],
+        [...lintFindingScopes(engineDoc), ...preWaiverOther, ...terminologyAll],
+        [...full.findings, ...(reachabilityProjection?.findings ?? []), ...terminologyAll],
+        reachabilityProjection?.findings ?? [],
       )
 
       // A waived blocking lint re-admits its requirement to the solver (the waiver-aware gate),
@@ -1177,7 +1179,7 @@ export const checkOp = defineOperation({
       // `--min-severity error` drops these exactly as it drops any other info finding.
       // Tier `'formal'` because that is what `FND_SIMILAR_SEMANTIC` reports and this is the
       // dual of it — one kind of claim, one tier.
-      const terminologyFindings: readonly CheckFinding[] = (terminology?.findings ?? []).map(
+      const terminologyFindings: readonly CheckFinding[] = terminologyKept.map(
         (f): CheckFinding => ({
           code: f.code,
           severity: f.severity,
@@ -1267,6 +1269,8 @@ export const checkOp = defineOperation({
         run: pinning !== undefined ? { ...shaped.run, ...pinning.disclosure } : shaped.run,
         findings: allFindings,
         counts,
+        // A terminology finding a crossed waiver suppressed is tallied like any other (R57).
+        waived: shaped.waived + (terminologyAll.length - terminologyKept.length),
         coverage: {
           ...shaped.coverage,
           requirements: shaped.coverage.requirements.map((row) => ({
