@@ -1141,11 +1141,13 @@ const applyUnwaive = (
   document: RequirementsDocument,
   op: Extract<DocumentOp, { op: 'unwaive' }>,
 ): OpSuccess | OpFailure => {
-  const code = op.code.trim()
-  // A ref that resolves to nothing simply matches nothing — there can be no waiver
-  // scoped to a requirement that does not exist — so this is a no-op rather than an
-  // error, symmetric with removing an absent edge.
-  const requirementId = op.ref !== undefined ? resolveId(document, op.ref) : undefined
+  // The code is matched EXACTLY as stored (ruling R55): a hand-written ` FND_X` is its own row,
+  // and trimming it here would also delete the canonical `FND_X` waiver beside it.
+  const code = op.code
+  // A ref that resolves to nothing is matched as written: a stored waiver can still name a
+  // requirement the document has since deleted, and an unresolved ref must not widen into the
+  // unscoped key and delete the code-only or another scoped waiver of the code (R55).
+  const requirementId = op.ref !== undefined ? (resolveId(document, op.ref) ?? op.ref) : undefined
   // `refs` removes every exact-set waiver over that set, whatever text it was bound to — the
   // stale ones are exactly what an author clearing a pair wants gone.
   const ids = op.refs?.map((ref) => resolveId(document, ref) ?? ref)
