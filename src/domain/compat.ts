@@ -58,11 +58,12 @@
 import type { Doc } from './engine/core/doc.ts'
 import type { Requirement as EngineRequirement } from './engine/core/schema.ts'
 import { requirementsContentHash } from './requirements/content-hash.ts'
-import type {
-  DocumentDiagnostic,
-  Requirement as DocumentRequirement,
-  RequirementsDocument,
-  Waiver,
+import {
+  CONTENT_HASH_PATTERN,
+  type DocumentDiagnostic,
+  type Requirement as DocumentRequirement,
+  type RequirementsDocument,
+  type Waiver,
 } from './requirements/document.ts'
 import { type FindingClass, findingClassOf, WAIVABILITY } from './waivability.ts'
 
@@ -129,6 +130,12 @@ export type InertCause =
   | 'no-hash'
   /** A scope naming a requirement the document no longer has, so the hash binds nothing. */
   | 'missing-requirement'
+  /** Both scope fields at once, a shape no fold writes: which scope was reviewed is unknowable. */
+  | 'both-scopes'
+  /** A reason that is blank after trimming: no audit trail, a shape the fold refuses. */
+  | 'blank-reason'
+  /** A content hash that is not `sha256:` and 64 lowercase hex digits, a shape no fold writes. */
+  | 'malformed-hash'
 
 /**
  * What the waivability policy makes of ONE stored waiver at check time.
@@ -167,11 +174,21 @@ export const waiverStanding = (document: RequirementsDocument, w: Waiver): Waive
   const cls = findingClassOf(w.code)
   if (cls === undefined) return { kind: 'inert', cause: 'unclassified' }
   if (WAIVABILITY[cls] === 'never') return { kind: 'inert', cause: 'never', class: cls }
+  // Only the shape the fold stores crosses (ruling R54): one scope field, a reason, an anchored hash.
+  if (w.requirementId !== undefined && w.requirementIds !== undefined) {
+    return { kind: 'inert', cause: 'both-scopes', class: cls }
+  }
+  if (typeof w.reason !== 'string' || w.reason.trim().length === 0) {
+    return { kind: 'inert', cause: 'blank-reason', class: cls }
+  }
   const ids = scopeOf(w)
   if (ids === undefined || ids.length === 0) {
     return { kind: 'inert', cause: 'code-only', class: cls }
   }
   if (w.contentHash === undefined) return { kind: 'inert', cause: 'no-hash', class: cls }
+  if (!CONTENT_HASH_PATTERN.test(w.contentHash)) {
+    return { kind: 'inert', cause: 'malformed-hash', class: cls }
+  }
   const currentHash = requirementsContentHash(document, ids)
   if (currentHash === undefined) {
     return { kind: 'inert', cause: 'missing-requirement', class: cls }
@@ -306,6 +323,12 @@ const inertDetail = (
       return `${head} over ${quoted(scopeOf(w) ?? [])} carries no content hash, so it is bound to no reviewed text and is inert.${rescope}`
     case 'missing-requirement':
       return `${head} names a requirement the document no longer has, so its content hash binds no text and it is inert. ${remove}`
+    case 'both-scopes':
+      return `${head} carries both "requirementId" and "requirementIds", a shape no fold writes, so which scope was reviewed cannot be known and it is inert. ${remove}`
+    case 'blank-reason':
+      return `${head} has a blank reason, so it records no review and is inert. ${remove}`
+    case 'malformed-hash':
+      return `${head} carries a content hash that is not \`sha256:\` and 64 hex digits, so it binds no text and is inert. ${remove}`
   }
 }
 
