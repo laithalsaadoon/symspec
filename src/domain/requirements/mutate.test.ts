@@ -16,6 +16,7 @@
 
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
+import { shellSafetyProblem, symspecCommandsIn } from '../../testing/cli-argv.ts'
 import { normalize } from '../engine/formal/atomize.ts'
 import { requirementsContentHash } from './content-hash.ts'
 import {
@@ -1729,4 +1730,58 @@ describe('the state-model ops (G4)', () => {
       expect(decoded._tag, line).toBe('Success')
     }
   })
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R60): a refusal that names a command over a user's alias is shell-safe
+// ---------------------------------------------------------------------------
+
+describe('[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60)', () => {
+  /** A phrase per hazard R60 names: quotes, `$`, a backtick, `;`, a backslash, a newline, all. */
+  const HAZARDS: readonly (readonly [string, string])[] = [
+    ['double quote', 'the "front" badge'],
+    ['single quote', "the operator's badge"],
+    ['dollar', 'the $HOME badge'],
+    ['backtick', 'the `front` badge'],
+    ['semicolon', 'the badge; the pass'],
+    ['backslash', 'the front\\ badge'],
+    ['newline', 'the front\nbadge'],
+    ['all', 'the "front" $HOME; it\'s `x` \\ badge\nok'],
+  ]
+  const TABLES = [
+    ['glossary', 'issue a token', 'grant a token', 'mint a credential'],
+    ['term', 'session token', 'login credential', 'vault record'],
+  ] as const
+
+  /** Every problem with every command a refusal's suggestions name, `values` whole in each. */
+  const problemsIn = (suggestions: readonly string[], values: readonly string[]) => {
+    const commands = suggestions.flatMap((s) => symspecCommandsIn(s))
+    if (commands.length === 0) return [`no command in ${JSON.stringify(suggestions)}`]
+    return commands.flatMap((c) => {
+      const problem = shellSafetyProblem(c, values)
+      return problem === undefined ? [] : [`${JSON.stringify(c)}  =>  ${problem}`]
+    })
+  }
+
+  for (const [table, canonical, , other] of TABLES) {
+    it.each(
+      HAZARDS,
+    )(`[S3-045] ${table}: an alias owned by another canonical (%s): the "Free it first" command carries the owner and the alias as whole arguments`, (_, hostile) => {
+      const base = ok(emptyDocument(), { op: table, canonical, alias: hostile }).document
+      const result = applyOp(base, op({ op: table, canonical: other, alias: hostile }), TS)
+      expect(isOpFailure(result)).toBe(true)
+      if (!isOpFailure(result)) return
+      expect(problemsIn(result.suggestions, [canonical, hostile])).toEqual([])
+    })
+
+    it.each(
+      HAZARDS,
+    )(`[S3-045] ${table}: a canonical that is already an alias (%s): the "Use ... as the canonical" command carries both phrases as whole arguments`, (_, hostile) => {
+      const base = ok(emptyDocument(), { op: table, canonical, alias: other }).document
+      const result = applyOp(base, op({ op: table, canonical: other, alias: hostile }), TS)
+      expect(isOpFailure(result)).toBe(true)
+      if (!isOpFailure(result)) return
+      expect(problemsIn(result.suggestions, [canonical, hostile])).toEqual([])
+    })
+  }
 })

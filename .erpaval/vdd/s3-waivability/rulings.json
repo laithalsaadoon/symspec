@@ -513,6 +513,53 @@
         "S3-002",
         "S3-031"
       ]
+    },
+    {
+      "id": "R59",
+      "text": "(review R2 variant): an op a waiver-inert or ignoredWaivers entry offers names its target exactly as stored, and the fold resolves a stored requirement UUID as that UUID before any key lookup, so a deleted requirement's UUID that equals another requirement's key never resolves to that other requirement; applying the ops removes exactly the named stored waiver (R55's metamorphic property, now including the UUID-equals-key collision in both requirementId and requirementIds forms).",
+      "source": "coordinator (job 815), final closure round contract-6 after review ledger bc9a87d and attack ledger round 2 (19bd46f) on build 2d3e5fe, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-024",
+        "S3-027"
+      ]
+    },
+    {
+      "id": "R60",
+      "text": "(review R6): every `symspec ...` command symspec emits (advice, suggestions, refusals, explain, help, catalog rows) is shell-safe: each argument that carries document text or a user value is quoted so that `bash -n` accepts the command and a POSIX shell's word split yields exactly the intended argv, for texts containing double quotes, single quotes, $, backticks, semicolons, backslashes and newlines. The test helper src/testing/cli-argv.ts must track quote state and fail an unterminated quote (fix it in this item; it is test code), and the R56 sweep runs every emitted command through bash -n and the built parser.",
+      "source": "coordinator (job 815), final closure round contract-6 after review ledger bc9a87d and attack ledger round 2 (19bd46f) on build 2d3e5fe, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-027",
+        "S3-045"
+      ]
+    },
+    {
+      "id": "R61",
+      "text": "(review R7, attack C10, C13, C18): R56's sweep extends to every help text (each subcommand's --help) and to the term, number-spelling and glossary-conflict advice arms: every command they name passes the parser with its required arguments, and no never-class catalog description carries a waive inflection.",
+      "source": "coordinator (job 815), final closure round contract-6 after review ledger bc9a87d and attack ledger round 2 (19bd46f) on build 2d3e5fe, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-040",
+        "S3-045"
+      ]
+    },
+    {
+      "id": "R62",
+      "text": "(attack C06, C09, C23, RH10): a terminology waiver suppresses only the finding on its own requirement ids and content hash (never the same code on another requirement) and is counted in data.waived (C06, C09; this also closes the S8 open item); no schema description claims enforcement of intentRef/derived exclusivity or presence while the decoder accepts both or neither (C23, run 3's B4 statement); `init --split --force` reports exactly what it wrote: it never says a file was overwritten when it kept it (RH10).",
+      "source": "coordinator (job 815), final closure round contract-6 after review ledger bc9a87d and attack ledger round 2 (19bd46f) on build 2d3e5fe, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-021",
+        "S3-046",
+        "RH-007",
+        "RH-012",
+        "RH-008"
+      ]
+    },
+    {
+      "id": "contract-6/accepted",
+      "text": "Accepted, not to be pinned: C14 and C15 (pre-existing prose normaliser corners: user backticks, the 'add' verb), owner Laith, until the next minor release; C17 and C20 proposed equivalences, accepted with the attacker's arguments; P16 as before.",
+      "source": "coordinator (job 815), final closure round contract-6 after review ledger bc9a87d and attack ledger round 2 (19bd46f) on build 2d3e5fe, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt (coordinator directive, unnumbered)",
+      "behaviors": [
+        "S3-045"
+      ]
     }
   ],
   "questions": [

@@ -30,7 +30,7 @@
  * Pure node: `testing/` may not name `app/` or `adapters/` (`package-boundary.test.ts`).
  */
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -65,42 +65,182 @@ export const symspecCommandsDeep = (value: unknown): readonly string[] => {
   return Object.values(value).flatMap((v) => symspecCommandsDeep(v))
 }
 
+/** Each placeholder slot (`<id>`, `"…"`, `...`) becomes the word `x`, for the parser and `bash -n` alike. */
+const slotted = (command: string): string =>
+  command.replace(/<[^<>]*>/g, 'x').replace(/…|\.\.\./g, 'x')
+
+/** The offset of the `'` that closes a `$'...'` body starting at `from`, or -1. */
+const dollarQuoteEnd = (text: string, from: number): number => {
+  for (let i = from; i < text.length; i++) {
+    if (text[i] === '\\') i++
+    else if (text[i] === "'") return i
+  }
+  return -1
+}
+
+/** The characters a `$'...'` body stands for: the escapes bash and POSIX.1-2024 share. */
+const dollarQuoted = (body: string): string =>
+  body.replace(/\\(x[0-9A-Fa-f]{1,2}|[0-7]{1,3}|[\\'"?abefnrtv]|E)/g, (_, e: string) => {
+    if (e.startsWith('x')) return String.fromCharCode(Number.parseInt(e.slice(1), 16))
+    if (/^[0-7]/.test(e)) return String.fromCharCode(Number.parseInt(e, 8))
+    const named: Record<string, string> = {
+      a: '\x07',
+      b: '\b',
+      e: '\x1b',
+      E: '\x1b',
+      f: '\f',
+      n: '\n',
+      r: '\r',
+      t: '\t',
+      v: '\v',
+    }
+    return named[e] ?? e
+  })
+
 /**
- * The argv after `symspec`, shell-split (double and single quotes group, a backslash escapes),
- * with every placeholder slot replaced by `x`.
+ * The argv after `symspec`, split the way a POSIX shell splits words (R60), with every
+ * placeholder slot replaced by `x`. It TRACKS quote state: single quotes are literal to the
+ * next single quote; inside double quotes a backslash escapes only `$`, a backtick, `"`, `\`
+ * and a newline (which it removes) and is kept before anything else; outside quotes a backslash
+ * escapes the next character (a backslash-newline is a continuation, removed). A quote still
+ * open at the end of the command THROWS: the shell cannot parse it (review R6: an oracle that
+ * dropped the open quote passed `symspec glossary "issue a token" "mint a "token"`). Expansion
+ * (`$x`, a backtick) is not performed: the words are what the text literally shows, which is
+ * what {@link shellArgv} compares the real shell against.
  */
-export const argvOf = (command: string): readonly string[] => {
-  const text = command
-    .replace(ENV_PREFIX, '')
-    .replace(/^symspec\b/, '')
-    .replace(/<[^<>]*>/g, 'x')
-    .replace(/…|\.\.\./g, 'x')
+const literalWords = (command: string): readonly string[] => {
+  const text = slotted(command.replace(ENV_PREFIX, '')).replace(/^symspec\b/, '')
   const words: string[] = []
   let word: string | undefined
   let quote: '"' | "'" | undefined
+  let openedAt = -1
   for (let i = 0; i < text.length; i++) {
     const c = text[i] as string
-    if (quote !== undefined) {
-      if (c === quote) quote = undefined
-      else if (c === '\\' && quote === '"' && i + 1 < text.length)
-        word = `${word ?? ''}${text[++i]}`
+    if (quote === "'") {
+      if (c === "'") quote = undefined
       else word = `${word ?? ''}${c}`
       continue
     }
-    if (c === '"' || c === "'") {
+    if (quote === '"') {
+      if (c === '"') quote = undefined
+      else if (c === '\\' && i + 1 < text.length && '$`"\\\n'.includes(text[i + 1] as string)) {
+        const next = text[++i] as string
+        if (next !== '\n') word = `${word ?? ''}${next}`
+      } else word = `${word ?? ''}${c}`
+      continue
+    }
+    if (c === '$' && text[i + 1] === "'") {
+      // Dollar-single-quotes (POSIX.1-2024, bash): the one quoting that can spell a backtick or
+      // a newline without writing one, so a command inside a backticked prose span can carry it.
+      const close = dollarQuoteEnd(text, i + 2)
+      if (close < 0)
+        throw new Error(
+          `unterminated dollar-single quote opened at offset ${i}: ${JSON.stringify(text.slice(i))}`,
+        )
+      word = (word ?? '') + dollarQuoted(text.slice(i + 2, close))
+      i = close
+    } else if (c === '"' || c === "'") {
       quote = c
+      openedAt = i
       word ??= ''
     } else if (/\s/.test(c)) {
       if (word !== undefined) words.push(word)
       word = undefined
     } else if (c === '\\' && i + 1 < text.length) {
-      word = (word ?? '') + text[++i]
+      const next = text[++i] as string
+      if (next !== '\n') word = (word ?? '') + next
     } else {
       word = (word ?? '') + c
     }
   }
+  if (quote !== undefined)
+    throw new Error(
+      `unterminated ${quote === '"' ? 'double' : 'single'} quote opened at offset ${openedAt}: ${JSON.stringify(text.slice(openedAt))}`,
+    )
   if (word !== undefined) words.push(word)
-  return words.map((w) => (w.length === 0 ? 'x' : w))
+  return words
+}
+
+/** {@link literalWords} with an empty quoted word read as the slot `x`: the argv the parser judges. */
+export const argvOf = (command: string): readonly string[] =>
+  literalWords(command).map((w) => (w.length === 0 ? 'x' : w))
+
+/** The absolute path of the `bash` on PATH, so a script can run with an empty PATH. */
+const BASH = spawnSync('bash', ['-c', 'printf %s "$BASH"'], { encoding: 'utf8' }).stdout || 'bash'
+
+/**
+ * What `bash -n` says about the command, slots replaced (an unquoted `<id>` would read as a
+ * redirection): `undefined` when it parses, else its first error line (R60).
+ */
+export const shellSyntaxError = (command: string): string | undefined => {
+  const r = spawnSync(BASH, ['--noprofile', '--norc', '-n'], {
+    input: `${slotted(command)}\n`,
+    encoding: 'utf8',
+    env: { PATH: '/nonexistent', LC_ALL: 'C' },
+    timeout: 10_000,
+  })
+  if (r.status === 0) return undefined
+  return (r.stderr || `bash -n exited ${String(r.status)}`).trim().split('\n')[0]
+}
+
+/**
+ * The argv a real POSIX shell hands `symspec` for this command, slots replaced, one array per
+ * invocation (R60). `symspec` is a shell function that prints its arguments, and the script runs
+ * with no PATH and no inherited environment in an empty scratch directory, so nothing outside
+ * the shell runs: a broken quote, an expansion (`$HOME`, a backtick) or a split (`;`, a newline)
+ * shows up as a different argv or a second command, never as an effect.
+ */
+export const shellArgv = (command: string): readonly (readonly string[])[] => {
+  const dir = mkdtempSync(join(tmpdir(), 'symspec-sh-'))
+  try {
+    const script = `symspec() { printf '%s\\0' "$@"; printf '\\001\\0'; }\n${slotted(command)}\n`
+    const r = spawnSync(BASH, ['--noprofile', '--norc', '-c', script], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { PATH: '/nonexistent', HOME: dir, LC_ALL: 'C.UTF-8' },
+      timeout: 10_000,
+    })
+    const calls: string[][] = []
+    let current: string[] = []
+    for (const part of r.stdout.split('\0').slice(0, -1)) {
+      if (part === '\u0001') {
+        calls.push(current)
+        current = []
+      } else current.push(part)
+    }
+    return calls
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Why a command that carries document text or a user value is not shell-safe (R60), or
+ * `undefined`: an unterminated quote, a `bash -n` error, a shell that does not call `symspec`
+ * exactly once, or one whose argv differs from the words the text literally shows (an
+ * expansion or a split happened), or a `value` the command names that is not one whole word.
+ */
+export const shellSafetyProblem = (
+  command: string,
+  values: readonly string[] = [],
+): string | undefined => {
+  let literal: readonly string[]
+  try {
+    literal = literalWords(command)
+  } catch (e) {
+    return (e as Error).message
+  }
+  const syntax = shellSyntaxError(command)
+  if (syntax !== undefined) return `bash -n: ${syntax}`
+  const calls = shellArgv(command)
+  if (calls.length !== 1) return `the shell runs symspec ${calls.length} time(s)`
+  const words = calls[0] ?? []
+  if (JSON.stringify(words) !== JSON.stringify(literal))
+    return `the shell splits it into ${JSON.stringify(words)}, the text shows ${JSON.stringify(literal)}`
+  const lost = values.filter((v) => !words.includes(v))
+  if (lost.length > 0)
+    return `not one whole argument: ${JSON.stringify(lost)} in ${JSON.stringify(words)}`
+  return undefined
 }
 
 /** One command the built parser refused, with the line it printed. */
@@ -111,7 +251,15 @@ export interface ArgvRejection {
 }
 
 const parseOnce = (command: string): Promise<ArgvRejection | undefined> => {
-  const argv = argvOf(command)
+  // R60: an unterminated quote and a `bash -n` error are rejections before the parser runs.
+  let argv: readonly string[]
+  try {
+    argv = argvOf(command)
+  } catch (e) {
+    return Promise.resolve({ command, argv: [], error: (e as Error).message })
+  }
+  const syntax = shellSyntaxError(command)
+  if (syntax !== undefined) return Promise.resolve({ command, argv, error: `bash -n: ${syntax}` })
   const dir = mkdtempSync(join(tmpdir(), 'symspec-argv-'))
   const env: NodeJS.ProcessEnv = {
     ...process.env,

@@ -881,6 +881,65 @@ describe('S3 closure: the check-time twin is exact, and every migration op remov
     expect(wrong).toEqual([])
   }, 60_000)
 
+  it('[S3-024] the waiver-inert entry of a waiver naming a deleted UUID that is another requirement’s key removes only that waiver, in both id forms, and the live requirement’s reviewed waiver survives (R59)', async () => {
+    const GONE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const LIVE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const built = foldOps(
+      doc('base.json'),
+      [
+        {
+          op: 'add',
+          id: LIVE,
+          key: GONE,
+          patternType: 'ubiquitous',
+          systemName: 'audit logger',
+          systemResponse: 'retain 5 audit records',
+        } as DocumentOp,
+      ],
+      TS,
+      MUTATE_OPTIONS,
+    )
+    expect(built.abortedAt).toBeUndefined()
+    const liveHash = foldOps(
+      built.document,
+      [{ op: 'waive', code: 'GTWR_R5_INDEFINITE_ARTICLE', refs: [LIVE], reason: 'r' }],
+      TS,
+      MUTATE_OPTIONS,
+    ).document.waivers[0]?.contentHash
+    expect(liveHash).toMatch(/^sha256:/)
+    const wrong: string[] = []
+    for (const form of ['requirementId', 'requirementIds'] as const) {
+      const scope = (id: string) =>
+        form === 'requirementId' ? { requirementId: id } : { requirementIds: [id] }
+      const target = {
+        code: 'GTWR_R5_INDEFINITE_ARTICLE',
+        ...scope(GONE),
+        contentHash: HASH['LOG-R1'],
+        reason: 'target: review of the deleted requirement',
+      }
+      const live = {
+        code: 'GTWR_R5_INDEFINITE_ARTICLE',
+        ...scope(LIVE),
+        contentHash: liveHash,
+        reason: 'review of the live requirement',
+      }
+      const d = withRawWaivers(built.document, [live, target])
+      const r = await checkDocument(wiring, d, { strict: true })
+      const entry = inertDiagnostics(r).find(
+        (x) => JSON.stringify(x.waiver) === JSON.stringify(target),
+      )
+      if (entry === undefined) {
+        wrong.push(`${form}: no waiver-inert entry for the target`)
+        continue
+      }
+      const { folded } = followOps(d, entry)
+      const left = folded.document.waivers.map((w) => w.reason)
+      if (JSON.stringify(left) !== JSON.stringify([live.reason]))
+        wrong.push(`${form}: following ${JSON.stringify(entry.ops)} left ${JSON.stringify(left)}`)
+    }
+    expect(wrong).toEqual([])
+  }, 60_000)
+
   it('[S3-027] every command named by every waiver-inert and ignoredWaivers entry parses with the built binary, full argv (R56)', async () => {
     const commands = new Set<string>()
     for (const name of DOCS) {

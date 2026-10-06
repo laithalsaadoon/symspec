@@ -468,6 +468,50 @@ describe('init --split', () => {
     expect(fs.texts.size).toBe(0)
   })
 
+  it('[RH-008] with --force over an existing non-empty document and no split files, it replaces the document and says exactly that: created, overwritten, 0 requirements (R62, attack RH10)', () => {
+    const fs = freshSplitFs()
+    fs.files.set('r.json', docWith(requirement(ID_A)))
+    const r = runSplit({ file: 'r.json', force: true }, fs)
+    expect(r._tag).toBe('Success')
+    expect(fs.files.get('r.json')).toEqual(emptyDocument())
+    expect(fs.saves.length).toBe(1)
+    if (r._tag === 'Success') {
+      expect(r.success.data).toMatchObject({ created: true, overwritten: true, requirements: 0 })
+    }
+    expect([...fs.texts.keys()].sort()).toEqual(
+      ['intent.json', 'policy.json', CONFIG_FILE_NAME].sort(),
+    )
+  })
+
+  it('[RH-008] with --force over a document that carries an inline intent, it replaces the document before the duplicate-anchor check, so it succeeds (R62, attack RH10)', () => {
+    const fs = freshSplitFs()
+    fs.files.set('r.json', {
+      ...emptyDocument(),
+      docVersion: DOC_VERSION_VOCAB,
+      intent: { intentVersion: 1, items: [] },
+    })
+    const r = runSplit({ file: 'r.json', force: true }, fs)
+    expect(r._tag === 'Failure' ? asCatalogError(r.failure)?._tag : r._tag).toBe('Success')
+    expect(fs.files.get('r.json')).toEqual(emptyDocument())
+    if (r._tag === 'Success')
+      expect(r.success.data).toMatchObject({ created: true, overwritten: true, requirements: 0 })
+  })
+
+  it('[RH-008] never says it overwrote a document it kept: without --force the existing document is kept and overwritten is false (R62)', () => {
+    const fs = freshSplitFs()
+    const existing = docWith(requirement(ID_A))
+    fs.files.set('r.json', existing)
+    const r = runSplit({ file: 'r.json', force: false }, fs)
+    expect(r._tag).toBe('Success')
+    expect(fs.files.get('r.json')).toBe(existing)
+    if (r._tag === 'Success') {
+      const data = r.success.data as { created: boolean; overwritten: boolean }
+      // Whatever was kept was not overwritten, and whatever was overwritten was created anew.
+      expect(data.overwritten && !data.created).toBe(false)
+      expect(data).toMatchObject({ created: false, overwritten: false, requirements: 1 })
+    }
+  })
+
   it('without --split, init writes no anchor and reports no split key', () => {
     const fs = freshSplitFs()
     const r = Effect.runSync(

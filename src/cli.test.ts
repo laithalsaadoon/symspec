@@ -60,7 +60,15 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Manifest } from './app/runtime/operation.ts'
-import { argvOf, argvRejections, symspecCommandsIn } from './testing/cli-argv.ts'
+import {
+  argvOf,
+  argvRejections,
+  rejectionLines,
+  shellArgv,
+  shellSafetyProblem,
+  symspecCommandsDeep,
+  symspecCommandsIn,
+} from './testing/cli-argv.ts'
 
 const BUNDLE = fileURLToPath(new URL('../dist/cli.mjs', import.meta.url))
 
@@ -2515,4 +2523,142 @@ describe('release hardening — a git refusal and the v4 anchors, through the re
       names.map((name) => ({ name, code: null, exit: true, verdict: true, path: true })),
     )
   })
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R60, R61): the oracle tracks quotes and runs bash -n; every help text
+// names commands the parser accepts; a user's path is handed to the shell whole
+// ---------------------------------------------------------------------------
+
+describe('final closure: the argv oracle fails what a shell cannot parse (R60, review R6)', () => {
+  it('[S3-027] [S3-045] an unterminated quote and a bash -n error are rejections, with the parser never asked (planted)', async () => {
+    const R6 = 'symspec glossary "issue a token" "mint a "token"'
+    expect(() => argvOf(R6)).toThrow(/unterminated double quote/)
+    expect(() => argvOf("symspec glossary 'issue a token")).toThrow(/unterminated single quote/)
+    const rejected = await argvRejections([
+      R6,
+      "symspec glossary 'issue a token",
+      'symspec check a.json ) b',
+      'symspec glossary "issue a token" "mint a \\"token\\""',
+      `symspec glossary "issue a token" 'mint a "token"'`,
+    ])
+    expect(rejectionLines(rejected)).toEqual(
+      [
+        `symspec check a.json ) b  =>  bash -n: ${rejected.find((r) => r.command.includes(')'))?.error.replace(/^bash -n: /, '')}`,
+        `symspec glossary "issue a token" "mint a "token"  =>  unterminated double quote opened at offset 40: "\\""`,
+        `symspec glossary 'issue a token  =>  unterminated single quote opened at offset 10: "'issue a token"`,
+      ].sort((a, b) => a.localeCompare(b)),
+    )
+    expect(rejected.find((r) => r.command.includes(')'))?.error).toMatch(/^bash -n: .*syntax error/)
+  }, 60_000)
+
+  it('[S3-045] the tokenizer splits as bash does: quotes, escapes inside and outside double quotes, newlines inside quotes', () => {
+    for (const c of [
+      `symspec glossary "a \\"b\\" \\$c \\\\ d" 'it'"'"'s' e\\ f`,
+      'symspec glossary "line one\nline two" "x\\y"',
+      'symspec term \'a $b `c`\' "d;e"',
+    ]) {
+      expect(shellArgv(c), c).toEqual([argvOf(c)])
+    }
+    expect(argvOf(`symspec glossary "a \\"b\\"" 'it'"'"'s'`)).toEqual(['glossary', 'a "b"', "it's"])
+    // Dollar-single-quotes (POSIX.1-2024): a backtick and a newline spelled without writing one.
+    const dollar = "symspec glossary 'a' $'mint a \\x60token\\x60\\nnow it\\'s'"
+    expect(dollar.includes('`')).toBe(false)
+    expect(argvOf(dollar)).toEqual(['glossary', 'a', "mint a `token`\nnow it's"])
+    expect(shellArgv(dollar)).toEqual([argvOf(dollar)])
+    expect(() => argvOf("symspec glossary $'open")).toThrow(/unterminated dollar-single quote/)
+  })
+
+  it('[S3-045] shell safety fails an expansion, a split, a lost value and an open quote, and passes a quoted hostile value (planted)', () => {
+    expect(shellSafetyProblem('symspec glossary "a" "the $HOME badge"')).toMatch(
+      /the shell splits it/,
+    )
+    expect(shellSafetyProblem('symspec glossary "a" "the `true` badge"')).toMatch(
+      /the shell splits it/,
+    )
+    expect(shellSafetyProblem('symspec glossary a; b')).toMatch(/the shell splits it/)
+    expect(shellSafetyProblem('symspec glossary "a" "b"; symspec check')).toMatch(/2 time/)
+    expect(shellSafetyProblem('symspec glossary "a "b""', ['a "b"'])).toMatch(
+      /not one whole argument/,
+    )
+    expect(shellSafetyProblem('symspec glossary "a" "b')).toMatch(/unterminated/)
+    const hostile = `the "front" $HOME; it's \`x\` \\ badge\nok`
+    const quoted = `'${hostile.replace(/'/g, `'"'"'`)}'`
+    expect(shellSafetyProblem(`symspec glossary "a" ${quoted}`, ['a', hostile])).toBeUndefined()
+  })
+})
+
+describe('final closure: every command any help text names passes the parser (R61, attack C10)', () => {
+  /** Backticked `symspec ...` spans; read twice, so a stray backtick cannot shift the pairs. */
+  const commandsIn = (text: string): readonly string[] => [
+    ...symspecCommandsIn(text),
+    ...[...text.matchAll(/`(symspec(?:\s[^`]*)?)`/g)].map((m) => (m[1] ?? '').trim()),
+  ]
+
+  /**
+   * `import --help` names its stream's optional side-table lines as `symspec glossary/antonym/waive
+   * add`: a line of the import grammar, parsed by `import`, not an invocation of the CLI.
+   */
+  const IMPORT_SIDE_TABLE = 'symspec glossary/antonym/waive add'
+
+  it('[S3-045] term --help: the glossary command it points a verb phrase to parses with its required arguments, full argv (attack C10)', async () => {
+    const found = commandsIn(helpFor('term'))
+    expect(found.length).toBeGreaterThan(0)
+    expect(rejectionLines(await argvRejections(found))).toEqual([])
+    expect(found.some((c) => c.startsWith('symspec glossary "'))).toBe(true)
+  }, 60_000)
+
+  it('[S3-045] the root help and each subcommand’s --help: every `symspec` command named parses with its required arguments, full argv', async () => {
+    expect(manifest.operations.length).toBeGreaterThan(20)
+    expect(helpFor('import')).toContain(`\`${IMPORT_SIDE_TABLE}\``)
+    const commands = new Set<string>(commandsIn(rootHelp))
+    let named = 0
+    for (const op of manifest.operations) {
+      const found = commandsIn(helpFor(op.name)).filter((c) => c !== IMPORT_SIDE_TABLE)
+      named += found.length
+      for (const c of found) commands.add(c)
+    }
+    // Anti-vacuity: the term help's glossary pointer (attack C10) is among them.
+    expect(named).toBeGreaterThan(0)
+    expect([...commands].some((c) => c.startsWith('symspec glossary "'))).toBe(true)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 180_000)
+})
+
+describe('final closure: a document path is a user value the shell must hand over whole (R60)', () => {
+  it('[S3-045] check on a document under a directory named with quotes, $, a backtick, ;, a backslash and a newline: every command naming the path carries it as one whole argument', () => {
+    const root = mkdtempSync(join(tmpdir(), 'symspec-r60-'))
+    try {
+      const dir = join(root, `it's "a" $HOME; \`x\` \\ d\nz`)
+      mkdirSync(dir)
+      const file = join(dir, 'req.json')
+      expect(run('init', file).code).toBe(0)
+      for (const response of ['log every attempt', 'record each attempt'])
+        expect(
+          run(
+            'add',
+            '--file',
+            file,
+            '--pattern-type',
+            'ubiquitous',
+            '--system-name',
+            'auth service',
+            '--system-response',
+            response,
+          ).code,
+        ).toBe(0)
+      const { envelope } = runJson('check', file)
+      expect(envelope.type).toBe('check')
+      // Every command that mentions the directory at all, as an agent would copy it.
+      const commands = [...new Set(symspecCommandsDeep(envelope))].filter((c) => c.includes("it's"))
+      expect(commands.length, 'the check payload names the path in some command').toBeGreaterThan(0)
+      const wrong = commands.flatMap((c) => {
+        const problem = shellSafetyProblem(c, [file])
+        return problem === undefined ? [] : [`${c}  =>  ${problem}`]
+      })
+      expect(wrong).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 60_000)
 })

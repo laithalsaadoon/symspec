@@ -38,7 +38,9 @@ import { runnable } from '../../ports/command-form.ts'
 import {
   argvRejections,
   rejectionLines,
+  shellSafetyProblem,
   symspecCommandsDeep,
+  symspecCommandsIn,
   WAIVE_INFLECTION,
 } from '../../testing/cli-argv.ts'
 import {
@@ -1258,4 +1260,160 @@ describe('[S3-045] the commands a reachable near-duplicate message names parse w
     expect(commands.length).toBeGreaterThan(0)
     expect(rejectionLines(await argvRejections(commands))).toEqual([])
   }, 120_000)
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R60, R61): commands that carry document text are shell-safe, and the
+// number-spelling arm names a full command
+// ---------------------------------------------------------------------------
+
+/** An engine-shaped requirement, hand-written so a slot may hold any text a raw document can. */
+const engineReq = (
+  id: string,
+  systemResponse: string,
+  extra: Readonly<Record<string, unknown>> = {},
+) => ({
+  id,
+  patternType: 'event-driven' as const,
+  systemName: 'token service',
+  systemResponse,
+  trigger: 'the operator requests access',
+  negated: false,
+  sentence: `When the operator requests access, the token service shall ${systemResponse}.`,
+  priority: 'medium' as const,
+  status: 'draft' as const,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  derives: [],
+  satisfies: [],
+  verifies: [],
+  refines: [],
+  ...extra,
+})
+
+const engineDoc = (
+  requirements: readonly ReturnType<typeof engineReq>[],
+  tables: Readonly<Record<string, unknown>> = {},
+) => ({
+  requirements: Object.fromEntries(requirements.map((r) => [r.id, r])),
+  glossary: [],
+  antonyms: [],
+  waivers: [],
+  terms: [],
+  stateModel: { variables: [] },
+  ...tables,
+})
+
+/**
+ * One response per hazard R60 names, each beside a plain one: a double quote, a single quote,
+ * `$`, a backtick, a semicolon, a backslash, and all of them at once. A newline is not here: a
+ * slot holding one fails GTWR_R1_PATTERN and never reaches the semantic tier (measured), so the
+ * newline hazard is pinned where a newline can reach a command, the document path
+ * (`cli.test.ts`) and a glossary alias in a refusal (`mutate.test.ts`).
+ */
+const HAZARDS: readonly (readonly [string, string])[] = [
+  ['double quote', 'mint a "token"'],
+  ['single quote', "mint the operator's token"],
+  ['dollar', 'mint a token for $USER'],
+  ['backtick', 'mint a `token`'],
+  ['semicolon', 'mint a token; then log it'],
+  ['backslash', 'mint a token\\ now'],
+  ['all', 'mint a "token" for $USER; it\'s `id` \\ now'],
+]
+
+describe('[S3-045] every command a check emits over document text is shell-safe (R60)', () => {
+  const same: Embedder = async (texts) => texts.map(() => Float32Array.from([1, 0, 0, 0]))
+
+  it.each(
+    HAZARDS,
+  )('[S3-045] FND_SIMILAR_SEMANTIC (%s): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe', async (_, hostile) => {
+    const plain = 'issue a token'
+    const doc = engineDoc([
+      engineReq('11111111-1111-4111-8111-111111111111', plain),
+      engineReq('22222222-2222-4222-8222-222222222222', hostile),
+    ])
+    const report = await runCheck(doc as never, { semantic: { embedder: same } })
+    const near = report.findings.filter((f) => f.code === 'FND_SIMILAR_SEMANTIC')
+    expect(near.length, 'the fixture raises FND_SIMILAR_SEMANTIC').toBe(1)
+    const message = near[0]?.message ?? ''
+    // The glossary command, read off the message as an agent copies it.
+    const glossary = symspecCommandsIn(message).filter((c) => /^symspec glossary\b/.test(c))
+    expect(glossary.length, `a glossary command in: ${message}`).toBeGreaterThan(0)
+    const wrong: string[] = []
+    for (const c of glossary) {
+      const problem = shellSafetyProblem(c, [plain, hostile])
+      if (problem !== undefined) wrong.push(`${c}  =>  ${problem}`)
+    }
+    for (const c of new Set(symspecCommandsDeep(report))) {
+      if (glossary.includes(c)) continue
+      const problem = shellSafetyProblem(c)
+      if (problem !== undefined) wrong.push(`${c}  =>  ${problem}`)
+    }
+    expect(wrong).toEqual([])
+  })
+
+  it.each(
+    HAZARDS,
+  )('[S3-045] the opposite-polarity near-duplicate (%s): every command its message and demotion name is shell-safe', async (_, hostile) => {
+    const tail = hostile.replace(/^mint a token|^mint a|^mint the|^mint/, '')
+    const doc = engineDoc(
+      [
+        engineReq('11111111-1111-4111-8111-111111111111', `open the door${tail}`),
+        engineReq('22222222-2222-4222-8222-222222222222', `close the doors${tail}`),
+        engineReq('33333333-3333-4333-8333-333333333333', 'sound the chime'),
+      ],
+      { antonyms: [{ a: 'open', b: 'close' }] },
+    )
+    const embedder: Embedder = async (texts) =>
+      texts.map((t) => {
+        const v = new Float32Array(8)
+        v[t === 'sound the chime' ? 1 : 0] = 1
+        return v
+      })
+    const report = await runCheck(doc as never, { semantic: { embedder } })
+    expect(
+      report.coverage.demotions.some((d) => d.reason === 'opposite-polarity-near-duplicate'),
+      'the fixture raises the opposite-polarity near-duplicate',
+    ).toBe(true)
+    const commands = [...new Set(symspecCommandsDeep(report))]
+    expect(commands.length).toBeGreaterThan(0)
+    const wrong = commands.flatMap((c) => {
+      const problem = shellSafetyProblem(c)
+      return problem === undefined ? [] : [`${c}  =>  ${problem}`]
+    })
+    expect(wrong).toEqual([])
+  })
+})
+
+describe('[S3-045] the number-spelling arm names full commands (R61, attack C13)', () => {
+  it('[S3-045] the committed-alias branch of FND_NUMBER_SPELLING_CANDIDATE: every command its message names parses with the built binary, full argv', async () => {
+    const doc = engineDoc(
+      [
+        engineReq('10000000-0000-4000-8000-000000000001', 'sound the chime within 1.5 s', {
+          systemName: 'controller',
+          trigger: 'the door opens',
+          sentence: 'When the door opens, the controller shall sound the chime within 1.5 s.',
+        }),
+        engineReq('10000000-0000-4000-8000-000000000002', 'start the alarm sequence', {
+          systemName: 'controller',
+          trigger: 'the door opens',
+          negated: true,
+          sentence: 'When the door opens, the controller shall not start the alarm sequence.',
+        }),
+      ],
+      {
+        glossary: [
+          { canonical: 'start the alarm sequence', aliases: ['sound the chime within 1,5 s'] },
+        ],
+      },
+    )
+    const report = await runCheck(doc as never, {})
+    const spelling = report.findings.filter((f) => f.code === 'FND_NUMBER_SPELLING_CANDIDATE')
+    expect(spelling.length, 'the fixture raises FND_NUMBER_SPELLING_CANDIDATE').toBe(1)
+    // The committed-alias branch, not the same-phrase one.
+    expect(spelling[0]?.message).toContain('through a committed glossary or term alias')
+    const commands = symspecCommandsDeep(spelling)
+    expect(commands.some((c) => /^symspec update\b/.test(c))).toBe(true)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 60_000)
 })

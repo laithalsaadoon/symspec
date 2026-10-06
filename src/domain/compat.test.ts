@@ -803,6 +803,113 @@ describe('S3 closure: a stored waiver crosses only in a shape the S3 fold would 
     expect(wrong.length, listed(wrong)).toBe(0)
     expect(folded).toBeGreaterThan(0)
   })
+
+  it('[S3-024] [S3-027] a deleted requirement’s UUID that equals another requirement’s key: following the inert waiver’s ops removes exactly that stored waiver, in the requirementId and the requirementIds form, and the reviewed waivers of the live requirement survive (R59)', () => {
+    // A live requirement whose stable KEY is the UUID a stored waiver names; that UUID itself
+    // names no requirement (it was deleted). The stored UUID must resolve as that UUID first.
+    const LIVE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const built = foldOps(
+      base(),
+      [
+        {
+          op: 'add',
+          id: LIVE,
+          key: GONE,
+          patternType: 'ubiquitous',
+          systemName: 'audit logger',
+          systemResponse: 'retain 5 audit records',
+        } as DocumentOp,
+      ],
+      '2026-10-05T00:00:00.000Z',
+      s3Options.MUTATE_OPTIONS,
+    )
+    expect(built.abortedAt, 'a UUID-shaped key is authorable').toBeUndefined()
+    const doc = built.document
+    expect(doc.requirements[GONE], 'GONE names no requirement by UUID').toBeUndefined()
+    expect(Object.values(doc.requirements).find((r) => r.key === GONE)?.id).toBe(LIVE)
+    const liveHash = requirementsContentHash(doc, [LIVE]) as string
+    expect(liveHash).toMatch(/^sha256:[0-9a-f]{64}$/)
+    const FORMS = {
+      requirementId: (id: string) => ({ requirementId: id }),
+      requirementIds: (id: string) => ({ requirementIds: [id] }),
+    } as const
+    const wrong: string[] = []
+    let followed = 0
+    for (const code of FINDING_CODES) {
+      for (const [form, scope] of Object.entries(FORMS)) {
+        const target: Raw = {
+          code,
+          ...scope(GONE),
+          contentHash: HASH['LOG-R1'],
+          reason: 'review of the deleted requirement, the target',
+        }
+        const beside: readonly Raw[] = [
+          {
+            code,
+            requirementIds: [LIVE],
+            contentHash: liveHash,
+            reason: 'review of the live requirement (ids)',
+          },
+          {
+            code,
+            requirementId: LIVE,
+            contentHash: liveHash,
+            reason: 'review of the live requirement (id)',
+          },
+          { code, reason: 'another audit record, not the target' },
+          {
+            code: 'GTWR_R5_INDEFINITE_ARTICLE',
+            ...SCOPE,
+            reason: 'active reviewed decision, not the target',
+          },
+        ]
+        const d = s3.withRawWaivers(doc, [...beside, target])
+        const standing = waiverStanding(
+          d,
+          target as unknown as RequirementsDocument['waivers'][number],
+        )
+        if (standing.kind !== 'inert') {
+          wrong.push(`${code} (${form}): standing ${standing.kind}, not inert`)
+          continue
+        }
+        const diag = accountWaivers(d, [], [], []).diagnostics.find(
+          (x) => x.kind === 'waiver-inert' && JSON.stringify(x.waiver) === JSON.stringify(target),
+        )
+        if (diag === undefined) {
+          wrong.push(`${code} (${form}): no waiver-inert diagnostic to follow`)
+          continue
+        }
+        // The op names its target exactly as stored: the deleted UUID, never the live UUID.
+        const first = (diag.ops ?? [])[0] as Raw | undefined
+        const named = [first?.ref, ...((first?.refs as readonly unknown[] | undefined) ?? [])]
+        if (named.includes(LIVE)) wrong.push(`${code} (${form}): the op names the live UUID`)
+        const ops: DocumentOp[] = []
+        for (const raw of diag.ops ?? []) {
+          const decoded = Effect.runSync(Effect.result(decodeOp(raw)))
+          if (decoded._tag === 'Failure')
+            wrong.push(`${code} (${form}): undecodable ${JSON.stringify(raw)}`)
+          else ops.push(decoded.success)
+        }
+        const result = foldOps(d, ops, '2026-10-05T00:00:00.000Z', s3Options.MUTATE_OPTIONS)
+        followed += 1
+        if (result.abortedAt !== undefined) {
+          wrong.push(`${code} (${form}): refused ${result.results[result.abortedAt]?.code}`)
+          continue
+        }
+        const left = result.document.waivers.map((x) => JSON.stringify(x)).sort()
+        const want = beside.map((x) => JSON.stringify(x)).sort()
+        if (JSON.stringify(left) !== JSON.stringify(want)) {
+          const removed = want.filter((x) => !left.includes(x)).map((x) => JSON.parse(x).reason)
+          const kept = left.filter((x) => !want.includes(x)).map((x) => JSON.parse(x).reason)
+          wrong.push(
+            `${code} (${form}): also removed ${JSON.stringify(removed)}, left behind ${JSON.stringify(kept)}`,
+          )
+        }
+      }
+    }
+    expect(wrong.length, listed(wrong)).toBe(0)
+    expect(followed).toBe(FINDING_CODES.length * 2)
+  })
 })
 
 /**

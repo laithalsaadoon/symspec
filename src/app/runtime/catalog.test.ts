@@ -25,6 +25,7 @@ import {
 } from '../../domain/reachability/reachability-codes.ts'
 import { TERMINOLOGY_FND_CODES } from '../../domain/terminology/terminology-codes.ts'
 import { descriptionOf, ERR_CLASSES, tagOf } from '../../ports/errors.ts'
+import { WAIVE_INFLECTION } from '../../testing/cli-argv.ts'
 import {
   allCodeStrings,
   allCodes,
@@ -446,5 +447,28 @@ describe('nearestCodesAll ranks across all three families', () => {
     expect(allCodeStrings()).toHaveLength(90)
     expect(new Set(allCodeStrings()).size, 'no duplicate codes across families').toBe(90)
     expect(allCodeStrings()).toContain('ERR_WAIVER_REFUSED')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R61, review R7): a never-class row says no inflection of "waive"
+// ---------------------------------------------------------------------------
+
+describe('[S3-040] no never-class catalog row carries any inflection of "waive" (R61, review R7)', () => {
+  it('[S3-040] the description, meaning and suggestions of every never-class code use no inflection of "waive" (waive, waives, waived, waiving, waiver, waivers)', () => {
+    const never = allCodes().filter((row) => row.waivable === 'never')
+    // Anti-vacuity: the never classes hold most of the finding codes, the R7 code among them.
+    expect(never.length).toBeGreaterThan(20)
+    expect(never.map((row) => row.code)).toContain('FND_EXCLUDED_FROM_FORMAL')
+    const offenders = never.flatMap((row) =>
+      [
+        ['description', row.description],
+        ['meaning', row.meaning],
+        ...row.suggestions.map((s, i) => [`suggestions[${i}]`, s] as const),
+      ]
+        .filter(([, text]) => WAIVE_INFLECTION.test(text))
+        .map(([field, text]) => `${row.code}.${field}: ${text}`),
+    )
+    expect(offenders).toEqual([])
   })
 })

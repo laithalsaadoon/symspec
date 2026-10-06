@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { argvRejections, rejectionLines, symspecCommandsDeep } from '../../testing/cli-argv.ts'
 import type { Embedder } from '../engine/formal/embed.ts'
 import { COMMON_ACRONYMS } from '../engine/lint/gtwr.ts'
 import { DOC_VERSION, type RequirementsDocument } from '../requirements/document.ts'
@@ -460,4 +461,29 @@ describe('the tier can never move a verdict', () => {
       'pairsCompared',
     ])
   })
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R61): the split remedy names full commands
+// ---------------------------------------------------------------------------
+
+describe('[S3-045] the FND_TERM_INCONSISTENT split remedy names only commands the parser accepts with their required arguments (R61)', () => {
+  it.each([
+    ['terms', { terms: [{ canonical: 'token', aliases: [] }] }],
+    ['glossary', { glossary: [{ canonical: 'token', aliases: [] }] }],
+  ] as const)(
+    '[S3-045] a %s entry: every command its message and suggestion name parses with the built binary, full argv',
+    async (_, tables) => {
+      const embedder = angleEmbedder({ [AUTH_SLOTS]: 0, [GAME_SLOTS]: 55 })
+      const drift = (await runTerminology(driftDoc(tables), embedder)).findings.filter(
+        (f) => f.code === 'FND_TERM_INCONSISTENT',
+      )
+      expect(drift).toHaveLength(1)
+      const commands = symspecCommandsDeep(drift)
+      // Anti-vacuity: the --remove command of the owning table is among them.
+      expect(commands.some((c) => c.includes('--remove'))).toBe(true)
+      expect(rejectionLines(await argvRejections(commands))).toEqual([])
+    },
+    60_000,
+  )
 })

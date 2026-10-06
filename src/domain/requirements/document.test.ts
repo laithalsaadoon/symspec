@@ -1400,3 +1400,51 @@ describe('[RH-012] no description anywhere in the projected document schema clai
     expect([...claimed, ...unlabelled]).toEqual([])
   })
 })
+
+// ---------------------------------------------------------------------------
+// Final closure round (R62, attack C23, run 3's B4 statement): the intentRef and derived
+// descriptions say what the decoder does with the pair
+// ---------------------------------------------------------------------------
+
+describe('[RH-007] [RH-012] while the decoder accepts both intentRef and derived, or neither, no description of either claims it checks the pair (R62, attack C23)', () => {
+  const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim()
+  const described = () => {
+    const projected = Schema.toJsonSchemaDocument(RequirementsDocument) as unknown as {
+      schema: Node & { properties: Record<string, Node & { additionalProperties?: Node }> }
+    }
+    const requirement =
+      projected.schema.properties.requirements?.additionalProperties?.properties ?? {}
+    return {
+      intentRef: collapse(String(annotationOf(requirement.intentRef, 'description'))),
+      derived: collapse(String(annotationOf(requirement.derived, 'description'))),
+    }
+  }
+
+  it('[RH-007] [RH-012] a v4 requirement with both fields and one with neither decode, and each description states, in words written here, that this release checks neither', () => {
+    const both = attempt({
+      ...rawV4Document(),
+      requirements: {
+        [ID_A]: rawRequirement(ID_A, { intentRef: 'I1', derived: true }),
+        [ID_B]: rawRequirement(ID_B),
+      },
+    })
+    // The premise the wording depends on: today the pair is not enforced either way.
+    expect(both._tag).toBe('Success')
+    const NOT_CHECKED = 'and never both; this one checks neither.'
+    const wrong: string[] = []
+    for (const [field, text] of Object.entries(described())) {
+      if (!text.includes(NOT_CHECKED)) wrong.push(`${field}: does not say "${NOT_CHECKED}"`)
+      // Any present-tense claim that this release checks, enforces, rejects or requires the
+      // pair, in either direction (both, either, one, exactly one).
+      if (
+        /\bthis (?:one|release|build|version) (?:checks|enforces|rejects|requires|refuses) (?!neither\b)/i.test(
+          text,
+        )
+      )
+        wrong.push(`${field}: claims this release checks the pair: ${text}`)
+      if (/\b(?:is|are) (?:checked|enforced|rejected|refused)\b/i.test(text))
+        wrong.push(`${field}: claims enforcement: ${text}`)
+    }
+    expect(wrong).toEqual([])
+  })
+})

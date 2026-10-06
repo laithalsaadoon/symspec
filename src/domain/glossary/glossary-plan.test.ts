@@ -22,13 +22,15 @@
  * vectors, so a case can sit deliberately just above or just below the cut.
  */
 
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
+import { argvRejections, rejectionLines, symspecCommandsDeep } from '../../testing/cli-argv.ts'
 import { toEngineDoc } from '../compat.ts'
 import { glossaryIndex, normalize } from '../engine/formal/atomize.ts'
 import type { Embedder } from '../engine/formal/embed.ts'
 import { findOppositionCandidates } from '../engine/formal/semantic.ts'
 import { encodeIncluded } from '../engine/pipeline/check.ts'
-import { DOC_VERSION, type RequirementsDocument } from '../requirements/document.ts'
+import { DOC_VERSION, decodeDocument, type RequirementsDocument } from '../requirements/document.ts'
 import { foldOps } from '../requirements/mutate.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
 import { buildGlossaryPlan, isNegatingPrefixPair, oppositionShape } from './glossary-plan.ts'
@@ -1264,4 +1266,61 @@ describe('a class spans exactly the spellings of one system the atoms read as on
     expect(await opsAcross('The Gateway', 'Gateway')).toBe(0)
     expect(await opsAcross('pump controller', 'valve controller')).toBe(0)
   })
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R61, attack C18): every held class's message names full commands
+// ---------------------------------------------------------------------------
+
+describe('[S3-045] an unresolved glossary-plan class names only commands the parser accepts (R61, attack C18)', () => {
+  it('[S3-045] existing-canonical-conflict (two already committed canonicals): every command its message and commands name parses with the built binary, full argv', async () => {
+    const row = (i: number, response: string) => {
+      const id = `10000000-0000-4000-8000-${String(i).padStart(12, '0')}`
+      return [
+        id,
+        {
+          id,
+          key: `PLAN-R${i}`,
+          patternType: 'event-driven',
+          trigger: 'the day closes',
+          systemName: 'ledger service',
+          systemResponse: response,
+          negated: false,
+          sentence: `When the day closes, the ledger service shall ${response}.`,
+          priority: 'medium',
+          status: 'draft',
+          createdAt: TS,
+          updatedAt: TS,
+          derives: [],
+          satisfies: [],
+          verifies: [],
+          refines: [],
+        },
+      ] as const
+    }
+    const raw = {
+      docVersion: DOC_VERSION,
+      requirements: Object.fromEntries([
+        row(1, 'reconcile the ledger'),
+        row(2, 'settle the accounts'),
+      ]),
+      glossary: [
+        { canonical: 'reconcile the ledger', aliases: ['reconcile the books'] },
+        { canonical: 'settle the accounts', aliases: ['settle the balances'] },
+      ],
+      antonyms: [],
+      waivers: [],
+      terms: [],
+      stateModel: { variables: [] },
+    }
+    const doc = Effect.runSync(decodeDocument(raw)).document
+    const plan = await buildGlossaryPlan(toEngineDoc(doc), async (texts) =>
+      texts.map(() => Float32Array.from([1, 0])),
+    )
+    const held = plan.unresolved.filter((u) => u.reason === 'existing-canonical-conflict')
+    expect(held.length, 'the fixture holds an existing-canonical-conflict class').toBe(1)
+    const commands = symspecCommandsDeep(plan.unresolved)
+    expect(commands.some((c) => c.includes('--remove'))).toBe(true)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 60_000)
 })

@@ -2130,5 +2130,76 @@ describe('[S3-021] [S3-046] a scoped, hash-bound waiver of a terminology-tier fi
       { code, requirementIds: [...finding.requirementIds].sort(), reason },
     ])
     expect(after.diagnostics.filter((d) => d.kind === 'waiver-inert')).toEqual([])
+    // R62 (attack C09, the S8 open item): the suppressed terminology finding is tallied.
+    expect(after.waived, 'data.waived counts the terminology waiver').toBe(before.waived + 1)
+  })
+
+  it('[S3-021] [S3-046] two FND_ACRONYM_UNDEFINED findings on disjoint requirements: a waiver of one suppresses only it, data.waived rises by one, and exactly one waiver is applied (R62, attack C06)', async () => {
+    const doc = buildDoc(
+      [
+        {
+          op: 'add',
+          id: '10000000-0000-4000-8000-000000000001',
+          key: 'XYZ-R1',
+          patternType: 'event-driven',
+          trigger: 'the operator opens the session',
+          systemName: 'gateway',
+          systemResponse: 'record the XYZ status',
+        },
+        {
+          op: 'add',
+          id: '10000000-0000-4000-8000-000000000002',
+          key: 'ABC-R2',
+          patternType: 'event-driven',
+          trigger: 'the operator opens the session',
+          systemName: 'gateway',
+          systemResponse: 'store the ABC token',
+        },
+      ] as never,
+      MUTATE_OPTIONS,
+    )
+    const embedder = orthogonalEmbedder([])
+    const before = await expectOk(doc, {}, embedder)
+    const acronyms = before.findings.filter((f) => f.code === 'FND_ACRONYM_UNDEFINED')
+    expect(acronyms.map(row).sort()).toEqual([
+      'FND_ACRONYM_UNDEFINED [10000000-0000-4000-8000-000000000001]',
+      'FND_ACRONYM_UNDEFINED [10000000-0000-4000-8000-000000000002]',
+    ])
+    const target = acronyms.find((f) =>
+      f.requirementIds.includes('10000000-0000-4000-8000-000000000002'),
+    )
+    if (target === undefined) throw new Error('no ABC finding')
+    const reason = 'reviewed: ABC is the vendor name'
+    const folded = foldOps(
+      doc,
+      [{ op: 'waive', code: 'FND_ACRONYM_UNDEFINED', refs: [...target.requirementIds], reason }],
+      '2026-10-05T00:00:00.000Z',
+      MUTATE_OPTIONS,
+    )
+    expect(folded.abortedAt).toBeUndefined()
+    const after = await expectOk(folded.document, {}, embedder)
+    expect(after.findings.filter((f) => f.code === 'FND_ACRONYM_UNDEFINED').map(row)).toEqual([
+      'FND_ACRONYM_UNDEFINED [10000000-0000-4000-8000-000000000001]',
+    ])
+    expect(after.waived).toBe(before.waived + 1)
+    expect(after.appliedWaivers).toEqual([
+      {
+        code: 'FND_ACRONYM_UNDEFINED',
+        requirementIds: ['10000000-0000-4000-8000-000000000002'],
+        reason,
+      },
+    ])
+    // Its own ids under another content hash: the finding stands and nothing is tallied.
+    const stale = {
+      ...folded.document,
+      waivers: folded.document.waivers.map((w) => ({
+        ...w,
+        contentHash: `sha256:${'0'.repeat(64)}`,
+      })),
+    }
+    const unbound = await expectOk(stale, {}, embedder)
+    expect(unbound.findings.filter((f) => f.code === 'FND_ACRONYM_UNDEFINED').length).toBe(2)
+    expect(unbound.waived).toBe(before.waived)
+    expect(unbound.appliedWaivers).toEqual([])
   })
 })

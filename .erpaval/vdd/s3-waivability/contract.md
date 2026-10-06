@@ -682,3 +682,93 @@ build can tell them apart. The tests exclude that bystander and say why.
   a full-argv form still satisfies. Throwaway run with build-4.patch applied on 5f79f9a (job-1094/tw):
   before this re-pin, 3561 tests, 1 failed (exactly this assertion); after it, 3562 tests, 0 failed.
   On 5f79f9a product code both catalog tests are red by assertion (bare `symspec glossary` still listed).
+
+## Loop-back contract-6 (final closure round after review bc9a87d and attack round 2 19bd46f; job 1164)
+
+Rulings R59-R62 and the unnumbered directive contract-6/accepted (C14, C15, C17, C20, P16 not
+pinned) are in `rulings.json` and `readings.md ## Rulings`, word for word. Run on 2d3e5fe's product
+code (`pnpm build`, one `vitest run`): 3651 tests, 30 failed, 3621 passed, 0 broken suites, every
+failure an AssertionError; the 3587 earlier tests all pass. The record is `absence-6.json` (each new
+test row, the red list, the mutant kills, the harness sabotage).
+
+### The harness change (R60, review R6): `src/testing/cli-argv.ts`
+
+- `argvOf` tracks quote state as POSIX does (single quotes literal; inside double quotes a backslash
+  escapes only `$`, a backtick, `"`, `\` and a newline; dollar-single-quotes `$'...'` decoded) and
+  THROWS on an unterminated quote. `argvRejections` turns that throw, and any `bash -n` error on the
+  command (slots replaced by `x`), into a rejection before the parser runs, so every earlier R56 sweep
+  now runs through bash -n and the parser. All earlier sweeps stay green on 2d3e5fe.
+- New: `shellSyntaxError` (bash -n), `shellArgv` (the argv a real bash hands a `symspec` function,
+  with no PATH, no inherited env, in an empty scratch dir), and `shellSafetyProblem(command, values)`:
+  unterminated quote, bash -n error, not exactly one `symspec` call, a shell argv that differs from
+  the words the text literally shows (an expansion or a split happened), or a `value` that is not one
+  whole argument. Sabotage: disabling the throw, or bash -n, turns the planted cli test red.
+
+### What the builder implements (each red test names it)
+
+- R59 (`mutate.ts` `applyUnwaive`, and so every waiver-inert/ignoredWaivers op): a `ref`/`refs`
+  entry that equals a stored waiver's `requirementId`/`requirementIds` matches it as that UUID before
+  any key lookup; a deleted UUID equal to a live requirement's key must not resolve to the live one.
+  Red: compat `[S3-024] [S3-027] a deleted requirement's UUID that equals another requirement's
+  key ... (R59)` (every finding code x both id forms, bystanders: the live requirement's reviewed
+  waivers in both forms, a code-only waiver, an active scoped GTWR waiver); check-waivers `[S3-024]
+  the waiver-inert entry of a waiver naming a deleted UUID ... (R59)` (end to end through check).
+- R60, document text (engine `semantic.ts` FND_SIMILAR_SEMANTIC glossary command and the
+  near-duplicate update/glossary actions): every argument that carries a slot text is quoted so bash
+  -n accepts it and the shell hands it over whole. Red: repair `[S3-045] FND_SIMILAR_SEMANTIC
+  (double quote | dollar | backtick | all)` (the glossary command must carry both responses as two
+  whole arguments) and `the opposite-polarity near-duplicate (dollar | backtick | all)` (every
+  command shell-safe). Green on 2d3e5fe by measurement: single quote, semicolon, backslash.
+- R60, refusals (`mutate.ts` glossary :548/:565, term :839/:854): `Free it first` and `Use ... as
+  the canonical` carry the owner canonical and the user's alias whole. Red: mutate `[S3-045]
+  glossary|term: ... (double quote | dollar | backtick | all)`, 16 tests; newline, single quote,
+  semicolon and backslash are green there.
+- R60, user value (the document path, `reachability-report.ts` :750-:751 `--file ${docPath}` and
+  every other `${path}` interpolation that reaches a check payload): red cli `[S3-045] check on a
+  document under a directory named with quotes, $, a backtick, ;, a backslash and a newline ...`. A
+  command that carries a path must be one shell command: `--type bool|int|enum` is a pipeline to a
+  shell, so on such a command it must become a slot (`<bool|int|enum>`) or be quoted.
+- R61, help (each subcommand's `--help` plus the root): red cli `[S3-045] the root help and each
+  subcommand's --help ...`: `classify --help` names a bare `symspec state` (Missing required
+  argument: name). R61, term arm (`terminology.ts` `splitCommandsFor`): "then two `symspec term`
+  commands" / "two `symspec glossary` commands" are bare commands. Red: terminology `[S3-045] a terms
+  entry | a glossary entry ...`. R61, catalog (R7, `codes.ts:288` FND_EXCLUDED_FROM_FORMAL "waiving
+  the finding alone"): red catalog `[S3-040] the description, meaning and suggestions of every
+  never-class code use no inflection of "waive"`; `pnpm gen:agents` then (AGENTS.md:927).
+
+### Green on 2d3e5fe, with the mutant each one kills (throwaway clone job-1164/mut, two runs each)
+
+C06 check `two FND_ACRONYM_UNDEFINED findings on disjoint requirements ... (R62, attack C06)` (also
+pins the stale-hash case: same ids, another hash, nothing suppressed or tallied); C09 the R57
+`[S3-021] [S3-046] FND_ACRONYM_UNDEFINED | FND_TERM_INCONSISTENT` tests now assert `data.waived`
+rises by one (closes S8); C10 cli `term --help: the glossary command it points a verb phrase to
+parses`; C13 repair `the committed-alias branch of FND_NUMBER_SPELLING_CANDIDATE`; C18 glossary-plan
+`existing-canonical-conflict (two already committed canonicals)`; C23 document `[RH-007] [RH-012] a
+v4 requirement with both fields and one with neither decode, and each description states ... that
+this release checks neither`; RH10 operations/document `[RH-008] with --force over an existing
+non-empty document ...` and `... carries an inline intent ...` (plus a no-force guard).
+
+### Feasibility (read-level plus the full run)
+
+No snapshot row holds a command or catalog prose (the two `symspec` hits in parse-corpus.txt are
+parse inputs). About 46 verbatim pins of plain-text commands (`symspec glossary "close the door"
+"close the doors"`, `symspec term "<canonical>" "token" --remove`, ...) in 11 test files hold if
+the builder keeps double quotes and backslash-escapes only `"`, `$`, a backtick and `\` inside
+them; switching every argument to single quotes would move them all. A backtick cannot appear raw
+inside a backticked prose span (the extractor and any reader end the span there): the oracle accepts
+`$'...'` (POSIX.1-2024), e.g. `$'mint a \x60token\x60'`, which the planted cli test pins. Changing
+FND_EXCLUDED_FROM_FORMAL's description needs `pnpm gen:agents` (check:agents).
+
+### Not pinned (and why)
+
+- `import --help`'s `symspec glossary/antonym/waive add` is a line of import's side-table grammar,
+  parsed by `import`, not an invocation; the help sweep excludes exactly that string and asserts it is
+  still there. A ruling can widen R61 to it.
+- A newline in a slot text: a slot holding one fails GTWR_R1_PATTERN and never reaches the semantic
+  tier (measured), so the newline hazard is pinned on the path and refusal channels only.
+- The near-duplicate commands are pinned shell-safe, not intended-argv: their `aligned` phrase is
+  constructed, not a document text, so no test names the words it must carry.
+- The generic sweeps check bash -n and the parser only, not shell word-split exactness, for commands
+  that carry no text or user value (R60 scopes exactness to those arguments).
+- RH10 has no registry id of its own; its tests carry RH-008 (init --split's result data), the
+  nearest. behaviors.json is not written by this item.
