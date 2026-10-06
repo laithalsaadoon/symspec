@@ -48,6 +48,7 @@ import { embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound, type OperationalError } from '../../ports/errors.ts'
 import { EXIT_CLEAN, EXIT_FINDINGS_FAILURE, EXIT_INCONCLUSIVE } from '../../ports/exit.ts'
 import { SolverService } from '../../ports/solver.ts'
+import { buildDoc, orthogonalEmbedder } from '../../testing/gaming.ts'
 import { exitCodeForEnvelope } from '../runtime/exit.ts'
 import { runOperation } from '../runtime/operation.ts'
 import {
@@ -2064,5 +2065,70 @@ describe('[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, 
     const payload = await check(edited)
     expect(pairsOf(payload)).toEqual([key(A, B)])
     expect(payload.verified).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round (R57): a qualifying scoped waiver of a terminology finding is applied and
+// disclosed like every other scoped code (S3-021, S3-046)
+// ---------------------------------------------------------------------------
+
+describe('[S3-021] [S3-046] a scoped, hash-bound waiver of a terminology-tier finding suppresses exactly that finding and is listed in data.appliedWaivers (R57)', () => {
+  const acronymDoc = (): RequirementsDocument =>
+    buildDoc(
+      [
+        {
+          op: 'add',
+          id: '10000000-0000-4000-8000-000000000001',
+          key: 'XYZ-R1',
+          patternType: 'event-driven',
+          trigger: 'the operator opens the session',
+          systemName: 'gateway',
+          systemResponse: 'record the XYZ status',
+        },
+        {
+          op: 'add',
+          id: '10000000-0000-4000-8000-000000000002',
+          key: 'XYZ-R2',
+          patternType: 'event-driven',
+          trigger: 'the operator opens the session',
+          systemName: 'gateway',
+          systemResponse: 'store the session token',
+        },
+      ] as never,
+      MUTATE_OPTIONS,
+    )
+  const row = (f: { code: string; requirementIds: readonly string[] }) =>
+    `${f.code} [${[...f.requirementIds].sort().join(', ')}]`
+
+  it.each([
+    ['FND_ACRONYM_UNDEFINED', acronymDoc, orthogonalEmbedder([])],
+    ['FND_TERM_INCONSISTENT', verifiedDriftDoc, VERIFIED_DRIFT_EMBEDDER],
+  ] as const)('[S3-021] [S3-046] %s', async (code, makeDoc, embedder) => {
+    const doc = makeDoc()
+    const before = await expectOk(doc, {}, embedder)
+    const finding = before.findings.find((f) => f.code === code)
+    expect(finding, `the fixture raises ${code}`).toBeDefined()
+    if (finding === undefined) return
+    const reason = 'reviewed: the wording is intended'
+    const folded = foldOps(
+      doc,
+      [{ op: 'waive', code, refs: [...finding.requirementIds], reason }],
+      '2026-10-05T00:00:00.000Z',
+      MUTATE_OPTIONS,
+    )
+    expect(folded.abortedAt, 'the fold accepts the scoped waive').toBeUndefined()
+    const after = await expectOk(folded.document, {}, embedder)
+    // Exactly its finding goes: every other finding stays.
+    expect(after.findings.map(row).sort()).toEqual(
+      before.findings
+        .filter((f) => row(f) !== row(finding))
+        .map(row)
+        .sort(),
+    )
+    expect(after.appliedWaivers).toEqual([
+      { code, requirementIds: [...finding.requirementIds].sort(), reason },
+    ])
+    expect(after.diagnostics.filter((d) => d.kind === 'waiver-inert')).toEqual([])
   })
 })

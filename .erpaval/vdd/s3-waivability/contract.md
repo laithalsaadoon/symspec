@@ -568,3 +568,99 @@ Open for the coordinator (not fixable in the contract role):
 
 ### S3-053 — S3 does not touch the version files; release-please bumps the four version files in the release PR
 - (no vitest test; see Unpinned)
+
+## Loop-back contract-4 (closure round after attack 35ac336 and review 57948c2; job 1069)
+
+Rulings R54-R57 and three unnumbered coordinator directives (review R5; attack D06/D14-D16 and
+evidence G3; the pre-existing error paths) are in `rulings.json` and `readings.md ## Rulings`, word
+for word. Run on 7afb20e's product code (`pnpm build`, one `vitest run`): 3561 tests, 45 failed,
+3516 passed, 0 broken suites, every failure an AssertionError. The record is `absence-4.json`
+(each test row, the red list, the mutant kills).
+
+### What the builder implements (each red test names it)
+
+- R54, check half (`compat.ts` `waiverStanding`/`toEngineDoc`, and so `accountWaivers`): a stored
+  waiver is `waiver-inert` (never forwarded, never `stale`) when it carries BOTH `requirementId`
+  and `requirementIds`, a reason that is blank after trimming (`''`, `'   '`), `requirementIds: []`,
+  or a `contentHash` that does not match `CONTENT_HASH_PATTERN` (`x`+hash, hash+`0`). Codes stay
+  exact: padded and case variants are already inert (green). Red: compat `[S3-030] every published
+  code x every other malformed stored shape ...`, `[S3-023] [S3-030] each malformed stored waiver is
+  disclosed by exactly one waiver-inert diagnostic ...`; check-waivers `[S3-030] derives-cycle: ...
+  strict exit stays 1 (R54)` (today exit 0).
+- R55 (`mutate.ts` `applyUnwaive`, keeping the op shape S3-024/S3-029 pin, `{ op, code, ref?, refs? }`):
+  an unwaive must remove the stored waiver whose code is exactly the op's code (a padded stored code
+  is not matched through `trim()` to the canonical one beside it), and a `ref` that resolves to no
+  requirement must still match a stored `requirementId` equal to it (today it becomes `undefined`
+  and deletes the code-only or the active scoped waiver at that key). Red: compat `[S3-024] [S3-027]
+  applying the ops of each malformed waiver's diagnostic removes exactly that stored waiver and no
+  other ...`; check-waivers `[S3-024] a padded code, a lone requirementId naming a deleted requirement
+  and a dual-scope waiver are each removed by their own ops ...`. Green guard (A14): cli `symspec
+  waive --remove --ref LOG-R1 removes the refs form ...`.
+- R56, commands (full argv through `dist/cli.mjs`, `src/testing/cli-argv.ts`): the refusals
+  (`mutate.ts` `waiverClassRefusal`) name `symspec explain --code <CODE>` and full forms of
+  `symspec update`, `symspec antonym`, `symspec glossary`; catalog rows and `explain` output name no
+  `symspec antonym add <verbA> <verbB>` (codes.ts FND_OPPOSITION_CANDIDATE), `symspec glossary add`,
+  and no bare `symspec classify`, `symspec glossary`, `symspec glossary --remove`, `symspec state`,
+  `symspec term --remove`, `symspec update`; check payloads name no bare `symspec antonym` /
+  `glossary` / `update`, and the reachability repairs pass the document as `--file`, not as a
+  positional (`symspec classify <ref> --kind constraint --expression "<predicate>" doc.json`,
+  `symspec state <name> --type bool|int|enum doc.json`); engine messages and actions spell the flat
+  `symspec glossary "<a>" "<b>"` and `symspec antonym <a> <b>` (semantic.ts FND_SIMILAR_SEMANTIC, the
+  near-duplicate action, the opposition message). Red: waive-fold `[S3-011] [S3-045] every command
+  named by every waive refusal ...`, `[S3-045] every command named by explain ...`; report-corpus
+  `[S3-027] [S3-045] every symspec command named anywhere in any check payload ...`; repair `[S3-045]
+  the opposite-polarity near-duplicate ...: every command ... parses`. A placeholder (`<x>`, `"…"`)
+  is read as the word `x`, so `--type <bool|int|enum>` style slots parse.
+- R56, inflections (`WAIVE_INFLECTION`, waive/waives/waived/waiving/waiver/waivers; `waivable` is not
+  in it): `coverage.ts` FND_EXCLUDED_FROM_FORMAL message drops "NOTE: waiving ..."; engine
+  `pipeline/check.ts` `unappliedNote` and the `inconclusive-group` action drop "waiver" and "Waiving
+  FND_NEEDS_REVIEW". Red: report-corpus `[S3-040] no finding message or suggestion for a never-class
+  code uses any inflection ...`; repair `[S3-040] src/domain/engine/formal/coverage.ts: no string
+  literal ...`, `[S3-040] pipeline/check.ts: no literal of a never-code demotion action
+  (unappliedNote included) ...`; engine check.test `[S3-040] the forced-unknown inconclusive group
+  ... (P15, FND_NEEDS_REVIEW)`.
+- R57 (`app/operations/check.ts` + `waiver-accounting.ts`): a crossed scoped waiver of
+  FND_ACRONYM_UNDEFINED or FND_TERM_INCONSISTENT removes exactly that terminology finding and is
+  listed in `data.appliedWaivers` (no waiver-inert). Red: check.test `[S3-021] [S3-046] ... (R57)`
+  x2.
+
+### Re-pinned earlier tests (R56 makes their nested spelling a parse failure)
+
+30 tests that pinned the nested `symspec glossary add "…" "…"` / `symspec antonym add` spelling in a
+check-output message now pin the flat form and assert the nested one absent:
+`src/domain/engine/pipeline/verified.test.ts` (5), `src/domain/engine/formal/preposition-variant.test.ts`
+(23: the same-verb and contrary-row loops and the merge-makes-it-provable loop, which now reads
+`quoted(message, 'glossary')`), `src/adapters/embedding/embedder.test.ts` (2). Names unchanged; all red on
+7afb20e by assertion. Without the re-pin, R56 and these pins could not both pass.
+
+### Green on 7afb20e, with the mutant each one kills (throwaway clone job-1069/mut)
+
+P04 (waive-fold bare GTWR; compat code loop), D05 (compat code loop), D06 (check-waivers literal
+provenance suffix), D12 (waive-fold padded scoped code stored canonical), D14/D15/D16 (document.test
+load refusals), P13 (engine check.test near-duplicate message), P17 (repair constructed
+inconclusive-group arm), P19 P21 P22 P23 (engine `@existing` unexpected error propagates), P20 (both
+engine error tests), P24 (`@existing` antonym cycle falls back to seeds), A14 (cli waive --remove),
+A21 (cli `@existing` glossary over a persisted odd cycle), A24 and A25 (cli `@existing` apply with a
+malformed line). G3: import `[S3-012] for every waiver record shape x every code class ...` (green;
+a planted padded-code import bypass turns it, and only it, red). R5: `src/testing/gaming.ts`
+waive-raw now adds a code-only probe per never-class baseline code, idless included, and runs on a
+report that has only idless never codes; gaming `[S3-049] ... (R5)` is red with the old harness.
+The shard and moves snapshots do not move (the added probes are inert; derives-cycle stays
+inapplicable), measured in the full run.
+
+### Feasibility (read-level plus the full run)
+
+No stored fixture document holds a waiver in an R54 shape, so no fixture verdict or snapshot row
+moves. No test pins `applyUnwaive` trimming or the unresolved-ref no-op, so R55 fits the pinned op
+shape. Rewording the never-code prose and commands moves no snapshot (the corpus and gaming rows hold
+codes and demotion reasons, not prose); `check:agents` needs `pnpm gen:agents` after the catalog
+descriptions change. The substring pins on `symspec classify` (index, install, reachability-report,
+mutate, check, agents-doc tests) still hold for a full-argv form.
+
+### Not pinned (needs a ruling)
+
+R55's "no other stored waiver" for a bystander at the target's OWN key (same code as stored, same
+`requirementId`/`requirementIds`) that differs only in reason or hash, e.g. a blank-reason or
+prefixed-hash target beside a reviewed waiver over the same refs, or a stale waiver beside a fresh
+one: the exact unwaive S3-024/S3-029 pin (`toEqual(unwaiveOf(w))`) carries no reason or hash, so no
+build can tell them apart. The tests exclude that bystander and say why.

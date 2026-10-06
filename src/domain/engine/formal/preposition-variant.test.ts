@@ -137,7 +137,9 @@ describe('the SAME verb at opposite polarity, prepositions apart, demotes', () =
       // The exact edit that makes the pair provable: the second response in the first's words
       // (one atom at opposite polarity), or the glossary entry that says so.
       expect(message).toContain(`\`symspec update --ref ${idOf(2)} systemResponse "${x}"\``)
-      expect(message).toContain(`\`symspec glossary add "${x}" "${y}"\``)
+      expect(message).toContain(`\`symspec glossary "${x}" "${y}"\``)
+      // R56: the flat form the built parser accepts, never the nested `glossary add`.
+      expect(message).not.toContain('symspec glossary add')
       expect(message).not.toContain('symspec antonym add')
     })
   }
@@ -184,7 +186,9 @@ describe('two verbs one contrary row relates, prepositions apart or moved, demot
       const head = normalize(y).split('_')[0] as string
       const aligned = `${head} ${normalize(x).split('_').slice(1).join(' ')}`
       expect(message).toContain(`\`symspec update --ref ${idOf(2)} systemResponse "${aligned}"\``)
-      expect(message).toContain(`\`symspec glossary add "${aligned}" "${y}"\``)
+      expect(message).toContain(`\`symspec glossary "${aligned}" "${y}"\``)
+      // R56: the flat form the built parser accepts, never the nested `glossary add`.
+      expect(message).not.toContain('symspec glossary add')
     })
   }
 
@@ -247,7 +251,9 @@ describe('the edit the candidate names makes the pair provable', () => {
         `update: ${rewritten}`,
       ).toEqual([[idOf(1), idOf(2)]])
 
-      const glossary = quoted(message, 'glossary add')
+      // R56: the flat form the built parser accepts.
+      expect(message).not.toContain('symspec glossary add')
+      const glossary = quoted(message, 'glossary')
       const doc = (await docOf([
         `${BUTTON} ${x}.`,
         `${BUTTON} ${y}.`,

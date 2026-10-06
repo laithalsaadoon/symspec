@@ -30,6 +30,12 @@ import { waivabilityOf } from '../app/runtime/signal-classes.ts'
 import type { RequirementsDocument } from '../domain/requirements/document.ts'
 import { foldOps } from '../domain/requirements/mutate.ts'
 import { decodeOp } from '../domain/requirements/ops.ts'
+import {
+  argvRejections,
+  rejectionLines,
+  symspecCommandsDeep,
+  WAIVE_INFLECTION,
+} from './cli-argv.ts'
 import { evalRoundCases } from './eval-rounds.ts'
 import { fabricationCases } from './fabrication.ts'
 import { ARMED, FIXTURES } from './gaming.ts'
@@ -283,4 +289,47 @@ describe('[S3-039][S3-040][S3-045] the advice over every corpus and fixture docu
     }
     expect(offenders.length, listed(offenders)).toBe(0)
   })
+
+  it('[S3-040] no finding message or suggestion for a never-class code uses any inflection of "waive" (waive, waives, waived, waiving, waiver, waivers) (R56)', () => {
+    const offenders: string[] = []
+    let read = 0
+    for (const { label, data } of runs) {
+      for (const f of data.findings) {
+        if (waivabilityOf(f.code) !== 'never') continue
+        for (const [field, text] of [
+          ['message', f.message],
+          ['suggestion', f.suggestion],
+        ] as const) {
+          if (text === undefined) continue
+          read += 1
+          if (WAIVE_INFLECTION.test(text)) offenders.push(`${label} ${f.code}.${field}: ${text}`)
+        }
+      }
+    }
+    expect(read, 'no never-class prose to read').toBeGreaterThan(20)
+    expect(offenders.length, listed(offenders)).toBe(0)
+  })
+
+  it('[S3-040] no demotion action for a never-class code uses any inflection of "waive" (R56)', () => {
+    const offenders: string[] = []
+    let read = 0
+    for (const { label, data } of runs) {
+      for (const d of data.coverage.demotions) {
+        const code = DEMOTION_CODE[d.reason]
+        if (code === undefined || d.action === undefined) continue
+        read += 1
+        if (WAIVE_INFLECTION.test(d.action))
+          offenders.push(`${label} ${d.reason} (${code}): ${d.action}`)
+      }
+    }
+    expect(read, 'no never-class demotion action to read').toBeGreaterThan(5)
+    expect(offenders.length, listed(offenders)).toBe(0)
+  })
+
+  it('[S3-027] [S3-045] every `symspec` command named anywhere in any check payload parses with the built binary, full argv (R56)', async () => {
+    const commands = new Set<string>()
+    for (const { data } of runs) for (const c of symspecCommandsDeep(data)) commands.add(c)
+    expect(commands.size, 'the payloads name no command at all').toBeGreaterThan(10)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 300_000)
 })

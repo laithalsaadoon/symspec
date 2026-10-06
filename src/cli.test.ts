@@ -60,6 +60,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Manifest } from './app/runtime/operation.ts'
+import { argvOf, argvRejections, symspecCommandsIn } from './testing/cli-argv.ts'
 
 const BUNDLE = fileURLToPath(new URL('../dist/cli.mjs', import.meta.url))
 
@@ -2052,5 +2053,140 @@ describe('S3: waive, apply and import refuse never-class and unscoped waivers th
     expect(code).toBe(1)
     const data = envelope.data as { findings: { code: string; severity: string }[] }
     expect(data.findings.find((f) => f.code === 'FND_CONTRADICTION')?.severity).toBe('error')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round: the argv oracle R56 uses, and the write paths the attack found unpinned
+// (A14, A21, A24, A25)
+// ---------------------------------------------------------------------------
+
+describe('S3 closure: the built parser as the oracle for every named command (R56)', () => {
+  it('[S3-027] [S3-045] the oracle rejects what the parser rejects and accepts what it accepts (planted)', async () => {
+    const rejected = await argvRejections([
+      'symspec explain FND_CYCLE',
+      'symspec antonym add <verbA> <verbB>',
+      'symspec glossary add "close the door" "close the doors"',
+      'symspec update',
+      'symspec explain --code FND_CYCLE',
+      'symspec antonym <verbA> <verbB>',
+      'symspec glossary "close the door" "close the doors"',
+      'symspec waive <code> --ref <id> --reason "…"',
+      'symspec check requirements.json --timeout-ms 4000',
+      'SYMSPEC_EMBED_ALLOW_REMOTE=1 symspec check …',
+      'symspec download-model',
+    ])
+    expect(rejected.map((r) => r.command).sort()).toEqual(
+      [
+        'symspec antonym add <verbA> <verbB>',
+        'symspec explain FND_CYCLE',
+        'symspec glossary add "close the door" "close the doors"',
+        'symspec update',
+      ].sort(),
+    )
+    expect(rejected.find((r) => r.command === 'symspec explain FND_CYCLE')?.error).toMatch(
+      /Missing required flag: --code/,
+    )
+  }, 60_000)
+
+  it('[S3-027] the extractor reads backticked commands and whole command strings, and the tokenizer keeps quoted words', () => {
+    expect(
+      symspecCommandsIn(
+        'run `symspec check x.json`, then `git status` and `symspec explain --code A`',
+      ),
+    ).toEqual(['symspec check x.json', 'symspec explain --code A'])
+    expect(symspecCommandsIn('symspec check ./requirements.json --solver-budget-ms 30000')).toEqual(
+      ['symspec check ./requirements.json --solver-budget-ms 30000'],
+    )
+    expect(argvOf('symspec glossary "issue a token" \'mint a token\' --file <path>')).toEqual([
+      'glossary',
+      'issue a token',
+      'mint a token',
+      '--file',
+      'x',
+    ])
+  })
+})
+
+describe('S3 closure: write paths through the shipped bundle', () => {
+  const S3 = fileURLToPath(new URL('./testing/__fixtures__/s3-waivability', import.meta.url))
+  const dirs: string[] = []
+  afterAll(async () => {
+    const { rm } = await import('node:fs/promises')
+    await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+  })
+  const copyOf = (text: string): string => {
+    const dir = mkdtempSync(join(tmpdir(), 'symspec-s3c-'))
+    dirs.push(dir)
+    const doc = join(dir, 'requirements.json')
+    writeFileSync(doc, text)
+    return doc
+  }
+  const baseText = () => readFileSync(join(S3, 'base.json'), 'utf8')
+  const waiversOf = (doc: string) =>
+    (JSON.parse(readFileSync(doc, 'utf8')) as { waivers: unknown[] }).waivers
+
+  it('[S3-005] [S3-006] symspec waive --remove --ref LOG-R1 removes the refs form symspec waive --ref LOG-R1 stored (A14)', () => {
+    const doc = copyOf(baseText())
+    const add = runJson(
+      'waive',
+      'GTWR_R5_INDEFINITE_ARTICLE',
+      '--ref',
+      'LOG-R1',
+      '--reason',
+      'reviewed',
+      '--file',
+      doc,
+    )
+    expect(add.code).toBe(0)
+    expect(waiversOf(doc)).toHaveLength(1)
+    const remove = runJson(
+      'waive',
+      'GTWR_R5_INDEFINITE_ARTICLE',
+      '--ref',
+      'LOG-R1',
+      '--remove',
+      '--file',
+      doc,
+    )
+    expect(remove.code).toBe(0)
+    const data = remove.envelope.data as { results: { op: string; ok: boolean; noop?: boolean }[] }
+    expect(data.results).toEqual([{ index: 0, op: 'unwaive', ok: true }])
+    expect(waiversOf(doc)).toEqual([])
+  })
+
+  it('[S3-031] @existing glossary over a hand-edited document whose antonym table holds an odd polarity cycle gives a typed ERR_USAGE refusal from the seed table, and writes nothing (A21)', () => {
+    const d = JSON.parse(baseText()) as Record<string, unknown>
+    d.antonyms = [
+      { a: 'zork', b: 'blip' },
+      { a: 'blip', b: 'frob' },
+      { a: 'frob', b: 'zork' },
+    ]
+    const doc = copyOf(`${JSON.stringify(d, null, 2)}\n`)
+    const before = readFileSync(doc)
+    const { stdout, code } = run('glossary', 'open the door', 'close the door', '--file', doc)
+    expect(code).toBe(2)
+    const envelope = JSON.parse(stdout) as { type: string; code: string; error: string }
+    expect(envelope.type).toBe('error')
+    expect(envelope.code).toBe('ERR_USAGE')
+    expect(envelope.error).toMatch(/contrary of "open the door"/)
+    expect(readFileSync(doc).equals(before)).toBe(true)
+  })
+
+  it('[S3-002] @existing apply with a malformed JSON line after a valid waive writes nothing and exits 2 with an ERR_USAGE envelope naming the line (A24, A25)', () => {
+    const doc = copyOf(baseText())
+    const before = readFileSync(doc)
+    const ops = join(dirs[dirs.length - 1] as string, 'ops.jsonl')
+    writeFileSync(
+      ops,
+      `${JSON.stringify({ op: 'waive', code: 'GTWR_R5_INDEFINITE_ARTICLE', ref: 'LOG-R1', reason: 'reviewed' })}\n{broken\n`,
+    )
+    const { stdout, code } = run('apply', '--file', doc, '--ops', ops)
+    expect(code).toBe(2)
+    const envelope = JSON.parse(stdout) as { type: string; code: string; error: string }
+    expect(envelope.type).toBe('error')
+    expect(envelope.code).toBe('ERR_USAGE')
+    expect(envelope.error).toMatch(/line 2 not valid JSON/)
+    expect(readFileSync(doc).equals(before)).toBe(true)
   })
 })

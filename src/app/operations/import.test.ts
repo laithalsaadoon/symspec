@@ -34,7 +34,7 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { RELATIONS, type Relation, type Requirement } from '../../domain/requirements/document.ts'
 import { foldOps } from '../../domain/requirements/mutate.ts'
-import type { DocumentOp } from '../../domain/requirements/ops.ts'
+import { type DocumentOp, decodeOp } from '../../domain/requirements/ops.ts'
 import { renderSentence } from '../../domain/requirements/render.ts'
 import { resolveRef } from '../../domain/requirements/resolve.ts'
 import {
@@ -805,5 +805,124 @@ describe('S3: import refuses the waivers apply refuses (readings settled example
       'ERR_WAIVER_REFUSED',
       'stored',
     ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round (evidence G3): import equals apply over every waiver record shape
+// ---------------------------------------------------------------------------
+
+describe('S3 closure: import folds every waiver record shape exactly as apply folds the same op (G3)', () => {
+  const s3Fixture = (name: string): string =>
+    readFileSync(
+      fileURLToPath(new URL(`../../testing/__fixtures__/s3-waivability/${name}`, import.meta.url)),
+      'utf8',
+    )
+  /** The six base requirements, as the import stream's add records. */
+  const adds = s3Fixture('import/v4-waivers.txt')
+    .split('\n')
+    .filter((l) => l.startsWith('{"op":"add"'))
+  const requirementsOnly = fold(adds.join('\n')).document
+  const LOG_R1 = '5a1e0000-0000-4000-8000-0000000000a1'
+  const H_LOG_R1 = 'sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0'
+  const H_LOG_R2 = 'sha256:c2bd1271a31955317e36a3ede3361500f1061ac287576762e1e60f4d7227e42a'
+  const CODES = [
+    ...new Set([
+      'GTWR_R5_INDEFINITE_ARTICLE',
+      'GTWR_R7_VAGUE',
+      'FND_CYCLE',
+      'FND_EXACT_DUPLICATE',
+      'FND_ACRONYM_UNDEFINED',
+      'FND_CONTRADICTION',
+      'FND_OPPOSITION_CANDIDATE',
+      'FND_NEEDS_REVIEW',
+      'FND_EXCLUDED_FROM_FORMAL',
+      'FND_REACHABILITY_NOT_CHECKED',
+      'FND_NOT_A_CODE',
+      'GTWR',
+      'GTWR_R99_NOT_A_RULE',
+      ' GTWR_R5_INDEFINITE_ARTICLE ',
+      'gtwr_r5_indefinite_article',
+      ' FND_CONTRADICTION',
+    ]),
+  ]
+  const reason = 'reviewed for this release'
+  /** Every waiver record shape an import stream can carry, with the op apply would fold. */
+  const SHAPES: readonly {
+    readonly name: string
+    readonly line: (code: string) => string
+    readonly op: (code: string) => Readonly<Record<string, unknown>>
+  }[] = [
+    ...(
+      [
+        ['JSONL code-only', {}],
+        ['JSONL ref (key)', { ref: 'LOG-R1' }],
+        ['JSONL ref (uuid)', { ref: LOG_R1 }],
+        ['JSONL refs', { refs: ['LOG-R1'] }],
+        ['JSONL refs + matching hash', { refs: ['LOG-R1'], contentHash: H_LOG_R1 }],
+        ['JSONL refs + stale hash', { refs: ['LOG-R1'], contentHash: H_LOG_R2 }],
+        ['JSONL refs pair', { refs: ['LOG-R1', 'LOG-R2'] }],
+        ['JSONL ref and refs', { ref: 'LOG-R1', refs: ['LOG-R1'] }],
+        ['JSONL unresolvable ref', { ref: '5a1e0000-0000-4000-8000-0000000000ff' }],
+        ['JSONL unresolvable refs', { refs: ['NO-SUCH-KEY'] }],
+      ] as const
+    ).map(([name, scope]) => ({
+      name,
+      line: (code: string) => JSON.stringify({ op: 'waive', code, reason, ...scope }),
+      op: (code: string) => ({ op: 'waive', code, reason, ...scope }),
+    })),
+    {
+      name: 'v4 line code-only',
+      line: (code) => `symspec waive add ${code.trim()} --reason '${reason}'`,
+      op: (code) => ({ op: 'waive', code: code.trim(), reason }),
+    },
+    {
+      name: 'v4 line --ref uuid',
+      line: (code) => `symspec waive add ${code.trim()} --reason '${reason}' --ref ${LOG_R1}`,
+      op: (code) => ({ op: 'waive', code: code.trim(), reason, ref: LOG_R1 }),
+    },
+  ]
+
+  /** What one channel did with the record: refused with a code, or the waivers it stored. */
+  const viaImport = (code: string, shape: (typeof SHAPES)[number]): string => {
+    const text = [...adds, shape.line(code)].join('\n')
+    const line = adds.length + 1
+    const result = fold(text)
+    const refused = result.refused.find((r) => r.line === line)
+    if (refused !== undefined) return `refused ${refused.code}`
+    const problem = result.problems.find((p) => p.line === line)
+    if (problem !== undefined) return `unread: ${problem.detail.slice(0, 60)}`
+    return `stored ${JSON.stringify(result.document.waivers)}`
+  }
+  const viaApply = (code: string, shape: (typeof SHAPES)[number]): string => {
+    const decoded = Effect.runSync(Effect.result(decodeOp(shape.op(code))))
+    if (decoded._tag === 'Failure') return 'undecodable'
+    const r = foldOps(requirementsOnly, [decoded.success], TIMESTAMP, MUTATE_OPTIONS)
+    const failed = r.results.find((x) => !x.ok)
+    return failed !== undefined
+      ? `refused ${failed.code}`
+      : `stored ${JSON.stringify(r.document.waivers)}`
+  }
+
+  it('[S3-012] for every waiver record shape x every code class (scoped, never, unpublished, padded, case variant), import refuses or stores exactly what apply does', () => {
+    const differ: string[] = []
+    let stored = 0
+    let refused = 0
+    for (const code of CODES) {
+      for (const shape of SHAPES) {
+        const a = viaApply(code, shape)
+        const i = viaImport(code, shape)
+        if (a.startsWith('stored')) stored += 1
+        if (a.startsWith('refused')) refused += 1
+        if (a !== i)
+          differ.push(
+            `${JSON.stringify(code)} ${shape.name}: apply ${a.slice(0, 80)} | import ${i.slice(0, 80)}`,
+          )
+      }
+    }
+    expect(differ).toEqual([])
+    // Not vacuous: both verdicts occur, on more than one shape each.
+    expect(stored).toBeGreaterThan(5)
+    expect(refused).toBeGreaterThan(CODES.length)
   })
 })

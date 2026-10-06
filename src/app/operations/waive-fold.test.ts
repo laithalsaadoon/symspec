@@ -12,14 +12,22 @@
  * `scoped` class refuses only without `refs` (or `ref`), and a missing hash is computed (R37).
  */
 
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import type { RequirementsDocument } from '../../domain/requirements/document.ts'
 import { type FoldResult, foldOps } from '../../domain/requirements/mutate.ts'
 import type { DocumentOp } from '../../domain/requirements/ops.ts'
+import {
+  argvRejections,
+  rejectionLines,
+  symspecCommandsDeep,
+  symspecCommandsIn,
+} from '../../testing/cli-argv.ts'
 import { fixtureDoc, fixtureOps, HASH, hashOf, ID, ids } from '../../testing/waiver-fixture.ts'
 import { allCodes, lookupCode } from '../runtime/catalog.ts'
+import { runOperation } from '../runtime/operation.ts'
 import { FINDING_CLASS, findingClassOf, waivabilityOf } from '../runtime/signal-classes.ts'
-import { currentManifest } from './index.ts'
+import { currentManifest, explainOp } from './index.ts'
 import { MUTATE_OPTIONS } from './mutate-options.ts'
 
 const TS = '2026-10-05T00:00:00.000Z'
@@ -343,4 +351,104 @@ describe('S3 write half: the fold refuses never-class and unscoped waivers', () 
       .map((row) => row.code)
     expect(advising).toEqual([])
   })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round (R54, R56): the canonical code is what the fold stores, and every command a
+// waive or explain output names is one the built CLI parses
+// ---------------------------------------------------------------------------
+
+describe('S3 closure: one code canonicalisation at write (R54)', () => {
+  it('[S3-010] [S3-030] a scoped code with surrounding whitespace is accepted and stored as the canonical code, for every scoped code', () => {
+    const doc = base()
+    const wrong: string[] = []
+    for (const code of SCOPED_CODES) {
+      for (const padded of [` ${code}`, `${code} `, `\t${code} `]) {
+        const folded = fold(doc, [waive(padded, { refs: ['LOG-R1'], contentHash: HASH['LOG-R1'] })])
+        const f = failure(folded)
+        if (f !== undefined) {
+          wrong.push(`${JSON.stringify(padded)}: refused ${f.code}`)
+          continue
+        }
+        const stored = folded.document.waivers.map((w) => w.code)
+        if (JSON.stringify(stored) !== JSON.stringify([code]))
+          wrong.push(`${JSON.stringify(padded)}: stored ${JSON.stringify(stored)}`)
+      }
+    }
+    expect(SCOPED_CODES.length).toBeGreaterThan(20)
+    expect(wrong).toEqual([])
+  })
+
+  it('[S3-010] [S3-030] case is never folded: every case variant of every scoped code is refused ERR_WAIVER_REFUSED, scoped and hash-bound', () => {
+    const doc = base()
+    const accepted: string[] = []
+    for (const code of SCOPED_CODES) {
+      for (const variant of [
+        code.toLowerCase(),
+        `${code.slice(0, 1).toLowerCase()}${code.slice(1)}`,
+      ]) {
+        const f = failure(
+          fold(doc, [waive(variant, { refs: ['LOG-R1'], contentHash: HASH['LOG-R1'] })]),
+        )
+        if (f?.code !== REFUSED) accepted.push(variant)
+      }
+    }
+    expect(accepted).toEqual([])
+  })
+
+  it('[S3-009] the bare GTWR grouping key is no code: it has no class and is refused in every scope shape', () => {
+    expect(findingClassOf('GTWR')).toBeUndefined()
+    expect(waivabilityOf('GTWR')).toBeUndefined()
+    const doc = base()
+    for (const { name, scope } of SHAPES) {
+      for (const code of ['GTWR', ' GTWR ']) {
+        expect(
+          failure(fold(doc, [waive(code, scope)]))?.code,
+          `${JSON.stringify(code)} ${name}`,
+        ).toBe(REFUSED)
+      }
+    }
+  })
+})
+
+describe('S3 closure: every command a waive or explain output names parses with the built CLI (R56)', () => {
+  it('[S3-011] [S3-045] every command named by every waive refusal and usage error parses, full argv, with the built binary', async () => {
+    const doc = base()
+    const commands = new Set<string>()
+    let outputs = 0
+    const read = (ops: readonly DocumentOp[]) => {
+      const f = failure(fold(doc, ops))
+      if (f === undefined) return
+      outputs += 1
+      for (const text of [f.error ?? '', ...(f.suggestions ?? [])])
+        for (const c of symspecCommandsIn(text)) commands.add(c)
+    }
+    for (const code of [...NEVER_CODES, ...SCOPED_CODES, 'FND_NOT_A_CODE', 'GTWR', 'fnd_cycle']) {
+      for (const { scope } of SHAPES) read([waive(code, scope)])
+    }
+    // The usage errors a waive can meet once the class lets it through.
+    read([{ op: 'waive', code: 'GTWR_R5_INDEFINITE_ARTICLE', reason: '   ', refs: ['LOG-R1'] }])
+    read([waive('GTWR_R5_INDEFINITE_ARTICLE', { ref: 'LOG-R1', refs: ['LOG-R1'] })])
+    read([waive('GTWR_R5_INDEFINITE_ARTICLE', { refs: ['LOG-R1'], contentHash: HASH['LOG-R2'] })])
+    read([waive('GTWR_R5_INDEFINITE_ARTICLE', { refs: ['NO-SUCH-KEY'] })])
+    read([waive('GTWR_R5_INDEFINITE_ARTICLE', { ref: 'NO-SUCH-KEY' })])
+    expect(outputs, 'no refusal to read').toBeGreaterThan(NEVER_CODES.length * SHAPES.length)
+    expect(commands.size, 'the refusals name no command at all').toBeGreaterThan(0)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 120_000)
+
+  it('[S3-045] every command named by explain, for every catalog code and for an unknown one, and by every catalog row, parses with the built binary', async () => {
+    const commands = new Set<string>()
+    for (const row of allCodes()) {
+      for (const c of symspecCommandsDeep(row)) commands.add(c)
+      const env = await Effect.runPromise(runOperation(explainOp, { code: row.code }))
+      for (const c of symspecCommandsDeep(env)) commands.add(c)
+    }
+    for (const code of ['FND_NOT_A_CODE', 'fnd_cycle']) {
+      const result = await Effect.runPromise(Effect.result(runOperation(explainOp, { code })))
+      for (const c of symspecCommandsDeep(result)) commands.add(c)
+    }
+    expect(commands.size, 'the catalog names no command at all').toBeGreaterThan(5)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 120_000)
 })

@@ -424,6 +424,67 @@ describe('the gaming registry', () => {
     expect(moveDirection(move('waive-scoped-never'), MUTATE_OPTIONS)).toBe('weakening')
   })
 
+  it('[S3-049] waive-raw writes a code-only probe for every never-class baseline code, the idless ones included, and still runs when only idless never codes are in the report (R5)', () => {
+    const raw = MOVES.find((x) => x.id === 'waive-raw')
+    if (raw === undefined) throw new Error('no move waive-raw')
+    const fixture = FIXTURES.find((f) => f.id === 'one-trigger-contradiction')
+    if (fixture === undefined) throw new Error('no fixture one-trigger-contradiction')
+    const doc = buildDoc(fixture.ops, MUTATE_OPTIONS)
+    const ids = fixture.culprits
+      .map((k) => Object.values(doc.requirements).find((r) => r.key === k)?.id ?? k)
+      .sort()
+    for (const code of ['FND_REACHABILITY_NOT_CHECKED', 'FND_NO_PAIRS_CHECKED'])
+      expect(waivabilityOf(code), code).toBe('never')
+    const codeOnly = (edit: ReturnType<typeof raw.edit>) =>
+      edit.kind === 'raw-waivers'
+        ? edit.waivers
+            .filter((w) => w.requirementId === undefined && w.requirementIds === undefined)
+            .map((w) => w.code)
+            .sort()
+        : []
+    // Both kinds of never-class finding in the report: one probe per distinct code.
+    const both = raw.edit({
+      fixture,
+      doc,
+      baselineCodes: ['FND_CONTRADICTION', 'FND_REACHABILITY_NOT_CHECKED', 'GTWR_R7_VAGUE'],
+      baselineFindings: [
+        { code: 'FND_CONTRADICTION', requirementIds: ids },
+        { code: 'FND_REACHABILITY_NOT_CHECKED', requirementIds: [] },
+        { code: 'GTWR_R7_VAGUE', requirementIds: [ids[0] ?? ''] },
+      ],
+      waivability: waivabilityOf,
+    })
+    expect(both.kind).toBe('raw-waivers')
+    expect(codeOnly(both)).toEqual(['FND_CONTRADICTION', 'FND_REACHABILITY_NOT_CHECKED'])
+    // Only idless never codes: no scoped waiver to copy, and the code-only probes still run.
+    const idless = raw.edit({
+      fixture,
+      doc,
+      baselineCodes: ['FND_NO_PAIRS_CHECKED', 'FND_REACHABILITY_NOT_CHECKED'],
+      baselineFindings: [
+        { code: 'FND_NO_PAIRS_CHECKED', requirementIds: [] },
+        { code: 'FND_REACHABILITY_NOT_CHECKED', requirementIds: [] },
+      ],
+      waivability: waivabilityOf,
+    })
+    expect(idless).toEqual({
+      kind: 'raw-waivers',
+      waivers: [
+        { code: 'FND_NO_PAIRS_CHECKED', reason: 'accepted for this release' },
+        { code: 'FND_REACHABILITY_NOT_CHECKED', reason: 'accepted for this release' },
+      ],
+    })
+    // With no never-class finding at all there is nothing to probe.
+    const none = raw.edit({
+      fixture,
+      doc,
+      baselineCodes: ['GTWR_R7_VAGUE'],
+      baselineFindings: [{ code: 'GTWR_R7_VAGUE', requirementIds: [ids[0] ?? ''] }],
+      waivability: waivabilityOf,
+    })
+    expect(none.kind).toBe('inapplicable')
+  })
+
   it('reports every move with its status, derived from the tables', async () => {
     const report = moveStatuses(MUTATE_OPTIONS)
       .map((s) => `${s.status}\t${s.direction}\t${s.id}\t${s.acs.join(',')}`)

@@ -1,0 +1,1051 @@
+{
+ "schemaVersion": 1,
+ "role": "contract",
+ "boardItem": {
+  "id": 195,
+  "key": "contract-4"
+ },
+ "job": 1069,
+ "product": "7afb20e6bfbd4b937465662ceaba3c60742e9bc2: the product files at HEAD 35ac336 equal 7afb20e; this run adds only *.test.ts, src/testing/gaming.ts (waive-raw, R5) and src/testing/cli-argv.ts",
+ "commands": [
+  "pnpm build",
+  "node_modules/.bin/vitest run"
+ ],
+ "env": "SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1, node 24.21.0",
+ "totals": {
+  "tests": 3561,
+  "failed": 45,
+  "passed": 3516,
+  "brokenSuites": 0
+ },
+ "failureKinds": [
+  "AssertionError"
+ ],
+ "newTests": {
+  "total": 64,
+  "red": 15,
+  "green": 49,
+  "greenExistingWithKill": 5
+ },
+ "repinnedRed": 30,
+ "earlierTests": {
+  "passed": 3467,
+  "failed": 0
+ },
+ "earlierSweepRowsOverTheNewHarnessFile": 3,
+ "problems": [],
+ "verdict": "clean",
+ "mutantKills": {
+  "A14": {
+   "span": "src/app/operations/mutation.ts:828:11-828:100",
+   "replacement": "{ op: 'unwaive', code: input.code, ...(input.ref !== null ? { ref: input.ref } : {}) }",
+   "killed": true,
+   "by": [
+    "S3 closure: write paths through the shipped bundle [S3-005] [S3-006] symspec waive --remove --ref LOG-R1 removes the refs form symspec waive --ref LOG-R1 stored (A14)"
+   ]
+  },
+  "A21": {
+   "span": "src/app/operations/mutate-options.ts:129:5-135:6",
+   "replacement": "antonyms = buildAntonymIndexWithDoc(\n        document.antonyms.map((p) => [normalize(p.a), normalize(p.b)] as const),\n      )",
+   "killed": true,
+   "by": [
+    "S3 closure: write paths through the shipped bundle [S3-031] @existing glossary over a hand-edited document whose antonym table holds an odd polarity cycle gives a typed ERR_USAGE refusal from the seed table, and writes nothing (A21)"
+   ]
+  },
+  "A24": {
+   "span": "src/app/operations/mutation.ts:1449:11-1453:19",
+   "replacement": "continue",
+   "killed": true,
+   "by": [
+    "S3 closure: write paths through the shipped bundle [S3-002] @existing apply with a malformed JSON line after a valid waive writes nothing and exits 2 with an ERR_USAGE envelope naming the line (A24, A25)"
+   ]
+  },
+  "A25": {
+   "span": "src/app/operations/mutation.ts:1446:9-1454:10",
+   "replacement": "parsed = JSON.parse(line)",
+   "killed": true,
+   "by": [
+    "S3 closure: write paths through the shipped bundle [S3-002] @existing apply with a malformed JSON line after a valid waive writes nothing and exits 2 with an ERR_USAGE envelope naming the line (A24, A25)"
+   ]
+  },
+  "D05": {
+   "span": "src/domain/compat.ts:167:3-167:37",
+   "replacement": "const cls = findingClassOf(w.code.trim().toUpperCase())",
+   "killed": true,
+   "by": [
+    "S3 closure: a stored waiver crosses only in a shape the S3 fold would store (R54, R55) [S3-010] [S3-009] [S3-030] every padded or case-variant spelling of every published code, and the bare GTWR key, is waiver-inert and never reaches the engine; the canonical shapes of every scoped code do"
+   ]
+  },
+  "D06": {
+   "span": "src/domain/compat.ts:118:1-118:73",
+   "replacement": "export const RESCOPED_REASON_MARKER = ''",
+   "killed": true,
+   "by": [
+    "S3 closure: the check-time twin is exact, and every migration op removes only its own waiver [S3-026] the replacement waive carries the legacy reason verbatim, then the provenance suffix \" (rescoped from a legacy waiver)\" written here, not read from the export (D06)"
+   ]
+  },
+  "D12": {
+   "span": "src/domain/requirements/mutate.ts:1049:3-1049:30",
+   "replacement": "const code = op.code",
+   "killed": true,
+   "by": [
+    "S3 closure: one code canonicalisation at write (R54) [S3-010] [S3-030] a scoped code with surrounding whitespace is accepted and stored as the canonical code, for every scoped code"
+   ]
+  },
+  "D14": {
+   "span": "src/domain/requirements/document.ts:1061:37-1061:60",
+   "replacement": "/sha256:[0-9a-f]{64}/",
+   "killed": true,
+   "by": [
+    "S3 closure: a stored waiver the fold could never have written is refused at load [S3-008] [S3-028] a prefixed content hash is refused at load (D14)",
+    "S3 closure: a stored waiver the fold could never have written is refused at load [S3-008] [S3-028] a suffixed content hash is refused at load (D14)",
+    "S3 closure: a stored waiver the fold could never have written is refused at load [S3-008] [S3-028] a leading space content hash is refused at load (D14)",
+    "S3 closure: a stored waiver the fold could never have written is refused at load [S3-008] [S3-028] a trailing newline content hash is refused at load (D14)"
+   ]
+  },
+  "D15": {
+   "span": "src/domain/requirements/document.ts:1081:5-1082:49",
+   "replacement": "Schema.Array(Uuid)\n      .pipe(Schema.check(Schema.isMinLength(0)))",
+   "killed": true,
+   "by": [
+    "S3 closure: a stored waiver the fold could never have written is refused at load [S3-019] an empty requirementIds array is refused at load (D15)"
+   ]
+  },
+  "D16": {
+   "span": "src/domain/requirements/document.ts:1102:1-1104:34",
+   "replacement": "  reason: Schema.String.annotate({\n    description: lines(\n      'Why this finding is waived",
+   "killed": true,
+   "by": [
+    "S3 closure: a stored waiver the fold could never have written is refused at load [S3-026] an empty reason is refused at load (D16)"
+   ]
+  },
+  "P04": {
+   "span": "src/domain/waivability.ts:261:44-261:63",
+   "replacement": "",
+   "killed": true,
+   "by": [
+    "S3 closure: a stored waiver crosses only in a shape the S3 fold would store (R54, R55) [S3-010] [S3-009] [S3-030] every padded or case-variant spelling of every published code, and the bare GTWR key, is waiver-inert and never reaches the engine; the canonical shapes of every scoped code do",
+    "S3 closure: one code canonicalisation at write (R54) [S3-009] the bare GTWR grouping key is no code: it has no class and is refused in every scope shape"
+   ]
+  },
+  "P13": {
+   "span": "src/domain/engine/formal/semantic.ts:565:12-565:68",
+   "replacement": "or accept them by waiving this finding.",
+   "killed": true,
+   "by": [
+    "S3 closure: the emitted advice of two reachable never-code shapes (R56) [S3-040] the opposite-polarity near-duplicate (door/doors over a committed open/close pair): the FND_SIMILAR_SEMANTIC message offers the glossary merge or a rewording and no inflection of \"waive\" (P13)"
+   ]
+  },
+  "P15": {
+   "span": "src/domain/engine/pipeline/check.ts:2377:27-2377:104",
+   "replacement": "Waiving FND_NEEDS_REVIEW discharges this.",
+   "killed": true,
+   "by": [
+    "S3 closure: the emitted advice of two reachable never-code shapes (R56) [S3-040] the forced-unknown inconclusive group: the action names the timeout lever and no inflection of \"waive\" (P15, FND_NEEDS_REVIEW)"
+   ]
+  },
+  "P17": {
+   "span": "src/domain/advice/repair.ts:315:9-317:57",
+   "replacement": "ops: [{ op: 'waive', code: 'FND_NEEDS_REVIEW', refs: [...demotion.requirementIds], reason: 'accepted' }],\n        commands: [\n          `symspec check ${context.docPath} --timeout-ms",
+   "killed": true,
+   "by": [
+    "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] inconclusive-group: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code"
+   ]
+  },
+  "P19": {
+   "span": "src/domain/engine/pipeline/check.ts:1472:58-1472:65",
+   "replacement": "return undefined as never",
+   "killed": true,
+   "by": [
+    "S3 closure: the engine error paths in the hunks S3 touched (@existing) [S3-031] @existing an unexpected solver error in the needs-review tier propagates out of runCheck unchanged (P19 P21 P22 P23)"
+   ]
+  },
+  "P20": {
+   "span": "src/domain/engine/pipeline/check.ts:1472:11-1475:67",
+   "replacement": "return undefined as never",
+   "killed": true,
+   "by": [
+    "S3 closure: the engine error paths in the hunks S3 touched (@existing) [S3-031] @existing an unexpected solver error in the needs-review tier propagates out of runCheck unchanged (P19 P21 P22 P23)",
+    "S3 closure: the engine error paths in the hunks S3 touched (@existing) [S3-031] @existing a SolverBudgetExceededError in the needs-review tier returns the partial report, demoted solver-budget-exhausted (P20)"
+   ]
+  },
+  "P21": {
+   "span": "src/domain/engine/pipeline/check.ts:1472:58-1472:65",
+   "replacement": "{}",
+   "killed": true,
+   "by": [
+    "S3 closure: the engine error paths in the hunks S3 touched (@existing) [S3-031] @existing an unexpected solver error in the needs-review tier propagates out of runCheck unchanged (P19 P21 P22 P23)"
+   ]
+  },
+  "P22": {
+   "span": "src/domain/engine/pipeline/check.ts:1472:11-1472:65",
+   "replacement": "{}",
+   "killed": true,
+   "by": [
+    "S3 closure: the engine error paths in the hunks S3 touched (@existing) [S3-031] @existing an unexpected solver error in the needs-review tier propagates out of runCheck unchanged (P19 P21 P22 P23)"
+   ]
+  },
+  "P23": {
+   "span": "src/domain/engine/pipeline/check.ts:1472:15-1472:56",
+   "replacement": "false",
+   "killed": true,
+   "by": [
+    "S3 closure: the engine error paths in the hunks S3 touched (@existing) [S3-031] @existing an unexpected solver error in the needs-review tier propagates out of runCheck unchanged (P19 P21 P22 P23)"
+   ]
+  },
+  "P24": {
+   "span": "src/domain/engine/pipeline/check.ts:805:3-809:4",
+   "replacement": "return buildAntonymIndexWithDoc(normalized)",
+   "killed": true,
+   "by": [
+    "S3 closure: the engine error paths in the hunks S3 touched (@existing) [S3-031] @existing a stored antonym table with an odd polarity cycle falls back to the seed index at the runCheck boundary: the report equals the one with no committed antonyms (P24)"
+   ]
+  }
+ },
+ "harnessSabotage": [
+  {
+   "what": "src/testing/gaming.ts reverted to HEAD (waive-raw without the idless code-only probes, review R5)",
+   "test": "[S3-049] waive-raw writes a code-only probe for every never-class baseline code, the idless ones included, ...",
+   "result": "red (AssertionError)"
+  },
+  {
+   "what": "src/app/operations/import.ts:557 folds a padded-code waive record without MUTATE_OPTIONS.waiverPolicy",
+   "test": "[S3-012] for every waiver record shape x every code class ... import refuses or stores exactly what apply does",
+   "result": "red; the other 67 import.test.ts tests stayed green"
+  }
+ ],
+ "notes": [
+  "P15 is killed only by a test that is already red on 7afb20e (the original inconclusive-group action says \"Waiving FND_NEEDS_REVIEW cannot discharge this\", which R56 forbids), so it is not claimed as a kill of a green guard.",
+  "Kills: /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1069/mut (git clone --no-hardlinks of the run clone plus this diff), one mutant at a time at the ledger span (one-based, end-exclusive), restored with git checkout; CLI mutants (A14 A21 A24 A25) rebuilt with tsdown before and after."
+ ],
+ "rows": [
+  {
+   "file": "src/cli.test.ts",
+   "test": "S3 closure: the built parser as the oracle for every named command (R56) [S3-027] [S3-045] the oracle rejects what the parser rejects and accepts what it accepts (planted)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/cli.test.ts",
+   "test": "S3 closure: the built parser as the oracle for every named command (R56) [S3-027] the extractor reads backticked commands and whole command strings, and the tokenizer keeps quoted words",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/cli.test.ts",
+   "test": "S3 closure: write paths through the shipped bundle [S3-005] [S3-006] symspec waive --remove --ref LOG-R1 removes the refs form symspec waive --ref LOG-R1 stored (A14)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "A14"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/cli.test.ts",
+   "test": "S3 closure: write paths through the shipped bundle [S3-031] @existing glossary over a hand-edited document whose antonym table holds an odd polarity cycle gives a typed ERR_USAGE refusal from the seed table, and writes nothing (A21)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "A21"
+   ],
+   "existing": true
+  },
+  {
+   "file": "src/cli.test.ts",
+   "test": "S3 closure: write paths through the shipped bundle [S3-002] @existing apply with a malformed JSON line after a valid waive writes nothing and exits 2 with an ERR_USAGE envelope naming the line (A24, A25)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "A24",
+    "A25"
+   ],
+   "existing": true
+  },
+  {
+   "file": "src/domain/compat.test.ts",
+   "test": "S3 closure: a stored waiver crosses only in a shape the S3 fold would store (R54, R55) [S3-010] [S3-009] [S3-030] every padded or case-variant spelling of every published code, and the bare GTWR key, is waiver-inert and never reaches the engine; the canonical shapes of every scoped code do",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "D05",
+    "P04"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/domain/compat.test.ts",
+   "test": "S3 closure: a stored waiver crosses only in a shape the S3 fold would store (R54, R55) [S3-030] every published code x every other malformed stored shape (both id fields, an empty or blank reason, empty requirementIds, a prefixed or suffixed hash, a deleted lone requirementId) is waiver-inert and never reaches the engine (R54)",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: of 528 probes, 350 offender(s):",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/compat.test.ts",
+   "test": "S3 closure: a stored waiver crosses only in a shape the S3 fold would store (R54, R55) [S3-023] [S3-030] each malformed stored waiver is disclosed by exactly one waiver-inert diagnostic naming it as stored, whose first op is an unwaive of the code as stored",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: 70 offender(s):",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/compat.test.ts",
+   "test": "S3 closure: a stored waiver crosses only in a shape the S3 fold would store (R54, R55) [S3-024] [S3-027] applying the ops of each malformed waiver’s diagnostic removes exactly that stored waiver and no other, with a code-only, a same-scope and an active scoped waiver beside it (R55)",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: 334 offender(s):",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/testing/gaming.test.ts",
+   "test": "the gaming registry [S3-049] waive-raw writes a code-only probe for every never-class baseline code, the idless ones included, and still runs when only idless never codes are in the report (R5)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/testing/report-corpus.test.ts",
+   "test": "[S3-039][S3-040][S3-045] the advice over every corpus and fixture document [S3-040] no finding message or suggestion for a never-class code uses any inflection of \"waive\" (waive, waives, waived, waiving, waiver, waivers) (R56)",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: 36 offender(s):",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/testing/report-corpus.test.ts",
+   "test": "[S3-039][S3-040][S3-045] the advice over every corpus and fixture document [S3-040] no demotion action for a never-class code uses any inflection of \"waive\" (R56)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/testing/report-corpus.test.ts",
+   "test": "[S3-039][S3-040][S3-045] the advice over every corpus and fixture document [S3-027] [S3-045] every `symspec` command named anywhere in any check payload parses with the built binary, full argv (R56)",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected [ …(5) ] to deeply equal []",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/adapters/embedding/embedder.test.ts",
+   "test": "PROPOSE-ONLY — the tier suggests ops, it never decides fires FND_SIMILAR_SEMANTIC at INFO severity above the threshold",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected 'r1 and r2 have semantically similar r…' to contain '`symspec glossary \"'"
+  },
+  {
+   "file": "src/adapters/embedding/embedder.test.ts",
+   "test": "PROPOSE-ONLY — the tier suggests ops, it never decides offers BOTH antonym add AND glossary add for an opposition candidate, with the warning",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected 'r1 and r2 respond under the same syst…' to contain '`symspec glossary \"'"
+  },
+  {
+   "file": "src/app/operations/check-waivers.test.ts",
+   "test": "S3 closure: the check-time twin is exact, and every migration op removes only its own waiver [S3-030] derives-cycle: a FND_CYCLE waiver carrying both requirementId and requirementIds, or a blank reason, suppresses nothing and the strict exit stays 1 (R54)",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: both id fields: expected +0 to be 1 // Object.is equality",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/check-waivers.test.ts",
+   "test": "S3 closure: the check-time twin is exact, and every migration op removes only its own waiver [S3-024] [S3-027] following every op of every waiver-inert and ignoredWaivers entry of every fixture document removes exactly the stored waiver it names, plus its replacement waives (R55)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/check-waivers.test.ts",
+   "test": "S3 closure: the check-time twin is exact, and every migration op removes only its own waiver [S3-024] a padded code, a lone requirementId naming a deleted requirement and a dual-scope waiver are each removed by their own ops, and the code-only waiver at the trimmed key and the active reviewed waiver beside them survive (R55)",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected [ …(3) ] to deeply equal []",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/check-waivers.test.ts",
+   "test": "S3 closure: the check-time twin is exact, and every migration op removes only its own waiver [S3-027] every command named by every waiver-inert and ignoredWaivers entry parses with the built binary, full argv (R56)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/check-waivers.test.ts",
+   "test": "S3 closure: the check-time twin is exact, and every migration op removes only its own waiver [S3-026] the replacement waive carries the legacy reason verbatim, then the provenance suffix \" (rescoped from a legacy waiver)\" written here, not read from the export (D06)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "D06"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/check.test.ts",
+   "test": "[S3-021] [S3-046] a scoped, hash-bound waiver of a terminology-tier finding suppresses exactly that finding and is listed in data.appliedWaivers (R57) [S3-021] [S3-046] FND_ACRONYM_UNDEFINED",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected [ …(3) ] to deeply equal [ …(2) ]",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/check.test.ts",
+   "test": "[S3-021] [S3-046] a scoped, hash-bound waiver of a terminology-tier finding suppresses exactly that finding and is listed in data.appliedWaivers (R57) [S3-021] [S3-046] FND_TERM_INCONSISTENT",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal [ 'FND_REACHABILITY_NOT_CHECKED []' ]",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/import.test.ts",
+   "test": "S3 closure: import folds every waiver record shape exactly as apply folds the same op (G3) [S3-012] for every waiver record shape x every code class (scoped, never, unpublished, padded, case variant), import refuses or stores exactly what apply does",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/waive-fold.test.ts",
+   "test": "S3 closure: one code canonicalisation at write (R54) [S3-010] [S3-030] a scoped code with surrounding whitespace is accepted and stored as the canonical code, for every scoped code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "D12"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/waive-fold.test.ts",
+   "test": "S3 closure: one code canonicalisation at write (R54) [S3-010] [S3-030] case is never folded: every case variant of every scoped code is refused ERR_WAIVER_REFUSED, scoped and hash-bound",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/waive-fold.test.ts",
+   "test": "S3 closure: one code canonicalisation at write (R54) [S3-009] the bare GTWR grouping key is no code: it has no class and is refused in every scope shape",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "P04"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/waive-fold.test.ts",
+   "test": "S3 closure: every command a waive or explain output names parses with the built CLI (R56) [S3-011] [S3-045] every command named by every waive refusal and usage error parses, full argv, with the built binary",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected [ …(37) ] to deeply equal []",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/app/operations/waive-fold.test.ts",
+   "test": "S3 closure: every command a waive or explain output names parses with the built CLI (R56) [S3-045] every command named by explain, for every catalog code and for an unknown one, and by every catalog row, parses with the built binary",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected [ …(8) ] to deeply equal []",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] reaches every reason the union has (exhaustive over reasons, not corpus documents)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] uncovered-requirement: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] open-opposition-candidate: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] no-decide-tier-comparison: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] semantic-tier-skipped: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] excluded-from-formal: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] quantity-alias-candidate: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] relational-reasoning-not-attempted: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] numeric-bounds-uncompared: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] solver-budget-exhausted: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] inconclusive-group: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "P17"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] solver-unknown: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] conditional-conflict-unchecked: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] run-weakened: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] opposite-polarity-near-duplicate: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] number-spelling-candidate: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] contrary-glossary-alias: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses [S3-039] [S3-045] every command any arm emits parses with the built binary, full argv (R56)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-040] the never-code negative guards read every inflection of \"waive\" (static, R56) [S3-040] the inflection set matches each inflection and spares \"waivable\"",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-040] the never-code negative guards read every inflection of \"waive\" (static, R56) [S3-040] src/domain/engine/formal/semantic.ts: no string literal uses any inflection of \"waive\"",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-040] the never-code negative guards read every inflection of \"waive\" (static, R56) [S3-040] src/domain/engine/formal/numeric-contradiction.ts: no string literal uses any inflection of \"waive\"",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-040] the never-code negative guards read every inflection of \"waive\" (static, R56) [S3-040] src/domain/engine/formal/number-spelling.ts: no string literal uses any inflection of \"waive\"",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-040] the never-code negative guards read every inflection of \"waive\" (static, R56) [S3-040] src/domain/engine/formal/quantity-alias.ts: no string literal uses any inflection of \"waive\"",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-040] the never-code negative guards read every inflection of \"waive\" (static, R56) [S3-040] src/domain/engine/formal/coverage.ts: no string literal uses any inflection of \"waive\"",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-040] the never-code negative guards read every inflection of \"waive\" (static, R56) [S3-040] pipeline/check.ts: no literal of a never-code demotion action (unappliedNote included), and no literal naming a never-class code, uses any inflection of \"waive\"",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected [ 'unappliedNote: A waiver', …(4) ] to deeply equal []",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/advice/repair.test.ts",
+   "test": "[S3-045] the commands a reachable near-duplicate message names parse with the built binary (R56) [S3-045] the opposite-polarity near-duplicate (door/doors over open/close): every command its FND_SIMILAR_SEMANTIC message and its demotion name parses",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/requirements/document.test.ts",
+   "test": "S3 closure: a stored waiver the fold could never have written is refused at load [S3-021] the control: the shape the fold stores loads",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/requirements/document.test.ts",
+   "test": "S3 closure: a stored waiver the fold could never have written is refused at load [S3-008] [S3-028] a prefixed content hash is refused at load (D14)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "D14"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/domain/requirements/document.test.ts",
+   "test": "S3 closure: a stored waiver the fold could never have written is refused at load [S3-008] [S3-028] a suffixed content hash is refused at load (D14)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "D14"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/domain/requirements/document.test.ts",
+   "test": "S3 closure: a stored waiver the fold could never have written is refused at load [S3-008] [S3-028] a leading space content hash is refused at load (D14)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "D14"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/domain/requirements/document.test.ts",
+   "test": "S3 closure: a stored waiver the fold could never have written is refused at load [S3-008] [S3-028] a trailing newline content hash is refused at load (D14)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "D14"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/domain/requirements/document.test.ts",
+   "test": "S3 closure: a stored waiver the fold could never have written is refused at load [S3-019] an empty requirementIds array is refused at load (D15)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "D15"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/domain/requirements/document.test.ts",
+   "test": "S3 closure: a stored waiver the fold could never have written is refused at load [S3-026] an empty reason is refused at load (D16)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "D16"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the SAME verb at opposite polarity, prepositions apart, demotes stop the pump on Monday / not stop the pump Monday",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"stop the pump on M…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the SAME verb at opposite polarity, prepositions apart, demotes show the alarm on the display / not show the alarm in the display",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"show the alarm on …'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the SAME verb at opposite polarity, prepositions apart, demotes enable the alarm within the zone / not enable the alarm in the zone",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"enable the alarm w…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the SAME verb at opposite polarity, prepositions apart, demotes grant access on the server / not grant access to the server",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"grant access on th…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the SAME verb at opposite polarity, prepositions apart, demotes lock the door at the entrance / not lock the door on the entrance",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"lock the door at t…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the SAME verb at opposite polarity, prepositions apart, demotes revoke access to the server / not revoke access on the server",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"revoke access to t…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the SAME verb at opposite polarity, prepositions apart, demotes start the pump on Monday / not start the pump Monday",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"start the pump on …'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the SAME verb at opposite polarity, prepositions apart, demotes stop the pump at the station / not stop the pump in the station",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"stop the pump at t…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the SAME verb at opposite polarity, prepositions apart, demotes roll back the change to production / not roll back the change production",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"roll back the chan…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote enable access on the API / disable access to the API",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"disable access on …'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote open access on the portal / close access to the portal",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"close access on th…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote activate access on the account / deactivate access to the account",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"deactivate access …'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote unlock access on the vault / lock access to the vault",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"lock access on the…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote start access on the server / stop access to the server",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"stop access on the…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote accept access on the portal / reject access to the portal",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"reject access on t…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote raise the flag on the mast / lower the flag from the mast",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"lower the flag on …'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote grant access to only admins / revoke access only from admins",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"revoke access to o…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote show the report to just the manager / hide the report just from the manager",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"hide the report to…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote start the pump Monday / stop the pump on Monday",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"stop the pump mond…'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "two verbs one contrary row relates, prepositions apart or moved, demote enable the alarm weekends / disable the alarm on weekends",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' to contain '`symspec glossary \"disable the alarm …'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the edit the candidate names makes the pair provable stop the pump on Monday / not stop the pump Monday",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' not to contain 'symspec glossary add'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the edit the candidate names makes the pair provable grant access to only admins / revoke access only from admins",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' not to contain 'symspec glossary add'"
+  },
+  {
+   "file": "src/domain/engine/formal/preposition-variant.test.ts",
+   "test": "the edit the candidate names makes the pair provable raise the flag on the mast / lower the flag from the mast",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected '0f0f0f0f-0000-4000-8000-000000000001 …' not to contain 'symspec glossary add'"
+  },
+  {
+   "file": "src/domain/engine/pipeline/check.test.ts",
+   "test": "S3 closure: the emitted advice of two reachable never-code shapes (R56) [S3-040] the forced-unknown inconclusive group: the action names the timeout lever and no inflection of \"waive\" (P15, FND_NEEDS_REVIEW)",
+   "kind": "new",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected 'The solver returned unknown for the c…' not to match /\\bwaiv(?:e|es|ed|ing|er|ers)\\b/i",
+   "killsMutants": [],
+   "existing": false
+  },
+  {
+   "file": "src/domain/engine/pipeline/check.test.ts",
+   "test": "S3 closure: the emitted advice of two reachable never-code shapes (R56) [S3-040] the opposite-polarity near-duplicate (door/doors over a committed open/close pair): the FND_SIMILAR_SEMANTIC message offers the glossary merge or a rewording and no inflection of \"waive\" (P13)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "P13"
+   ],
+   "existing": false
+  },
+  {
+   "file": "src/domain/engine/pipeline/check.test.ts",
+   "test": "S3 closure: the engine error paths in the hunks S3 touched (@existing) [S3-031] @existing an unexpected solver error in the needs-review tier propagates out of runCheck unchanged (P19 P21 P22 P23)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "P19",
+    "P20",
+    "P21",
+    "P22",
+    "P23"
+   ],
+   "existing": true
+  },
+  {
+   "file": "src/domain/engine/pipeline/check.test.ts",
+   "test": "S3 closure: the engine error paths in the hunks S3 touched (@existing) [S3-031] @existing a SolverBudgetExceededError in the needs-review tier returns the partial report, demoted solver-budget-exhausted (P20)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "P20"
+   ],
+   "existing": true
+  },
+  {
+   "file": "src/domain/engine/pipeline/check.test.ts",
+   "test": "S3 closure: the engine error paths in the hunks S3 touched (@existing) [S3-031] @existing a stored antonym table with an odd polarity cycle falls back to the seed index at the runCheck boundary: the report equals the one with no committed antonyms (P24)",
+   "kind": "new",
+   "statusOn7afb20e": "passed",
+   "firstFailure": null,
+   "killsMutants": [
+    "P24"
+   ],
+   "existing": true
+  },
+  {
+   "file": "src/domain/engine/pipeline/verified.test.ts",
+   "test": "AC-3-6: the proposed merge never aliases a phrase to its own opposite proposes the number merge in canonical space, not the raw antonym pair",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected 'para-1-open-door and para-2-not-open-…' to contain '`symspec glossary \"close the door\" \"c…'"
+  },
+  {
+   "file": "src/domain/engine/pipeline/verified.test.ts",
+   "test": "AC-3-6: the proposed merge never aliases a phrase to its own opposite keeps the author's wording when the raw merge is not a contrary pair",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected 'para-1-open-door and para-2-not-open-…' to contain '`symspec glossary \"open the door\" \"op…'"
+  },
+  {
+   "file": "src/domain/engine/pipeline/verified.test.ts",
+   "test": "AC-3-6: the proposed merge never aliases a phrase to its own opposite meets on the LITERAL key when only one side governs its preposition",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected 'para-1-open-door and para-2-not-open-…' to contain '`symspec glossary \"include the file i…'"
+  },
+  {
+   "file": "src/domain/engine/pipeline/verified.test.ts",
+   "test": "AC-3-6: the proposed merge never splits an atom the document already shares refuses to alias a committed canonical, even one no requirement routes onto",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected 'para-1-open-door and para-2-not-open-…' to contain '`symspec glossary \"open the doors\" \"o…'"
+  },
+  {
+   "file": "src/domain/engine/pipeline/verified.test.ts",
+   "test": "AC-3-6: the proposed merge never splits an atom the document already shares refuses to move a phrase an inflection already shares an atom with",
+   "kind": "re-pinned under R56 (nested glossary add / antonym add spelling in a check-output message)",
+   "statusOn7afb20e": "failed",
+   "firstFailure": "AssertionError: expected 'para-1-open-door and para-2-not-open-…' to contain '`symspec glossary \"open the doors\" \"o…'"
+  }
+ ]
+}

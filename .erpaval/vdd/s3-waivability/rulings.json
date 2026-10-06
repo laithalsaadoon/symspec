@@ -441,6 +441,78 @@
         "S3-042",
         "S3-046"
       ]
+    },
+    {
+      "id": "R54",
+      "text": "(review R1, attack D05, D12, P04): one code canonicalisation for the fold, the check-time twin and the engine match: surrounding whitespace is trimmed, case is never folded; after trimming the code must be a published code with its own FINDING_CLASS row (the bare 'GTWR' grouping key is not a code). At write the fold stores the canonical code. At check a stored waiver reaches the engine only when it is exactly a shape the S3 fold would store: a canonical published scoped-class code, written exactly (a padded or case-variant stored code is inert), requirementIds non-empty or a lone requirementId but never both fields, an anchored sha256 contentHash matching the current text, and a reason that is non-blank after trimming. Every other stored shape is waiver-inert with its unwaive op. Pin with an exhaustive raw-shape loop (every published code x every malformed shape: both id fields, blank reason, padded code, case variant, bare GTWR, empty requirementIds, prefixed/suffixed hash), plus the derives-cycle FND_CYCLE repro (strict exit stays 1).",
+      "source": "coordinator (job 815), closure round contract-4 after review ledger 57948c2 and attack ledger 35ac336 on build 7afb20e, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-009",
+        "S3-010",
+        "S3-023",
+        "S3-030"
+      ]
+    },
+    {
+      "id": "R55",
+      "text": "(review R2, attack A14): applying every op of a waiver-inert or ignoredWaivers entry to the checked document removes exactly the stored waiver that entry names and no other stored waiver (metamorphic: the stored list afterwards equals the original minus that entry, plus any replacement waives it offers), including padded codes, a lone requirementId naming a deleted requirement, and a coexisting code-only waiver at the normalised key. `symspec waive --remove --ref X` removes the refs form `symspec waive --ref X` stores.",
+      "source": "coordinator (job 815), closure round contract-4 after review ledger 57948c2 and attack ledger 35ac336 on build 7afb20e, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-005",
+        "S3-006",
+        "S3-024",
+        "S3-027"
+      ]
+    },
+    {
+      "id": "R56",
+      "text": "(review R3, evidence G2/TA3, attack P13, P15, P17): every `symspec ...` command named in any check, waive, import or explain output, any advice, suggestion or catalog description, parses AND passes the CLI's required-flag validation with the built binary's parser (full argv, not just the subcommand); in particular `symspec explain --code <CODE>` and the flat `symspec antonym <a> <b>`. The never-code negative guards match every inflection (waive, waives, waived, waiving, waiver, waivers) in every emitted action, message and suggestion, and a static sweep over the string literals of the advice and engine prose files uses the same set. Every repair arm is exercised by a constructed demotion of each reason (exhaustive over reasons, not corpus documents) and every op it emits folds under MUTATE_OPTIONS and none waives a never code; assert the actual emitted advice on the near-duplicate opposite-polarity fixture (P13) and the forced-unknown inconclusive group (P15, FND_NEEDS_REVIEW).",
+      "source": "coordinator (job 815), closure round contract-4 after review ledger 57948c2 and attack ledger 35ac336 on build 7afb20e, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-011",
+        "S3-027",
+        "S3-039",
+        "S3-040",
+        "S3-045"
+      ]
+    },
+    {
+      "id": "R57",
+      "text": "(review R4; this withdraws the coordinator's earlier acceptance of evidence gap G1): a qualifying scoped waiver of a terminology-tier finding (FND_TERM_INCONSISTENT, FND_ACRONYM_UNDEFINED) suppresses exactly its finding and is listed in data.appliedWaivers, as S3-021 promises for every scoped code; no accepted waiver may have no disclosed outcome.",
+      "source": "coordinator (job 815), closure round contract-4 after review ledger 57948c2 and attack ledger 35ac336 on build 7afb20e, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt",
+      "behaviors": [
+        "S3-021",
+        "S3-046"
+      ]
+    },
+    {
+      "id": "contract-4/review-R5",
+      "text": "Review R5: the waive-raw harness move includes a code-only probe for every never-class baseline code, idless ones included.",
+      "source": "coordinator (job 815), closure round contract-4 after review ledger 57948c2 and attack ledger 35ac336 on build 7afb20e, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt (coordinator directive, unnumbered)",
+      "behaviors": [
+        "S3-049"
+      ]
+    },
+    {
+      "id": "contract-4/attack-D06-D16-G3",
+      "text": "Attack D06: the provenance marker test asserts an independently written non-empty literal, not the export. D14/D15/D16: pin the stored-waiver schema rejections (prefixed/suffixed hash, requirementIds [], empty reason) at load. Evidence G3: S3-012 reaches its floor with a loop over every import record shape.",
+      "source": "coordinator (job 815), closure round contract-4 after review ledger 57948c2 and attack ledger 35ac336 on build 7afb20e, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt (coordinator directive, unnumbered)",
+      "behaviors": [
+        "S3-008",
+        "S3-012",
+        "S3-019",
+        "S3-026",
+        "S3-028"
+      ]
+    },
+    {
+      "id": "contract-4/pre-existing",
+      "text": "Pre-existing error paths in hunks S3 touched (attack P19-P24, A21, A24, A25): pin as @existing regression tests, green on 7afb20e, each shown to kill its mutant in a throwaway copy: the engine's solver-error boundary (an unexpected solver Error propagates; SolverBudgetExceededError returns the partial report with solver-budget-exhausted), a malformed stored antonym cycle falls back to the seed index at the runCheck boundary, glossary validation over a persisted invalid cycle gives a typed refusal, and apply with a malformed JSON line among valid records writes nothing and exits with ERR_USAGE JSON.",
+      "source": "coordinator (job 815), closure round contract-4 after review ledger 57948c2 and attack ledger 35ac336 on build 7afb20e, under the owner's delegated authority (job 815 goal: full authority to ship); redirectable at the receipt (coordinator directive, unnumbered)",
+      "behaviors": [
+        "S3-002",
+        "S3-031"
+      ]
     }
   ],
   "questions": [

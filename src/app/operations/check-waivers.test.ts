@@ -20,6 +20,7 @@ import * as compat from '../../domain/compat.ts'
 import type { RequirementsDocument } from '../../domain/requirements/document.ts'
 import { foldOps } from '../../domain/requirements/mutate.ts'
 import { type DocumentOp, decodeOp } from '../../domain/requirements/ops.ts'
+import { argvRejections, rejectionLines, symspecCommandsDeep } from '../../testing/cli-argv.ts'
 import { buildDoc, FIXTURES, WAIVED_LINT_CONTROL_TWIN } from '../../testing/gaming.ts'
 import {
   type CheckRun,
@@ -708,5 +709,198 @@ describe('S3: the AC-5-6 reproducer', () => {
       'open-opposition-candidate [TNK-R1, TNK-R2]',
     ])
     expect(r.data.verified).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round (R54, R55, R56, attack D06)
+// ---------------------------------------------------------------------------
+
+/** Fold every op of one diagnostic or ignoredWaivers entry on `d`, decoded as an agent would. */
+const followOps = (d: RequirementsDocument, entry: { readonly ops?: readonly unknown[] }) => {
+  const ops = (entry.ops ?? []).map((raw) => Effect.runSync(decodeOp(raw)))
+  return { ops, folded: foldOps(d, ops, TS, MUTATE_OPTIONS) }
+}
+
+/**
+ * What R55 says the stored list is after following `entry`: the original minus the one stored
+ * waiver it names, plus what each replacement waive stores (unless already stored).
+ */
+const expectedAfter = (
+  d: RequirementsDocument,
+  named: unknown,
+  ops: readonly DocumentOp[],
+): readonly string[] => {
+  const all = d.waivers.map((w) => JSON.stringify(w))
+  const at = all.indexOf(JSON.stringify(named))
+  const out = at < 0 ? all : [...all.slice(0, at), ...all.slice(at + 1)]
+  for (const op of ops) {
+    if (op.op !== 'waive' || op.refs === undefined) continue
+    const ids = op.refs.map(
+      (ref) => Object.values(d.requirements).find((r) => r.key === ref || r.id === ref)?.id ?? ref,
+    )
+    const stored = JSON.stringify({
+      code: op.code.trim(),
+      requirementIds: [...new Set(ids)].sort(),
+      contentHash: op.contentHash,
+      reason: op.reason.trim(),
+    })
+    if (!out.includes(stored)) out.push(stored)
+  }
+  return out.sort()
+}
+
+describe('S3 closure: the check-time twin is exact, and every migration op removes only its own waiver', () => {
+  it('[S3-030] derives-cycle: a FND_CYCLE waiver carrying both requirementId and requirementIds, or a blank reason, suppresses nothing and the strict exit stays 1 (R54)', async () => {
+    const fixture = FIXTURES.find((f) => f.id === 'derives-cycle')
+    if (fixture === undefined) throw new Error('no derives-cycle fixture')
+    const cycle = buildDoc(fixture.ops, MUTATE_OPTIONS)
+    const baseline = await checkDocument(wiring, cycle, { strict: true }, [])
+    const cycles = baseline.data.findings.filter((f) => f.code === 'FND_CYCLE')
+    expect(baseline.exit).toBe(1)
+    expect(cycles.length).toBeGreaterThan(0)
+    const bystander = Object.values(cycle.requirements).find(
+      (r) => !cycles.some((f) => f.requirementIds.includes(r.id)),
+    )?.id
+    expect(bystander, 'a requirement outside the cycle').toBeDefined()
+    const hashOver = (ids: readonly string[]) =>
+      foldOps(
+        cycle,
+        [{ op: 'waive', code: 'FND_CYCLE', refs: [...ids], reason: 'r' }],
+        TS,
+        MUTATE_OPTIONS,
+      ).document.waivers[0]?.contentHash
+    for (const [label, extra] of [
+      [
+        'both id fields',
+        { requirementId: bystander, reason: 'reviewed: intended mutual refinement' },
+      ],
+      ['blank reason', { reason: '   ' }],
+    ] as const) {
+      const waivers = cycles.map((f) => ({
+        code: 'FND_CYCLE',
+        requirementIds: [...f.requirementIds].sort(),
+        contentHash: hashOver(f.requirementIds),
+        ...extra,
+      }))
+      const d = withRawWaivers(cycle, waivers)
+      const r = await checkDocument(wiring, d, { strict: true }, [])
+      expect(r.exit, label).toBe(1)
+      expect(r.data.findings.filter((f) => f.code === 'FND_CYCLE').length, label).toBe(
+        cycles.length,
+      )
+      expect(r.data.appliedWaivers ?? [], label).toEqual([])
+      expect(inertDiagnostics(r).length, label).toBe(waivers.length)
+    }
+    // The control: the same waiver in the shape the fold stores does discharge the cycle (R45).
+    const legit = withRawWaivers(
+      cycle,
+      cycles.map((f) => ({
+        code: 'FND_CYCLE',
+        requirementIds: [...f.requirementIds].sort(),
+        contentHash: hashOver(f.requirementIds),
+        reason: 'reviewed: intended mutual refinement',
+      })),
+    )
+    const ok = await checkDocument(wiring, legit, { strict: true }, [])
+    expect(ok.data.findings.some((f) => f.code === 'FND_CYCLE')).toBe(false)
+  }, 120_000)
+
+  it('[S3-024] [S3-027] following every op of every waiver-inert and ignoredWaivers entry of every fixture document removes exactly the stored waiver it names, plus its replacement waives (R55)', () => {
+    const wrong: string[] = []
+    let entries = 0
+    for (const name of DOCS) {
+      const d = doc(name)
+      for (const entry of [
+        ...inertDiagnostics(run(name)),
+        ...(run(name).data.ignoredWaivers ?? []),
+      ]) {
+        entries += 1
+        const named =
+          'waiver' in entry && entry.waiver !== undefined
+            ? entry.waiver
+            : d.waivers.find(
+                (w) =>
+                  w.code === entry.code &&
+                  JSON.stringify(w.requirementIds) === JSON.stringify(entry.requirementIds) &&
+                  w.contentHash === (entry as { storedHash?: string }).storedHash,
+              )
+        const { ops, folded } = followOps(d, entry)
+        const left = folded.document.waivers.map((w) => JSON.stringify(w)).sort()
+        if (JSON.stringify(left) !== JSON.stringify(expectedAfter(d, named, ops)))
+          wrong.push(`${name}: following ${JSON.stringify(entry.ops)} left ${left.length} waivers`)
+      }
+    }
+    expect(wrong).toEqual([])
+    expect(entries).toBeGreaterThanOrEqual(15)
+  })
+
+  it('[S3-024] a padded code, a lone requirementId naming a deleted requirement and a dual-scope waiver are each removed by their own ops, and the code-only waiver at the trimmed key and the active reviewed waiver beside them survive (R55)', async () => {
+    const GONE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const d = withRawWaivers(doc('base.json'), [
+      { code: ' FND_CONTRADICTION ', reason: 'target: padded code' },
+      { code: 'FND_CONTRADICTION', reason: 'collateral: code-only at the trimmed key' },
+      {
+        code: 'GTWR_R5_INDEFINITE_ARTICLE',
+        requirementId: GONE,
+        contentHash: HASH['LOG-R1'],
+        reason: 'target: deleted requirement',
+      },
+      { code: 'GTWR_R5_INDEFINITE_ARTICLE', reason: 'collateral: code-only of the same code' },
+      {
+        code: 'GTWR_R5_INDEFINITE_ARTICLE',
+        requirementId: GONE,
+        requirementIds: ids('LOG-R1'),
+        reason: 'target: dual scope, no hash',
+      },
+      {
+        code: 'GTWR_R5_INDEFINITE_ARTICLE',
+        requirementIds: ids('LOG-R1'),
+        contentHash: HASH['LOG-R1'],
+        reason: 'active reviewed decision',
+      },
+    ])
+    const r = await checkDocument(wiring, d, { strict: true })
+    const wrong: string[] = []
+    let followed = 0
+    for (const entry of inertDiagnostics(r)) {
+      followed += 1
+      const { ops, folded } = followOps(d, entry)
+      const left = folded.document.waivers.map((w) => JSON.stringify(w)).sort()
+      const want = expectedAfter(d, entry.waiver, ops)
+      if (JSON.stringify(left) !== JSON.stringify(want)) {
+        const gone = want.filter((w) => !left.includes(w)).map((w) => JSON.parse(w).reason)
+        const kept = left.filter((w) => !want.includes(w)).map((w) => JSON.parse(w).reason)
+        wrong.push(
+          `${String(entry.waiver?.reason)}: also removed ${JSON.stringify(gone)}, left ${JSON.stringify(kept)}`,
+        )
+      }
+    }
+    // Every target and both code-only collaterals are inert; the active one applies.
+    expect(followed).toBe(5)
+    expect(wrong).toEqual([])
+  }, 60_000)
+
+  it('[S3-027] every command named by every waiver-inert and ignoredWaivers entry parses with the built binary, full argv (R56)', async () => {
+    const commands = new Set<string>()
+    for (const name of DOCS) {
+      for (const entry of [
+        ...inertDiagnostics(run(name)),
+        ...(run(name).data.ignoredWaivers ?? []),
+      ])
+        for (const c of symspecCommandsDeep(entry)) commands.add(c)
+    }
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 120_000)
+
+  it('[S3-026] the replacement waive carries the legacy reason verbatim, then the provenance suffix " (rescoped from a legacy waiver)" written here, not read from the export (D06)', () => {
+    const PROVENANCE = ' (rescoped from a legacy waiver)'
+    expect(PROVENANCE.trim().length).toBeGreaterThan(0)
+    expect(MARKER).toBe(PROVENANCE)
+    const name = 'cases/lint-code-only.stored.json'
+    const w = doc(name).waivers[0] as RequirementsDocument['waivers'][number]
+    const waives = (inertFor(name, 0)[0]?.ops ?? []).filter((o) => o.op === 'waive')
+    expect(waives.length).toBe(4)
+    for (const op of waives) expect(op.reason).toBe(`${w.reason}${PROVENANCE}`)
   })
 })

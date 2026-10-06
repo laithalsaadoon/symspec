@@ -808,7 +808,7 @@ describe('AC-3-6: the proposed merge never aliases a phrase to its own opposite'
       semantic: { embedder: tableEmbedder([['open the door', 'close the doors']]) },
     })
     const [message] = similar(report)
-    expect(message).toContain('`symspec glossary add "close the door" "close the doors"`')
+    expect(message).toContain('`symspec glossary "close the door" "close the doors"`')
     expect(message).not.toContain('"open the door" "close the doors"')
     expect(message).not.toContain('"close the doors" "open the door"')
     expect(nearDuplicate(report).map((d) => d.requirementIds)).toEqual([[P1, P2]])
@@ -822,7 +822,7 @@ describe('AC-3-6: the proposed merge never aliases a phrase to its own opposite'
     const report = await runCheck(paraDoc(), {
       semantic: { embedder: tableEmbedder([['open the door', 'open the doors']]) },
     })
-    expect(similar(report)[0]).toContain('`symspec glossary add "open the door" "open the doors"`')
+    expect(similar(report)[0]).toContain('`symspec glossary "open the door" "open the doors"`')
   })
 
   it('meets on the LITERAL key when only one side governs its preposition', async () => {
@@ -838,7 +838,9 @@ describe('AC-3-6: the proposed merge never aliases a phrase to its own opposite'
       semantic: { embedder: tableEmbedder([[first, second]]) },
     })
     const [message] = similar(report)
-    expect(message).toContain(`\`symspec glossary add "${first}s" "${first}"\``)
+    expect(message).toContain(`\`symspec glossary "${first}s" "${first}"\``)
+    // R56: the flat form the built parser accepts, never the nested `glossary add`.
+    expect(message).not.toContain('symspec glossary add')
     expect(message).not.toContain(`"${first}" "${second}"`)
     expect(message).not.toContain(`"${second}" "${first}"`)
     expect(nearDuplicate(report).map((d) => d.requirementIds)).toEqual([[P1, P2]])
@@ -892,7 +894,7 @@ describe('AC-3-6: the proposed merge never splits an atom the document already s
     })
     const message = messageOf(report)
     expect(message).not.toContain('"close the door" "close the doors"')
-    expect(message).toContain('`symspec glossary add "open the doors" "open the door"`')
+    expect(message).toContain('`symspec glossary "open the doors" "open the door"`')
     const after = await runCheck(
       withGlossary(doors(), [
         ...glossary,
@@ -951,7 +953,7 @@ describe('AC-3-6: the proposed merge never splits an atom the document already s
     expect(contradictions(report)).toEqual([`${P3}|${P4}`])
     const message = messageOf(report)
     expect(message).not.toContain('"close the door" "close the doors"')
-    expect(message).toContain('`symspec glossary add "open the doors" "open the door"`')
+    expect(message).toContain('`symspec glossary "open the doors" "open the door"`')
   })
 
   it('a variant pair carries no antonym hint: the table already relates it', async () => {

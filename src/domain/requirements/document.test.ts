@@ -1148,3 +1148,59 @@ describe('every v4 field carries a description — the manifest has no second co
     expect(blankDeep(Nested, 'x')).toEqual(['x.outer[].naked'])
   })
 })
+
+// ---------------------------------------------------------------------------
+// S3 closure round (attack D14, D15, D16): the stored-waiver schema refuses at load what the
+// fold never writes
+// ---------------------------------------------------------------------------
+
+describe('S3 closure: a stored waiver the fold could never have written is refused at load', () => {
+  const LOG_R1 = '5a1e0000-0000-4000-8000-0000000000a1'
+  const HASH = 'sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0'
+  const requirement = {
+    id: LOG_R1,
+    patternType: 'event-driven',
+    trigger: 'the operator closes the shift',
+    systemName: 'audit logger',
+    systemResponse: 'store an audit record',
+    sentence: 'When the operator closes the shift, the audit logger shall store an audit record.',
+    priority: 'medium',
+    status: 'draft',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }
+  const withWaiver = (waiver: Record<string, unknown>) => ({
+    docVersion: 3,
+    requirements: { [LOG_R1]: requirement },
+    waivers: [waiver],
+  })
+  const loads = (waiver: Record<string, unknown>): boolean =>
+    Effect.runSync(Effect.result(decodeDocument(withWaiver(waiver))))._tag === 'Success'
+  const valid = {
+    code: 'GTWR_R5_INDEFINITE_ARTICLE',
+    requirementIds: [LOG_R1],
+    contentHash: HASH,
+    reason: 'reviewed',
+  }
+
+  it('[S3-021] the control: the shape the fold stores loads', () => {
+    expect(loads(valid)).toBe(true)
+  })
+
+  it.each([
+    ['prefixed', `x${HASH}`],
+    ['suffixed', `${HASH}0`],
+    ['leading space', ` ${HASH}`],
+    ['trailing newline', `${HASH}\n`],
+  ])('[S3-008] [S3-028] a %s content hash is refused at load (D14)', (_name, contentHash) => {
+    expect(loads({ ...valid, contentHash })).toBe(false)
+  })
+
+  it('[S3-019] an empty requirementIds array is refused at load (D15)', () => {
+    expect(loads({ ...valid, requirementIds: [] })).toBe(false)
+  })
+
+  it('[S3-026] an empty reason is refused at load (D16)', () => {
+    expect(loads({ ...valid, reason: '' })).toBe(false)
+  })
+})

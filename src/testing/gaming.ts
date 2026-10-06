@@ -1260,17 +1260,28 @@ export const MOVES: readonly Move[] = [
   {
     id: 'waive-raw',
     clause:
-      'hand-edited waivers: the same waivers plus a code-only one per never-class baseline code, written into the stored document with no fold',
+      'hand-edited waivers: the same waivers plus a code-only one per never-class baseline code (idless ones included), written into the stored document with no fold',
     // The channel no write-time fence runs on (TB3): a refusal at `waive` closes nothing if
     // `check` still honors the same waiver written into the JSON by hand.
     edit: (ctx) => {
       const scoped = scopedNeverWaivers(ctx)
-      if ('kind' in scoped) return scoped
-      const codes = [...new Set(scoped.waivers.map((w) => w.code))].sort()
+      // A code-only probe per never-class baseline code, the idless ones included (R5, S3-049):
+      // a disclosure that names no requirement (FND_REACHABILITY_NOT_CHECKED,
+      // FND_NO_PAIRS_CHECKED) has no scoped waiver to copy, but a hand edit can still name it.
+      const codes = [
+        ...new Set(
+          ctx.baselineFindings
+            .filter((f) => ctx.waivability(f.code) === 'never')
+            .map((f) => f.code),
+        ),
+      ].sort()
+      if ('kind' in scoped && (scoped.reason.includes('scoped-class') || codes.length === 0))
+        return scoped
+      const waivers = 'kind' in scoped ? [] : scoped.waivers
       return {
         kind: 'raw-waivers',
         waivers: [
-          ...scoped.waivers.map(
+          ...waivers.map(
             (w): StoredWaiver => ({
               code: w.code,
               requirementIds: [...w.ids],

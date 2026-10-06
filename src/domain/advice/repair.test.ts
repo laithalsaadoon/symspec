@@ -29,11 +29,18 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import { checkOp } from '../../app/operations/check.ts'
 import { allOperations } from '../../app/operations/index.ts'
+import { MUTATE_OPTIONS } from '../../app/operations/mutate-options.ts'
 import { allCodes, lookupCode } from '../../app/runtime/catalog.ts'
 import { exitCodeForEnvelope } from '../../app/runtime/exit.ts'
 import { runOperation } from '../../app/runtime/operation.ts'
 import { waivabilityOf } from '../../app/runtime/signal-classes.ts'
 import { runnable } from '../../ports/command-form.ts'
+import {
+  argvRejections,
+  rejectionLines,
+  symspecCommandsDeep,
+  WAIVE_INFLECTION,
+} from '../../testing/cli-argv.ts'
 import {
   type CheckWiring,
   checkDocument,
@@ -45,7 +52,8 @@ import type { Embedder } from '../engine/formal/embed.ts'
 import { type CheckFinding, type CoverageDemotion, runCheck } from '../engine/pipeline/check.ts'
 import { requirementsContentHash } from '../requirements/content-hash.ts'
 import type { RequirementsDocument } from '../requirements/document.ts'
-import { applyOp } from '../requirements/mutate.ts'
+import { applyOp, foldOps } from '../requirements/mutate.ts'
+import { decodeOp } from '../requirements/ops.ts'
 import { type RepairContext, repairForDemotion } from './repair.ts'
 
 const REPO_ROOT = new URL('../../..', import.meta.url).pathname
@@ -1031,4 +1039,223 @@ describe('[S3-045] no source string names a command this build lacks (static)', 
     const named = stringLiterals(relative).filter((s) => UNBUILT.some((u) => s.includes(u)))
     expect(named).toEqual([])
   })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round (R56): every repair arm, constructed; the never-code guards over every
+// inflection of "waive"
+// ---------------------------------------------------------------------------
+
+/** The demotion reasons a never-class code raises (the report-corpus DEMOTION_CODE map). */
+const NEVER_DEMOTION_CODE: Readonly<Record<string, string>> = {
+  'open-opposition-candidate': 'FND_OPPOSITION_CANDIDATE',
+  'opposite-polarity-near-duplicate': 'FND_SIMILAR_SEMANTIC',
+  'quantity-alias-candidate': 'FND_QUANTITY_ALIAS_CANDIDATE',
+  'relational-reasoning-not-attempted': 'FND_RELATIONAL_UNCHECKED',
+  'numeric-bounds-uncompared': 'FND_NUMERIC_UNCOMPARED',
+  'number-spelling-candidate': 'FND_NUMBER_SPELLING_CANDIDATE',
+  'inconclusive-group': 'FND_NEEDS_REVIEW',
+}
+
+describe('[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses', () => {
+  // A real document, so every op can be folded: base.json's LOG pair stands in for the pair.
+  const doc = fixtureDoc('base.json')
+  const pair = [ID['LOG-R1'], ID['LOG-R2']] as const
+  const on = (code: string, message: string): CheckFinding => ({
+    code,
+    severity: 'info',
+    tier: 'formal',
+    requirementIds: [...pair],
+    message,
+  })
+  const context: RepairContext = {
+    exclusionsById: new Map([
+      [pair[0], { reason: 'blocking-finding', findings: [on('GTWR_R7_VAGUE', 'vague')] } as never],
+    ]),
+    findings: [
+      on('FND_QUANTITY_ALIAS_CANDIDATE', QUANTITY_ALIAS_MESSAGE),
+      on('FND_OPPOSITION_CANDIDATE', OPPOSITION_MESSAGE),
+      on('FND_SIMILAR_SEMANTIC', 'merge'),
+      on('FND_RELATIONAL_UNCHECKED', 'relational'),
+      on('FND_NUMERIC_UNCOMPARED', 'uncompared'),
+      on('FND_NUMBER_SPELLING_CANDIDATE', 'spelling'),
+      on('FND_NEEDS_REVIEW', 'unknown'),
+    ],
+    docPath: './requirements.json',
+    solverBudgetMs: 2_000,
+    timeoutMs: 1_000,
+    contentHash: (ids) => requirementsContentHash(doc, ids),
+  }
+  const repairs = EVERY_REASON.map((reason) => ({
+    reason,
+    repair: repairForDemotion(
+      { reason, requirementIds: [...pair], action: 'irrelevant here' } as CoverageDemotion,
+      context,
+    ),
+  }))
+
+  it('[S3-039] reaches every reason the union has (exhaustive over reasons, not corpus documents)', () => {
+    expect(repairs.map((r) => r.reason).sort()).toEqual([...EVERY_REASON].sort())
+    expect(
+      repairs.some((r) => r.repair.ops.length > 0),
+      'no arm emits an op',
+    ).toBe(true)
+  })
+
+  it.each(
+    EVERY_REASON,
+  )('[S3-039] %s: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code', (reason) => {
+    const { repair } = repairs.find((r) => r.reason === reason) ?? { repair: { ops: [] } }
+    const wrong: string[] = []
+    for (const raw of repair.ops) {
+      const op = raw as Readonly<Record<string, unknown>>
+      if (op.op === 'waive' && waivabilityOf(String(op.code)) !== 'scoped')
+        wrong.push(
+          `waives ${String(op.code)} (${waivabilityOf(String(op.code)) ?? 'unclassified'})`,
+        )
+      const decoded = Effect.runSync(Effect.result(decodeOp(raw)))
+      if (decoded._tag === 'Failure') {
+        wrong.push(`does not decode: ${JSON.stringify(raw)}`)
+        continue
+      }
+      const folded = foldOps(doc, [decoded.success], '2026-10-05T00:00:00.000Z', MUTATE_OPTIONS)
+      if (folded.abortedAt !== undefined)
+        wrong.push(`${JSON.stringify(raw)} refused ${folded.results[folded.abortedAt]?.code}`)
+    }
+    expect(wrong).toEqual([])
+  })
+
+  it('[S3-039] [S3-045] every command any arm emits parses with the built binary, full argv (R56)', async () => {
+    const commands = new Set(repairs.flatMap((r) => symspecCommandsDeep(r.repair)))
+    expect(commands.size).toBeGreaterThan(EVERY_REASON.length / 2)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 120_000)
+})
+
+describe('[S3-040] the never-code negative guards read every inflection of "waive" (static, R56)', () => {
+  it('[S3-040] the inflection set matches each inflection and spares "waivable"', () => {
+    for (const w of ['waive', 'Waives', 'waived', 'Waiving', 'waiver', 'WAIVERS'])
+      expect(WAIVE_INFLECTION.test(`a ${w} b`), w).toBe(true)
+    expect(WAIVE_INFLECTION.test('it is never waivable')).toBe(false)
+  })
+
+  it.each(
+    NEVER_ONLY_SITES,
+  )('[S3-040] %s: no string literal uses any inflection of "waive"', (relative) => {
+    expect(stringLiterals(relative).filter((s) => WAIVE_INFLECTION.test(s))).toEqual([])
+  })
+
+  it('[S3-040] pipeline/check.ts: no literal of a never-code demotion action (unappliedNote included), and no literal naming a never-class code, uses any inflection of "waive"', () => {
+    const file = ts.createSourceFile(
+      CHECK_TS,
+      readFileSync(join(REPO_ROOT, CHECK_TS), 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+    )
+    const literalsUnder = (node: ts.Node, out: string[] = []): string[] => {
+      if (
+        ts.isStringLiteral(node) ||
+        ts.isNoSubstitutionTemplateLiteral(node) ||
+        ts.isTemplateHead(node) ||
+        ts.isTemplateMiddle(node) ||
+        ts.isTemplateTail(node)
+      )
+        out.push(node.text)
+      ts.forEachChild(node, (c) => {
+        literalsUnder(c, out)
+      })
+      return out
+    }
+    const swept = new Map<string, string[]>()
+    const visit = (node: ts.Node): void => {
+      if (ts.isObjectLiteralExpression(node)) {
+        const reason = node.properties.find(
+          (p): p is ts.PropertyAssignment =>
+            ts.isPropertyAssignment(p) && p.name.getText() === 'reason',
+        )
+        const action = node.properties.find(
+          (p): p is ts.PropertyAssignment =>
+            ts.isPropertyAssignment(p) && p.name.getText() === 'action',
+        )
+        if (
+          reason !== undefined &&
+          action !== undefined &&
+          ts.isStringLiteral(reason.initializer) &&
+          NEVER_DEMOTION_CODE[reason.initializer.text] !== undefined
+        )
+          swept.set(reason.initializer.text, [
+            ...(swept.get(reason.initializer.text) ?? []),
+            ...literalsUnder(action.initializer),
+          ])
+      }
+      if (ts.isFunctionDeclaration(node) && node.name?.text === 'unappliedNote')
+        swept.set('unappliedNote', literalsUnder(node))
+      ts.forEachChild(node, visit)
+    }
+    visit(file)
+    // Non-vacuous: every never-code reason's action and the unapplied note were found.
+    expect([...swept.keys()].sort()).toEqual(
+      [...Object.keys(NEVER_DEMOTION_CODE), 'unappliedNote'].sort(),
+    )
+    const naming = stringLiterals(CHECK_TS).filter((s) =>
+      [...s.matchAll(/\bFND_[A-Z_]+\b/g)].some((m) => waivabilityOf(m[0]) === 'never'),
+    )
+    const offenders = [
+      ...[...swept].flatMap(([where, lits]) =>
+        lits.filter((s) => WAIVE_INFLECTION.test(s)).map((s) => `${where}: ${s}`),
+      ),
+      ...naming.filter((s) => WAIVE_INFLECTION.test(s)).map((s) => `names a never code: ${s}`),
+    ]
+    expect([...new Set(offenders)]).toEqual([])
+  })
+})
+
+describe('[S3-045] the commands a reachable near-duplicate message names parse with the built binary (R56)', () => {
+  it('[S3-045] the opposite-polarity near-duplicate (door/doors over open/close): every command its FND_SIMILAR_SEMANTIC message and its demotion name parses', async () => {
+    const door = (id: string, systemResponse: string) => ({
+      id,
+      patternType: 'event-driven' as const,
+      systemName: 'door controller',
+      systemResponse,
+      trigger: 'the passenger presses the door button',
+      negated: false,
+      sentence: `When the passenger presses the door button, the door controller shall ${systemResponse}.`,
+      priority: 'medium' as const,
+      status: 'draft' as const,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      derives: [],
+      satisfies: [],
+      verifies: [],
+      refines: [],
+    })
+    const doc = {
+      requirements: {
+        R1: door('R1', 'open the door'),
+        R2: door('R2', 'close the doors'),
+        R3: door('R3', 'sound the chime'),
+      },
+      glossary: [],
+      antonyms: [{ a: 'open', b: 'close' }],
+      waivers: [],
+      terms: [],
+      stateModel: { variables: [] },
+    }
+    const embedder: Embedder = async (texts) =>
+      texts.map((t) => {
+        const v = new Float32Array(8)
+        v[t === 'sound the chime' ? 1 : 0] = 1
+        return v
+      })
+    const report = await runCheck(doc as never, { semantic: { embedder } })
+    const near = report.findings.filter((f) => f.code === 'FND_SIMILAR_SEMANTIC')
+    const demotions = report.coverage.demotions.filter(
+      (d) => d.reason === 'opposite-polarity-near-duplicate',
+    )
+    expect(near.length).toBeGreaterThan(0)
+    expect(demotions.length).toBeGreaterThan(0)
+    const commands = symspecCommandsDeep([near, demotions])
+    expect(commands.length).toBeGreaterThan(0)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 120_000)
 })
