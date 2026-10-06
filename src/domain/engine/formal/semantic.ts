@@ -60,7 +60,7 @@ export interface SimilarSemanticFinding {
   readonly message: string
 }
 
-/** A `symspec glossary add <canonical> <alias>` proposal: `alias` is rewritten to `canonical`. */
+/** A `symspec glossary <canonical> <alias>` proposal: `alias` is rewritten to `canonical`. */
 export interface GlossaryMerge {
   readonly canonical: string
   readonly alias: string
@@ -520,10 +520,10 @@ export async function findSimilarSemantic(
         antonymHint =
           headA !== '' && headB !== '' && headA !== headB
             ? ` These fire under the SAME trigger, so if they are polar OPPOSITES rather than ` +
-              `synonyms, run \`symspec antonym add ${headA} ${headB}\` instead — the formal tier ` +
+              `synonyms, run \`symspec antonym ${headA} ${headB}\` instead — the formal tier ` +
               'will then treat them as contraries (they cannot both hold) and can prove the conflict.'
             : ' These fire under the SAME trigger, so if these responses are opposites rather than ' +
-              'synonyms, register an antonym instead (see `symspec antonym add`).'
+              'synonyms, register an antonym instead (see `symspec antonym <verbA> <verbB>`).'
       }
 
       // AC-3-6: a would-be conflict over the same words up to inflection/number, BOTH halves
@@ -538,7 +538,7 @@ export async function findSimilarSemantic(
       const merge = suggestMerge(a, b, atomA, atomB, options)
       const mergeAdvice =
         merge !== undefined
-          ? ` If they mean the same thing, run \`symspec glossary add "${merge.canonical}" ` +
+          ? ` If they mean the same thing, run \`symspec glossary "${merge.canonical}" ` +
             `"${merge.alias}"\` so the formal tier treats them as one atom, then re-run ` +
             '`symspec check` to surface any conflict the shared atom exposes.'
           : ' No glossary merge is proposed: every merge of these phrasings either aliases a ' +
@@ -954,7 +954,7 @@ function variantMessage(
       `under "shall not", over objects that differ only by prepositions ${objects}. ${why} If they ` +
       'name ONE object, make the pair provable: align the preposition with ' +
       `\`symspec update --ref ${b.id} systemResponse "${a.systemResponse}"\`, or commit the two ` +
-      `phrasings as one action with \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\`; ` +
+      `phrasings as one action with \`symspec glossary "${a.systemResponse}" "${b.systemResponse}"\`; ` +
       'either puts both on one atom at opposite polarity, and the solver decides the conflict.' +
       tail
     )
@@ -966,7 +966,7 @@ function variantMessage(
       `("${headA}" vs "${headB}") over objects that differ only by prepositions ${objects}. ${why} ` +
       'If they name ONE object, make the pair provable: align the preposition with ' +
       `\`symspec update --ref ${b.id} systemResponse "${aligned}"\`, or commit the rewording as ` +
-      `one action with \`symspec glossary add "${aligned}" "${b.systemResponse}"\`; either puts ` +
+      `one action with \`symspec glossary "${aligned}" "${b.systemResponse}"\`; either puts ` +
       'both on one key on opposite sides of the row, and the solver decides the conflict.' +
       tail
     )
@@ -980,7 +980,7 @@ function variantMessage(
       'one atom and the solver decides the conflict.'
     : 'If they are opposites acting on one object, align the preposition ' +
       `(\`symspec update --ref ${b.id} systemResponse "${phraseOf(`${headB}_${restA}`)}"\`) and ` +
-      `commit the pair (\`symspec antonym add ${headA} ${headB}\`), so the solver decides the conflict.`
+      `commit the pair (\`symspec antonym ${headA} ${headB}\`), so the solver decides the conflict.`
   return (
     `${lo} and ${hi} respond under the same system with verbs one antonym class holds but no row ` +
     `relates ("${headA}" vs "${headB}"), over objects that differ only by prepositions ${objects}. ` +
@@ -1002,9 +1002,9 @@ function oppositionMessage(
     `${lo} and ${hi} respond under the same system with the same object but different ` +
     `leading verbs ("${headA}" vs "${headB}"). These verbs differ, but embeddings CANNOT ` +
     'tell opposites (open/shut) from synonyms (delete/remove) — decide which these are: ' +
-    `if they are polar OPPOSITES, run \`symspec antonym add ${headA} ${headB}\` (the formal ` +
+    `if they are polar OPPOSITES, run \`symspec antonym ${headA} ${headB}\` (the formal ` +
     'tier will then treat them as contraries — they cannot both hold — and can prove a conflict); ' +
-    `if they are SYNONYMS, run \`symspec glossary add "${a.systemResponse}" "${b.systemResponse}"\` ` +
+    `if they are SYNONYMS, run \`symspec glossary "${a.systemResponse}" "${b.systemResponse}"\` ` +
     'instead. Committing the WRONG one manufactures a false contradiction, so confirm the ' +
     `direction before applying.${through} This is a suggestion, not a verdict.`
   )

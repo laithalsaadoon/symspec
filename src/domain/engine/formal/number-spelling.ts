@@ -113,7 +113,7 @@ export function findNumberSpellingCandidates(
               'never compared them. A `,` or `.` between digits is a thousands separator in one ' +
               'convention and a decimal point in the other, so symspec does not decide whether ' +
               'the alias and the requirement write one number. If they do, rewrite the ' +
-              'requirement with `symspec update` (or re-commit the alias) so both spell the ' +
+              'requirement with `symspec update --ref <id> <attr> "<wording>"` (or re-commit the alias) so both spell the ' +
               'number identically, and re-run `symspec check`. If they are different numbers, ' +
               'rewrite one so both follow one separator convention, and the solver compares the ' +
               'two numbers as written. This is a suggestion, not a verdict.'
@@ -122,7 +122,7 @@ export function findNumberSpellingCandidates(
               'the solver never compared them. A `,` or `.` between digits is a thousands ' +
               'separator in one convention and a decimal point in the other, so symspec does not ' +
               'decide whether they are one number. If they are, rewrite one requirement with ' +
-              '`symspec update` so both spell the number identically: they then share one atom ' +
+              '`symspec update --ref <id> <attr> "<wording>"` so both spell the number identically: they then share one atom ' +
               'and re-running `symspec check` proves any conflict. If they are different ' +
               'numbers, rewrite one so both follow one separator convention, and the solver ' +
               'compares the two numbers as written. This is a suggestion, not a verdict.',

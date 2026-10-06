@@ -817,7 +817,7 @@ const applyTerm = (
         'A term is substituted inside EVERY slot body, so a verb in one moves the polarity the',
         'solver computes while leaving the raw-text bridge parse unchanged — which can prove a',
         'conflict the document does not contain.',
-        'Use `symspec glossary` to align a whole phrasing that contains a verb.',
+        'Use `symspec glossary "<canonical phrasing>" "<alias phrasing>"` to align a whole phrasing that contains a verb.',
       ],
     )
   }
@@ -1026,7 +1026,7 @@ const waiverClassRefusal = (
       'ERR_WAIVER_REFUSED',
       `No catalog publishes the code \`${code}\`, so it has no waivability class and cannot be waived.`,
       [
-        `Run \`symspec explain ${code}\` for the nearest published codes, and waive the exact code a \`symspec check\` finding carries.`,
+        `Run \`symspec explain --code ${code}\` for the nearest published codes, and waive the exact code a \`symspec check\` finding carries.`,
       ],
     )
   }
@@ -1035,8 +1035,8 @@ const waiverClassRefusal = (
     'ERR_WAIVER_REFUSED',
     `\`${code}\` is a ${row.class}-class finding, and a ${row.class} finding is never waivable, in any scope: only a change to what the document says discharges it.`,
     [
-      `Read the finding's message and demotion action (\`symspec check\`), then rewrite the requirement it names (\`symspec update\`), or commit the \`symspec antonym\` or \`symspec glossary\` entry it proposes where the two phrasings really are contraries or one action.`,
-      `\`symspec explain ${code}\` states what the code means and how it is discharged.`,
+      `Read the finding's message and demotion action (\`symspec check\`), then rewrite the requirement it names (\`symspec update --ref <id> <attr> "<wording>"\`), or commit the \`symspec antonym <verbA> <verbB>\` or \`symspec glossary "<canonical>" "<alias>"\` entry it proposes where the two phrasings really are contraries or one action.`,
+      `\`symspec explain --code ${code}\` states what the code means and how it is discharged.`,
     ],
   )
 }

@@ -728,10 +728,10 @@ function unappliedNote(unapplied: readonly Waiver[]): string {
   )
   const one = unapplied.length === 1
   return (
-    ` ${one ? 'A waiver' : `${unapplied.length} waivers`} of ${unapplied[0]!.code} ` +
+    ` ${one ? 'A stored suppression' : `${unapplied.length} stored suppressions`} of ${unapplied[0]!.code} ` +
     `${one ? 'reaches' : 'reach'} this pair but ${one ? 'was' : 'were'} not applied (${scopes.join('; ')}): ` +
     'a triage candidate is decided only by an edit that lets the solver compare the pair, so ' +
-    'no waiver of it certifies a pair, and one by code or by one requirement reaches pairs nobody read.'
+    'no suppression of it certifies a pair, and one by code or by one requirement reaches pairs nobody read.'
   )
 }
 
@@ -2055,7 +2055,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
                       'triggers) and cannot yet decide whether these guards co-occur. See any ' +
                       `\`conditional-conflict-unchecked\` demotion naming ${id}.`
                     : `Rewrite ${id} to share guard/response vocabulary with the requirements it ` +
-                      'relates to, or link its terms via `symspec glossary add`/`symspec antonym add` ' +
+                      'relates to, or link its terms via `symspec glossary "<canonical>" "<alias>"`/`symspec antonym <a> <b>` ' +
                       'so the formal tier can cross-compare it.',
             }),
       }
@@ -2142,7 +2142,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         requirementIds: [...f.requirementIds],
         action:
           'Two co-active opposed numeric bounds landed on different quantity keys. If they ' +
-          'constrain one physical quantity, commit the `symspec glossary add` alias from the ' +
+          'constrain one physical quantity, commit the `symspec glossary "<canonical>" "<alias>"` alias from the ' +
           "finding's message so the numeric tier compares them; otherwise reword one so each " +
           'names its own quantity in different words. Then re-run `symspec check`.',
       })
@@ -2190,7 +2190,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         action:
           `${f.requirementIds.join(' and ')} write one phrase with numbers that differ only in a ` +
           'digit separator, on two atoms the solver never compared. If they are one number, ' +
-          'rewrite one with `symspec update` so both spell it identically, then re-run `symspec ' +
+          'rewrite one with `symspec update --ref <id> <attr> "<wording>"` so both spell it identically, then re-run `symspec ' +
           'check`: the shared atom makes any conflict provable. If they are different numbers, ' +
           'rewrite one so both follow one digit-separator convention.',
       })
@@ -2211,7 +2211,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           'different atoms or keys, so if they mean one thing they contradict each other and ' +
           'the solver cannot see it. ' +
           (hasMerge
-            ? "If they are the same, commit the `symspec glossary add` merge from the finding's " +
+            ? 'If they are the same, commit the `symspec glossary "<canonical>" "<alias>"` merge from the finding\'s ' +
               'message: it puts both on one atom at opposite polarity, or on one antonym key as ' +
               'contraries. The solver then compares them wherever a checked context makes both ' +
               'live; if their guards are never asserted together, the pair stays demoted as ' +
@@ -2272,8 +2272,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         // certify every other candidate it reaches, none of which anyone triaged.
         action:
           `Triage the opposition candidate over ${f.requirementIds.join(' and ')}: make the pair ` +
-          "provable with the edit the finding's message names (the rewrite, `symspec antonym add` " +
-          'if the verbs are opposites, or `symspec glossary add` if synonyms), or, if the two do ' +
+          "provable with the edit the finding's message names (the rewrite, `symspec antonym <verbA> <verbB>` " +
+          'if the verbs are opposites, or `symspec glossary "<canonical>" "<alias>"` if synonyms), or, if the two do ' +
           'not conflict, reword one so they no longer read as opposite responses: a candidate is ' +
           'decided by an edit, never by accepting it as written. Then re-run `symspec check`.' +
           unappliedNote(unappliedWaivers(f, waivers)),
@@ -2374,7 +2374,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         `The solver returned unknown for the context group covering ${f.requirementIds.join(', ')} ` +
         '(undecidable within the per-group timeout, or the timeout fired), so that group was never ' +
         'decided — an unknown is never read as "no conflict". Raise --timeout-ms and re-run ' +
-        '`symspec check`. Waiving FND_NEEDS_REVIEW cannot discharge this: the group is still undecided.',
+        '`symspec check`. Suppressing FND_NEEDS_REVIEW cannot discharge this: the group is still undecided.',
     })
   }
 

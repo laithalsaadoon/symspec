@@ -187,8 +187,8 @@ export const ReachabilityFndCodeMeta: Record<
       'or the model admits no transitions at all (in which case only the initial state exists ' +
       'and any invariant over it holds almost vacuously). This is a coverage DISCLOSURE, not a ' +
       'defect: silence over a question that was never asked reads exactly like a pass, which is the ' +
-      'one thing this tool must never do. Suggestion: declare state variables with `symspec state`, ' +
-      'then classify the responses that touch them with `symspec classify`.',
+      'one thing this tool must never do. Suggestion: declare state variables with `symspec state <name> --type bool|int|enum`, ' +
+      'then classify the responses that touch them with `symspec classify <ref> --kind constraint --expression "<predicate>"`.',
   },
   FND_REACHABILITY_VACUOUS_INITIAL: {
     code: 'FND_REACHABILITY_VACUOUS_INITIAL',

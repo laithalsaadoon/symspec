@@ -246,7 +246,7 @@ export function findQuantityAliasCandidates(
           'the completion of what the duration measures. '
       const advice =
         'If both bounds constrain the SAME ' +
-        `physical quantity, run \`symspec glossary add "${labelLo}" "${labelHi}"\` so the numeric ` +
+        `physical quantity, run \`symspec glossary "${labelLo}" "${labelHi}"\` so the numeric ` +
         (roles === ''
           ? 'tier keys them together and can prove any conflict, then re-run `symspec check`. '
           : 'tier keys them together, then re-run `symspec check`. ') +

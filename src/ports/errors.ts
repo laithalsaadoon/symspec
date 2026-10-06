@@ -113,13 +113,13 @@ export class ErrDocParse extends Schema.TaggedErrorClass<ErrDocParse>()(
   override readonly [Runtime.errorReported] = false
 }
 
-/** The document's schemaVersion does not equal the current SCHEMA_VERSION, though it does satisfy the current document schema. The suggestions therefore carry the exact ops that reproduce it: a `symspec init` step, one `symspec apply` JSONL op record per requirement and per edge in dependency order, the `symspec glossary`/`antonym`/`waive` commands for the tables `apply` has no op for, and an explicit statement of anything the ops do not reproduce. */
+/** The document's schemaVersion does not equal the current SCHEMA_VERSION, though it does satisfy the current document schema. The suggestions therefore carry the exact ops that reproduce it: a `symspec init` step, one `symspec apply` JSONL op record per requirement and per edge in dependency order, the `symspec glossary "<canonical>" "<alias>"`, `symspec antonym <a> <b>` and `symspec waive <code> --ref <id> --reason "<reason>"` commands for the tables `apply` has no op for, and an explicit statement of anything the ops do not reproduce. */
 export class ErrSchemaVersion extends Schema.TaggedErrorClass<ErrSchemaVersion>()(
   'ERR_SCHEMA_VERSION',
   ErrorFields,
   {
     description:
-      "The document's schemaVersion does not equal the current SCHEMA_VERSION, though it does satisfy the current document schema. The suggestions therefore carry the exact ops that reproduce it: a `symspec init` step, one `symspec apply` JSONL op record per requirement and per edge in dependency order, the `symspec glossary`/`antonym`/`waive` commands for the tables `apply` has no op for, and an explicit statement of anything the ops do not reproduce. Suggestion: `symspec init <file>`, then pipe the reported op records through `symspec apply`.",
+      'The document\'s schemaVersion does not equal the current SCHEMA_VERSION, though it does satisfy the current document schema. The suggestions therefore carry the exact ops that reproduce it: a `symspec init` step, one `symspec apply` JSONL op record per requirement and per edge in dependency order, the `symspec glossary "<canonical>" "<alias>"`, `symspec antonym <a> <b>` and `symspec waive <code> --ref <id> --reason "<reason>"` commands for the tables `apply` has no op for, and an explicit statement of anything the ops do not reproduce. Suggestion: `symspec init <file>`, then pipe the reported op records through `symspec apply`.',
   },
 ) {
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
@@ -141,7 +141,7 @@ export class ErrDuplicateId extends Schema.TaggedErrorClass<ErrDuplicateId>()(
   ErrorFields,
   {
     description:
-      'A CreateRequirement supplied a UUID that already exists. Suggestion: use `symspec update`, or omit --id to auto-mint a fresh UUID.',
+      'A CreateRequirement supplied a UUID that already exists. Suggestion: use `symspec update --ref <id> <attr> "<value>"`, or omit --id to auto-mint a fresh UUID.',
   },
 ) {
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR

@@ -201,7 +201,7 @@ export const FndCodeMeta = {
   FND_SIMILAR_UNUNIFIED: {
     code: 'FND_SIMILAR_UNUNIFIED',
     description:
-      'info — responses with Jaccard ≥ 0.7 that did not unify to one atom; an over-unification-adjacent review prompt (suggests rewording one response via `symspec update`).',
+      'info — responses with Jaccard ≥ 0.7 that did not unify to one atom; an over-unification-adjacent review prompt (suggests rewording one response via `symspec update --ref <id> systemResponse "<wording>"`).',
   },
   FND_NEEDS_REVIEW: {
     code: 'FND_NEEDS_REVIEW',
@@ -225,7 +225,7 @@ export const FndCodeMeta = {
   FND_SIMILAR_SEMANTIC: {
     code: 'FND_SIMILAR_SEMANTIC',
     description:
-      'info — two responses embed with cosine ≥ threshold but did not unify to one atom; a PROPOSE-only prompt to add a `symspec glossary` entry. Never a verdict.',
+      'info — two responses embed with cosine ≥ threshold but did not unify to one atom; a PROPOSE-only prompt to add a `symspec glossary "<canonical>" "<alias>"` entry. Never a verdict.',
   },
   FND_NUMERIC_CONTRADICTION: {
     code: 'FND_NUMERIC_CONTRADICTION',
@@ -280,7 +280,7 @@ export const FndCodeMeta = {
   FND_OPPOSITION_CANDIDATE: {
     code: 'FND_OPPOSITION_CANDIDATE',
     description:
-      'info — two same-system responses that may conflict but share no exact key: they share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified; or they are one verb at opposite polarity, or two contraries, whose objects differ only in their prepositions (e.g. "stop the pump on Monday" vs "shall not stop the pump Monday"). Propose-only, and DEMOTES `verified`: make the pair provable with the edit the message names (`symspec antonym add <verbA> <verbB>`, the rewording, or a glossary entry). A triage candidate is discharged only by an edit that lets the solver decide the pair, never by accepting it as written. Never a verdict.',
+      'info — two same-system responses that may conflict but share no exact key: they share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified; or they are one verb at opposite polarity, or two contraries, whose objects differ only in their prepositions (e.g. "stop the pump on Monday" vs "shall not stop the pump Monday"). Propose-only, and DEMOTES `verified`: make the pair provable with the edit the message names (`symspec antonym <verbA> <verbB>`, the rewording, or a glossary entry). A triage candidate is discharged only by an edit that lets the solver decide the pair, never by accepting it as written. Never a verdict.',
   },
   FND_EXCLUDED_FROM_FORMAL: {
     code: 'FND_EXCLUDED_FROM_FORMAL',
@@ -290,7 +290,7 @@ export const FndCodeMeta = {
   FND_QUANTITY_ALIAS_CANDIDATE: {
     code: 'FND_QUANTITY_ALIAS_CANDIDATE',
     description:
-      'info — two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "run the infusion for ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary add` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict.',
+      'info — two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "run the infusion for ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary "<canonical>" "<alias>"` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict.',
   },
   FND_NUMERIC_UNCOMPARED: {
     code: 'FND_NUMERIC_UNCOMPARED',
@@ -305,7 +305,7 @@ export const FndCodeMeta = {
   FND_NUMBER_SPELLING_CANDIDATE: {
     code: 'FND_NUMBER_SPELLING_CANDIDATE',
     description:
-      'info — two requirements write the same phrase with numbers that differ only in a digit separator (e.g. "respond within 1.5 ms" vs "not respond within 1,5 ms", or 1_500 vs 1.500), so they landed on two atoms and were never compared. A `,` or `.` between digits is a thousands separator in one convention and a decimal point in the other, so symspec does not decide whether they are one number. Propose-only: if they are, rewrite one with `symspec update` so both spell the number identically and the solver compares them on one atom; if not, rewrite one so both follow one digit-separator convention, and the solver compares the two numbers as written. DEMOTES `verified`; never a verdict.',
+      'info — two requirements write the same phrase with numbers that differ only in a digit separator (e.g. "respond within 1.5 ms" vs "not respond within 1,5 ms", or 1_500 vs 1.500), so they landed on two atoms and were never compared. A `,` or `.` between digits is a thousands separator in one convention and a decimal point in the other, so symspec does not decide whether they are one number. Propose-only: if they are, rewrite one with `symspec update --ref <id> <attr> "<wording>"` so both spell the number identically and the solver compares them on one atom; if not, rewrite one so both follow one digit-separator convention, and the solver compares the two numbers as written. DEMOTES `verified`; never a verdict.',
   },
 } satisfies Record<FndCode, { readonly code: FndCode; readonly description: string }>
 

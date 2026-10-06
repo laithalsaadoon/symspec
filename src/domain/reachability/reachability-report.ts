@@ -176,7 +176,10 @@ const notCheckedRepair = (report: ReachabilityReport, docPath: string): Repair =
   if (report.variables === 0) {
     return {
       ops: [{ op: 'state', name: '<variable>', type: 'bool' } satisfies DocumentOp],
-      commands: [`symspec state <variable> --type bool ${docPath}`, `symspec check ${docPath}`],
+      commands: [
+        `symspec state <variable> --type bool --file ${docPath}`,
+        `symspec check ${docPath}`,
+      ],
     }
   }
   return {
@@ -190,7 +193,7 @@ const notCheckedRepair = (report: ReachabilityReport, docPath: string): Repair =
     ],
     commands: [
       `symspec list ${docPath}`,
-      `symspec classify <requirement> --kind constraint --expression "<predicate>" ${docPath}`,
+      `symspec classify <requirement> --kind constraint --expression "<predicate>" --file ${docPath}`,
       `symspec check ${docPath}`,
     ],
   }
@@ -744,8 +747,8 @@ export const projectReachability = (
       requirementIds: ids,
       action: `Reachability was not fully checked: ${gap}. ${
         report.variables === 0
-          ? `Declare the state variables (\`symspec state <name> --type bool|int|enum ${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> --kind constraint --expression "<predicate>" ${docPath}\`).`
-          : `Classify the responses that touch the declared variables: \`symspec classify <ref> --kind constraint --expression "<predicate>" ${docPath}\`.`
+          ? `Declare the state variables (\`symspec state <name> --type bool|int|enum --file ${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> --kind constraint --expression "<predicate>" --file ${docPath}\`).`
+          : `Classify the responses that touch the declared variables: \`symspec classify <ref> --kind constraint --expression "<predicate>" --file ${docPath}\`.`
       }`,
       repair: notCheckedRepair(report, docPath),
     })

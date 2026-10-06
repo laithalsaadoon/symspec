@@ -126,7 +126,7 @@ export function findSimilarUnunified(
         `${options.similarityThreshold ?? 0.7}) but their responses did not unify to the ` +
         'same atom under the conservative normalization/antonym table. If these are genuine ' +
         `synonyms (e.g. "${atomA}" vs "${atomB}"), reword one requirement's response via ` +
-        '`symspec update` so both use the same phrasing, then re-run `symspec check` to ' +
+        '`symspec update --ref <id> systemResponse "<wording>"` so both use the same phrasing, then re-run `symspec check` to ' +
         'surface any conflict the shared atom exposes.',
     })
   }

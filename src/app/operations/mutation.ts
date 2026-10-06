@@ -940,7 +940,7 @@ export const termOp = defineOperation({
         'Terms are for NOUNS. A term containing a verb the antonym table or the state-bridge lexicon',
         'reads is REFUSED, because substituting one moves the polarity the solver computes for a',
         'state-establishing response without moving the parse that recognises it — which would prove',
-        'a conflict the document does not contain. Use `symspec glossary` for a phrasing with a verb.',
+        'a conflict the document does not contain. Use `symspec glossary "<canonical>" "<alias>"` for a phrasing with a verb.',
         'An alias that overlaps another phrase of the table (inside it, equal to it, around it, or',
         'straddling one of its edges) is REFUSED too: the substitution is one longest-first pass, so',
         'it would rewrite some of that phrase`s occurrences and not others.',

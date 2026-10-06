@@ -75,9 +75,9 @@ export function noPairsCheckedFinding(
  * `reason` is the gate's exclusion reason (`'parse-failure'` |
  * `'blocking-surface-check'`); `blockingCodes` names the finding codes that
  * blocked the surface, so the discharge instruction is concrete. The fix is to
- * REPHRASE (clear the blocking finding) — waiving the finding suppresses the
- * report line but leaves the requirement formally excluded, which is why the
- * message says so explicitly.
+ * REPHRASE (clear the blocking finding). The message names no waiver: the code is
+ * never waivable (spec 007 AC-5-6), and the scoped alternative for the blocking lint,
+ * with why it cannot verify, is the `excluded-from-formal` demotion's to state.
  */
 export function excludedFromFormalFinding(
   requirementId: string,
@@ -96,9 +96,9 @@ export function excludedFromFormalFinding(
     message:
       `${requirementId} was excluded from the formal (SMT) tier because ${how}, so no ` +
       'cross-requirement analysis covered it and `verified` does not account for it. Fix the ' +
-      'blocking finding (rephrase the requirement) to re-admit it to the solver. NOTE: waiving ' +
-      'the blocking finding suppresses the report line but does NOT restore formal coverage — ' +
-      'the requirement stays excluded until the surface itself is clean.',
+      'blocking finding (rephrase the requirement) to re-admit it to the solver: a clean surface ' +
+      'is the only discharge that can reach `verified: true`, and the `excluded-from-formal` ' +
+      'demotion says what else its repair offers and why that cannot verify.',
   }
 }
 

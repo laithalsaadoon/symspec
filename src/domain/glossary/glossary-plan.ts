@@ -1690,7 +1690,7 @@ const messageFor = (
         `${phrases} cluster together, but the document already commits ${existing.length} ` +
         `canonical(s) for members of this class (${existing.map(quoted).join(', ')}). Merging ` +
         'would fork a committed group. Resolve the existing entries first with ' +
-        '`symspec glossary --remove`, then re-run.'
+        '`symspec glossary --remove "<canonical>" "<alias>"`, then re-run.'
       )
     case 'cross-system-conflict':
       return (

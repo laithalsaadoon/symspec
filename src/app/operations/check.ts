@@ -560,7 +560,7 @@ const CheckInput = Schema.Struct({
         '(FND_SIMILAR_SEMANTIC) and opposition candidates (FND_OPPOSITION_CANDIDATE) for pairs that',
         'did not already unify. ON by default.',
         'PROPOSE-ONLY, and that is doctrine rather than caution: a cosine never decides a conflict.',
-        'The only durable output is a SUGGESTED `symspec glossary` / `symspec antonym` op you commit after',
+        'The only durable output is a SUGGESTED `symspec glossary "<canonical>" "<alias>"` / `symspec antonym <a> <b>` op you commit after',
         'review, and the deterministic solver then reads the COMMITTED table — which is what keeps',
         '`check` byte-reproducible given (document + tables + pinned model).',
         'These findings are info severity and can DEMOTE `data.verified` toward abstention (an',
@@ -772,8 +772,8 @@ const noStateModelDisclosure = (docPath: string): ReachabilityFinding => ({
     'reachability question was asked. This is a coverage DISCLOSURE, not a defect, and it does ' +
     'not demote `verified` (the tier is opt-in). To have `check` prove invariants over every ' +
     'reachable state, declare the state variables (`symspec state <name> --type bool|int|enum ' +
-    `${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> ` +
-    `--kind constraint --expression "<predicate>" ${docPath}\`).`,
+    `--file ${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> ` +
+    `--kind constraint --expression "<predicate>" --file ${docPath}\`).`,
 })
 
 /** Roll a finished reachability run up into the payload's summary. */
