@@ -1,0 +1,3 @@
+# Each BLOCKING wording finding (GTWR_R7_VAGUE, error) waived over its own requirement and text.
+{"op":"waive","code":"GTWR_R7_VAGUE","reason":"the service level agreement defines the deadline","refs":["ORD-R1"],"contentHash":"sha256:e376ee5c3ca6dfa2b6aab589e457c1a3c818dcbaffa9401002cc761478ba15b1"}
+{"op":"waive","code":"GTWR_R7_VAGUE","reason":"the service level agreement defines the deadline","refs":["ORD-R2"],"contentHash":"sha256:447120f0804d769c9c5e1c0b473058543e1cc9dcbf30776a0d6f16b5956067e3"}

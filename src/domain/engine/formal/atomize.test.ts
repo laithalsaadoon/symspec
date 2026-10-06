@@ -302,7 +302,10 @@ describe('the atom scope', () => {
       negated: false,
     })
     expect(a.name).not.toBe(b.name)
-    expect(normalize('ゲートウェイ'), 'the premise: normalize alone erases it').toBe('')
+    // Spec 007 AC-2-4: the names are no longer erased at all — each is its own readable scope.
+    // The premise this test used to pin (`normalize('ゲートウェイ') === ''`) was the defect.
+    expect(normalizeScope('ゲートウェイ')).toBe('ゲートウェイ')
+    expect(normalizeScope('认证服务')).toBe('认证服务')
   })
 
   it('does not strip a leading article from a system NAME', () => {
@@ -322,15 +325,25 @@ describe('the atom scope', () => {
   })
 
   it('hashes deterministically and readably when nothing survives', () => {
-    expect(normalizeScope('ゲートウェイ')).toBe(normalizeScope('ゲートウェイ'))
-    expect(normalizeScope('ゲートウェイ')).toMatch(/^h[0-9a-f]{8}$/)
+    // Nothing but identity-free punctuation: the only names the fallback still serves. A symbol
+    // such as `🚀` is kept (spec 007 AC-2-4), so it no longer needs the fallback.
+    expect(normalizeScope('— … —')).toBe(normalizeScope('— … —'))
+    expect(normalizeScope('— … —')).toMatch(/^h[0-9a-f]{8}$/)
+    expect(normalizeScope('— … —')).not.toBe(normalizeScope('( — )'))
+    expect(normalizeScope('🚀 — 🚀')).toBe('🚀_🚀')
   })
 
   it('renderAtom REFUSES a scope it cannot render unambiguously', () => {
     // Postconditions rather than comments: an empty scope merges namespaces, and a scope outside
-    // [a-z0-9_] makes the `__`-delimited name ambiguous to the parsers that split on it.
+    // `_`-joined tokens makes the `__`-delimited name ambiguous to the parsers that split on it.
     expect(() => renderAtom({ scope: '', kind: 'resp', body: 'x' })).toThrow(/empty scope/)
-    expect(() => renderAtom({ scope: 'a b', kind: 'resp', body: 'x' })).toThrow(/outside/)
+    for (const scope of ['a b', 'a__b', '_a', 'a_']) {
+      expect(() => renderAtom({ scope, kind: 'resp', body: 'x' }), scope).toThrow(/not normalized/)
+    }
+    expect(renderAtom({ scope: 'c_#', kind: 'resp', body: 'x' })).toBe('sys__c_#__resp__x')
+    expect(renderAtom({ scope: 'ゲートウェイ', kind: 'resp', body: 'x' })).toBe(
+      'sys__ゲートウェイ__resp__x',
+    )
     expect(renderAtom({ scope: 'gateway', kind: 'resp', body: 'x' })).toBe('sys__gateway__resp__x')
   })
 })

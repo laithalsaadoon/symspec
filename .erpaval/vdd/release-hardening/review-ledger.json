@@ -1,0 +1,1097 @@
+{
+  "run": 3,
+  "swarm": "vdd-3-release-hardening",
+  "boardItem": 170,
+  "reviewerJob": 936,
+  "change": {
+    "base": "fc203db",
+    "releaseBase": "0fca0433eb82431936c8edd81f7ccf3464d6f52e",
+    "head": "6445f2939c46170cef451acae5a9bbe02c6e90c5",
+    "scope": [
+      "src/adapters/fs/store.ts",
+      "src/cli.test.ts",
+      "src/domain/anchor/anchor.ts",
+      "src/domain/requirements/document.test.ts",
+      "src/domain/requirements/document.ts"
+    ],
+    "treeHash": "248d720c3e62",
+    "files": [
+      "src/adapters/fs/store.ts",
+      "src/cli.test.ts",
+      "src/domain/anchor/anchor.ts",
+      "src/domain/requirements/document.test.ts",
+      "src/domain/requirements/document.ts"
+    ],
+    "definition": "Loop-back closure diff; the initial full release review is preserved in originalReview."
+  },
+  "independence": {
+    "family": "OpenAI",
+    "builderTranscriptSeen": false,
+    "context": "Fresh Codex reviewer job 936 plus independent Codex read-only lens jobs 937 and 938. Source and committed evidence, not builder transcripts, were reviewed.",
+    "modelFamilyRequirement": "OpenAI review; contract commit 527e38a credits Claude Opus 5.5. No same-builder review is claimed.",
+    "writes": "Only this ledger is changed/committed in repo3. Clone, repro scripts, fixtures and generated-bundle mutants stay in job-936 scratch; helpers wrote only their own notes. No src, existing tests, gate/config/approval edits, branch switch or push.",
+    "delegation": "collaboration.spawn_agent failed because the configured default gpt-6.1-sol-native was unavailable. webapp.job_start with model unset successfully ran Codex lens jobs 937 and 938."
+  },
+  "verdict": "R1, R2 and R3 are closed with independent execution evidence on 6445f29. No new confirmed behavior-violation blocker was established in the closure diff. R4 is an unresolved, nonblocking scope question about a pre-existing schema assertion; this is not a standalone merge-ready or full VDD release-gate certificate.",
+  "findings": [
+    {
+      "id": "R1",
+      "lens": "errors-and-tests / config security",
+      "severity": "blocking",
+      "kind": "validation gap",
+      "behaviors": [
+        "RH-003",
+        "RH-004"
+      ],
+      "status": "closed",
+      "files": [
+        "src/adapters/fs/store.ts:530",
+        "src/adapters/fs/store.ts:608",
+        "src/cli.test.ts:2035"
+      ],
+      "claim": "G1 is a real, reachable oracle gap: changing the config-existence-error fallback from present to absent is not caught by the RH CLI tests, although it changes an indeterminate config path from ERR_CONFIG_INVALID into an accepted unpinned run. Clean head correctly fails closed; this is not a claim that its guard is currently broken.",
+      "repro": "python3 /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-repros.py; python3 /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/mutation-replays.py",
+      "steps": [
+        "Build the isolated clone with pnpm install --offline --frozen-lockfile and pnpm build.",
+        "Create a valid empty requirements.json and a symspec.config.json symlink pointing to itself. OS stat returns errno 40/ELOOP. Use a git shim refusing only rev-parse with exit 128.",
+        "Run clean built CLI check: exit 2 ERR_CONFIG_INVALID. Run vitest src/cli.test.ts -t RH-00: 7 pass, 0 fail, 100 filtered.",
+        "In the generated dist/cli.mjs only, replace the single fs.exists(candidate).pipe(orElseSucceed(() => true)) with false. No src, test or checker config is changed.",
+        "Run the same RH CLI selection and ELOOP fixture. The generated bundle is restored in finally; later npm pack rebuilt it byte-identically to the clean bundle."
+      ],
+      "output": {
+        "cleanEloop": {
+          "exit": 2,
+          "code": "ERR_CONFIG_INVALID"
+        },
+        "baselineRhCli": {
+          "passed": 7,
+          "failed": 0,
+          "filtered": 100
+        },
+        "mutantRhCli": {
+          "passed": 7,
+          "failed": 0,
+          "filtered": 100
+        },
+        "mutantEloop": {
+          "exit": 0,
+          "error": null,
+          "verified": true,
+          "config": {
+            "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/security-fixtures/loop/symspec.config.json",
+            "source": "directory",
+            "gitRefusal": "fatal: review-only rev-parse refusal"
+          }
+        }
+      },
+      "evidenceRoleCrossCheck": "Evidence role separately reported 818 CLI/store/app tests green on the source mutant; this reviewer independently ran only the seven selected RH CLI tests against a bundle mutant and the real ELOOP counterexample.",
+      "refutation": {
+        "status": "confirmed on the pre-closure build; repaired on reviewed head",
+        "by": "Independent absence/refutation job 899; independent closure replay job 936",
+        "evidence": ".erpaval/vdd/release-hardening/absence-2.json at c1fe161; current scratch repro artifacts below"
+      },
+      "suggestedRemedy": "Add a regression that forces an actual config-candidate existence error while the document loads and git gives a non-bare refusal; verify the exact mutant fails it. Keep configPath strict and unchanged.",
+      "originalRepro": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883 && export PATH=$HOME/.local/share/mise/installs/node/24/bin:$HOME/.local/share/mise/installs/pnpm/11.21.0:$PATH SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1 && python3 /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/security-repros.py && python3 /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/guard-mutant.py",
+      "originalEvidenceAt": "22b47f683a16897eafb43c7c31cc73ee4adfca44",
+      "closureReview": {
+        "by": 936,
+        "head": "6445f2939c46170cef451acae5a9bbe02c6e90c5",
+        "status": "closed",
+        "behaviors": [
+          "RH-003",
+          "RH-004",
+          "RH-010"
+        ],
+        "commits": [
+          "527e38a",
+          "36bb975"
+        ],
+        "evidence": "Clean ELOOP and dangling runtime fixtures exit 2 ERR_CONFIG_INVALID. RH-010 now kills the adapted original error-absent mutant with both ELOOP guards, and kills readLink removal with both dangling guards. Both mutants turn their real fixture into exit 0 verified true; clean bundle restored byte-identically.",
+        "clean": [
+          {
+            "case": "config self-symlink existence ELOOP",
+            "exit": 2,
+            "error": "ERR_CONFIG_INVALID",
+            "message": "`git rev-parse --show-toplevel` failed in /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/loop (exit 128): fatal: review-only rev-parse refusal\nsecond advice line. The pinned config is read at the repository toplevel, so its location cannot be known. A config exists at /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/loop/symspec.config.json, so the run does not proceed without knowing whether it governs this document.",
+            "config": null,
+            "verified": null
+          },
+          {
+            "case": "dangling config symlink",
+            "exit": 2,
+            "error": "ERR_CONFIG_INVALID",
+            "message": "`git rev-parse --show-toplevel` failed in /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/dangling (exit 128): fatal: review-only rev-parse refusal\nsecond advice line. The pinned config is read at the repository toplevel, so its location cannot be known. A config exists at /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/dangling/symspec.config.json, so the run does not proceed without knowing whether it governs this document.",
+            "config": null,
+            "verified": null
+          }
+        ],
+        "mutations": [
+          {
+            "id": "r1-any-error-absent",
+            "before": "succeed$1(cause.reason._tag !== \"NotFound\")",
+            "after": "succeed$1(false)",
+            "command": [
+              "pnpm",
+              "--dir",
+              "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/repro",
+              "exec",
+              "vitest",
+              "run",
+              "src/cli.test.ts",
+              "-t",
+              "RH-010",
+              "--reporter=json",
+              "--outputFile=/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/r1-any-error-absent-tests.json"
+            ],
+            "exit": 1,
+            "passed": 2,
+            "failed": 2,
+            "skipped": 108,
+            "failedTests": [
+              "release hardening \u2014 a git refusal and the v4 anchors, through the real process [RH-010] guard (existing): a config beside the document whose existence cannot be determined (a self-symlink, ELOOP) fails closed under a git refusal",
+              "release hardening \u2014 a git refusal and the v4 anchors, through the real process [RH-010] guard (existing): a self-symlinked config in an ANCESTOR fails closed under a git refusal too"
+            ],
+            "fixture": {
+              "exit": 0,
+              "error": null,
+              "verified": true,
+              "config": {
+                "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/loop/symspec.config.json",
+                "source": "directory",
+                "gitRefusal": "fatal: review-only rev-parse refusal"
+              }
+            },
+            "originalSha256": "1357b149d35558af7af36dbbd77f7e5132a3b4ca729c9a1b46e4736eed8dd819"
+          },
+          {
+            "id": "r1-dangling-absent",
+            "before": "found ? succeed$1(true) : as(fs.readLink(candidate), true)",
+            "after": "succeed$1(found)",
+            "command": [
+              "pnpm",
+              "--dir",
+              "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/repro",
+              "exec",
+              "vitest",
+              "run",
+              "src/cli.test.ts",
+              "-t",
+              "RH-010",
+              "--reporter=json",
+              "--outputFile=/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/r1-dangling-absent-tests.json"
+            ],
+            "exit": 1,
+            "passed": 2,
+            "failed": 2,
+            "skipped": 108,
+            "failedTests": [
+              "release hardening \u2014 a git refusal and the v4 anchors, through the real process [RH-010] a DANGLING config symlink beside the document counts as present under a git refusal and fails closed (RH-R4)",
+              "release hardening \u2014 a git refusal and the v4 anchors, through the real process [RH-010] a DANGLING config symlink in an ANCESTOR counts as present under a git refusal and fails closed (RH-R4)"
+            ],
+            "fixture": {
+              "exit": 0,
+              "error": null,
+              "verified": true,
+              "config": {
+                "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/dangling/symspec.config.json",
+                "source": "directory",
+                "gitRefusal": "fatal: review-only rev-parse refusal"
+              }
+            },
+            "originalSha256": "1357b149d35558af7af36dbbd77f7e5132a3b4ca729c9a1b46e4736eed8dd819"
+          }
+        ],
+        "adaptation": "The original exact bundle span fs.exists(candidate).pipe(orElseSucceed(() => true)) is gone. The current equivalent error-absent plant replaces succeed$1(cause.reason._tag !== \"NotFound\") with succeed$1(false).",
+        "acceptedGap": "Coordinator job 815 accepts the untested mode-000 PermissionDenied variant: same any-non-NotFound-is-present branch as exercised by ELOOP. No claim of an independent PermissionDenied-only mutant run."
+      },
+      "closure": "contract"
+    },
+    {
+      "id": "R2",
+      "lens": "correctness / config refusal classification",
+      "severity": "blocking",
+      "kind": "contract counterexample",
+      "behaviors": [
+        "RH-003"
+      ],
+      "status": "closed",
+      "files": [
+        "src/adapters/fs/store.ts:337",
+        "src/adapters/fs/store.ts:606"
+      ],
+      "claim": "A non-bare ownership refusal is misclassified as a bare-repository refusal when its quoted directory name contains \"cannot use bare repository\". With no config anywhere and none named, clean head exits 2 instead of producing the no-repository result required by RH-003.",
+      "repro": "python3 /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/bare-phrase-repro.py",
+      "steps": [
+        "Create a valid document in a directory literally named cannot use bare repository; assert no symspec.config.json directory entry exists there or in any ancestor.",
+        "Run check with no git on PATH.",
+        "Run check with an executable git shim printing the standard dubious-ownership first line quoting its working directory, an advice line, and exit 128. It does not print a bare-repository refusal."
+      ],
+      "output": [
+        {
+          "mode": "no-git",
+          "exit": 0,
+          "error": null,
+          "message": null,
+          "verified": true,
+          "config": null
+        },
+        {
+          "mode": "ownership-refusal",
+          "exit": 2,
+          "error": "ERR_CONFIG_INVALID",
+          "message": "`git rev-parse --show-toplevel` failed in /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/security-fixtures/cannot use bare repository (exit 128): fatal: detected dubious ownership in repository at '/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/security-fixtures/cannot use bare repository'\nTo add an exception for this directory, call:. The pinned config is read at the repository toplevel, so its location cannot be known.",
+          "verified": null,
+          "config": null
+        }
+      ],
+      "reasonForSeverity": "This is a narrow availability regression, not a pin bypass. It violates the explicit RH-R2(a)/RH-003 non-bare no-config case. The reviewed code comment intentionally favors a substring match, but that comment cannot add an exception to the pinned behavior.",
+      "refutation": {
+        "status": "confirmed on the pre-closure build; repaired on reviewed head",
+        "by": "Independent absence/refutation job 899; independent closure replay job 936",
+        "evidence": ".erpaval/vdd/release-hardening/absence-2.json at c1fe161; current scratch repro artifacts below"
+      },
+      "suggestedRemedy": "Recognize git\u2019s bare-refusal diagnostic independently of a phrase in its quoted path, while preserving RH-005 and the anchored no-repository matcher. Add this counterexample to the RH-003 oracle.",
+      "originalRepro": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883 && export PATH=$HOME/.local/share/mise/installs/node/24/bin:$HOME/.local/share/mise/installs/pnpm/11.21.0:$PATH SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1 && python3 /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/bare-phrase-repro.py",
+      "originalEvidenceAt": "22b47f683a16897eafb43c7c31cc73ee4adfca44",
+      "closureReview": {
+        "by": 936,
+        "head": "6445f2939c46170cef451acae5a9bbe02c6e90c5",
+        "status": "closed",
+        "behaviors": [
+          "RH-003",
+          "RH-005",
+          "RH-011"
+        ],
+        "commits": [
+          "527e38a",
+          "36bb975"
+        ],
+        "evidence": "Original ownership-refusal/path-phrase repro now exits 0 verified true, as no git, with directory path/source and first-line refusal. The three-name RH-011 test passes; RH-005 real-bare test passes. Restoring substring matching is caught (C1).",
+        "clean": [
+          {
+            "mode": "no-git",
+            "exit": 0,
+            "error": null,
+            "message": null,
+            "verified": true,
+            "config": null
+          },
+          {
+            "mode": "ownership-refusal",
+            "exit": 0,
+            "error": null,
+            "message": null,
+            "verified": true,
+            "config": {
+              "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/cannot use bare repository/symspec.config.json",
+              "source": "directory",
+              "gitRefusal": "fatal: detected dubious ownership in repository at '/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/cannot use bare repository'"
+            }
+          }
+        ],
+        "canary": {
+          "id": "c1-r2-substring",
+          "before": "firstLineOf(stderr).startsWith(BARE_REFUSAL_PREFIX)",
+          "after": "stderr.includes(\"cannot use bare repository\")",
+          "command": [
+            "pnpm",
+            "--dir",
+            "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/repro",
+            "exec",
+            "vitest",
+            "run",
+            "src/cli.test.ts",
+            "-t",
+            "RH-011",
+            "--reporter=json",
+            "--outputFile=/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/c1-r2-substring-tests.json"
+          ],
+          "exit": 1,
+          "passed": 0,
+          "failed": 1,
+          "skipped": 111,
+          "failedTests": [
+            "release hardening \u2014 a git refusal and the v4 anchors, through the real process [RH-011] an ownership refusal quoting a directory that spells the bare-repository phrase runs exactly as no repository"
+          ],
+          "fixture": {
+            "exit": 2,
+            "error": "ERR_CONFIG_INVALID",
+            "verified": null,
+            "config": null
+          },
+          "originalSha256": "1357b149d35558af7af36dbbd77f7e5132a3b4ca729c9a1b46e4736eed8dd819"
+        },
+        "newlineDisclosure": {
+          "exit": 0,
+          "verified": true,
+          "config": {
+            "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/x\nfatal: cannot use bare repository '/symspec.config.json",
+            "source": "directory",
+            "gitRefusal": "fatal: detected dubious ownership in repository at '/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/x"
+          },
+          "expectedFirstLine": "fatal: detected dubious ownership in repository at '/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-fixtures/x",
+          "matches": true
+        }
+      },
+      "closure": "code"
+    },
+    {
+      "id": "R3",
+      "lens": "published/schema claims and test quality",
+      "severity": "blocking",
+      "kind": "contract counterexample",
+      "behaviors": [
+        "RH-007"
+      ],
+      "status": "closed",
+      "files": [
+        "src/domain/anchor/anchor.ts:107",
+        "src/domain/anchor/anchor.ts:148",
+        "src/domain/requirements/document.ts:1224",
+        "src/domain/requirements/document.ts:1399",
+        "src/domain/requirements/document.test.ts:1204"
+      ],
+      "claim": "The document JSON Schema still contains present-tense intent/vocabulary enforcement claims, including the prohibited intentRef-or-derived claim with different wording. Adding the experimental constant to outer descriptions left four nested source descriptions unchanged; they project into nine schema descriptions.",
+      "repro": "node --import /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/repro/node_modules/tsx/dist/loader.mjs /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/repro/review-schema.mts",
+      "steps": [
+        "Project Schema.toJsonSchemaDocument(RequirementsDocument) and walk every description for the four retained claims.",
+        "Decode a format-v4 document with one intent item and one valid requirement that supplies neither intentRef nor derived.",
+        "Run pnpm exec vitest run src/domain/requirements/document.test.ts -t RH-007 on the clean isolated clone."
+      ],
+      "output": {
+        "schemaCheckExit": 1,
+        "matches": [
+          {
+            "path": "$.schema.properties.vocabulary.properties.symbols.items.anyOf.0.properties.id.allOf.1.description",
+            "description": "The symbol`s stable id: lowercase snake case, a leading letter, at most 64 characters. Unique within the vocabulary. Requirements are checked against the symbol through this id, so it never changes. Examples: 'sys_door_controller'; 'act_open_door'; 'qty_dwell_time'.",
+            "experimentalInSameDescription": false
+          },
+          {
+            "path": "$.schema.properties.vocabulary.properties.symbols.items.anyOf.1.properties.id.allOf.1.description",
+            "description": "The symbol`s stable id: lowercase snake case, a leading letter, at most 64 characters. Unique within the vocabulary. Requirements are checked against the symbol through this id, so it never changes. Examples: 'sys_door_controller'; 'act_open_door'; 'qty_dwell_time'.",
+            "experimentalInSameDescription": false
+          },
+          {
+            "path": "$.schema.properties.vocabulary.properties.symbols.items.anyOf.2.properties.id.allOf.1.description",
+            "description": "The symbol`s stable id: lowercase snake case, a leading letter, at most 64 characters. Unique within the vocabulary. Requirements are checked against the symbol through this id, so it never changes. Examples: 'sys_door_controller'; 'act_open_door'; 'qty_dwell_time'.",
+            "experimentalInSameDescription": false
+          },
+          {
+            "path": "$.schema.properties.vocabulary.properties.symbols.items.anyOf.3.properties.id.allOf.1.description",
+            "description": "The symbol`s stable id: lowercase snake case, a leading letter, at most 64 characters. Unique within the vocabulary. Requirements are checked against the symbol through this id, so it never changes. Examples: 'sys_door_controller'; 'act_open_door'; 'qty_dwell_time'.",
+            "experimentalInSameDescription": false
+          },
+          {
+            "path": "$.schema.properties.vocabulary.properties.symbols.items.anyOf.4.properties.id.allOf.1.description",
+            "description": "The symbol`s stable id: lowercase snake case, a leading letter, at most 64 characters. Unique within the vocabulary. Requirements are checked against the symbol through this id, so it never changes. Examples: 'sys_door_controller'; 'act_open_door'; 'qty_dwell_time'.",
+            "experimentalInSameDescription": false
+          },
+          {
+            "path": "$.schema.properties.vocabulary.properties.symbols.items.anyOf.5.properties.id.allOf.1.description",
+            "description": "The symbol`s stable id: lowercase snake case, a leading letter, at most 64 characters. Unique within the vocabulary. Requirements are checked against the symbol through this id, so it never changes. Examples: 'sys_door_controller'; 'act_open_door'; 'qty_dwell_time'.",
+            "experimentalInSameDescription": false
+          },
+          {
+            "path": "$.schema.properties.vocabulary.properties.distinct.items.description",
+            "description": "A triage record stating that two symbols are different things, with the reason. Unordered. It stores no basis: whether the distinction is supported is decided when the document is checked, not recorded here.",
+            "experimentalInSameDescription": false
+          },
+          {
+            "path": "$.schema.properties.intent.properties.items.items.properties.text.allOf.0.description",
+            "description": "The item, in the owner`s words. This is the text the specification is checked against, so an edit to it is a change of what the specification is for. Example: 'The doors stay closed while the train is moving.'",
+            "experimentalInSameDescription": false
+          },
+          {
+            "path": "$.schema.properties.intent.properties.items.description",
+            "description": "The intent items, in the owner`s order. Every requirement names one of them through `intentRef`, or is marked `derived`. Item ids are unique.",
+            "experimentalInSameDescription": false
+          }
+        ],
+        "decoderCounterexample": {
+          "accepted": true,
+          "intentItems": 1,
+          "requirementCount": 1,
+          "intentRef": null,
+          "derived": null
+        },
+        "currentRh007Tests": {
+          "passed": 3,
+          "failed": 0,
+          "filtered": 104
+        }
+      },
+      "qualification": "The outer Intent/Vocabulary descriptions do carry V4_EXPERIMENTAL_STATEMENT. The finding is the contradictory nested affirmative claims, not a demand that every field repeat the constant. These are descriptions in the exported document schema RH-007 explicitly governs; the CLI manifest emits operation input schemas, so no claim is made that these nested descriptions appear in the shipped CLI manifest. Unique-id validation is real and is not disputed.",
+      "refutation": {
+        "status": "confirmed on the pre-closure build; repaired on reviewed head",
+        "by": "Independent absence/refutation job 899; independent closure replay job 936",
+        "evidence": ".erpaval/vdd/release-hardening/absence-2.json at c1fe161; current scratch repro artifacts below"
+      },
+      "suggestedRemedy": "Remove or explicitly defer the nested checking/linkage assertions, and extend the semantic negative examples beyond the two exact strings that currently miss the paraphrase.",
+      "originalRepro": "cd /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883 && export PATH=$HOME/.local/share/mise/installs/node/24/bin:$HOME/.local/share/mise/installs/pnpm/11.21.0:$PATH SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1 && node --import /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/repro/node_modules/tsx/dist/loader.mjs /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/repro/review-schema.mts",
+      "originalEvidenceAt": "22b47f683a16897eafb43c7c31cc73ee4adfca44",
+      "closureReview": {
+        "by": 936,
+        "head": "6445f2939c46170cef451acae5a9bbe02c6e90c5",
+        "status": "closed",
+        "behaviors": [
+          "RH-007",
+          "RH-012"
+        ],
+        "commits": [
+          "527e38a",
+          "6509f0f"
+        ],
+        "evidence": "Original four-phrase projection repro now has zero matches (previously nine). Decoder still accepts one requirement with neither intentRef nor derived, and the descriptions explicitly defer linkage/checking. All four RH schema tests pass. Independent lens 937 read complete source and tests; existing 1213 test lines remain an exact byte prefix with 133 lines added.",
+        "clean": {
+          "matches": [],
+          "count": 0,
+          "experimentalStatement": "Experimental in this release: decoded and preserved on save, read by no check tier yet; its shape may change in a minor release.",
+          "decoderCounterexample": {
+            "accepted": true,
+            "intentItems": 1,
+            "requirementCount": 1,
+            "intentRef": null,
+            "derived": null
+          }
+        },
+        "acceptedGap": "Coordinator accepts requiring the experimental statement only on each of the five keys own descriptions. Negative claim traversal covers all nesting levels. No assertion that every nested description repeats the statement."
+      },
+      "closure": "code"
+    },
+    {
+      "id": "R4",
+      "lens": "published schema claims",
+      "severity": "nonblocking",
+      "potentialSeverity": "major documentation claim if coordinator rules the pre-existing acyclicity assertion an enforcement claim within RH-012",
+      "kind": "executed discrepancy; scope question",
+      "behaviors": [
+        "RH-012"
+      ],
+      "status": "open-question",
+      "files": [
+        "src/domain/requirements/document.ts:1254",
+        "src/domain/requirements/document.ts:1268",
+        "src/domain/requirements/document.ts:1455",
+        "src/domain/requirements/document.test.ts:1299"
+      ],
+      "claim": "The parent description says 'The part-of chain has no cycles', but a two-system parent cycle is decoded and the shipped check returns verified true. The statement predates the closure diff. Whether it promises current enforcement or describes normative metadata is an unresolved RH-012 scope question; no new runtime cycle-validation requirement is asserted.",
+      "repro": "node --import /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/repro/node_modules/tsx/dist/loader.mjs /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/repro/extra-claims-repro.mts",
+      "input": {
+        "docVersion": 4,
+        "requirements": {},
+        "vocabulary": {
+          "symbols": [
+            {
+              "id": "sys_a",
+              "kind": "system",
+              "canonical": "A",
+              "parent": "sys_b"
+            },
+            {
+              "id": "sys_b",
+              "kind": "system",
+              "canonical": "B",
+              "parent": "sys_a"
+            }
+          ]
+        }
+      },
+      "output": {
+        "decoderAccepted": true,
+        "checkExit": 0,
+        "verified": true,
+        "cycleFinding": false,
+        "projectedPath": "$.schema.properties.vocabulary.properties.symbols.items.anyOf.0.properties.parent.allOf.1.description",
+        "description": "The system this system is part of: the id of another `system` symbol. Omit for a top-level system. The part-of chain has no cycles."
+      },
+      "refutation": {
+        "by": "Helper job 937 raised the hypothesis; fresh context job 936 independently executed its candidate against clean HEAD",
+        "status": "runtime discrepancy confirmed; claimed RH-012 violation not settled",
+        "limits": "The parent field is unchanged in fc203db..6445f29. RH-R3 expressly does not implement v4 enforcement. The outer vocabulary description carries the experimental statement, and C11's six claim patterns do not include this sentence. A model should not silently convert a normative constraint into a runtime enforcement requirement."
+      },
+      "scopeQuestion": {
+        "owner": "coordinator job 815",
+        "mail": 332,
+        "status": "requested, not yet ruled",
+        "question": "Does 'The part-of chain has no cycles' count as an unqualified enforcement claim prohibited by RH-012, or normative metadata outside its intended claim scope?",
+        "nextAction": "If in scope, defer/remove the assertion and pin the wording through a contract closure; otherwise record the coordinator's explicit rationale. Do not infer approval from this review."
+      },
+      "evidence": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/parent-cycle-observations.json"
+    }
+  ],
+  "observations": [
+    {
+      "id": "test-preservation-after-closures",
+      "severity": "nonblocking",
+      "assessment": "No weakening. CLI +103/-0 (five new tests) preserves old prefix; document +133/-0 (one new test) preserves all old bytes. No skip/only/todo additions. F11 tests and true-bare RH-005 remain intact."
+    },
+    {
+      "id": "quoted-path-disclosure-test-gap",
+      "severity": "nonblocking",
+      "assessment": "RH-011 does not assert disclosure for its special path fixtures. Current newline fixture independently returns exactly the first stderr line, exit 0 verified true; no current bug or surviving mutant established.",
+      "evidence": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/newline-disclosure-observations.json"
+    },
+    {
+      "id": "accepted-coordinator-gaps",
+      "severity": "nonblocking",
+      "assessment": "Mode-000 variant accepted by shared branch with ELOOP; nested label omission accepted because RH-012 labels five own-key descriptions and checks negative claims everywhere. These rulings came in the reviewer task; neither is silently claimed tested."
+    },
+    {
+      "id": "scope-and-limits",
+      "severity": "nonblocking",
+      "assessment": "No threat model, receipt draft or blind canary packet supplied/found. This is a closure review with executed counterexamples and known canary, not a complete VDD release-gate certificate. No new runtime port, store or grant is introduced by the closure diff. Initial review limitations and observations remain in originalReview."
+    }
+  ],
+  "linesRead": {
+    "uniqueChangedHeadLines": 6376,
+    "totalChangedHeadLines": 6376,
+    "coverage": "6376/6376",
+    "definition": "All full current product/test files changed by fc203db..6445f29, not merely added lines. Read through untruncated shell output across reviewer and two independent lenses. Earlier full release review preserved in originalReview.",
+    "files": [
+      {
+        "path": "src/adapters/fs/store.ts",
+        "read": 712,
+        "total": 712,
+        "job": 938
+      },
+      {
+        "path": "src/cli.test.ts",
+        "read": 2226,
+        "total": 2226,
+        "job": 938
+      },
+      {
+        "path": "src/domain/anchor/anchor.ts",
+        "read": 276,
+        "total": 276,
+        "job": 937
+      },
+      {
+        "path": "src/domain/requirements/document.test.ts",
+        "read": 1346,
+        "total": 1346,
+        "job": 937
+      },
+      {
+        "path": "src/domain/requirements/document.ts",
+        "read": 1816,
+        "total": 1816,
+        "job": 937
+      }
+    ],
+    "supportingRecords": [
+      {
+        "path": ".erpaval/vdd/release-hardening/absence-2.json",
+        "lines": 34
+      },
+      {
+        "path": ".erpaval/vdd/release-hardening/behaviors.json",
+        "lines": 75
+      },
+      {
+        "path": ".erpaval/vdd/release-hardening/evidence.md",
+        "lines": 232
+      },
+      {
+        "path": ".erpaval/vdd/release-hardening/rulings.md",
+        "lines": 160
+      }
+    ]
+  },
+  "helpers": [
+    {
+      "job": 937,
+      "role": "schema claims / test quality",
+      "fullLinesRead": 4207,
+      "complete": true,
+      "report": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-937/schema-claims-review.json"
+    },
+    {
+      "job": 938,
+      "role": "CLI/config security / test quality",
+      "fullLinesRead": 3707,
+      "complete": true,
+      "report": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-938/cli-test-lens.md"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/security-repros.py",
+      "sha256": "5478ab0c30139cb80bc74be540216e97c545cb831b1b4662da67d1cd2e96c7db"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/security-observations.json",
+      "sha256": "d9753273e1343cda895cd5e7216130d11eab55a66ce4456cb45f0613034fa972"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/guard-mutant.py",
+      "sha256": "626be9be76e6452a74638b3cf1a95cb098562caaffd2d070b84685f81527d172"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/baseline-rh-tests.json",
+      "sha256": "76207e5ab02fa7b9338d8146daaf2f24446cb73b36cc5c02fe3d9d84ff0995a5"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/mutant-rh-tests.json",
+      "sha256": "2232dd6489eea8734cef4d3747bad3ceef16f550f28a4e76eb4b697c726764ed"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/mutant-loop-output.json",
+      "sha256": "7bbf196de4480af320c504b8a031b0e84e4d28146bdfb9c5d981afe12b9d4023"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/bare-phrase-repro.py",
+      "sha256": "8aca20b4203ba432566a00105c12e34745f1ee63e762debe12f9b73815059860"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/bare-phrase-observations.json",
+      "sha256": "195a89f91b70e998287cfbf8b481238ee39d63783b157d726747a5e92c712354"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/repro/review-schema.mts",
+      "sha256": "de18cac6371cedc72105adc4bf3d8cf778b4637a34433590cfe2b5b0548bc731"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/schema-observations.json",
+      "sha256": "4a076f11f1c0fc38a12605e689cd856d4b67f5d83c98db79b1e0cf925882a367"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/schema-rh-tests.json",
+      "sha256": "12c8018eb34f65d55b5b5ca7a91df700a6ca953878761f4935b95d2de58a94cb"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/anchor-manifest-observations.json",
+      "sha256": "885116c96ee77d36e2aac48a6c7d2d345a4374334f17a8a676f4812c83f4d893"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/pack-observations.json",
+      "sha256": "b7d7bd254bc094ef147f98f5d9b5198cec98499d06701475c694c87e31d484aa"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-repros.py",
+      "sha256": "44b6fe22abec25d213ab88c90259fb42d318936543acf39b572284ca84b5ac18"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/security-observations.json",
+      "sha256": "d27dbbb9f38f57b7227f1f78520f688d38f3c67039e6892e838899ffd1b02483"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/bare-phrase-repro.py",
+      "sha256": "fa11bf0482501414d2f6a1c052a3d471b18f9b13a1bbed4c8c36731df06173fd"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/bare-phrase-observations.json",
+      "sha256": "cae3bd9a9e83de0ea35bed75a9dac13fe18c0356dded1b06da313bbcc8cd27fd"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/schema-observations.json",
+      "sha256": "af1bf37f6d9271b5b8686f26325df0eda78a5f790c5c309dbb57ce92076029cc"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/baseline-rh-tests.json",
+      "sha256": "fbe87d33de42a0ba866d8fc1aaf4c1d50afd8d017fd504f8cf510e2a1980929b"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/mutation-replays.py",
+      "sha256": "d2e8033b15ac132b4eeaf4982a85b2a9fd9a83cdebfb2c4c83f99934ced2b684"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/mutation-results.json",
+      "sha256": "290e1044cbbcb6e95ba05aa2e55bca2f118379da9579a5fee8bdbe405388e7a4"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/r1-any-error-absent-tests.json",
+      "sha256": "e36865afcfb1b246f31be46c59dce05398a83a3c748a4129632fc9ddff4e4df0"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/r1-dangling-absent-tests.json",
+      "sha256": "01ea12a43f2599ac1858934f0fa726ac78b084116f759146f5b76e829480333a"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/c1-r2-substring-tests.json",
+      "sha256": "2d78624703cc3ac2d1e96a110727df36e45f3980fb9efa32f590cbdd42b29f26"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/newline-disclosure-observations.json",
+      "sha256": "623bd0f1132f60568a87892aec4de7072977d966c1695c5fdd58c6ea33e23269"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/parent-cycle-observations.json",
+      "sha256": "6cb343042209a3d69b0abe00758d80bcbb185e4100fdce60b30f7a2673e4250a"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/r4-resolution.json",
+      "sha256": "0e9abbfc347b31db9406b0c6c8290269dc02b83385b9e6649d23ce24c41d1d14"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/repro/review-schema.mts",
+      "sha256": "c4fed8ea173801f85e22dac299350be304e10cf363f04e390a49bb75bedf9b73"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/repro/extra-claims-repro.mts",
+      "sha256": "1e48681d99f861245649a3e0a5c0110a49d5fed69af76516a4247f142eac4a13"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-937/schema-claims-review.json",
+      "sha256": "660953a49355fb98582ac155fc9e1509deba226137dca2aa5e59e2ac5253807d"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-938/cli-test-lens.md",
+      "sha256": "d33be1203f966778cd2139bbb9a2fec716809385cfbba137a43c903adb8542c2"
+    }
+  ],
+  "refutationPolicy": "R1-R3 were independently confirmed on the earlier build by job 899 and independently replayed after repairs by job 936. Their original claims and outputs are preserved as historical evidence. New R4 has its own executed evidence and explicit scope disposition; no silent risk acceptance.",
+  "originalReview": {
+    "boardItem": 154,
+    "reviewerJob": 883,
+    "change": {
+      "base": "0fca0433eb82431936c8edd81f7ccf3464d6f52e",
+      "head": "22b47f683a16897eafb43c7c31cc73ee4adfca44",
+      "scope": [
+        "git diff 0fca0433eb82 22b47f683a16897eafb43c7c31cc73ee4adfca44 -- . ':!.erpaval'"
+      ],
+      "treeHash": "5d8138bfe1e4",
+      "files": [
+        "AGENTS.md",
+        "README.md",
+        "RELEASING.md",
+        "package.json",
+        "src/adapters/fs/store.ts",
+        "src/app/operations/check.ts",
+        "src/app/operations/document.ts",
+        "src/app/runtime/agents-doc.test.ts",
+        "src/app/runtime/agents-doc.ts",
+        "src/app/runtime/scope.test.ts",
+        "src/app/runtime/scope.ts",
+        "src/cli.test.ts",
+        "src/domain/anchor/anchor.ts",
+        "src/domain/requirements/document.test.ts",
+        "src/domain/requirements/document.ts",
+        "src/ports/doc-store.ts",
+        "src/ports/errors.ts",
+        "src/publish.test.ts"
+      ]
+    },
+    "independence": {
+      "family": "OpenAI",
+      "builderTranscriptSeen": false,
+      "context": "Fresh reviewer job assigned independently of builder; helper jobs 884 and 885 received only self-contained review goals and source paths.",
+      "modelFamilyRequirement": "Reviewer was assigned as the different-family role; builder transcript and identity were not consulted.",
+      "writes": "Only this ledger is changed/committed in repo3. Repro scripts, generated bundle mutant, fixtures and local package stay in job-883 scratch. No source, existing tests, gate scripts, configs, approvals, push or branch switch."
+    },
+    "verdict": "Open findings R1, R2 and R3 require independent refutation; this is not a merge-ready verdict.",
+    "observations": [
+      {
+        "id": "G3-signal-classes",
+        "severity": "nonblocking",
+        "assessment": "Published taxonomy with ambiguous future scope; no demonstrated claim that an intent/policy check currently executes.",
+        "evidence": [
+          {
+            "path": "$.data.signalClasses.findingClasses.6",
+            "row": {
+              "class": "anchor",
+              "meaning": "A change to something the loop may not change from inside: intent, policy, the pinned configuration, or the baseline binding.",
+              "waivable": "never",
+              "verdictBearing": false
+            }
+          },
+          {
+            "path": "$.data.signalClasses.demotionClasses.6",
+            "row": {
+              "class": "anchor",
+              "meaning": "The document moved against its baseline, intent, or pinned configuration.",
+              "verdictBearing": false
+            }
+          }
+        ],
+        "source": [
+          "src/app/runtime/signal-classes.ts:64",
+          "src/app/runtime/signal-classes.ts:345",
+          "AGENTS.md:820",
+          "AGENTS.md:830"
+        ],
+        "reason": "Both rows appear in the actual built CLI manifest and AGENTS.md. The finding-class phrase \"may not change\" is a normative artifact role, not an enforcement mechanism. The demotion phrase \"moved against ... intent\" suggests detection more strongly, but the manifest has zero finding rows and zero demotion rows assigned to anchor. An unused class definition alone does not establish a current detector. Marking reserved/future intent scope would make this clearer. Pins must remain described as enforced.",
+        "reviewerDisagreement": "Helper 885 recommended treating the demotion wording as blocking; helper 884 did not establish a blocker. Root independently inspected the built manifest and zero producer rows and adopts the narrower nonblocking assessment. No finding has been closed."
+      },
+      {
+        "id": "G3-config-files",
+        "severity": "nonblocking",
+        "assessment": "No enforcement claim.",
+        "source": [
+          "src/domain/config/config.ts:216",
+          "src/domain/config/config.ts:221"
+        ],
+        "descriptions": [
+          "The split intent file, relative to the config`s directory.",
+          "The split policy file, relative to the config`s directory."
+        ],
+        "reason": "These only specify file roles and relative-path resolution. The config really loads/decodes those files. They do not assert any tier checks satisfaction of intent or policy; not labeling these path fields experimental is not a proven RH violation."
+      },
+      {
+        "id": "dangling-config-symlink",
+        "severity": "nonblocking",
+        "assessment": "Observed, unresolved scope question; not used as a blocking finding.",
+        "output": {
+          "case": "dangling config symlink",
+          "exit": 0,
+          "error": null,
+          "message": null,
+          "config": {
+            "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/security-fixtures/dangling/symspec.config.json",
+            "source": "directory",
+            "gitRefusal": "fatal: review-only rev-parse refusal"
+          },
+          "verified": true
+        },
+        "reason": "A dangling symspec.config.json directory entry is treated as absent by fs.exists. The new refusal path accepts it; the pre-existing normal lookup uses the same existence semantics. RH-004 does not specify whether a dangling entry counts as a config that exists. No scope ruling or claim of a readable committed-pin bypass is made."
+      },
+      {
+        "id": "test-preservation",
+        "severity": "nonblocking",
+        "assessment": "No weakened aggregate oracle or deleted/disabled tests found.",
+        "evidence": "All five complete test files and full base diffs read. The homepage substring assertion was loosened, but new RH-001 assertions pin all three URLs exactly. pinnedConfig was excluded from one loop but is tested with exact byte equality in RH-009. CLI/document existing assertions unchanged; 19 new test call sites. No skip/todo/only/xit/xdescribe additions."
+      },
+      {
+        "id": "package-provenance",
+        "severity": "nonblocking",
+        "assessment": "Actual packed artifact contains the exact new owner URLs and no old owner reference.",
+        "evidence": {
+          "file": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-883/symspec-1.2.1.tgz",
+          "entries": [
+            "package/LICENSE",
+            "package/package.json",
+            "package/README.md",
+            "package/dist/cli.mjs",
+            "package/dist/model-cache-PZRCo9qP.mjs",
+            "package/bin/symspec.mjs"
+          ],
+          "legacyReferenceFiles": [],
+          "repository": {
+            "type": "git",
+            "url": "git+https://github.com/laithalsaadoon/symspec.git"
+          },
+          "homepage": "https://github.com/laithalsaadoon/symspec#readme",
+          "bugs": {
+            "url": "https://github.com/laithalsaadoon/symspec/issues"
+          }
+        },
+        "scope": "Local npm pack only, no publish or network provenance assertion."
+      },
+      {
+        "id": "remaining-evidence-limits",
+        "severity": "nonblocking",
+        "assessment": "Evidence limits are retained, not silently ruled away.",
+        "items": [
+          "No blind review canary packet, receipt draft, or threat model was supplied/found; this ledger is an open-finding review, not a complete VDD release-gate certificate.",
+          "Root did not repeat the whole pnpm check; the evidence role owns its 3276-test and 7-leg full-gate result. Root ran the isolated build, targeted clean/mutant tests, runtime counterexamples, schema checks, and local pack.",
+          "New RH-003 committed fixtures are empty documents; the evidence role independently reports a nonempty contradiction equivalence check. Root\u2019s selective rev-parse-only refusal case fills G5 for an empty document, not every nonempty/strict case.",
+          "No valid readable ancestor config bypass was reproduced: invalid ancestor config, real document symlinks, explicit --config and SYMSPEC_CONFIG all fail closed under the selective refusal."
+        ]
+      }
+    ],
+    "linesRead": {
+      "uniqueChangedHeadLines": 12638,
+      "totalChangedHeadLines": 12638,
+      "coverage": "12638/12638",
+      "definition": "Full current-file lines, not only added lines; excludes the four .erpaval evidence/contract records from product diff scope. Full product/test diff read across the panel. Root read contract/rulings; both helpers read them too.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "read": 976,
+          "total": 976,
+          "job": 884
+        },
+        {
+          "path": "README.md",
+          "read": 944,
+          "total": 944,
+          "job": 884
+        },
+        {
+          "path": "RELEASING.md",
+          "read": 133,
+          "total": 133,
+          "job": 884
+        },
+        {
+          "path": "package.json",
+          "read": 96,
+          "total": 96,
+          "job": 884
+        },
+        {
+          "path": "src/adapters/fs/store.ts",
+          "read": 690,
+          "total": 690,
+          "job": 883
+        },
+        {
+          "path": "src/app/operations/check.ts",
+          "read": 1248,
+          "total": 1248,
+          "job": 883
+        },
+        {
+          "path": "src/app/operations/document.ts",
+          "read": 440,
+          "total": 440,
+          "job": 884
+        },
+        {
+          "path": "src/app/runtime/agents-doc.test.ts",
+          "read": 379,
+          "total": 379,
+          "job": 885
+        },
+        {
+          "path": "src/app/runtime/agents-doc.ts",
+          "read": 338,
+          "total": 338,
+          "job": 884
+        },
+        {
+          "path": "src/app/runtime/scope.test.ts",
+          "read": 142,
+          "total": 142,
+          "job": 885
+        },
+        {
+          "path": "src/app/runtime/scope.ts",
+          "read": 101,
+          "total": 101,
+          "job": 884
+        },
+        {
+          "path": "src/cli.test.ts",
+          "read": 2123,
+          "total": 2123,
+          "job": 885
+        },
+        {
+          "path": "src/domain/anchor/anchor.ts",
+          "read": 273,
+          "total": 273,
+          "job": 884
+        },
+        {
+          "path": "src/domain/requirements/document.test.ts",
+          "read": 1213,
+          "total": 1213,
+          "job": 885
+        },
+        {
+          "path": "src/domain/requirements/document.ts",
+          "read": 1813,
+          "total": 1813,
+          "job": 884
+        },
+        {
+          "path": "src/ports/doc-store.ts",
+          "read": 320,
+          "total": 320,
+          "job": 883
+        },
+        {
+          "path": "src/ports/errors.ts",
+          "read": 582,
+          "total": 582,
+          "job": 883
+        },
+        {
+          "path": "src/publish.test.ts",
+          "read": 827,
+          "total": 827,
+          "job": 885
+        }
+      ]
+    },
+    "helpers": [
+      {
+        "job": 884,
+        "role": "published claims",
+        "fullLinesRead": 5114,
+        "report": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-884/published-claims-review.txt",
+        "complete": true
+      },
+      {
+        "job": 885,
+        "role": "test quality",
+        "fullLinesRead": 4684,
+        "report": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-885/test-quality-review.md",
+        "complete": true
+      }
+    ],
+    "refutationPolicy": "All findings stay open. A fresh context and coordinator must rerun/refute them; this reviewer did not close findings or approve release.",
+    "ledgerCommit": "fc203db"
+  },
+  "canaries": [
+    {
+      "id": "C1",
+      "lens": "correctness / config refusal classification",
+      "plant": "Revert R2 in generated dist/cli.mjs to stderr.includes(\"cannot use bare repository\") in the isolated clone.",
+      "caught": true,
+      "evidence": {
+        "id": "c1-r2-substring",
+        "before": "firstLineOf(stderr).startsWith(BARE_REFUSAL_PREFIX)",
+        "after": "stderr.includes(\"cannot use bare repository\")",
+        "command": [
+          "pnpm",
+          "--dir",
+          "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/repro",
+          "exec",
+          "vitest",
+          "run",
+          "src/cli.test.ts",
+          "-t",
+          "RH-011",
+          "--reporter=json",
+          "--outputFile=/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-936/c1-r2-substring-tests.json"
+        ],
+        "exit": 1,
+        "passed": 0,
+        "failed": 1,
+        "skipped": 111,
+        "failedTests": [
+          "release hardening \u2014 a git refusal and the v4 anchors, through the real process [RH-011] an ownership refusal quoting a directory that spells the bare-repository phrase runs exactly as no repository"
+        ],
+        "fixture": {
+          "exit": 2,
+          "error": "ERR_CONFIG_INVALID",
+          "verified": null,
+          "config": null
+        },
+        "originalSha256": "1357b149d35558af7af36dbbd77f7e5132a3b4ca729c9a1b46e4736eed8dd819"
+      },
+      "method": "Same original runtime counterexample and committed RH-011 regression; both distinguish clean versus planted bytes.",
+      "qualification": "Known planted-defect replay requested by review-2, not a blind canary packet. No blind-review sensitivity measurement claimed."
+    }
+  ],
+  "verification": {
+    "environment": "Node 24, pnpm 11.21.0; SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1",
+    "clone": "git clone --no-hardlinks repo3 to job-936/repro; pnpm install --offline --frozen-lockfile; pnpm build (both exit 0)",
+    "baseline": {
+      "command": "pnpm exec vitest run src/cli.test.ts src/publish.test.ts src/app/runtime/agents-doc.test.ts src/app/runtime/scope.test.ts src/domain/requirements/document.test.ts -t RH-0",
+      "exit": 0,
+      "passed": 25,
+      "failed": 0,
+      "filtered": 274,
+      "files": 5,
+      "byFile": {
+        "cli": 12,
+        "publish": 5,
+        "agentsDoc": 3,
+        "scope": 1,
+        "document": 4
+      }
+    },
+    "wholeGate": "Not repeated by this reviewer. Evidence job 930 records pnpm check 7/7 legs and 3282/3282 tests at product-equivalent 6509f0f; that is attributed evidence, not job 936 execution.",
+    "ownerScan": {
+      "liveFiles": 141,
+      "oldOwnerMatches": 0,
+      "repository": "git+https://github.com/laithalsaadoon/symspec.git",
+      "homepage": "https://github.com/laithalsaadoon/symspec#readme",
+      "bugs": "https://github.com/laithalsaadoon/symspec/issues"
+    },
+    "restoredBundleSha256": "1357b149d35558af7af36dbbd77f7e5132a3b4ca729c9a1b46e4736eed8dd819"
+  }
+}

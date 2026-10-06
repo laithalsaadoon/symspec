@@ -1,0 +1,773 @@
+{
+  "schemaVersion": 1,
+  "role": "contract",
+  "boardItem": {
+    "id": 236,
+    "key": "contract-6"
+  },
+  "job": 1164,
+  "product": "2d3e5fe3368d8a2166f50a32156c26734df253e8: the product files at HEAD 19bd46f equal 2d3e5fe; this run adds only *.test.ts and src/testing/cli-argv.ts (test harness, R60)",
+  "commands": [
+    "pnpm build",
+    "node_modules/.bin/vitest run"
+  ],
+  "env": "SYMSPEC_EMBED_STUB=1 NO_COLOR=1 CI=1, node 24.21.0, GNU bash 5.2.15",
+  "ranAt": "2026-10-06T04:32:54.845778+00:00",
+  "totals": {
+    "tests": 3651,
+    "failed": 30,
+    "passed": 3621,
+    "brokenSuites": 0
+  },
+  "baselineBeforeThisItem": {
+    "tests": 3587,
+    "passed": 3587,
+    "failed": 0
+  },
+  "failureKinds": [
+    "AssertionError"
+  ],
+  "newTests": {
+    "total": 64,
+    "red": 30,
+    "green": 34,
+    "greenWithKill": 7
+  },
+  "earlierTests": {
+    "passed": 3587,
+    "failed": 0,
+    "failedList": []
+  },
+  "earlierSweepsUnderTheExtendedOracle": "every earlier R56 argvRejections sweep (report-corpus, repair, waive-fold, check-waivers, cli, catalog) now also runs bash -n and fails an unterminated quote; all stay green on 2d3e5fe",
+  "problems": [],
+  "verdict": "clean",
+  "redList": [
+    "src/cli.test.ts > final closure: every command any help text names passes the parser (R61, attack C10) [S3-045] the root help and each subcommand’s --help: every `symspec` command named parses with its required arguments, full argv",
+    "src/cli.test.ts > final closure: a document path is a user value the shell must hand over whole (R60) [S3-045] check on a document under a directory named with quotes, $, a backtick, ;, a backslash and a newline: every command naming the path carries it as one whole argument",
+    "src/domain/compat.test.ts > S3 closure: a stored waiver crosses only in a shape the S3 fold would store (R54, R55) [S3-024] [S3-027] a deleted requirement’s UUID that equals another requirement’s key: following the inert waiver’s ops removes exactly that stored waiver, in the requirementId and the requirementIds form, and the reviewed waivers of the live requirement survive (R59)",
+    "src/app/operations/check-waivers.test.ts > S3 closure: the check-time twin is exact, and every migration op removes only its own waiver [S3-024] the waiver-inert entry of a waiver naming a deleted UUID that is another requirement’s key removes only that waiver, in both id forms, and the live requirement’s reviewed waiver survives (R59)",
+    "src/app/runtime/catalog.test.ts > [S3-040] no never-class catalog row carries any inflection of \"waive\" (R61, review R7) [S3-040] the description, meaning and suggestions of every never-class code use no inflection of \"waive\" (waive, waives, waived, waiving, waiver, waivers)",
+    "src/domain/advice/repair.test.ts > [S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (double quote): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+    "src/domain/advice/repair.test.ts > [S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (dollar): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+    "src/domain/advice/repair.test.ts > [S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (backtick): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+    "src/domain/advice/repair.test.ts > [S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (all): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+    "src/domain/advice/repair.test.ts > [S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] the opposite-polarity near-duplicate (dollar): every command its message and demotion name is shell-safe",
+    "src/domain/advice/repair.test.ts > [S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] the opposite-polarity near-duplicate (backtick): every command its message and demotion name is shell-safe",
+    "src/domain/advice/repair.test.ts > [S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] the opposite-polarity near-duplicate (all): every command its message and demotion name is shell-safe",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (double quote): the \"Free it first\" command carries the owner and the alias as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (dollar): the \"Free it first\" command carries the owner and the alias as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (backtick): the \"Free it first\" command carries the owner and the alias as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (all): the \"Free it first\" command carries the owner and the alias as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (double quote): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (dollar): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (backtick): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (all): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (double quote): the \"Free it first\" command carries the owner and the alias as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (dollar): the \"Free it first\" command carries the owner and the alias as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (backtick): the \"Free it first\" command carries the owner and the alias as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (all): the \"Free it first\" command carries the owner and the alias as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (double quote): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (dollar): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (backtick): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+    "src/domain/requirements/mutate.test.ts > [S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (all): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+    "src/domain/terminology/terminology.test.ts > [S3-045] the FND_TERM_INCONSISTENT split remedy names only commands the parser accepts with their required arguments (R61) [S3-045] a terms entry: every command its message and suggestion name parses with the built binary, full argv",
+    "src/domain/terminology/terminology.test.ts > [S3-045] the FND_TERM_INCONSISTENT split remedy names only commands the parser accepts with their required arguments (R61) [S3-045] a glossary entry: every command its message and suggestion name parses with the built binary, full argv"
+  ],
+  "mutantKills": {
+    "C06": {
+      "span": "src/domain/waiver-accounting.ts:90:46-90:91",
+      "replacement": "w.code === f.code",
+      "killed": true,
+      "unmutated": [
+        1,
+        0
+      ],
+      "run1": [
+        0,
+        1
+      ],
+      "run2": [
+        0,
+        1
+      ],
+      "by": [
+        "[S3-021] [S3-046] a scoped, hash-bound waiver of a terminology-tier finding suppresses exactly that finding and is listed in data.appliedWaivers (R57) [S3-021] [S3-046] two FND_ACRONYM_UNDEFINED findings on disjoint requirements: a waiver of one suppresses only it, data.waived rises by one, and exactly one waiver is applied (R62, attack C06)"
+      ],
+      "firstFailure": "AssertionError: expected [] to deeply equal [ Array(1) ]"
+    },
+    "C09": {
+      "span": "src/app/operations/check.ts:1281:17-1281:81",
+      "replacement": "shaped.waived",
+      "killed": true,
+      "unmutated": [
+        3,
+        0
+      ],
+      "run1": [
+        0,
+        3
+      ],
+      "run2": [
+        0,
+        3
+      ],
+      "by": [
+        "[S3-021] [S3-046] a scoped, hash-bound waiver of a terminology-tier finding suppresses exactly that finding and is listed in data.appliedWaivers (R57) [S3-021] [S3-046] FND_ACRONYM_UNDEFINED",
+        "[S3-021] [S3-046] a scoped, hash-bound waiver of a terminology-tier finding suppresses exactly that finding and is listed in data.appliedWaivers (R57) [S3-021] [S3-046] FND_TERM_INCONSISTENT",
+        "[S3-021] [S3-046] a scoped, hash-bound waiver of a terminology-tier finding suppresses exactly that finding and is listed in data.appliedWaivers (R57) [S3-021] [S3-046] two FND_ACRONYM_UNDEFINED findings on disjoint requirements: a waiver of one suppresses only it, data.waived rises by one, and exactly one waiver is applied (R62, attack C06)"
+      ],
+      "firstFailure": "AssertionError: data.waived counts the terminology waiver: expected +0 to be 1 // Object.is equality"
+    },
+    "C10": {
+      "span": "src/app/operations/mutation.ts:943:52-943:126",
+      "replacement": "Use `symspec glossary add \"<canonical>\" \"<alias>\"` for a phrasing with a verb.",
+      "killed": true,
+      "unmutated": [
+        1,
+        0
+      ],
+      "run1": [
+        0,
+        1
+      ],
+      "run2": [
+        0,
+        1
+      ],
+      "by": [
+        "final closure: every command any help text names passes the parser (R61, attack C10) [S3-045] term --help: the glossary command it points a verb phrase to parses with its required arguments, full argv (attack C10)"
+      ],
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    "C13": {
+      "span": "src/domain/engine/formal/number-spelling.ts:116:16-116:79",
+      "replacement": "requirement with `symspec update`",
+      "killed": true,
+      "unmutated": [
+        1,
+        0
+      ],
+      "run1": [
+        0,
+        1
+      ],
+      "run2": [
+        0,
+        1
+      ],
+      "by": [
+        "[S3-045] the number-spelling arm names full commands (R61, attack C13) [S3-045] the committed-alias branch of FND_NUMBER_SPELLING_CANDIDATE: every command its message names parses with the built binary, full argv"
+      ],
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    "C18": {
+      "span": "src/domain/glossary/glossary-plan.ts:1693:10-1693:61",
+      "replacement": "`symspec glossary add --remove \"<canonical>\" \"<alias>\"`",
+      "killed": true,
+      "unmutated": [
+        1,
+        0
+      ],
+      "run1": [
+        0,
+        1
+      ],
+      "run2": [
+        0,
+        1
+      ],
+      "by": [
+        "[S3-045] an unresolved glossary-plan class names only commands the parser accepts (R61, attack C18) [S3-045] existing-canonical-conflict (two already committed canonicals): every command its message and commands name parses with the built binary, full argv"
+      ],
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    "C23": {
+      "span": "src/domain/requirements/document.ts:556:3-556:71",
+      "replacement": "'either this or `derived`, and never both; this one checks both.'",
+      "killed": true,
+      "unmutated": [
+        1,
+        0
+      ],
+      "run1": [
+        0,
+        1
+      ],
+      "run2": [
+        0,
+        1
+      ],
+      "by": [
+        "[RH-007] [RH-012] while the decoder accepts both intentRef and derived, or neither, no description of either claims it checks the pair (R62, attack C23) [RH-007] [RH-012] a v4 requirement with both fields and one with neither decode, and each description states, in words written here, that this release checks neither"
+      ],
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    "RH10": {
+      "span": "src/app/operations/document.ts:127:5-127:46",
+      "replacement": "const writeDocument = !docExists",
+      "killed": true,
+      "unmutated": [
+        2,
+        0
+      ],
+      "run1": [
+        0,
+        2
+      ],
+      "run2": [
+        0,
+        2
+      ],
+      "by": [
+        "init --split [RH-008] with --force over an existing non-empty document and no split files, it replaces the document and says exactly that: created, overwritten, 0 requirements (R62, attack RH10)",
+        "init --split [RH-008] with --force over a document that carries an inline intent, it replaces the document before the duplicate-anchor check, so it succeeds (R62, attack RH10)"
+      ],
+      "firstFailure": "AssertionError: expected { docVersion: 3, …(6) } to deeply equal { docVersion: 3, …(6) }"
+    }
+  },
+  "harnessSabotage": [
+    {
+      "what": "src/testing/cli-argv.ts argvOf: the unterminated-quote throw disabled (the review R6 oracle)",
+      "test": "final closure: the argv oracle fails what a shell cannot parse (R60, review R6) [S3-027] [S3-045] an unterminated quote and a bash -n error are rejections ...",
+      "result": "red (AssertionError: expected [Function] to throw an error)"
+    },
+    {
+      "what": "src/testing/cli-argv.ts shellSyntaxError: always undefined (no bash -n)",
+      "test": "same",
+      "result": "red (AssertionError: the rejection lines differ)"
+    }
+  ],
+  "notes": [
+    "Kills: /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1164/mut (git clone --no-hardlinks of the run clone at 19bd46f plus this diff, pnpm install --offline --frozen-lockfile), one mutant at a time at the ledger span (one-based, end-exclusive, original text asserted before replacing), pnpm build before and after each, the filtered test file run once unmutated and twice mutated, restored with git checkout.",
+    "R59, R60 (text/path/refusal channels), R61 (help sweep, term split arm) and R7 are red by assertion on 2d3e5fe; the C06, C09, C10, C13, C18, C23 and RH10 tests are green there and each kills its mutant in both runs."
+  ],
+  "rows": [
+    {
+      "file": "src/cli.test.ts",
+      "test": "final closure: the argv oracle fails what a shell cannot parse (R60, review R6) [S3-027] [S3-045] an unterminated quote and a bash -n error are rejections, with the parser never asked (planted)",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/cli.test.ts",
+      "test": "final closure: the argv oracle fails what a shell cannot parse (R60, review R6) [S3-045] the tokenizer splits as bash does: quotes, escapes inside and outside double quotes, newlines inside quotes",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/cli.test.ts",
+      "test": "final closure: the argv oracle fails what a shell cannot parse (R60, review R6) [S3-045] shell safety fails an expansion, a split, a lost value and an open quote, and passes a quoted hostile value (planted)",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/cli.test.ts",
+      "test": "final closure: every command any help text names passes the parser (R61, attack C10) [S3-045] term --help: the glossary command it points a verb phrase to parses with its required arguments, full argv (attack C10)",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": [
+        "C10"
+      ]
+    },
+    {
+      "file": "src/cli.test.ts",
+      "test": "final closure: every command any help text names passes the parser (R61, attack C10) [S3-045] the root help and each subcommand’s --help: every `symspec` command named parses with its required arguments, full argv",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/cli.test.ts",
+      "test": "final closure: a document path is a user value the shell must hand over whole (R60) [S3-045] check on a document under a directory named with quotes, $, a backtick, ;, a backslash and a newline: every command naming the path carries it as one whole argument",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/compat.test.ts",
+      "test": "S3 closure: a stored waiver crosses only in a shape the S3 fold would store (R54, R55) [S3-024] [S3-027] a deleted requirement’s UUID that equals another requirement’s key: following the inert waiver’s ops removes exactly that stored waiver, in the requirementId and the requirementIds form, and the reviewed waivers of the live requirement survive (R59)",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: 132 offender(s):",
+      "killsMutants": []
+    },
+    {
+      "file": "src/app/operations/check-waivers.test.ts",
+      "test": "S3 closure: the check-time twin is exact, and every migration op removes only its own waiver [S3-024] the waiver-inert entry of a waiver naming a deleted UUID that is another requirement’s key removes only that waiver, in both id forms, and the live requirement’s reviewed waiver survives (R59)",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/app/operations/check.test.ts",
+      "test": "[S3-021] [S3-046] a scoped, hash-bound waiver of a terminology-tier finding suppresses exactly that finding and is listed in data.appliedWaivers (R57) [S3-021] [S3-046] two FND_ACRONYM_UNDEFINED findings on disjoint requirements: a waiver of one suppresses only it, data.waived rises by one, and exactly one waiver is applied (R62, attack C06)",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": [
+        "C06",
+        "C09"
+      ]
+    },
+    {
+      "file": "src/app/operations/document.test.ts",
+      "test": "init --split [RH-008] with --force over an existing non-empty document and no split files, it replaces the document and says exactly that: created, overwritten, 0 requirements (R62, attack RH10)",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": [
+        "RH10"
+      ]
+    },
+    {
+      "file": "src/app/operations/document.test.ts",
+      "test": "init --split [RH-008] with --force over a document that carries an inline intent, it replaces the document before the duplicate-anchor check, so it succeeds (R62, attack RH10)",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": [
+        "RH10"
+      ]
+    },
+    {
+      "file": "src/app/operations/document.test.ts",
+      "test": "init --split [RH-008] never says it overwrote a document it kept: without --force the existing document is kept and overwritten is false (R62)",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/app/runtime/catalog.test.ts",
+      "test": "[S3-040] no never-class catalog row carries any inflection of \"waive\" (R61, review R7) [S3-040] the description, meaning and suggestions of every never-class code use no inflection of \"waive\" (waive, waives, waived, waiving, waiver, waivers)",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ …(2) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (double quote): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (single quote): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (dollar): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (backtick): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (semicolon): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (backslash): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] FND_SIMILAR_SEMANTIC (all): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] the opposite-polarity near-duplicate (double quote): every command its message and demotion name is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] the opposite-polarity near-duplicate (single quote): every command its message and demotion name is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] the opposite-polarity near-duplicate (dollar): every command its message and demotion name is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] the opposite-polarity near-duplicate (backtick): every command its message and demotion name is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] the opposite-polarity near-duplicate (semicolon): every command its message and demotion name is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] the opposite-polarity near-duplicate (backslash): every command its message and demotion name is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] every command a check emits over document text is shell-safe (R60) [S3-045] the opposite-polarity near-duplicate (all): every command its message and demotion name is shell-safe",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/advice/repair.test.ts",
+      "test": "[S3-045] the number-spelling arm names full commands (R61, attack C13) [S3-045] the committed-alias branch of FND_NUMBER_SPELLING_CANDIDATE: every command its message names parses with the built binary, full argv",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": [
+        "C13"
+      ]
+    },
+    {
+      "file": "src/domain/glossary/glossary-plan.test.ts",
+      "test": "[S3-045] an unresolved glossary-plan class names only commands the parser accepts (R61, attack C18) [S3-045] existing-canonical-conflict (two already committed canonicals): every command its message and commands name parses with the built binary, full argv",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": [
+        "C18"
+      ]
+    },
+    {
+      "file": "src/domain/requirements/document.test.ts",
+      "test": "[RH-007] [RH-012] while the decoder accepts both intentRef and derived, or neither, no description of either claims it checks the pair (R62, attack C23) [RH-007] [RH-012] a v4 requirement with both fields and one with neither decode, and each description states, in words written here, that this release checks neither",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": [
+        "C23"
+      ]
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (double quote): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (single quote): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (dollar): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (backtick): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (semicolon): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (backslash): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (newline): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: an alias owned by another canonical (all): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (double quote): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (single quote): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (dollar): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (backtick): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (semicolon): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (backslash): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (newline): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] glossary: a canonical that is already an alias (all): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (double quote): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (single quote): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (dollar): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (backtick): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (semicolon): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (backslash): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (newline): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: an alias owned by another canonical (all): the \"Free it first\" command carries the owner and the alias as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (double quote): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (single quote): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (dollar): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (backtick): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (semicolon): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (backslash): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (newline): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "passed",
+      "firstFailure": null,
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/requirements/mutate.test.ts",
+      "test": "[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60) [S3-045] term: a canonical that is already an alias (all): the \"Use ... as the canonical\" command carries both phrases as whole arguments",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/terminology/terminology.test.ts",
+      "test": "[S3-045] the FND_TERM_INCONSISTENT split remedy names only commands the parser accepts with their required arguments (R61) [S3-045] a terms entry: every command its message and suggestion name parses with the built binary, full argv",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    },
+    {
+      "file": "src/domain/terminology/terminology.test.ts",
+      "test": "[S3-045] the FND_TERM_INCONSISTENT split remedy names only commands the parser accepts with their required arguments (R61) [S3-045] a glossary entry: every command its message and suggestion name parses with the built binary, full argv",
+      "kind": "new",
+      "statusOn2d3e5fe": "failed",
+      "firstFailure": "AssertionError: expected [ Array(1) ] to deeply equal []",
+      "killsMutants": []
+    }
+  ]
+}

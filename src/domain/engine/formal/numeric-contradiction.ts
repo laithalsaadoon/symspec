@@ -68,10 +68,44 @@
  * at all. The unitless bound's magnitude is simply unknown; ASSUMING a unit for it
  * (either direction) would fabricate a magnitude, so the only sound move is to
  * decline the comparison. Declining is a MISS — the honest failure direction —
- * whereas comparing invents a verdict. This mirrors the guard the propose-only
- * quantity-alias tier already had (`quantity-alias.ts`: `if (pa.baseUnit !==
- * pb.baseUnit) continue`); the DECIDE tier, where a false positive is
+ * whereas comparing invents a verdict. The propose-only quantity-alias tier pairs on
+ * the same {@link unitClassOf}; the DECIDE tier, where a false positive is
  * unrecoverable, must be at least as strict as the tier that may only suggest.
+ *
+ * The same argument covers a unit no dimension recognizes (spec 007 AC-2-5). It
+ * used to normalize to `''`, so `retain audit logs for at least 90 days` and `… for
+ * at most 1 year` were two unitless bounds, `>= 90 ∧ <= 1`, and an error. An
+ * unrecognized unit now keys on its raw text: `year` meets `year`, and never `days`
+ * or a bare number. A recognized unit keys on its DIMENSION as well as its base, and
+ * converts into that base exactly (`numeric.ts` `Rational`), so `2 km` meets `500
+ * meters` as `2000 m` and `500 m`, and `1.1 hours` meets `66 minutes` at one point.
+ *
+ * And it covers the bound's ROLE (AC-2-6, `numeric.ts` `BoundRole`): `sound the siren
+ * within 2 seconds` is a deadline and `sound the siren for at least 30 seconds` a
+ * duration, so they share a cell and never a VARIABLE — under a committed glossary
+ * alias too, because an alias equates two phrasings, not two roles. An unmarked bound
+ * names no role and is asserted on every role's variable in its cell, so `respond over
+ * 30 ms` still meets `respond within 30 ms`.
+ *
+ * ## A proof holds under every reading; a pair the readings split is DISCLOSED
+ *
+ * Two things this tier cannot read off a sentence change the verdict: whether a
+ * deadline and a duration are one span (`complete the infusion within 30 minutes` +
+ * `... for at least 60 minutes` conflict; `sound the siren within 2 seconds` + `...
+ * for at least 30 seconds` do not), and whether a °F or K bound is an absolute
+ * temperature or a difference (`a differential of at most 36 °F` is 20 °C of
+ * difference, and `-160/9` °C only as an absolute). So a cell is PROVED only when it
+ * is unsatisfiable with the roles apart AND under both temperature readings. A day or week
+ * bound is a third such reading: it is read against a day length anywhere from 23 to 25
+ * hours, and a pair that conflicts only at the nominal 24 is disclosed. A cell
+ * that is unsatisfiable under some other reading is neither proved nor silently
+ * dropped: it is reported as `FND_NUMERIC_UNCOMPARED`, info, which demotes
+ * `verified`. Declining the proof is the prover's safe direction and disclosing it is
+ * the discloser's (`.erpaval/solutions/architecture/a-finer-key-is-not-uniformly-safer.md`).
+ *
+ * The same disclosure covers the unit partition's own deletion: `at least 400 days`
+ * and `at most 1 year` are two unrecognized units, never compared, and the pair is
+ * reported rather than certified.
  *
  * The group is PARTITIONED, not skipped: a quantity carrying both a unitless and
  * an `ms` bound still has its `ms` bounds proved against each other. Skipping the
@@ -97,9 +131,19 @@
 import type { Z3Context } from './backend.ts'
 import type { SolverBounds } from './budget.ts'
 import { liveIn, planGroups } from './contradiction.ts'
-import { cmp, materialize } from './encode.ts'
+import type { Z3Bool } from './encode.ts'
 import type { Evidence } from './finding.ts'
-import type { NumericPredicate } from './numeric.ts'
+import {
+  type BoundRole,
+  COMPARATOR_LEXICON,
+  HOLDING_VERBS,
+  mayPerform,
+  type NumericPredicate,
+  opposedComparators,
+  RAW_UNIT_DIMENSION,
+  type UnreadQuantity,
+  unitClassOf,
+} from './numeric.ts'
 
 /** A numeric-contradiction finding (Appendix B `FND_NUMERIC_CONTRADICTION`, error). */
 export interface NumericContradictionFinding {
@@ -110,6 +154,62 @@ export interface NumericContradictionFinding {
   readonly message: string
   /** AC-4-6 evidence: empty atom table (numeric tier is arithmetic, not atoms) + the numeric block. */
   readonly evidence: Evidence
+}
+
+/**
+ * A pair of co-live bounds this tier did not compare, or compared under only some of
+ * its readings (Appendix B `FND_NUMERIC_UNCOMPARED`, info). Never a verdict; it DEMOTES
+ * `verified`, because a conflict it could not decide is not a conflict it ruled out.
+ *
+ * One requirement alone is named when its response states a quantity the tier read no bound
+ * on ({@link disclosureOfUnreadQuantities}): there is no partner, because the unread quantity
+ * was compared with nothing.
+ */
+export interface NumericUncomparedFinding {
+  readonly code: 'FND_NUMERIC_UNCOMPARED'
+  readonly severity: 'info'
+  readonly requirementIds: string[]
+  readonly message: string
+}
+
+/**
+ * `FND_NUMERIC_UNCOMPARED` for each requirement whose response states a quantity in a unit the
+ * tier converts that no bound it read covers (`numeric.ts` {@link UnreadQuantity}), naming the
+ * requirement and the unread text. The lexicon's structural guard: `respond in more than 500
+ * ms` against `respond within 200 ms`, read before `more than` was an entry, was two
+ * requirements with one bound between them, and it certified clean. A phrase the lexicon does
+ * not know costs `verified`, never correctness. In id order, so the output bytes are a function
+ * of the requirement set.
+ */
+export function disclosureOfUnreadQuantities(
+  reqs: ReadonlyArray<{
+    readonly id: string
+    readonly response: string
+    readonly unread: readonly UnreadQuantity[]
+  }>,
+): NumericUncomparedFinding[] {
+  const phrases = COMPARATOR_LEXICON.map((e) => `"${e.phrase}"`).join(', ')
+  return reqs
+    .filter((r) => r.unread.length > 0)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((r) => {
+      const one = r.unread.length === 1
+      const quantities = r.unread.map((q) => `"${q.text}"`).join(', ')
+      return {
+        code: 'FND_NUMERIC_UNCOMPARED',
+        severity: 'info',
+        requirementIds: [r.id],
+        message:
+          `Requirement ${r.id} states ${quantities} in its response ("${r.response.trim()}"), in ` +
+          `${one ? 'a unit' : 'units'} the numeric tier converts, but the tier read no bound on ` +
+          `${one ? 'it' : 'them'}, so ${one ? 'it was' : 'they were'} never compared with any ` +
+          "other requirement's bound. If it is a bound, restate it after one of the comparator " +
+          `phrases the tier reads (${phrases}; a period as "at least once every <n> <unit>"), ` +
+          'so any conflict is proved. Otherwise it stays disclosed: a number no bound covers ' +
+          'is a comparison that did not happen, and only a restatement the tier reads ' +
+          'discharges it. This is a disclosure, not a verdict.',
+      }
+    })
 }
 
 /** One requirement's numeric predicates, tagged with the owning requirement id. */
@@ -126,22 +226,272 @@ export interface RequirementPredicates {
    */
   readonly contextAtoms: readonly string[]
   readonly predicates: readonly NumericPredicate[]
+  /**
+   * The actions the requirement's response performs, each keyed as a bound's quantity is, with
+   * the text after it as its qualifier and the response text as evidence: with no bound
+   * (`keep the door unlocked`, `numeric.ts` `actionOccurrences`), or with one, on each bound's
+   * quantity. Each asserts the quantity's occurrence literal, and that is what makes two
+   * prohibitions on the action conflict: `shall not keep the door unlocked above 30 seconds`
+   * and `... below 40 seconds` are met together only by never keeping the door unlocked (see
+   * {@link boundFormula}). A bound's own unit class asserts it through the bound; any other
+   * class, where prohibitions on the same action may sit (`run the pump at least 80%` against
+   * `not above 30 minutes`), only through this. Absent means none.
+   */
+  readonly occurrences?: ReadonlyArray<{
+    readonly quantity: string
+    readonly qualifier?: string
+    readonly sourceText: string
+  }>
+  /**
+   * A non-negated response's system and text, for the one test that reads a response no key
+   * matched: whether it MAY do an action two prohibitions together forbid (`numeric.ts`
+   * `mayPerform`, {@link uncomparedProhibitionSets}). Never asserted in a cell. Absent for a
+   * prohibition, which does not do its action.
+   */
+  readonly response?: { readonly systemName: string; readonly text: string }
 }
 
 /**
- * Group key for the comparison partition: the canonical quantity PLUS the base
- * unit its value was normalized onto. `|` cannot occur in either component
- * (`quantityKey` emits `[a-z0-9_]`, `baseUnit` is a `DIMENSIONS` base or `''`),
- * so the join is unambiguous.
+ * A requirement that performs the action on `quantity` ({@link RequirementPredicates.occurrences}):
+ * asserted in a solve as `id → quantity#occurs`, the occurrence literal every bound obligation
+ * also asserts. Asserted in a cell only under the cell's own qualifier.
+ */
+interface Occurrence {
+  readonly id: string
+  readonly quantity: string
+  readonly qualifier?: string
+  readonly sourceText: string
+  /**
+   * A response no key of which is `quantity`, admitted because it holds the action's words
+   * (`numeric.ts` `mayPerform`): disclosed against, never asserted in a cell.
+   */
+  readonly loose?: true
+}
+
+/** The {@link Occurrence}s of one requirement's performance of `quantity`. */
+function occurrencesOn(rp: RequirementPredicates, quantity: string): Occurrence[] {
+  return (rp.occurrences ?? [])
+    .filter((o) => o.quantity === quantity)
+    .map((o) => ({
+      id: rp.id,
+      quantity,
+      ...(o.qualifier !== undefined ? { qualifier: o.qualifier } : {}),
+      sourceText: o.sourceText,
+    }))
+}
+
+/**
+ * Group key for the comparison partition: the canonical quantity PLUS its unit
+ * class ({@link unitClassOf} — the dimension and the unit the value was
+ * normalized onto, or the raw text of a unit no dimension recognizes) PLUS the
+ * text trailing the bound ({@link NumericPredicate.qualifier}), which this
+ * tier does not read as a guard and so never asserts across. A JSON
+ * array, so no character a system name or a raw unit can contain makes the join
+ * ambiguous.
  *
  * Units are part of the key rather than a post-hoc filter because comparability
  * is a property of the pair, not of one predicate: `ms` bounds are mutually
- * comparable, unitless bounds are mutually comparable, and the two sets never
- * mix. Keying makes that partition total — every predicate lands in exactly one
- * arithmetically-coherent group.
+ * comparable, unitless bounds are mutually comparable, `months` bounds are mutually
+ * comparable, and none of those sets mix. Keying makes that partition total —
+ * every predicate lands in exactly one arithmetically-coherent group.
  */
 function comparisonKey(pred: NumericPredicate): string {
-  return `${pred.quantity}|${pred.baseUnit}`
+  return JSON.stringify([pred.quantity, unitClassOf(pred), pred.qualifier ?? ''])
+}
+
+/**
+ * One way to read a cell's bounds.
+ *
+ * `roles: 'split'` gives each marked role its own variable and asserts an unmarked
+ * bound on all of them; `'merged'` puts every bound on one variable. `temperature:
+ * 'absolute'` reads an offset-scale bound with its offset, `'difference'` without it
+ * ({@link NumericPredicate.difference}). The proof readings are the split ones; the
+ * merged ones only ever feed a disclosure.
+ */
+interface Reading {
+  readonly roles: 'split' | 'merged'
+  readonly temperature: 'absolute' | 'difference'
+  /**
+   * `'civil'` reads a day or week bound ({@link NumericPredicate.days}) against a day
+   * length bounded by 23 and 25 hours, one per variable; `'nominal'` reads it as 24 hours.
+   * Nominal is one civil day length, so a civil proof implies the nominal one and never the
+   * reverse: the proof readings are civil, and nominal only ever feeds a disclosure.
+   */
+  readonly calendar: 'civil' | 'nominal'
+}
+const SPLIT_ABSOLUTE: Reading = { roles: 'split', temperature: 'absolute', calendar: 'civil' }
+const SPLIT_DIFFERENCE: Reading = { roles: 'split', temperature: 'difference', calendar: 'civil' }
+const MERGED_ABSOLUTE: Reading = { roles: 'merged', temperature: 'absolute', calendar: 'civil' }
+const MERGED_DIFFERENCE: Reading = {
+  roles: 'merged',
+  temperature: 'difference',
+  calendar: 'civil',
+}
+const SPLIT_NOMINAL: Reading = { roles: 'split', temperature: 'absolute', calendar: 'nominal' }
+const MERGED_NOMINAL: Reading = { roles: 'merged', temperature: 'absolute', calendar: 'nominal' }
+
+/**
+ * The shortest and longest civil day, in ms: 23 and 25 hours, the lengths of the two days a
+ * one-hour daylight-saving change produces.
+ */
+const SHORTEST_DAY_MS = 82_800_000
+const LONGEST_DAY_MS = 90_000_000
+
+type Entry = { readonly id: string; readonly pred: NumericPredicate }
+
+/** The distinct marked roles among a cell's bounds, sorted — the cell's role variables. */
+function markedRoles(entries: readonly Entry[]): BoundRole[] {
+  return [...new Set(entries.map((e) => e.pred.role).filter((r) => r !== ''))].sort()
+}
+
+/**
+ * The Z3 constraint one bound asserts under `reading`: `quantity <comparator> value`,
+ * over a Real per role variable.
+ *
+ * The value is the bound's exact rational, handed to `Real.val` as numerator and
+ * denominator — never the display `number`, whose unit conversion was a float
+ * product (see {@link NumericPredicate.exact}).
+ *
+ * A bound read out of a prohibition ({@link NumericPredicate.negated}) is asserted only
+ * under the quantity's occurrence literal, and every other bound asserts that literal: `shall
+ * not keep the door unlocked above 30 s` is `A → d <= 30 s`, so it meets `keep the door
+ * unlocked for at least 40 s` (which does `A`) and not a second prohibition, which never
+ * doing `A` satisfies with it. A response that does `A` with no bound (`keep the door
+ * unlocked`) asserts the literal alone ({@link RequirementPredicates.occurrences}), and with
+ * it two opposed prohibitions conflict.
+ *
+ * With fewer than two marked roles in the cell there is one variable, named by the
+ * bare quantity key. With two or more, each marked role has its own variable and an
+ * unmarked bound constrains every one of them: adding a bound only ever adds
+ * constraints, so the verdict stays monotone in the document.
+ */
+function boundFormula(
+  ctx: Z3Context,
+  pred: NumericPredicate,
+  reading: Reading = SPLIT_ABSOLUTE,
+  marked: readonly BoundRole[] = [],
+): Z3Bool {
+  const value =
+    reading.temperature === 'difference' && pred.difference !== undefined
+      ? pred.difference
+      : pred.exact
+  const v = ctx.Real.val(value)
+  const names =
+    reading.roles === 'merged' || marked.length < 2
+      ? [pred.quantity]
+      : pred.role !== ''
+        ? [`${pred.quantity}#${pred.role}`]
+        : marked.map((r) => `${pred.quantity}#${r}`)
+  const parts = names.map((name) => {
+    const q = ctx.Real.const(name)
+    if (reading.calendar === 'nominal' || pred.days === undefined) {
+      return compareTo(q, pred.comparator, v)
+    }
+    // `n days` is `n × L` for a day length `L` shared by every day bound on this variable,
+    // so `more than 2 days` still meets `at most 2 days` exactly as it did in days, and `at
+    // least 2 days` is at least 46 hours against an hour bound.
+    const dayLength = ctx.Real.const(`${name}#day`)
+    return ctx.And(
+      dayLength.ge(SHORTEST_DAY_MS),
+      dayLength.le(LONGEST_DAY_MS),
+      compareTo(q, pred.comparator, dayLength.mul(ctx.Real.val(pred.days))),
+    )
+  })
+  const bound = parts.length === 1 ? parts[0]! : ctx.And(...parts)
+  // An obligation does the action AND bounds it; a prohibition bounds it only if it happens
+  // (`numeric.ts` `NumericPredicate.negated`). One occurrence literal per quantity, never an
+  // assumption, so it can only widen the satisfying set and never enters a core.
+  const occurs = ctx.Bool.const(`${pred.quantity}#occurs`)
+  return pred.negated === true ? ctx.Implies(occurs, bound) : ctx.And(occurs, bound)
+}
+
+/** `q <comparator> v` as a Z3 Bool. */
+function compareTo(
+  q: ReturnType<Z3Context['Real']['const']>,
+  comparator: NumericPredicate['comparator'],
+  v: ReturnType<Z3Context['Real']['const']>,
+): Z3Bool {
+  switch (comparator) {
+    case '<':
+      return q.lt(v)
+    case '<=':
+      return q.le(v)
+    case '=':
+      return q.eq(v)
+    case '>=':
+      return q.ge(v)
+    case '>':
+      return q.gt(v)
+    case '!=':
+      return q.neq(v)
+  }
+}
+
+/**
+ * Solve the bounds of `ids` in `entries` under one reading. Returns whether the set is
+ * unsatisfiable and, if so, the unsat core mapped back to requirement ids. `unknown`
+ * (a timeout) is not `unsat`, so it can only withhold a finding.
+ */
+async function solveUnder(
+  ctx: Z3Context,
+  entries: readonly Entry[],
+  ids: readonly string[],
+  reading: Reading,
+  marked: readonly BoundRole[],
+  bounds: SolverBounds,
+  occurring: readonly Occurrence[] = [],
+): Promise<{ unsat: boolean; core: string[] }> {
+  const live = new Set(ids)
+  const solver = new ctx.Solver()
+  try {
+    // AC-1-7: bound this solve. A timeout returns `unknown`, which is not `unsat`.
+    if (bounds.timeoutMs !== undefined) solver.set('timeout', bounds.timeoutMs)
+    // Assert each predicate implied by its requirement guard, so the unsat core
+    // is exactly the set of requirement ids whose predicates cannot co-hold.
+    for (const { id, pred } of entries) {
+      if (!live.has(id)) continue
+      solver.add(ctx.Implies(ctx.Bool.const(id), boundFormula(ctx, pred, reading, marked)))
+    }
+    // A bare obligation does the action, under its own guard literal, so it can be blamed.
+    for (const { id, quantity } of occurring) {
+      if (!live.has(id)) continue
+      solver.add(ctx.Implies(ctx.Bool.const(id), ctx.Bool.const(`${quantity}#occurs`)))
+    }
+    const guards = [...live].sort().map((id) => ctx.Bool.const(id))
+    if ((await solver.check(...guards)) !== 'unsat') return { unsat: false, core: [] }
+    // Z3 renders a symbol whose text is not a legal SMT-LIB2 *simple* symbol
+    // (e.g. a UUID starting with a digit) as a `|...|`-quoted symbol, so the
+    // core member comes back quoted; strip the delimiters before matching.
+    const core: string[] = []
+    for (const c of solver.unsatCore()) {
+      const name = c.toString().replace(/^\|(.*)\|$/, '$1')
+      if (live.has(name)) core.push(name)
+    }
+    return { unsat: true, core }
+  } finally {
+    // Released eagerly rather than at garbage collection: this tier runs several solves per
+    // cell and per disclosed pair, and the WASM heap is a fixed 2 GiB for the whole process.
+    solver.release()
+  }
+}
+
+/** Whether `ids` is unsatisfiable under EVERY reading, with the union of the cores. */
+async function unsatUnderAll(
+  ctx: Z3Context,
+  entries: readonly Entry[],
+  ids: readonly string[],
+  readings: readonly Reading[],
+  marked: readonly BoundRole[],
+  bounds: SolverBounds,
+  occurring: readonly Occurrence[] = [],
+): Promise<{ unsat: boolean; core: string[] }> {
+  const core = new Set<string>()
+  for (const reading of readings) {
+    const out = await solveUnder(ctx, entries, ids, reading, marked, bounds, occurring)
+    if (!out.unsat) return { unsat: false, core: [] }
+    for (const id of out.core) core.add(id)
+  }
+  return { unsat: true, core: [...core] }
 }
 
 /** One (context group, quantity, base unit) cell: the bounds that genuinely co-hold. */
@@ -154,8 +504,15 @@ export interface ComparisonCell {
   readonly label: string
   /** The live requirements' predicates, in document order (the evidence order). */
   readonly entries: ReadonlyArray<{ id: string; pred: NumericPredicate }>
-  /** The distinct requirement ids contributing to the cell — always ≥2. */
+  /** The distinct requirement ids contributing a BOUND to the cell — always ≥2. */
   readonly distinctIds: ReadonlySet<string>
+  /**
+   * The live requirements that perform the cell's action under the cell's qualifier and put no
+   * bound in the cell ({@link RequirementPredicates.occurrences}), when the cell holds a
+   * prohibition: the only bound a performance alone can change the verdict of. Never counted
+   * toward the two contributors a cell needs, because it conflicts with no one bound.
+   */
+  readonly occurrences: readonly Occurrence[]
 }
 
 /**
@@ -206,19 +563,18 @@ export function planComparisonCells(reqPreds: readonly RequirementPredicates[]):
       // in `trigger` mints a group containing BOTH atoms, and the two single-guard
       // requirements are then co-live there.
       //
-      // That bridge is an OPEN fabrication surface this tier does not fence.
-      // Measured through `runCheck`: `While the temperature is above 5 degrees
-      // celsius, the vent controller shall open the vent.` + `When the temperature
-      // is below 3 degrees celsius, the vent controller shall close the vent.` +
-      // `While the temperature is above 5 degrees celsius, when the temperature is
-      // below 3 degrees celsius, the vent controller shall log the fault.` reports
-      // FND_NUMERIC_CONTRADICTION at error severity naming the first two, which do
-      // not conflict. The bridging requirement's guard is arithmetically
-      // unsatisfiable — it is vacuous, and `FND_VACUITY` says so on the same run —
-      // so the document contains no requirement conflict at all. Fencing it needs a
-      // per-group feasibility check on the guard bounds, which no code path here
-      // performs; `src/testing/fabrication.ts` carries the document as a
-      // known-open case so the gap has a name and a reproducer.
+      // That bridge is a fabrication surface the plan does not fence, and the
+      // proof does. Measured through `runCheck`: `While the temperature is above 5
+      // degrees celsius, the vent controller shall open the vent.` + `When the
+      // temperature is below 3 degrees celsius, the vent controller shall close the
+      // vent.` + `While the temperature is above 5 degrees celsius, when the
+      // temperature is below 3 degrees celsius, the vent controller shall log the
+      // fault.` put the first two in one cell, which do not conflict. The bridging
+      // requirement's guard is arithmetically unsatisfiable — it is vacuous, and
+      // `FND_VACUITY` says so on the same run. {@link canCoApply} drops a core whose
+      // requirements' guard bounds cannot hold at once, so the numeric tier reports
+      // nothing here; `src/testing/fabrication.ts` still carries the document as a
+      // known-open case for the propositional tier, which reaches the same group.
       if (!liveIn(group, rp.contextAtoms)) continue
       for (const pred of rp.predicates) {
         const key = comparisonKey(pred)
@@ -232,6 +588,17 @@ export function planComparisonCells(reqPreds: readonly RequirementPredicates[]):
     }
     for (const [key, g] of byQuantity) {
       const distinctIds = new Set(g.entries.map((e) => e.id))
+      // Text after an action this tier does not read keeps a performance out of every cell
+      // without that same text, as it keeps a bound: `keep the door unlocked when the level is
+      // high` may never happen.
+      const qualifier = g.entries[0]!.pred.qualifier ?? ''
+      const occurrences = g.entries.some((e) => e.pred.negated === true)
+        ? reqPreds.flatMap((rp) =>
+            liveIn(group, rp.contextAtoms) && !distinctIds.has(rp.id)
+              ? occurrencesOn(rp, g.quantity).filter((o) => (o.qualifier ?? '') === qualifier)
+              : [],
+          )
+        : []
       // A cell needs two contributors to be worth a solver call, and the reason is
       // narrower than it looks. One requirement CAN carry two opposed bounds on one
       // key — two guard slots do it: `While the temperature is above 5 degrees
@@ -241,31 +608,75 @@ export function planComparisonCells(reqPreds: readonly RequirementPredicates[]):
       // the temperature`, a different key from the guard's `temperature`, so those
       // two bounds never meet in one cell.)
       //
-      // Such a requirement IS reported. `minimizeNumericCore` refuses to SHRINK a
-      // core below two ids, but it does not constrain the core it is handed: a core
-      // that already names one id passes through, and `culprits` keeps it. Measured
-      // through `runCheck`, the two-requirement document above plus `While the
-      // temperature is above 5 degrees celsius, the vent controller shall open the
-      // vent.` emits FND_NUMERIC_CONTRADICTION at error severity with a
-      // SINGLE-id `requirementIds` and a message reading `Requirements <one id>
-      // place jointly unsatisfiable …`.
-      //
-      // So this skip only hides the case where the self-conflicting requirement is
-      // the cell's ONLY contributor. What that leaves genuinely open is a different
-      // gap: a self-inconsistent guard is a VACUOUS requirement, and reporting it as
-      // an error-severity numeric contradiction (rather than as the `FND_VACUITY`
-      // the same run also emits) overstates it. A one-id finding cannot CERTIFY a
-      // run — check.ts's `decideTierCrossReqFired` requires ≥2 ids — but it does
-      // suppress the `FND_NO_PAIRS_CHECKED` disclaimer, through this code's
-      // membership in `CROSS_REQUIREMENT_FND_CODES` rather than through the id count.
+      // Such a requirement is not reported as a conflict. Its guard bounds cannot hold at
+      // once, so any core it is in fails {@link canCoApply} (one that names only it, or it and
+      // a requirement live beside it). Measured through `runCheck`: the bridge requirement
+      // above plus `While the temperature is above 5 degrees celsius, the vent controller shall
+      // open the vent.` reported FND_NUMERIC_CONTRADICTION at error severity on the two ids
+      // before that fence, and reports none now; the requirement is VACUOUS, and the
+      // `FND_VACUITY` the same run emits is the honest finding. This skip is only the cheap
+      // case, where the self-conflicting requirement is the cell's ONLY contributor.
       if (distinctIds.size < 2) continue
-      const cellKey = JSON.stringify([key, [...distinctIds].sort()])
+      const cellKey = JSON.stringify([
+        key,
+        [...distinctIds].sort(),
+        occurrences.map((o) => o.id).sort(),
+      ])
       if (seen.has(cellKey)) continue
       seen.add(cellKey)
-      cells.push({ key, quantity: g.quantity, label: g.label, entries: g.entries, distinctIds })
+      cells.push({
+        key,
+        quantity: g.quantity,
+        label: g.label,
+        entries: g.entries,
+        distinctIds,
+        occurrences,
+      })
     }
   }
   return cells
+}
+
+/**
+ * Whether the requirements `ids` can apply at once: their GUARD bounds, on every quantity, are
+ * jointly satisfiable under some proof reading. A context group is one requirement's guard-atom
+ * set and `liveIn` a subset test, so a cross-slot bridge (`While the temperature is above 5
+ * degrees celsius, when the temperature is below 3 degrees celsius, ...`) makes the two
+ * single-guard requirements it bridges co-live though their guards exclude each other, and a
+ * cell there proved them contradictory: on the guards' own quantity, and on any other quantity
+ * the bridge itself bounds. A core of requirements that cannot apply together is not a conflict
+ * among them (the bridge is vacuous, and `FND_VACUITY` says so), so it is not reported.
+ *
+ * Only a proof is fenced, and only on positive evidence: guard bounds that are infeasible under
+ * every proof reading. Guard bounds split by their text are separate variables here, as in a
+ * cell, so text this tier does not read can only leave a proof standing, never remove one.
+ */
+async function canCoApply(
+  ctx: Z3Context,
+  reqPreds: readonly RequirementPredicates[],
+  ids: readonly string[],
+  bounds: SolverBounds,
+): Promise<boolean> {
+  const live = new Set(ids)
+  const byKey = new Map<string, Entry[]>()
+  for (const rp of reqPreds) {
+    if (!live.has(rp.id)) continue
+    for (const pred of rp.predicates) {
+      if (pred.slot === 'resp') continue
+      const key = comparisonKey(pred)
+      byKey.set(key, [...(byKey.get(key) ?? []), { id: rp.id, pred }])
+    }
+  }
+  for (const entries of byKey.values()) {
+    const readings = entries.some((e) => e.pred.difference !== undefined)
+      ? [SPLIT_ABSOLUTE, SPLIT_DIFFERENCE]
+      : [SPLIT_ABSOLUTE]
+    const own = [...new Set(entries.map((e) => e.id))].sort()
+    if ((await unsatUnderAll(ctx, entries, own, readings, markedRoles(entries), bounds)).unsat) {
+      return false
+    }
+  }
+  return true
 }
 
 /**
@@ -278,12 +689,64 @@ export function planComparisonCells(reqPreds: readonly RequirementPredicates[]):
  * (including unitless vs united) land in different cells and are never compared —
  * see the module header for why that, and the context partition, are the only sound
  * choices in a verdict-eligible tier.
+ *
+ * The findings of {@link analyzeNumericBounds}, without its disclosures.
  */
 export async function findNumericContradictions(
   ctx: Z3Context,
   reqPreds: readonly RequirementPredicates[],
   bounds: SolverBounds = {},
 ): Promise<NumericContradictionFinding[]> {
+  return (await analyzeNumericBounds(ctx, reqPreds, bounds)).contradictions
+}
+
+/** Why a cell's readings disagreed, in the words of a disclosure message. */
+function disagreementOf(reading: Reading, marked: readonly BoundRole[]): string {
+  const roles =
+    `they bound different roles of it (${marked.join(', ')}), which this tier never ` +
+    'asserts on one variable: a deadline and a duration conflict when the deadline is on ' +
+    'the completion (a 60-minute run cannot complete within 30 minutes) and not when it is ' +
+    'on the start (a siren sounded within 2 seconds can sound for 30)'
+  const temperature =
+    'a bound on an offset temperature scale (°F, K) reads one way as an absolute ' +
+    'temperature and another as a difference (a differential, rise, or overshoot), and ' +
+    'the sentence does not say which'
+  const calendar =
+    'a day or week bound reads as 24 hours a day only on a day with no daylight-saving ' +
+    'change, and a civil day runs 23 to 25 hours; the bounds conflict at the nominal length ' +
+    'and not at every civil one'
+  const anchored =
+    'a time bound with no role word before other text (anchored) may be a delay from that ' +
+    "text's event (a siren sounded at least 5 seconds after the door opens can sound for at " +
+    'most 3) or how long or by when the response happens, and the sentence does not say which'
+  const merged = reading.roles === 'merged' && marked.length >= 2
+  const rest = [
+    ...(reading.temperature === 'difference' ? [temperature] : []),
+    ...(reading.calendar === 'nominal' ? [calendar] : []),
+  ]
+  if (merged)
+    return [roles, ...(marked.includes('anchored') ? [anchored] : []), ...rest].join('; and ')
+  return rest.length > 0 ? rest.join('; and ') : temperature
+}
+
+/**
+ * The numeric tier's decide half AND the disclosure of what it declined to decide.
+ *
+ * `contradictions` are the cells unsatisfiable under every proof reading (roles apart,
+ * both temperature readings). `uncompared` names each cell that some OTHER reading
+ * makes unsatisfiable, and each co-live pair of opposed bounds on one quantity whose
+ * units no conversion relates (a unit no dimension recognizes, against a different one
+ * or none) — the pairs the partition keeps apart, which a proof tier may drop but a
+ * run may not certify over.
+ */
+export async function analyzeNumericBounds(
+  ctx: Z3Context,
+  reqPreds: readonly RequirementPredicates[],
+  bounds: SolverBounds = {},
+): Promise<{
+  contradictions: NumericContradictionFinding[]
+  uncompared: NumericUncomparedFinding[]
+}> {
   const cells = planComparisonCells(reqPreds)
   // Keyed by (comparison key, culprit ids), because two cells can reach the same
   // conflict: a nested pair of context groups hosts overlapping live sets, and a
@@ -291,9 +754,10 @@ export async function findNumericContradictions(
   // once. One conflict is one finding — the same `unique.join(',')` de-duplication
   // `findContradictions` applies across its own group loop.
   const findings = new Map<string, NumericContradictionFinding>()
+  const uncompared = new Map<string, NumericUncomparedFinding>()
 
   let checkedCells = 0
-  for (const { key, quantity, label, entries, distinctIds } of cells) {
+  for (const { key, quantity, label, entries, distinctIds, occurrences } of cells) {
     // AC-1-7 check-before-work: consult the whole-run deadline before starting a
     // cell, never mid-cell, so a cell is either fully decided or not started.
     // A truncated sweep is a strict prefix, so it can only MISS a numeric
@@ -314,48 +778,122 @@ export async function findNumericContradictions(
     // is named. `entries` itself stays in document order, because the evidence
     // block below should list predicates the way the document does.
     const solverEntries = [...entries].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    const ids = [...new Set([...distinctIds, ...occurrences.map((o) => o.id)])].sort()
+    const marked = markedRoles(entries)
+    const hasDifference = entries.some((e) => e.pred.difference !== undefined)
+    const hasCalendar = entries.some((e) => e.pred.days !== undefined)
+    const proofReadings = hasDifference ? [SPLIT_ABSOLUTE, SPLIT_DIFFERENCE] : [SPLIT_ABSOLUTE]
 
-    const solver = new ctx.Solver()
-    // AC-1-7: bound this group's solve. A timeout returns `unknown`, which the
-    // `res !== 'unsat'` guard below already treats as "no conflict proved" — so
-    // the timeout can only withhold an error-severity finding, never emit one.
-    if (bounds.timeoutMs !== undefined) solver.set('timeout', bounds.timeoutMs)
-    // Assert each predicate implied by its requirement guard, so the unsat core
-    // is exactly the set of requirement ids whose predicates cannot co-hold.
-    for (const { id, pred } of solverEntries) {
-      const guard = ctx.Bool.const(id)
-      const predFormula = materialize(ctx, cmp(pred.quantity, pred.comparator, pred.value))
-      solver.add(ctx.Implies(guard, predFormula))
+    const proof = await unsatUnderAll(
+      ctx,
+      solverEntries,
+      ids,
+      proofReadings,
+      marked,
+      bounds,
+      occurrences,
+    )
+    if (!proof.unsat) {
+      // Not proved. Is there a reading under which it IS a conflict? Only a cell with
+      // two marked roles, an offset-scale bound, or a day bound has one.
+      const readings: Reading[] = [
+        ...(marked.length >= 2 ? [MERGED_ABSOLUTE] : []),
+        ...(hasDifference ? proofReadings : []),
+        ...(marked.length >= 2 && hasDifference ? [MERGED_DIFFERENCE] : []),
+        ...(hasCalendar ? [SPLIT_NOMINAL] : []),
+        ...(marked.length >= 2 && hasCalendar ? [MERGED_NOMINAL] : []),
+      ]
+      for (const reading of readings) {
+        const out = await solveUnder(ctx, solverEntries, ids, reading, marked, bounds, occurrences)
+        if (!out.unsat) continue
+        const minimal = await minimizeNumericCore(
+          ctx,
+          solverEntries,
+          out.core,
+          bounds,
+          [reading],
+          occurrences,
+        )
+        const blamed = [...(minimal.length > 0 ? minimal : ids)].sort()
+        const findingKey = JSON.stringify([key, blamed])
+        if (!uncompared.has(findingKey)) {
+          const sources = [
+            ...entries.filter((e) => blamed.includes(e.id)).map((e) => e.pred.sourceText),
+            ...occurrences.filter((o) => blamed.includes(o.id)).map((o) => o.sourceText),
+          ].join(' vs ')
+          uncompared.set(findingKey, {
+            code: 'FND_NUMERIC_UNCOMPARED',
+            severity: 'info',
+            requirementIds: blamed,
+            message:
+              `Requirements ${blamed.join(', ')} place numeric bounds on "${label}" (${sources}) ` +
+              'that conflict under one reading of the sentences and not under another, so the ' +
+              `numeric tier neither proved nor dismissed the conflict: ${disagreementOf(reading, marked)}. ` +
+              'Restate them so they bound one quantity in one sense, and the tier decides the ' +
+              'conflict either way; then re-run `symspec check`. This is a ' +
+              'disclosure, not a verdict.',
+          })
+        }
+        break
+      }
+      continue
     }
-    const guards = [...distinctIds].sort().map((id) => ctx.Bool.const(id))
-    const res = await solver.check(...guards)
-    if (res !== 'unsat') continue
 
-    // Map the unsat core back to requirement ids; minimize by deletion so an
-    // innocent requirement sharing the quantity cannot ride along.
-    // Z3 renders a symbol whose text is not a legal SMT-LIB2 *simple* symbol
-    // (e.g. a UUID starting with a digit) as a `|...|`-quoted symbol, so the
-    // core member comes back quoted; strip the delimiters before matching.
-    const coreIds: string[] = []
-    for (const c of solver.unsatCore()) {
-      const name = c.toString().replace(/^\|(.*)\|$/, '$1')
-      if (distinctIds.has(name)) coreIds.push(name)
-    }
-    const minimal = await minimizeNumericCore(ctx, solverEntries, coreIds, bounds)
-    const culprits = minimal.length > 0 ? minimal : [...distinctIds]
+    // Minimize by deletion so an innocent requirement sharing the quantity cannot ride
+    // along; the minimal core must stay unsatisfiable under every proof reading.
+    const minimal = await minimizeNumericCore(
+      ctx,
+      solverEntries,
+      proof.core,
+      bounds,
+      proofReadings,
+      occurrences,
+    )
+    const culprits = minimal.length > 0 ? minimal : ids
 
     const blamed = [...culprits].sort()
     const findingKey = JSON.stringify([key, blamed])
     if (findings.has(findingKey)) continue
-
     const contributing = entries.filter((e) => culprits.includes(e.id))
+    // Requirements that never apply at once do not conflict, whatever their bounds say there.
+    // Their obligations are disclosed as a pair under guards no group asserts together is,
+    // because this one asserted them together only through a bridge that can never fire.
+    if (!(await canCoApply(ctx, reqPreds, blamed, bounds))) {
+      const obligations = contributing.filter((e) => e.pred.slot === 'resp')
+      if (obligations.length > 0 && !uncompared.has(findingKey)) {
+        const sources = contributing.map((e) => `${e.pred.sourceText}`).join(' vs ')
+        uncompared.set(findingKey, {
+          code: 'FND_NUMERIC_UNCOMPARED',
+          severity: 'info',
+          requirementIds: blamed,
+          message:
+            `Requirements ${blamed.join(', ')} place numeric bounds on "${label}" (${sources}) ` +
+            'that conflict if they apply at once, under guards whose own bounds cannot hold ' +
+            'together, so the numeric tier did not report a conflict. If the guards can in fact ' +
+            'hold at once, change one requirement so it no longer contradicts the other there; ' +
+            'if they cannot, it stays disclosed, because symspec has no way yet to record that ' +
+            'two guards never hold together. Then re-run `symspec check`. This is a ' +
+            'disclosure, not a verdict.',
+        })
+      }
+      continue
+    }
+
+    // A culprit with no bound performs the action the others' prohibitions bound, and the
+    // evidence's predicate list, which holds bounds, cannot show it: the message does.
+    const performers = occurrences.filter((o) => culprits.includes(o.id))
+    const performs =
+      performers.length === 0
+        ? ''
+        : ` ${performers.map((o) => `Requirement ${o.id} does "${o.sourceText}"`).join(', ')}, ` +
+          'with no bound in this unit, so the action happens and every prohibition on it applies.'
     findings.set(findingKey, {
       code: 'FND_NUMERIC_CONTRADICTION',
       severity: 'error',
       requirementIds: blamed,
       message:
         `Requirements ${blamed.join(', ')} place jointly unsatisfiable numeric ` +
-        `constraints on "${label}".`,
+        `constraints on "${label}".${performs}`,
       evidence: {
         atomTable: [],
         numeric: {
@@ -374,7 +912,393 @@ export async function findNumericContradictions(
     })
   }
 
-  return [...findings.values()]
+  for (const f of await uncomparedPairs(ctx, reqPreds, bounds)) {
+    const findingKey = JSON.stringify(['pairs', f.requirementIds])
+    if (!uncompared.has(findingKey)) uncompared.set(findingKey, f)
+  }
+  for (const f of await uncomparedProhibitionSets(ctx, reqPreds, bounds)) {
+    const findingKey = JSON.stringify(['sets', f.requirementIds])
+    if (!uncompared.has(findingKey)) uncompared.set(findingKey, f)
+  }
+
+  return { contradictions: [...findings.values()], uncompared: [...uncompared.values()] }
+}
+
+/**
+ * Pairs of bounds on ONE quantity that no cell asserted together, and that could conflict
+ * if they were. Three shapes, each a deletion by a partition the prover is right to make and
+ * a run is not entitled to certify over
+ * (`.erpaval/solutions/architecture/a-finer-key-is-not-uniformly-safer.md`):
+ *
+ *   - UNITS. Co-live or not, the two bounds are in unit classes no conversion relates: at
+ *     least one is a unit no dimension recognizes or no unit at all. The partition keeps them
+ *     apart (AC-2-5: `90 days` never meets `1 year`, `50%` never meets `0.9`), and `at least
+ *     400 days` against `at most 1 year` is a conflict it hides, while `at least 50%` against
+ *     `at most 0.9` turns on whether the bare number is a ratio. Opposition is the whole
+ *     test, as in the propose-only quantity-alias tier. A pair on two RECOGNIZED dimensions
+ *     (`10 m` against `30 seconds`) is two quantities, not one in two units, and is skipped.
+ *   - CONTEXTS. Two RESPONSE bounds in one unit class under guards no planned context group
+ *     makes both live (`liveIn`, the one co-liveness definition): `When the request arrives,
+ *     … respond within 30 ms` and `When the cache misses, … respond in at least 50 ms`. The
+ *     solver asserts each context on its own, so it never asked whether the two hold at once;
+ *     if the guards can co-occur, they conflict there. The numeric twin of AC-3-2's
+ *     `conditional-conflict-unchecked`. The pair is disclosed only when asserting the two
+ *     together is unsatisfiable under some reading, so a guarded pair that co-holds anyway
+ *     (`<= 30 ms`, `>= 10 ms`) costs nothing. A GUARD bound is a condition on where its
+ *     requirement applies, not an obligation, so a guard is never half of such a pair.
+ *   - QUALIFIERS. Two co-live bounds in one unit class, at least one a RESPONSE's, whose text
+ *     differs ({@link NumericPredicate.qualifier}): `keep the temperature above 30 °C when the
+ *     mode is heating` and `... below 20 °C when the mode is cooling`, `run the pump at most 2
+ *     minutes after the tank fills` and `run the pump for at least 10 minutes`, `store at least
+ *     30 days of logs` and `store at most 2 hours of video`, a response bound the tier does not
+ *     read as the obligation (`numeric.ts` `unheldBy`: `reject payments exceeding 1000 dollars`),
+ *     or a guard against a response bound split so (`When the level in the can is above 5
+ *     meters` against `have the level in the can below 3 meters`, where `can` is a modal
+ *     spelling). The cells keep them apart because the tier cannot tell where, or to what,
+ *     each applies; the same `conflictTogether` test decides whether the split hid anything.
+ *     Two guards are never such a pair: each is where its own requirement applies.
+ *
+ * Two prohibitions are never reported: not doing the action satisfies both. Whether an
+ * obligation elsewhere makes them conflict is {@link uncomparedProhibitionSets}'s question.
+ *
+ * Each solver call is checked against the whole-run budget before it starts, like a cell;
+ * a truncated sweep records itself, and the pipeline demotes for it.
+ */
+async function uncomparedPairs(
+  ctx: Z3Context,
+  reqPreds: readonly RequirementPredicates[],
+  bounds: SolverBounds,
+): Promise<NumericUncomparedFinding[]> {
+  const groups = planGroups(reqPreds.map((rp) => rp.contextAtoms))
+  const coLive = (x: RequirementPredicates, y: RequirementPredicates) =>
+    groups.some((g) => liveIn(g, x.contextAtoms) && liveIn(g, y.contextAtoms))
+  const recognized = (p: NumericPredicate) =>
+    p.dimension !== RAW_UNIT_DIMENSION && p.dimension !== ''
+
+  type Candidate = {
+    readonly a: Entry
+    readonly b: Entry
+    readonly shape: 'units' | 'contexts' | 'qualifiers'
+  }
+  const candidates: Candidate[] = []
+  for (let i = 0; i < reqPreds.length; i += 1) {
+    for (let j = i + 1; j < reqPreds.length; j += 1) {
+      const x = reqPreds[i]!
+      const y = reqPreds[j]!
+      if (x.id === y.id) continue
+      const together = coLive(x, y)
+      for (const pa of x.predicates) {
+        for (const pb of y.predicates) {
+          if (pa.quantity !== pb.quantity) continue
+          if (pa.negated === true && pb.negated === true) continue
+          const a = { id: x.id, pred: pa }
+          const b = { id: y.id, pred: pb }
+          if (unitClassOf(pa) !== unitClassOf(pb)) {
+            if (recognized(pa) && recognized(pb)) continue
+            if (!opposedComparators(pa.comparator, pb.comparator)) continue
+            candidates.push({ a, b, shape: 'units' })
+            continue
+          }
+          const sameQualifier = (pa.qualifier ?? '') === (pb.qualifier ?? '')
+          // Co-live in one comparison class: a cell asserted the two together and decided them.
+          if (together && sameQualifier) continue
+          // Two guards are where their requirements apply, never an obligation to reconcile.
+          if (pa.slot !== 'resp' && pb.slot !== 'resp') continue
+          if (together) {
+            candidates.push({ a, b, shape: 'qualifiers' })
+            continue
+          }
+          if (pa.slot !== 'resp' || pb.slot !== 'resp') continue
+          candidates.push({ a, b, shape: 'contexts' })
+        }
+      }
+    }
+  }
+
+  const out = new Map<string, NumericUncomparedFinding>()
+  for (let index = 0; index < candidates.length; index += 1) {
+    const { a, b, shape } = candidates[index]!
+    const ids = [a.id, b.id].sort()
+    const key = JSON.stringify([a.pred.quantity, ids])
+    if (out.has(key)) continue
+    if (shape !== 'units') {
+      if (bounds.budget?.expired() === true) {
+        bounds.budget.truncate('numeric-contradiction', candidates.length - index)
+        break
+      }
+      if (!(await conflictTogether(ctx, [a, b], bounds))) continue
+    }
+    const pair = `(${a.pred.sourceText} vs ${b.pred.sourceText})`
+    const unitOf = (p: NumericPredicate) => (p.baseUnit === '' ? 'no unit' : `"${p.baseUnit}"`)
+    const qualifierOf = (p: NumericPredicate) =>
+      p.qualifier === undefined ? 'none' : `"${p.qualifier}"`
+    const clauses = [a, b].flatMap((e) =>
+      e.pred.clause === undefined ? [] : [`${e.id}: after ${e.pred.clause}`],
+    )
+    out.set(key, {
+      code: 'FND_NUMERIC_UNCOMPARED',
+      severity: 'info',
+      requirementIds: ids,
+      message:
+        shape === 'units'
+          ? `Requirements ${ids.join(', ')} place opposed numeric bounds on "${a.pred.label}" ` +
+            `${pair} in units the numeric tier cannot convert between (${unitOf(a.pred)} and ` +
+            `${unitOf(b.pred)}), so it never compared them. Restate both in one unit it ` +
+            'recognizes so any conflict is proved or dismissed; until then it stays ' +
+            'disclosed. This is a disclosure, not a verdict.'
+          : shape === 'qualifiers' && clauses.length > 0
+            ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
+              'that conflict if each is the obligation on one quantity, but the numeric tier does ' +
+              `not read every one of them so (${clauses.join('; ')}): a bound after a connective, ` +
+              "a finite verb, or another bound may be a condition's, one after a function word, " +
+              'a plural, or a second content word may pick out what the response acts on or the ' +
+              `state it holds, one on the object of a verb other than ${HOLDING_VERBS.join(', ')} ` +
+              'may pick out what the response acts on, and one after a verb alone that is not a ' +
+              'time may be a condition on a quantity the sentence does not name. It does not ' +
+              'guess which, so it never compared them. To have any conflict proved, restate each ' +
+              'in a shape the tier proves: the bound as the obligation of a holding verb on ONE ' +
+              'noun, "keep <quantity> below <N>" for "ensure that <quantity> is below <N>" (or ' +
+              `${HOLDING_VERBS.filter((v) => v !== 'keep').join(', ')} for keep), a compound ` +
+              'named in one word ("keep the level", not "keep the tank level"); a time bound on a ' +
+              'holding verb ("keep the door unlocked for at least <N> seconds"); a time bound its ' +
+              'own role word (for, in, within, every, or a time preposition such as after) ' +
+              'introduces right after one noun, a plural included ("run the pump for at least <N> ' +
+              'minutes"); or the verb alone on a time ("respond within <N> milliseconds"). Move a ' +
+              'condition into the trigger or precondition ("While <condition>, the <system> shall ' +
+              'keep <quantity> below <N>"), so the tier can tell where each bound applies. Then ' +
+              're-run `symspec check`. This is a disclosure, not a verdict.'
+            : shape === 'qualifiers'
+              ? `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
+                'that conflict if both apply at once to one thing, under different trailing text ' +
+                `(${qualifierOf(a.pred)} and ${qualifierOf(b.pred)}) the numeric tier does not read ` +
+                '(a condition on where a bound applies, or what it counts), so it never compared ' +
+                "them. Move each condition into the requirement's trigger or precondition, or " +
+                'restate both bounds on one referent, so the tier can tell where and to what each ' +
+                'bound applies, and the tier compares them. Then re-run `symspec check`. This is ' +
+                'a disclosure, not a verdict.'
+              : `Requirements ${ids.join(', ')} place numeric bounds on "${a.pred.label}" ${pair} ` +
+                'that conflict if both apply at once, under guards no context group the numeric ' +
+                'tier checked asserts together, so it never compared them. If the two contexts ' +
+                'can hold at once, change one requirement so it no longer contradicts the other ' +
+                'there; if they cannot, it stays disclosed, because symspec has no way yet to ' +
+                'record that two guards never hold together. Then re-run `symspec check`. This is ' +
+                'a disclosure, not a verdict.',
+    })
+  }
+  return [...out.values()]
+}
+
+/**
+ * Sets of three or four RESPONSE bounds on one quantity and unit class that no cell asserted
+ * together, that conflict together, and whose every smaller subset holds: the conflicts
+ * {@link uncomparedPairs} cannot see, disclosed as `FND_NUMERIC_UNCOMPARED`.
+ *
+ * Pairs are enough only while every bound is an interval on its variable, because intervals
+ * that meet two at a time meet all together. A prohibition breaks that in two ways
+ * ({@link NumericPredicate.negated}):
+ *
+ *   - It bounds the action only IF it happens. Two opposed prohibitions are met together by
+ *     never doing the action, and each meets an obligation on its own, so no pair conflicts;
+ *     but the obligation makes the action happen, and then all three do. `shall not keep the
+ *     door unlocked above 30 seconds`, `... below 40 seconds`, and `keep the door unlocked
+ *     for at least 1 second`, under three triggers that can co-occur, certified.
+ *   - `shall not ... exactly 30 seconds` is `!= 30 s`, not an interval: `for at least 30
+ *     seconds` and `for at most 30 seconds` meet only at the point it removes.
+ *
+ * So the candidates are exactly those two shapes: two prohibitions and an obligation; a
+ * `!=` prohibition and two other bounds, one an obligation; and a `!=` prohibition, two other
+ * prohibitions, and an obligation. The obligation that only forces the action may be a
+ * performance with no bound in the class ({@link RequirementPredicates.occurrences}): a bare
+ * one (`keep the door unlocked`, `... until the guard arrives`), or one bounded in another unit
+ * class (`run the pump at least 80%` against minutes); two prohibitions against either were
+ * certified, since nothing put it in their class. With intervals and `!=` on one variable, and
+ * the obligation that forces the action, a minimal conflict needs no more members than that,
+ * so no larger set is searched. A set whose members one cell asserted together (one qualifier,
+ * one context group that makes them all live) was decided there, and is skipped.
+ *
+ * Each solver call is checked against the whole-run budget before it starts, like a cell.
+ */
+async function uncomparedProhibitionSets(
+  ctx: Z3Context,
+  reqPreds: readonly RequirementPredicates[],
+  bounds: SolverBounds,
+): Promise<NumericUncomparedFinding[]> {
+  const groups = planGroups(reqPreds.map((rp) => rp.contextAtoms))
+  const contextOf = new Map(reqPreds.map((rp) => [rp.id, rp.contextAtoms]))
+  // One quantity and unit class: the variable the set would be asserted on together.
+  const byClass = new Map<string, Entry[]>()
+  for (const rp of reqPreds) {
+    for (const pred of rp.predicates) {
+      if (pred.slot !== 'resp') continue
+      const key = JSON.stringify([pred.quantity, unitClassOf(pred)])
+      const list = byClass.get(key) ?? []
+      list.push({ id: rp.id, pred })
+      byClass.set(key, list)
+    }
+  }
+  // A performance forces the action on its quantity in every class: a bare one has no unit,
+  // and one bounded in another class does the action there as much as here. An obligation
+  // with a bound in THIS class is its own forcer, through that bound.
+  const performersOf = (entries: readonly Entry[]): Occurrence[] => {
+    const bound = new Set(entries.filter((e) => e.pred.negated !== true).map((e) => e.id))
+    return reqPreds.flatMap((rp) =>
+      bound.has(rp.id) ? [] : occurrencesOn(rp, entries[0]!.pred.quantity),
+    )
+  }
+
+  // The responses that may do the action on `pred`'s quantity though none is keyed on it.
+  const looseOf = (pred: NumericPredicate): Forcer[] =>
+    reqPreds.flatMap((rp) =>
+      rp.response !== undefined &&
+      mayPerform(rp.response.text, rp.response.systemName, pred.quantity, pred.label)
+        ? [
+            {
+              occurrence: {
+                id: rp.id,
+                quantity: pred.quantity,
+                sourceText: rp.response.text,
+                loose: true as const,
+              },
+            },
+          ]
+        : [],
+    )
+
+  // A member that forces the action: a bound obligation, or a bare one.
+  type Forcer = { readonly entry: Entry } | { readonly occurrence: Occurrence }
+  type Candidate = { readonly entries: readonly Entry[]; readonly occurring: readonly Occurrence[] }
+  const withForcer = (entries: readonly Entry[], f: Forcer): Candidate =>
+    'entry' in f
+      ? { entries: [...entries, f.entry], occurring: [] }
+      : { entries, occurring: [f.occurrence] }
+  const sets: Candidate[] = []
+  for (const entries of byClass.values()) {
+    const prohibitions = entries.filter((e) => e.pred.negated === true)
+    const keyed: Forcer[] = [
+      ...entries.filter((e) => e.pred.negated !== true).map((entry) => ({ entry })),
+      ...performersOf(entries).map((occurrence) => ({ occurrence })),
+    ]
+    // With no keyed performer, a response that holds the action's words may still do it
+    // (`immediately keep the door unlocked`), and prohibitions that together forbid the action
+    // conflict with it if it does. A keyed performer already brings each such set to a cell
+    // or a disclosure.
+    const forcers: Forcer[] =
+      keyed.length > 0 || prohibitions.length === 0 ? keyed : looseOf(prohibitions[0]!.pred)
+    if (prohibitions.length === 0 || forcers.length === 0) continue
+    for (let i = 0; i < prohibitions.length; i += 1) {
+      for (let j = i + 1; j < prohibitions.length; j += 1) {
+        for (const f of forcers) sets.push(withForcer([prohibitions[i]!, prohibitions[j]!], f))
+      }
+    }
+    for (const point of prohibitions.filter((e) => e.pred.comparator === '!=')) {
+      const others = entries.filter((e) => e !== point)
+      for (let i = 0; i < others.length; i += 1) {
+        for (let j = i + 1; j < others.length; j += 1) {
+          const x = others[i]!
+          const y = others[j]!
+          if (x.pred.negated !== true || y.pred.negated !== true) {
+            sets.push({ entries: [x, y, point], occurring: [] })
+            continue
+          }
+          for (const f of forcers) sets.push(withForcer([x, y, point], f))
+        }
+      }
+    }
+  }
+
+  const out = new Map<string, NumericUncomparedFinding>()
+  for (let index = 0; index < sets.length; index += 1) {
+    const { entries: set, occurring } = sets[index]!
+    const members = [...set, ...occurring]
+    const ids = [...new Set(members.map((e) => e.id))].sort()
+    // Two bounds of one requirement and one of another is a pair of requirements, and a
+    // single requirement conflicting with itself is not this tier's disclosure.
+    if (ids.length < 2) continue
+    const key = JSON.stringify([set[0]!.pred.quantity, ids])
+    if (out.has(key)) continue
+    // A cell asserts a performance only under its own qualifier, as it does a bound.
+    const qualifier = set[0]!.pred.qualifier ?? ''
+    const oneCell =
+      set.every((e) => (e.pred.qualifier ?? '') === qualifier) &&
+      occurring.every((o) => o.loose !== true && (o.qualifier ?? '') === qualifier) &&
+      groups.some((g) => ids.every((id) => liveIn(g, contextOf.get(id) ?? [])))
+    if (oneCell) continue
+    if (bounds.budget?.expired() === true) {
+      bounds.budget.truncate('numeric-contradiction', sets.length - index)
+      break
+    }
+    if (!(await conflictTogether(ctx, set, bounds, occurring))) continue
+    // Minimal: a smaller subset that already conflicts is a pair's or a cell's to report.
+    let smaller = false
+    for (const drop of members) {
+      const rest = set.filter((e) => e !== drop)
+      const restOccurring = occurring.filter((o) => o !== drop)
+      if (new Set([...rest, ...restOccurring].map((e) => e.id)).size < 2) continue
+      if (await conflictTogether(ctx, rest, bounds, restOccurring)) {
+        smaller = true
+        break
+      }
+    }
+    if (smaller) continue
+    const sources = [
+      ...set.map((e) => e.pred.sourceText),
+      ...occurring.map((o) => o.sourceText),
+    ].join(' vs ')
+    out.set(key, {
+      code: 'FND_NUMERIC_UNCOMPARED',
+      severity: 'info',
+      requirementIds: ids,
+      message:
+        `Requirements ${ids.join(', ')} place numeric bounds on "${set[0]!.pred.label}" ` +
+        `(${sources}) that conflict if all apply at once, though every smaller subset of them ` +
+        'holds: a prohibition bounds the action only where it happens, and an obligation makes ' +
+        'it happen. No solver call the numeric tier made asserted them together, because ' +
+        'their guards are never live in one context group or the text after their bounds ' +
+        'differs. If they can all apply at once, change one so it no longer contradicts the ' +
+        'others there; if they cannot, it stays disclosed, because symspec has no way yet to ' +
+        'record that guards never hold together. Then re-run `symspec check`. This ' +
+        'is a disclosure, not a verdict.' +
+        occurring
+          .filter((o) => o.loose === true)
+          .map(
+            (o) =>
+              ` Requirement ${o.id} ("${o.sourceText}") was not read as doing ` +
+              `"${set[0]!.pred.label}", but holds its words, so it may: if it does not, reword ` +
+              'it so it plainly names another action; if it does, the prohibitions forbid what it requires.',
+          )
+          .join(''),
+    })
+  }
+  return [...out.values()]
+}
+
+/**
+ * Whether `entries`, asserted together, are unsatisfiable under ANY reading — the proof
+ * readings and every disclosure reading that applies to them. A disclosure's test: a pair
+ * that conflicts under no reading needs no one's attention.
+ */
+async function conflictTogether(
+  ctx: Z3Context,
+  entries: readonly Entry[],
+  bounds: SolverBounds,
+  occurring: readonly Occurrence[] = [],
+): Promise<boolean> {
+  const ids = [...new Set([...entries, ...occurring].map((e) => e.id))].sort()
+  const marked = markedRoles(entries)
+  const hasDifference = entries.some((e) => e.pred.difference !== undefined)
+  const hasCalendar = entries.some((e) => e.pred.days !== undefined)
+  const readings: Reading[] = [
+    SPLIT_ABSOLUTE,
+    ...(hasDifference ? [SPLIT_DIFFERENCE] : []),
+    ...(marked.length >= 2 ? [MERGED_ABSOLUTE] : []),
+    ...(marked.length >= 2 && hasDifference ? [MERGED_DIFFERENCE] : []),
+    ...(hasCalendar ? [SPLIT_NOMINAL] : []),
+    ...(marked.length >= 2 && hasCalendar ? [MERGED_NOMINAL] : []),
+  ]
+  for (const reading of readings) {
+    if ((await solveUnder(ctx, entries, ids, reading, marked, bounds, occurring)).unsat) return true
+  }
+  return false
 }
 
 /**
@@ -408,28 +1332,27 @@ export async function findNumericContradictions(
  * solver, which is why that sequence is id-sorted. This sort is the second line of
  * defence, holding if a solver returns the same core in a different order or a core
  * wide enough to shrink.
+ *
+ * `readings` is the set of readings the core must stay unsatisfiable under: every
+ * proof reading for a {@link analyzeNumericBounds} contradiction, the one disagreeing
+ * reading for a disclosure. An id is dropped only when the rest stays unsat under ALL.
  */
 export async function minimizeNumericCore(
   ctx: Z3Context,
   entries: ReadonlyArray<{ id: string; pred: NumericPredicate }>,
   core: readonly string[],
   bounds: SolverBounds = {},
+  readings: readonly Reading[] = [SPLIT_ABSOLUTE],
+  occurring: readonly Occurrence[] = [],
 ): Promise<string[]> {
+  const marked = markedRoles(entries)
   let current = [...new Set(core)].sort()
   for (const candidate of [...current]) {
     const trial = current.filter((id) => id !== candidate)
     if (trial.length < 2) continue
-    const solver = new ctx.Solver()
-    if (bounds.timeoutMs !== undefined) solver.set('timeout', bounds.timeoutMs)
-    for (const { id, pred } of entries) {
-      if (!trial.includes(id)) continue
-      const guard = ctx.Bool.const(id)
-      solver.add(
-        ctx.Implies(guard, materialize(ctx, cmp(pred.quantity, pred.comparator, pred.value))),
-      )
+    if ((await unsatUnderAll(ctx, entries, trial, readings, marked, bounds, occurring)).unsat) {
+      current = trial
     }
-    const guards = trial.map((id) => ctx.Bool.const(id))
-    if ((await solver.check(...guards)) === 'unsat') current = trial
   }
   return current
 }

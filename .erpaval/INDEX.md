@@ -20,6 +20,7 @@ lessons before starting work.
 
 ### architecture
 
+- [A gate names its trust boundary, then discloses outside it — don't parse .git to defend against local edits](solutions/architecture/a-gate-names-its-trust-boundary-then-discloses-outside-it.md)
 - [When an oracle's donor leaves the repo, split the claims — a repointed differential is a tautology that reports green](solutions/architecture/a-transplant-that-outlives-its-oracle.md)
 - [EARS→SMT conflicts need per-context-group reachability; minimize cores before blaming](solutions/architecture/smt-context-group-reachability.md)
 - [Manifest/AGENTS.md/code tables derive from Zod .describe() + enums; drift is a test failure](solutions/architecture/manifest-single-source-derivation.md)
@@ -42,6 +43,7 @@ lessons before starting work.
 - [DEMOTION-ONLY grants permission, not an obligation — a wording risk must not demote or it becomes a gate only a waiver clears](solutions/architecture/a-propose-only-finding-that-must-not-demote-either.md)
 - [A finer partition key is not uniformly safer — the safe direction is OPPOSITE for a prover and a discloser](solutions/architecture/a-finer-key-is-not-uniformly-safer.md)
 - [An "I don't know" is not a comparison — enumerate a code set by what the code MEANS, not by which tier emits it](solutions/architecture/an-i-dont-know-is-not-a-comparison.md)
+- [Fix a decide-path text heuristic as an OUTCOME post-condition against base, under a corpus snapshot taken first](solutions/architecture/fix-a-text-heuristic-as-an-outcome-postcondition-against-base.md)
 
 - [Abandoning a z3 query WEDGES the module (Asyncify one-slot) — Z3_interrupt + await; V14/V21 revised](solutions/conventions/z3-asyncify-interrupt-not-abandon.md)
 - [Effect 4.0.0-beta.102 CLI/Layer API reality — 8 verified deltas incl. two silent manifest/help failures](solutions/conventions/effect-v4-beta102-cli-api-reality.md)

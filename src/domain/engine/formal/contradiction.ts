@@ -62,17 +62,21 @@
  *     lookup is the structural CTX-* filter: any core member that is not a
  *     requirement guard maps to `undefined` and is dropped, leaving EXACTLY the
  *     `REQ-*` members.
- *   - Per-group `unknown`/timeout handling as `FND_NEEDS_REVIEW` is AC-4-7. Here
- *     an inconclusive group is skipped (never interpreted as "no conflict" that
- *     would be reported as absence of a finding — it simply contributes no
- *     contradiction), which AC-4-7 will upgrade to an explicit review finding.
+ *   - An `unknown` from ANY solver call in a group's enumeration — the group
+ *     check or a core-minimization re-check — stops that group and marks it
+ *     `outcome: 'unknown'` in {@link analyzeContradictions}'s result (AC-3-4).
+ *     It contributes no contradiction and is never read as "no conflict"; the
+ *     pipeline turns it into a `solver-unknown` demotion. The needs-review tier's
+ *     `FND_NEEDS_REVIEW` (AC-4-7) is a SEPARATE solve of each group, so it is not
+ *     evidence about what this loop decided.
  */
 
-import { atomize as realAtomize } from './atomize.ts'
+import { makeAtomize } from './atomize.ts'
 import type { Z3Context } from './backend.ts'
 import { getContext } from './backend.ts'
 import {
   type Atomize,
+  contraryAxioms,
   type EncodableRequirement,
   type EncodedRequirement,
   encode,
@@ -103,15 +107,11 @@ export interface ContradictionFinding {
 }
 
 /**
- * Adapter from the AC-4-2a `atomize({ kind, text, systemName, negated })` shape
- * to the encoder's positional `Atomize` contract. Kept in this integration file
- * per the encode.ts design note ("the integration tier passes the real AC-4-2a
- * atomize, adapting its signature in its own file").
+ * The default atomizer: the real AC-4-2a `atomize` through {@link makeAtomize}, so the
+ * opposition membership {@link contraryAxioms} reads rides along (AC-2-1). A hand-rolled adapter
+ * that copied only `{atom, negated}` would silently drop every contrary axiom on this path.
  */
-const defaultAtomize: Atomize = (kind, slotText, systemName, negated) => {
-  const a = realAtomize({ kind, text: slotText, systemName, negated })
-  return { atom: a.name, negated: a.negated }
-}
+const defaultAtomize: Atomize = makeAtomize()
 
 /** The trigger/precondition atom names of an encoded requirement (its context). */
 export function contextAtomsOf(enc: EncodedRequirement): string[] {
@@ -217,6 +217,57 @@ export interface FindContradictionsOptions {
   atomize?: Atomize
   /** Per-group solver timeout in ms (research-smt.md §2.3). Default 2000. */
   timeoutMs?: number
+  /**
+   * The one call through which every solver check in the enumeration loop — the
+   * group check AND each {@link minimizeCore} re-check — is made. Defaults to
+   * `solver.check(...assumptions)`.
+   *
+   * Injectable for the same reason `needs-review.ts` exposes its `GroupChecker`: an
+   * `unknown` part-way through a group's enumeration cannot be produced as a fixture
+   * by `timeoutMs` (z3 decides a small document in microseconds at `1`, so the
+   * outcome would be a race), and that is the branch AC-3-4 is about. The group is
+   * passed so a test can force `unknown` for exactly one group.
+   */
+  check?: GroupSolverCheck
+}
+
+/** A solver verdict, as `z3-solver`'s `check` returns it. */
+export type SolverStatus = 'sat' | 'unsat' | 'unknown'
+
+/** See {@link FindContradictionsOptions.check}. */
+export type GroupSolverCheck = (
+  solver: Z3Solver,
+  assumptions: readonly Z3Bool[],
+  group: ContextGroup,
+) => Promise<SolverStatus>
+
+const defaultCheck: GroupSolverCheck = (solver, assumptions) => solver.check(...assumptions)
+
+/**
+ * One planned context group, with what the enumeration loop learned about it.
+ *
+ * `outcome` is `'decided'` only when EVERY solver call made for the group — the
+ * enumeration checks and every core-minimization re-check — answered `sat` or
+ * `unsat`. A single `unknown` anywhere makes it `'unknown'`: the loop stops at an
+ * `unknown`, so a conflict after it was never looked for, and a minimization
+ * `unknown` leaves a core the solver could not prove minimal. Either way the group
+ * is not something the run may certify (AC-3-4).
+ */
+export interface CheckedContextGroup extends ContextGroup {
+  readonly outcome: 'decided' | 'unknown'
+  /**
+   * The requirements LIVE in this group ({@link liveIn}) — every one whose guard
+   * atoms the group asserts, ubiquitous requirements included — id-sorted. These are
+   * the obligations the group's check actually asserted together.
+   */
+  readonly liveIds: string[]
+}
+
+/** {@link analyzeContradictions}'s result: the findings, and every group's outcome. */
+export interface ContradictionAnalysis {
+  readonly findings: ContradictionFinding[]
+  /** One entry per planned group, in plan order. Empty when fewer than two requirements. */
+  readonly groups: CheckedContextGroup[]
 }
 
 /**
@@ -285,7 +336,17 @@ function byGuardId(a: Z3Bool, b: Z3Bool): number {
  * prevent (see the module header). `contradiction.test.ts` gates the two layers
  * separately, because a fixture that reaches one does not reach the other.
  */
-export async function minimizeCore(solver: Z3Solver, core: readonly Z3Bool[]): Promise<Z3Bool[]> {
+export async function minimizeCore(
+  solver: Z3Solver,
+  core: readonly Z3Bool[],
+  options: {
+    /** The re-check call; defaults to `solver.check(...candidate)`. */
+    readonly check?: (solver: Z3Solver, assumptions: readonly Z3Bool[]) => Promise<SolverStatus>
+    /** Told about every `unknown` re-check, so the caller can disclose it (AC-3-4). */
+    readonly onUnknown?: () => void
+  } = {},
+): Promise<Z3Bool[]> {
+  const check = options.check ?? ((s: Z3Solver, a: readonly Z3Bool[]) => s.check(...a))
   // Only core members are candidates: a guard the solver assumed but left OUT of
   // the core is not needed for THIS unsat proof, so removing it cannot make the
   // subset sat. It may well be essential to a DIFFERENT minimal core — which is
@@ -301,7 +362,8 @@ export async function minimizeCore(solver: Z3Solver, core: readonly Z3Bool[]): P
     // stop shrinking once we would go below a pair. (The caller also enforces
     // the ≥2 floor, but stopping here avoids a pointless final re-check.)
     if (candidate.length < 2) break
-    const res = await solver.check(...candidate)
+    const res = await check(solver, candidate)
+    if (res === 'unknown') options.onUnknown?.()
     if (res === 'unsat') {
       // Guard `kept[i]` was inessential; drop it and re-examine index i.
       kept.splice(i, 1)
@@ -323,8 +385,8 @@ export async function minimizeCore(solver: Z3Solver, core: readonly Z3Bool[]): P
  * across groups), or `[]` when the spec is consistent as atomized.
  *
  * A contradiction is detectable ONLY when two responses resolve to the SAME
- * atom with opposite polarity (explicit `shall not` via AC-2-4, or an antonym
- * pair via AC-4-2a). Conflicts across unrelated response atoms are a documented
+ * atom with opposite polarity (explicit `shall not` via AC-2-4), or to two
+ * atoms related by a contrary axiom (an antonym pair, AC-2-1). Conflicts across unrelated response atoms are a documented
  * false negative (sound modulo atomization, AC-4-11) — the correct failure
  * direction for a linter.
  */
@@ -332,10 +394,29 @@ export async function findContradictions(
   reqs: readonly EncodableRequirement[],
   options: FindContradictionsOptions = {},
 ): Promise<ContradictionFinding[]> {
-  if (reqs.length < 2) return []
+  return (await analyzeContradictions(reqs, options)).findings
+}
+
+/**
+ * {@link findContradictions}, plus what the solver actually decided per group.
+ *
+ * The findings alone cannot say whether their ABSENCE means anything. Two consumers
+ * need the difference: the `solver-unknown` demotion (AC-3-4), which must fire when
+ * any call in a group's enumeration returned `unknown` — the loop stops there, so a
+ * second conflict in the group is never looked for, and a separate needs-review solve
+ * that happens to finish is no evidence it was — and the participation predicate
+ * (AC-3-1), which counts a requirement as compared only when it was co-live with a
+ * peer in a group the solver DECIDED.
+ */
+export async function analyzeContradictions(
+  reqs: readonly EncodableRequirement[],
+  options: FindContradictionsOptions = {},
+): Promise<ContradictionAnalysis> {
+  if (reqs.length < 2) return { findings: [], groups: [] }
 
   const atomize = options.atomize ?? defaultAtomize
   const timeoutMs = options.timeoutMs ?? 2000
+  const check = options.check ?? defaultCheck
 
   const encoded = reqs.map((r) => encode(r, atomize))
   const ctx = await getContext('symspec-contradiction')
@@ -379,6 +460,10 @@ export async function findContradictions(
   // which one being decided by file position.
   const solverOrder = [...encoded].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   const formulaAsts = solverOrder.map((e) => materialize(ctx, e.formula))
+  // AC-2-1: the contrary axioms `¬(A ∧ B)` for every opposed pair of response atoms. Plain
+  // assertions, never assumptions, so they hold in every group and never enter a core — the core
+  // names exactly the requirements that demand the two contrary actions.
+  const axiomAsts = contraryAxioms(solverOrder).map((f) => materialize(ctx, f))
 
   // Guard assumption literals: their string form maps back to the requirement
   // id. The core returns a subset of exactly these, so id recovery needs no
@@ -391,8 +476,12 @@ export async function findContradictions(
   })
 
   const findings = new Map<string, ContradictionFinding>()
+  const groups: CheckedContextGroup[] = []
 
   for (const group of planContextGroups(encoded)) {
+    // AC-3-4: any `unknown` in this group's loop — enumeration or minimization — is
+    // recorded, never swallowed by the `break` below.
+    let sawUnknown = false
     const solver = new ctx.Solver()
     solver.set('timeout', timeoutMs)
     // AC-4-4: enable z3's own core minimization on the in-process WASM path.
@@ -405,6 +494,7 @@ export async function findContradictions(
     // each is guarded by its bridge id (an assumption literal), so a bridge only
     // takes effect when its requirement is assumed and it can appear in the core.
     for (const f of bridgeAsts) solver.add(f)
+    for (const f of axiomAsts) solver.add(f)
     for (const name of group.contextAtoms) solver.add(ctx.Bool.const(name))
 
     // A single group can host MORE THAN ONE independent conflict — two disjoint
@@ -421,9 +511,11 @@ export async function findContradictions(
     // conflict in the group.
     let assumptions = [...guardAsts]
     while (assumptions.length >= 2) {
-      const res = await solver.check(...assumptions)
+      const res = await check(solver, assumptions, group)
       // `unknown`/timeout is never "no conflict"; stop enumerating this group
-      // here (AC-4-7 upgrades a per-group inconclusive to FND_NEEDS_REVIEW).
+      // here, and RECORD it (AC-3-4): a conflict after this point was never looked
+      // for, so the run must not certify the group.
+      if (res === 'unknown') sawUnknown = true
       if (res !== 'unsat') break
 
       // The raw core is a subset of the guard assumption literals. Context atoms
@@ -433,7 +525,12 @@ export async function findContradictions(
       // shares no atom cannot ride along.
       const rawCore = [...solver.unsatCore()].filter((b) => guardByString.has(b.toString()))
       if (rawCore.length === 0) break
-      const minimal = await minimizeCore(solver, rawCore)
+      const minimal = await minimizeCore(solver, rawCore, {
+        check: (sv, a) => check(sv, a, group),
+        onUnknown: () => {
+          sawUnknown = true
+        },
+      })
       const ids = minimal
         .map((b) => guardByString.get(b.toString()))
         .filter((x): x is string => x !== undefined)
@@ -457,12 +554,21 @@ export async function findContradictions(
           severity: 'error',
           requirementIds: unique,
           message:
-            `Requirements ${unique.join(', ')} cannot all hold: their responses resolve to ` +
-            'the same atom with opposite polarity under a reachable context.',
+            `Requirements ${unique.join(', ')} cannot all hold: under a reachable context their ` +
+            'responses demand one atom at opposite polarity, or two contrary actions.',
         })
       }
     }
+
+    groups.push({
+      ...group,
+      outcome: sawUnknown ? 'unknown' : 'decided',
+      liveIds: encoded
+        .filter((e) => liveIn(group, contextAtomsOf(e)))
+        .map((e) => e.id)
+        .sort(),
+    })
   }
 
-  return [...findings.values()]
+  return { findings: [...findings.values()], groups }
 }

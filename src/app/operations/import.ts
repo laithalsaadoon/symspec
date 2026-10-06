@@ -43,6 +43,18 @@
  * not a shell. It recognizes exactly what v4 emits and reports anything
  * else as unrecognized rather than attempting it.
  *
+ * ## Side-table records pass the fences `apply` runs
+ *
+ * Every glossary, antonym, and waiver record is folded through the same `applyOp` as `apply`,
+ * under the same `MUTATE_OPTIONS` (`./mutate-options.ts`). So a record `apply` would refuse —
+ * an antonym pair closing an odd polarity cycle, a glossary alias that is a contrary of its
+ * canonical — is refused here too, reported in `problems[]` with its line, and the rest of the
+ * stream still imports. The refusal is ALSO an error-severity entry in `findings`, so the run
+ * exits 1: the contract `apply` has had since AC-1-6, where a record the caller asked for that
+ * did not land is never an exit 0. The tables land exactly as `apply` would store them,
+ * normalization included. A private fold would be a second write path with fewer fences, and a document it
+ * produced would carry records no op could have committed.
+ *
  * ## Forward references by key, and why order still does not matter
  *
  * v4 emits edge ops AFTER every `add`, so a naive in-order fold works. But
@@ -69,6 +81,7 @@
  */
 
 import { Effect, Schema } from 'effect'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import {
   type AntonymPair,
   DOC_VERSION,
@@ -85,6 +98,8 @@ import {
   VERIFICATION_METHODS,
   type Waiver,
 } from '../../domain/requirements/document.ts'
+import { applyOp, isOpFailure } from '../../domain/requirements/mutate.ts'
+import type { DocumentOp } from '../../domain/requirements/ops.ts'
 import { renderSentence } from '../../domain/requirements/render.ts'
 import { resolveId } from '../../domain/requirements/resolve.ts'
 import { DOC_PATH_CONVENTION, DocPath, DocStore } from '../../ports/doc-store.ts'
@@ -92,6 +107,7 @@ import { ErrDocExists, ErrUsage } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
 import { ok } from '../runtime/envelope.ts'
 import { defineOperation } from '../runtime/operation.ts'
+import { MUTATE_OPTIONS } from './mutate-options.ts'
 
 // ---------------------------------------------------------------------------
 // The op-record schema
@@ -173,6 +189,10 @@ const WaiveOp = Schema.Struct({
   code: Schema.String,
   reason: Schema.String,
   ref: Schema.optionalKey(Schema.String),
+  // The scoped form `apply` accepts and `check`'s repairs emit (spec 007 AC-5-6): the exact set
+  // and the hash of the text it was reviewed on.
+  refs: Schema.optionalKey(Schema.Array(Schema.String)),
+  contentHash: Schema.optionalKey(Schema.String),
 })
 
 /** Every op record kind, as one union. */
@@ -197,6 +217,20 @@ type ParsedLine =
 interface StreamProblem {
   readonly line: number
   readonly detail: string
+}
+
+/**
+ * A record a write-time fence REFUSED. Every one is also a {@link StreamProblem} on the same
+ * line; this is the subset that met a check `apply` runs, which is what drives the exit code.
+ * An unreadable line is a problem but never met a fence, so it is not one of these.
+ */
+export interface RefusedRecord {
+  readonly line: number
+  readonly op: string
+  /** The fold's own failure code (`ERR_USAGE`, …). */
+  readonly code: string
+  readonly detail: string
+  readonly suggestions: readonly string[]
 }
 
 /**
@@ -398,11 +432,13 @@ const derivedId = (op: AddOpRecord): string => {
 interface FoldState {
   readonly document: RequirementsDocument
   readonly requirements: Record<string, Requirement>
-  readonly glossary: GlossaryEntry[]
-  readonly antonyms: AntonymPair[]
-  readonly waivers: Waiver[]
+  glossary: readonly GlossaryEntry[]
+  antonyms: readonly AntonymPair[]
+  waivers: readonly Waiver[]
   readonly unresolved: { readonly op: string; readonly ref: string; readonly detail: string }[]
   readonly duplicates: string[]
+  readonly problems: StreamProblem[]
+  readonly refused: RefusedRecord[]
 }
 
 /** Add one requirement, or report a duplicate id/key rather than overwriting. */
@@ -495,58 +531,79 @@ const applyEdge = (state: FoldState, op: typeof EdgeOp.Type): void => {
   state.requirements[fromId] = { ...source, [relation]: [...source[relation], toId] }
 }
 
-/** Apply a glossary record, merging aliases into an existing canonical entry
- * rather than creating a second entry for the same phrase — v4 emits one
- * command PER ALIAS, so a naive append would produce N single-alias entries where
- * the source document had one N-alias entry. */
-const applyGlossary = (state: FoldState, op: typeof GlossaryOp.Type): void => {
-  const existing = state.glossary.find((e) => e.canonical === op.canonical)
-  if (existing === undefined) {
-    state.glossary.push({ canonical: op.canonical, aliases: [op.alias] })
+/** The document the fold has built so far — what a side-table record is applied against. */
+const snapshotOf = (state: FoldState): RequirementsDocument => ({
+  ...state.document,
+  requirements: state.requirements,
+  glossary: [...state.glossary],
+  antonyms: [...state.antonyms],
+  waivers: [...state.waivers],
+})
+
+/**
+ * Apply one side-table record through `apply`'s own `applyOp`, under `apply`'s own fences.
+ *
+ * That one call is what makes the tables land as `apply` stores them: aliases merge under an
+ * existing canonical in normalized space (v4 emits one command PER ALIAS, and N appends would
+ * give N single-alias entries), an antonym pair is unordered and stored normalized, and a
+ * repeated waiver is idempotent with the first reason kept. A refusal is a PROBLEM on the
+ * record's line rather than an aborted import, matching how an unreadable record is reported.
+ */
+const applySideTable = (
+  state: FoldState,
+  op: Extract<DocumentOp, { op: 'glossary' | 'antonym' | 'waive' }>,
+  line: number,
+  timestamp: string,
+): void => {
+  const result = applyOp(snapshotOf(state), op, timestamp, MUTATE_OPTIONS)
+  if (isOpFailure(result)) {
+    const detail = `The \`${op.op}\` record${recordScope(op)} was refused by the write-time check \`apply\` runs (${result.code}), so it was NOT imported: ${result.error}`
+    state.problems.push({ line, detail })
+    state.refused.push({
+      line,
+      op: op.op,
+      code: result.code,
+      detail,
+      suggestions: result.suggestions,
+    })
     return
   }
-  if (existing.aliases.includes(op.alias)) return
-  state.glossary[state.glossary.indexOf(existing)] = {
-    canonical: existing.canonical,
-    aliases: [...existing.aliases, op.alias],
-  }
-}
-
-/** Apply an antonym record. The pair is UNORDERED, so (a,b) and (b,a) are the same
- * entry and the second is a no-op. */
-const applyAntonym = (state: FoldState, op: typeof AntonymOp.Type): void => {
-  const present = state.antonyms.some(
-    (p) => (p.a === op.a && p.b === op.b) || (p.a === op.b && p.b === op.a),
-  )
-  if (!present) state.antonyms.push({ a: op.a, b: op.b })
+  state.glossary = result.document.glossary
+  state.antonyms = result.document.antonyms
+  state.waivers = result.document.waivers
 }
 
 /**
- * Apply a waiver record, resolving an optional requirement scope through the same
- * chokepoint so a scope written as a key lands as the UUID the schema requires.
- *
- * A scope that does not resolve drops the SCOPE, not the waiver: an unscoped
- * waiver is broader than intended but still suppresses the finding the author
- * decided to accept, whereas dropping the waiver would resurrect a
- * knowingly-accepted finding. The widening is disclosed in `unresolved[]`.
+ * A waiver record's code and its scope AS WRITTEN, for a refusal's detail: the reader of
+ * `problems[]` needs to find the line's own words, not the UUID a key resolved to.
  */
-const applyWaive = (state: FoldState, op: typeof WaiveOp.Type): void => {
-  if (op.ref === undefined) {
-    state.waivers.push({ code: op.code, reason: op.reason })
-    return
-  }
-  const snapshot: RequirementsDocument = { ...state.document, requirements: state.requirements }
-  const scoped = resolveId(snapshot, op.ref)
-  if (scoped === undefined) {
-    state.unresolved.push({
-      op: 'waive',
-      ref: op.ref,
-      detail: `The waiver scope "${op.ref}" matches no imported requirement, so the waiver for ${op.code} was imported UNSCOPED (document-wide) rather than dropped — dropping it would resurrect a finding someone reviewed and accepted.`,
-    })
-    state.waivers.push({ code: op.code, reason: op.reason })
-    return
-  }
-  state.waivers.push({ code: op.code, requirementId: scoped, reason: op.reason })
+const recordScope = (op: Extract<DocumentOp, { op: 'glossary' | 'antonym' | 'waive' }>): string => {
+  if (op.op !== 'waive') return ''
+  const scope =
+    op.refs !== undefined
+      ? ` over refs ${op.refs.join(', ')}`
+      : op.ref !== undefined
+        ? ` scoped to ${op.ref}`
+        : ' with no requirement scope'
+  return ` of ${op.code}${scope}`
+}
+
+/**
+ * Apply a waiver record through the same fold as `apply`, scope and all (spec 007 AC-5-6).
+ *
+ * The fold resolves a `ref` or `refs` written as a key or a UUID against the imported
+ * requirements, so an import stores exactly what `apply` stores: `requirementIds` plus the hash
+ * of their current text. A scope that resolves to NOTHING is refused, like every other record a
+ * fence refuses, and never widened to a document-wide waiver: a waiver by code alone is what the
+ * waivability policy refuses, so widening would smuggle one past the fence (ruling R13).
+ */
+const applyWaive = (
+  state: FoldState,
+  op: typeof WaiveOp.Type,
+  line: number,
+  timestamp: string,
+): void => {
+  applySideTable(state, op, line, timestamp)
 }
 
 /** What the fold produced. */
@@ -570,6 +627,8 @@ export interface ImportResult {
   }[]
   readonly duplicates: readonly string[]
   readonly problems: readonly StreamProblem[]
+  /** The records a write fence refused, in stream order — each is also in {@link problems}. */
+  readonly refused: readonly RefusedRecord[]
 }
 
 /**
@@ -626,6 +685,11 @@ export const foldImportStream = (
       }
       ops.push({ line: entry.line, op: parsed })
     }
+    // STREAM order. The two spellings were collected separately, and folding every record
+    // before every command would let a glossary record meet the fences before the antonym
+    // command written above it — committing a contrary alias `apply` over the same lines
+    // refuses. Problems are reported in the same order, so they read top to bottom.
+    ops.sort((x, y) => x.line - y.line)
 
     const state: FoldState = {
       document: emptyDocument(),
@@ -635,13 +699,15 @@ export const foldImportStream = (
       waivers: [],
       unresolved: [],
       duplicates: [],
+      problems,
+      refused: [],
     }
 
     // PASS 1 — every requirement, so pass 2 resolves against the complete set.
     for (const { op } of ops) if (op.op === 'add') applyAdd(state, op, timestamp)
 
     // PASS 2 — edges and side tables.
-    for (const { op } of ops) {
+    for (const { line, op } of ops) {
       switch (op.op) {
         case 'add':
           break
@@ -652,13 +718,11 @@ export const foldImportStream = (
           applyEdge(state, op)
           break
         case 'glossary':
-          applyGlossary(state, op)
-          break
         case 'antonym':
-          applyAntonym(state, op)
+          applySideTable(state, op, line, timestamp)
           break
         case 'waive':
-          applyWaive(state, op)
+          applyWaive(state, op, line, timestamp)
           break
       }
     }
@@ -666,9 +730,9 @@ export const foldImportStream = (
     const document: RequirementsDocument = {
       ...state.document,
       requirements: state.requirements,
-      glossary: state.glossary,
-      antonyms: state.antonyms,
-      waivers: state.waivers,
+      glossary: [...state.glossary],
+      antonyms: [...state.antonyms],
+      waivers: [...state.waivers],
     }
 
     let edges = 0
@@ -691,9 +755,30 @@ export const foldImportStream = (
       gaps,
       unresolved: state.unresolved,
       duplicates: state.duplicates,
-      problems,
+      problems: [...problems].sort((x, y) => x.line - y.line),
+      refused: [...state.refused].sort((x, y) => x.line - y.line),
     }
   })
+
+/** A refused record, projected as an error-severity finding — `apply`'s `RefusedOpFinding`
+ * with the stream LINE where `apply` has the batch index. */
+export interface RefusedRecordFinding {
+  readonly code: string
+  readonly severity: 'error'
+  readonly line: number
+  readonly op: string
+  readonly message: string
+  readonly suggestions: readonly string[]
+}
+
+const refusedFinding = (r: RefusedRecord): RefusedRecordFinding => ({
+  code: r.code,
+  severity: 'error',
+  line: r.line,
+  op: r.op,
+  message: `line ${r.line}: ${r.detail}`,
+  suggestions: r.suggestions,
+})
 
 // ---------------------------------------------------------------------------
 // The operation
@@ -708,19 +793,25 @@ export const foldImportStream = (
  * reason: an import that silently replaced a hand-authored document would be
  * unrecoverable, and an agent must be able to try one speculatively.
  *
- * ## It reports, it does not judge
+ * ## It reports; a fence refusal is the one thing it fails on
  *
  * The payload carries what was imported AND everything that was not: `gaps[]`
- * passed through from v4 verbatim, `unresolved[]` for edges dropped and
- * waiver scopes widened, `duplicates[]` for records that would have overwritten,
- * and `problems[]` for lines it could not read. Every one of those is a fact the
- * caller needs and none of them is a failure — an import that got 82 of 82
+ * passed through from v4 verbatim, `unresolved[]` for edges dropped (a waiver scope that
+ * resolves to nothing is refused, never widened), `duplicates[]` for records that would have overwritten,
+ * and `problems[]` for lines it could not read or records `apply`'s write-time checks
+ * refused. A disclosure is not a failure — an import that got 82 of 82
  * requirements and disclosed one un-reproducible timestamp gap SUCCEEDED, and
  * saying otherwise would train an agent to ignore the exit code.
+ *
+ * A record a write fence REFUSED is different: the caller asked for it, `apply` would have
+ * refused it too, and it is not in the document. Each one is an error-severity entry in
+ * `findings`, so the run exits 1 while still writing every record that passed — the contract
+ * `apply` has had since AC-1-6.
  */
 export const importOp = defineOperation({
   name: 'import',
-  summary: 'Import a reproduce-op stream (JSONL on stdin or --file) into a new v3 document',
+  summary:
+    'Import a reproduce-op stream (JSONL on stdin or --file) into a new v3 document; exits 1 when a write fence refuses a record, still writing the rest',
   type: 'import',
   input: Schema.Struct({
     file: Schema.withDecodingDefaultKey<Schema.optionalKey<Schema.NullOr<Schema.String>>>(
@@ -788,7 +879,7 @@ export const importOp = defineOperation({
               'Pass --dry-run to see what the import would produce without writing anything.',
               'The existing file was NOT modified.',
             ],
-            repair: { ops: [], commands: [`symspec list ${target}`] },
+            repair: { ops: [], commands: [`symspec list ${shellWord(target)}`] },
           }),
         )
       }
@@ -833,6 +924,9 @@ export const importOp = defineOperation({
         unresolved: result.unresolved,
         duplicates: result.duplicates,
         problems: result.problems,
+        // One error-severity finding per fence refusal, so the exit code is 1 exactly when a
+        // record the caller asked for is not in the written document.
+        ...(result.refused.length > 0 ? { findings: result.refused.map(refusedFinding) } : {}),
       })
     }),
 })

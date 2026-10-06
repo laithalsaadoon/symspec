@@ -69,9 +69,11 @@
 
 import { runnable } from '../../ports/command-form.ts'
 import type { Repair } from '../../ports/repair.ts'
-import type { CheckFinding, CoverageDemotion } from '../engine/pipeline/check.ts'
+import { asShellArg, shellWord } from '../engine/core/shell-word.ts'
+import type { CheckFinding, CoverageDemotion, RunDisclosure } from '../engine/pipeline/check.ts'
 import type { Exclusion } from '../engine/pipeline/gate.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
+import { waivabilityOf } from '../waivability.ts'
 
 /** The reason strings a {@link CoverageDemotion} may carry. */
 export type DemotionReason = CoverageDemotion['reason']
@@ -120,8 +122,26 @@ export interface RepairContext {
    * doubles again.
    */
   readonly timeoutMs?: number
-  /** The document path, so every command is copy-pasteable as-is. */
+  /**
+   * What the run was made of (`data.run`), so a `run-weakened` repair names the invocation
+   * that undoes the weakening actually present. Absent for a caller with no run to report.
+   */
+  readonly run?: RunDisclosure
+  /**
+   * The document path as one shell word (`shellWord`, R60), so every command is
+   * copy-pasteable as-is: a path with a space, a quote, `$` or a newline reaches the shell whole.
+   * The repair marks it with `asShellArg` (R64), which keeps a word as it is, so it is never
+   * quoted twice.
+   */
   readonly docPath: string
+  /**
+   * The content hash of the requirements a finding names, as a pair waiver binds it
+   * (`requirementsContentHash`). Threaded in so a waiver op carries the hash of the text `check`
+   * raised the finding on, and `apply` refuses it once that text has changed. Absent for a
+   * caller with no document (a direct library call, a test): the op then omits the hash and
+   * `apply` binds the text as it stands when the op is applied.
+   */
+  readonly contentHash?: (ids: readonly string[]) => string | undefined
 }
 
 /** A repair with nothing in it — the honest shape when no mechanical fix exists. */
@@ -166,6 +186,8 @@ const raisedTimeout = (current: number | undefined): number =>
  * silently repair-less demotion.
  */
 export const repairForDemotion = (demotion: CoverageDemotion, context: RepairContext): Repair => {
+  // The path its caller quoted once (R60), marked so every command below splices it as is (R64).
+  const doc = asShellArg(context.docPath)
   switch (demotion.reason) {
     // ---------------------------------------------------------------------
     // THE PLACEHOLDER JOIN — the one v4 left to the agent
@@ -178,26 +200,37 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // sentence simply did not parse. So the only repair is to look at it, which
       // `show` does. Waiving nothing would be the wrong instruction.
       if (exclusion === undefined || exclusion.reason === 'parse-failure') {
-        return { ops: [], commands: [`symspec show ${id} ${context.docPath}`] }
+        return { ops: [], commands: [`symspec show ${shellWord(id)} ${doc}`] }
       }
       // The join: the gate carried the blocking findings as evidence, so each
       // becomes a CONCRETE waive — one per code, because waiving is per-code and an
       // agent should be able to discharge them one at a time and re-check between.
-      const codes = [...new Set(exclusion.findings.map((f) => f.code))].sort()
+      // Only a `scoped`-class code (spec 007 AC-5-6): the fold refuses any other.
+      const codes = [...new Set(exclusion.findings.map((f) => f.code))]
+        .filter((code) => waivabilityOf(code) === 'scoped')
+        .sort()
+      const contentHash = context.contentHash?.([id])
       return {
         // REAL OPS (G2b). Each is a `{"op":"waive"}` record `apply` decodes, scoped
-        // to the excluded requirement so it suppresses that finding THERE rather
-        // than document-wide. The reason carries a PLACEHOLDER an agent must replace
+        // to EXACTLY the excluded requirement and bound to its current text (`refs` plus
+        // the content hash), so it suppresses that finding THERE and only while the
+        // reviewed text stands. The reason carries a PLACEHOLDER an agent must replace
         // — deliberately, because a waiver's whole value is its audit trail and
         // synthesizing a justification would be the tool lying on the author's
         // behalf. An agent that applies these unedited commits a visible
         // `<why this finding does not apply>`, which is the honest failure mode.
+        //
+        // Applied, the waiver re-admits the requirement to the solver and the run demotes
+        // `waived-blocking-lint` in its place (G3): a comparison over wording a reviewer
+        // accepted rather than fixed never certifies, so this op trades one demotion for
+        // another and the rephrase is the only discharge that can reach `verified: true`.
         ops: codes.map(
           (code) =>
             ({
               op: 'waive',
               code,
-              ref: id,
+              refs: [id],
+              ...(contentHash !== undefined ? { contentHash } : {}),
               reason: 'reviewed: <why this finding does not apply>',
             }) satisfies DocumentOp,
         ),
@@ -205,8 +238,8 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
           // Look FIRST: the honest primary repair is to fix the sentence, and an
           // agent cannot rewrite what it has not read. A waiver is the fallback, not
           // the recommendation — which is why the read leads and the ops are second.
-          `symspec show ${id} ${context.docPath}`,
-          `symspec check ${context.docPath}`,
+          `symspec show ${shellWord(id)} ${doc}`,
+          `symspec check ${doc}`,
         ],
       }
     }
@@ -220,24 +253,51 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // finding, not a guess.
       return fromFindingMessage(demotion, context, 'FND_OPPOSITION_CANDIDATE')
 
+    case 'opposite-polarity-near-duplicate':
+      // The FND_SIMILAR_SEMANTIC message carries the exact `glossary add` merge; the commands
+      // carry it first. No op: the candidate is triage, never waivable (spec 007 AC-5-6).
+      return fromFindingMessage(demotion, context, 'FND_SIMILAR_SEMANTIC')
+
     case 'quantity-alias-candidate':
       return fromFindingMessage(demotion, context, 'FND_QUANTITY_ALIAS_CANDIDATE')
 
     case 'relational-reasoning-not-attempted':
       // Aggregate/cross-quantity reasoning was NOT ATTEMPTED — there is no command
-      // that attempts it. The only mechanical discharge is a reviewed waiver, which
-      // is legitimate here (unlike for a coverage FACT) because the author can
-      // genuinely hand-verify the aggregate. So: waive, with the reason slot left
-      // for the agent to fill from its own verification.
+      // that attempts it, and FND_RELATIONAL_UNCHECKED is a disclosure, which no waiver
+      // discharges (decision D1, spec 007 AC-5-6): a waiver on "not compared" is a claim
+      // the tool cannot check. NO OPS. The discharge is restating the constraint in a form
+      // the solver compares, which needs the requirements read first.
       return {
-        ops: [
-          {
-            op: 'waive',
-            code: 'FND_RELATIONAL_UNCHECKED',
-            reason: 'hand-verified: <the aggregate/relational constraint you checked>',
-          } satisfies DocumentOp,
+        ops: [],
+        commands: [
+          ...demotion.requirementIds.map((id) => `symspec show ${shellWord(id)} ${doc}`),
+          `symspec check ${doc}`,
         ],
-        commands: [`symspec check ${context.docPath}`],
+      }
+
+    case 'numeric-bounds-uncompared':
+      // The numeric tier declined to decide: the verdict depends on a reading (role,
+      // temperature sense, unit) the sentences do not fix. No command decides it for the
+      // author, and the disclosure is never waivable (D1). NO OPS: the repair is to restate
+      // the bounds in one sense and one unit, which needs the requirements read first.
+      return {
+        ops: [],
+        commands: [
+          ...demotion.requirementIds.map((id) => `symspec show ${shellWord(id)} ${doc}`),
+          `symspec check ${doc}`,
+        ],
+      }
+
+    case 'number-spelling-candidate':
+      // Whether two separator spellings are one number is the author's decimal convention; no
+      // command decides it, and a triage candidate is never waivable. NO OPS: the repair is to
+      // spell the numbers in one convention, which needs the requirements read first.
+      return {
+        ops: [],
+        commands: [
+          ...demotion.requirementIds.map((id) => `symspec show ${shellWord(id)} ${doc}`),
+          `symspec check ${doc}`,
+        ],
       }
 
     // ---------------------------------------------------------------------
@@ -247,11 +307,12 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          `symspec check ${context.docPath} --solver-budget-ms ${raisedBudget(context.solverBudgetMs, context.recommendedBudgetMs)}`,
+          `symspec check ${doc} --solver-budget-ms ${raisedBudget(context.solverBudgetMs, context.recommendedBudgetMs)}`,
         ],
       }
 
     case 'inconclusive-group':
+    case 'solver-unknown':
       // The solver said `unknown` for this group. NO OPS, and that is the honest
       // shape: no document edit decides an undecidable group, and a waiver of the
       // raising FND_NEEDS_REVIEW would hide the disclosure while leaving the group
@@ -260,8 +321,21 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // `solver-budget-exhausted`'s `--solver-budget-ms`.
       return {
         ops: [],
+        commands: [`symspec check ${doc} --timeout-ms ${raisedTimeout(context.timeoutMs)}`],
+      }
+
+    case 'run-weakened':
+      // The run itself was weakened: the semantic tier ran on the TEST stub (AC-3-5), or
+      // above the default --semantic-threshold (I-1). NO OPS: the document is not at fault.
+      // The repair is the plain invocation, which carries no threshold flag, with the stub
+      // switch off for that one command when the stub ran (the Layer enables the stub only on
+      // exactly `1`), so it loads the pinned model. One command discharges both causes.
+      return {
+        ops: [],
         commands: [
-          `symspec check ${context.docPath} --timeout-ms ${raisedTimeout(context.timeoutMs)}`,
+          context.run === undefined || context.run.embedder === 'stub'
+            ? `SYMSPEC_EMBED_STUB=0 symspec check ${doc}`
+            : `symspec check ${doc}`,
         ],
       }
 
@@ -274,17 +348,44 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          `symspec check ${context.docPath} --semantic`,
-          `SYMSPEC_EMBED_ALLOW_REMOTE=1 symspec check ${context.docPath}`,
+          `symspec check ${doc} --semantic`,
+          `SYMSPEC_EMBED_ALLOW_REMOTE=1 symspec check ${doc}`,
+        ],
+      }
+
+    case 'contrary-glossary-alias':
+      // A glossary entry names two contraries as one action. NO OPS: which alias to remove —
+      // which of the two actions the author meant — is a judgment no run can make. The action
+      // prose names the exact `glossary --remove` for each side; the commands are the reads.
+      return {
+        ops: [],
+        commands: [
+          ...demotion.requirementIds.map((id) => `symspec show ${shellWord(id)} ${doc}`),
+          `symspec check ${doc}`,
+        ],
+      }
+
+    case 'conditional-conflict-unchecked':
+      // Two requirements demand opposite things of one response under guards the solver
+      // never asserted together. NO OPS: whether the guards can co-occur is a fact about
+      // the domain, and any edit that resolves it (or declares them exclusive) changes what
+      // a requirement MEANS — a judgment no run can make. The commands are the reads an
+      // agent needs to make it: both requirements, then the re-check.
+      return {
+        ops: [],
+        commands: [
+          ...demotion.requirementIds.map((id) => `symspec show ${shellWord(id)} ${doc}`),
+          `symspec check ${doc}`,
         ],
       }
 
     case 'no-decide-tier-comparison':
-      // No two requirements shared an atom. The mechanical lever is a glossary or
-      // antonym link — but WHICH terms to link is a judgment about the document's
-      // meaning that no run can make. So the command is the inspection that lets an
-      // agent decide, not a fabricated link.
-      return { ops: [], commands: [`symspec list ${context.docPath}`] }
+      // No pair was compared: usually no two requirements shared an atom, else the pair
+      // was an exact duplicate or its guards were never asserted together (the action
+      // says which). The levers — a glossary or antonym link, deleting a copy, a rewrite —
+      // are judgments about the document's meaning that no run can make. So the command
+      // is the inspection that lets an agent decide, not a fabricated edit.
+      return { ops: [], commands: [`symspec list ${doc}`] }
 
     // ---------------------------------------------------------------------
     // The reason whose repair is INPUT, not an edit
@@ -308,9 +409,9 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          `symspec show ${id} ${context.docPath}`,
-          `symspec list ${context.docPath}`,
-          `symspec check ${context.docPath}`,
+          `symspec show ${shellWord(id)} ${doc}`,
+          `symspec list ${doc}`,
+          `symspec check ${doc}`,
         ],
       }
     }
@@ -326,7 +427,7 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
  * READ from the finding, never reconstructed — which means it cannot drift from what
  * the finding says, and a future change to the wording propagates for free.
  *
- * ## The ONE reason this reason's `ops` are only the WAIVER
+ * ## Why these reasons carry NO ops
  *
  * An opposition candidate's message deliberately offers TWO mutually-exclusive
  * remedies — an `antonym` link if the verbs are opposites, a `glossary` link if they
@@ -337,45 +438,56 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
  * catastrophic in one direction, and emitting one would be the tool picking — which is
  * exactly the propose/decide violation the architecture forbids. The commands carry
  * both, in the order the finding recommends trying them, for a reviewer to choose
- * from; the OP is the third, always-safe discharge: a reviewed WAIVER, which records
- * "I triaged this and it is not a conflict" without asserting anything about the
- * vocabulary.
+ * from. Before spec 007 AC-5-6 the op was a reviewed waiver of the candidate; every code
+ * raising these demotions is `triage` class, which is never waivable, so the fold now refuses
+ * that op and the repair offers none. A pair that is not a conflict is reworded.
  *
- * That is the honest shape: mechanically applicable where the choice is safe, prose
- * where a human or agent has to decide.
+ * That is the honest shape: nothing is applied blind where a human or agent has to decide.
  */
+/**
+ * The finding of `code` that raised `demotion`: the one naming exactly its ids, else one
+ * sharing an id. One that merely shares an id belongs to another pair, so the exact match wins.
+ */
+const raisingFinding = (
+  demotion: CoverageDemotion,
+  sameCode: readonly CheckFinding[],
+): CheckFinding | undefined => {
+  const ids = new Set(demotion.requirementIds)
+  return (
+    sameCode.find(
+      (f) => f.requirementIds.length === ids.size && f.requirementIds.every((id) => ids.has(id)),
+    ) ?? sameCode.find((f) => f.requirementIds.some((id) => ids.has(id)))
+  )
+}
+
 const fromFindingMessage = (
   demotion: CoverageDemotion,
   context: RepairContext,
   code: string,
 ): Repair => {
-  const ids = new Set(demotion.requirementIds)
-  const finding = context.findings.find(
-    (f) => f.code === code && f.requirementIds.some((id) => ids.has(id)),
-  )
+  const sameCode = context.findings.filter((f) => f.code === code)
+  // The finding that raised THIS demotion names exactly its ids; one that merely shares an
+  // id belongs to another pair, and reading its message would hand out the wrong merge.
+  const finding = raisingFinding(demotion, sameCode)
   if (finding === undefined) return NO_REPAIR
 
-  // The always-safe discharge, as a real op. Scoped to the requirements the candidate
-  // names when there is exactly one, document-wide otherwise — a waiver scoped to the
-  // wrong requirement would suppress nothing.
-  const scoped = demotion.requirementIds.length === 1 ? demotion.requirementIds[0] : undefined
-  const waive: DocumentOp = {
-    op: 'waive',
-    code,
-    reason: 'triaged: <why this candidate is not a conflict>',
-    ...(scoped !== undefined ? { ref: scoped } : {}),
-  }
-
-  const advice = extractSymspecCommands(finding.message)
+  // NO OPS. Every code that raises one of these demotions is a triage candidate, and a triage
+  // candidate is never waivable (spec 007 AC-5-6): it is discharged by committing the table
+  // entry it proposes, or by rewording, and either changes what the solver decides. Which entry
+  // is right is the propose/decide judgment no run can make, so the commands carry the
+  // finding's own alternatives for a reviewer to choose from, and nothing is applied for them.
+  //
+  // A `symspec waive` a message spells is dropped from the commands for the same reason.
+  const advice = extractSymspecCommands(finding.message).filter(
+    (command) => !command.startsWith('symspec waive'),
+  )
   return {
-    ops: [waive],
+    ops: [],
     commands: [
-      // The finding's own two alternatives FIRST, because deciding the vocabulary is
-      // the better outcome — a committed glossary or antonym link lets the solver
-      // PROVE or dismiss the conflict, where a waiver only records that someone
-      // looked. The waiver op is the fallback for when neither applies.
+      // The finding's own alternatives FIRST, in the order its reasoning recommends: a
+      // committed glossary or antonym link lets the solver PROVE or dismiss the conflict.
       ...advice,
-      `symspec check ${context.docPath}`,
+      `symspec check ${asShellArg(context.docPath)}`,
     ],
   }
 }

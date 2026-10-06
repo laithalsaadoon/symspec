@@ -1,0 +1,154 @@
+{
+  "base": "0fca0433eb82",
+  "contract_commit": "d6a5f3a",
+  "contract_first_commit": "0a949b4",
+  "note": "d6a5f3a amended the README RH-009 guard after 0a949b4; run on d6a5f3a with a clean tree, pnpm build then vitest run once. src/ product files touched by base..contract: none (only test files and .erpaval).",
+  "src_product_files_touched": [],
+  "new": [
+    {
+      "id": "RH-003",
+      "test": "release hardening — a git refusal and the v4 anchors, through the real process [RH-003] with no config anywhere, a git refusal runs exactly as no repository and discloses the refusal",
+      "file": "src/cli.test.ts",
+      "status": "red",
+      "failure": "AssertionError: `git rev-parse --show-toplevel` failed in /tmp/symspec-rh-GDQHhX (exit 128): fatal: detected dubious ownership in repository at '/tmp/symspec-rh-GDQHhX'"
+    },
+    {
+      "id": "RH-003",
+      "test": "release hardening — a git refusal and the v4 anchors, through the real process [RH-003] the no-config refusal run is the no-git run for a document in a subdirectory too",
+      "file": "src/cli.test.ts",
+      "status": "red",
+      "failure": "AssertionError: `git rev-parse --show-toplevel` failed in /tmp/symspec-rh-a76iHB/specs/door (exit 128): fatal: detected dubious ownership in repository at '/tmp/symspec-rh-a76iHB/specs/door'"
+    },
+    {
+      "id": "RH-008",
+      "test": "release hardening — a git refusal and the v4 anchors, through the real process [RH-008] init --split says in its help, its manifest entry and its result that nothing reads the anchors yet",
+      "file": "src/cli.test.ts",
+      "status": "red",
+      "failure": "AssertionError: V4_EXPERIMENTAL_STATEMENT is exported as a string: expected 'undefined' to be 'string' // Object.is equality"
+    },
+    {
+      "id": "RH-001",
+      "test": "the package is publishable [RH-001] names the repository the next publish is built from: laithalsaadoon/symspec",
+      "file": "src/publish.test.ts",
+      "status": "red",
+      "failure": "AssertionError: expected 'git+https://github.com/theagenticguy/…' to be 'git+https://github.com/laithalsaadoon…' // Object.is equality"
+    },
+    {
+      "id": "RH-002",
+      "test": "[RH-002] no live reference names the renamed GitHub account [RH-002] package.json, README.md, RELEASING.md, AGENTS.md and src/ never say theagenticguy",
+      "file": "src/publish.test.ts",
+      "status": "red",
+      "failure": "AssertionError: expected [ 'package.json', 'README.md', …(1) ] to deeply equal []"
+    },
+    {
+      "id": "RH-002",
+      "test": "[RH-002] no live reference names the renamed GitHub account [RH-002] the install, clone and trusted-publisher commands name laithalsaadoon/symspec",
+      "file": "src/publish.test.ts",
+      "status": "red",
+      "failure": "AssertionError: expected '# symspec\\n\\n[![License: Apache 2.0](…' to contain 'pnpm add -g --allow-build=\\'symspec@g…'"
+    },
+    {
+      "id": "RH-009",
+      "test": "[RH-009] the README claims no v4 enforcement this build does not perform [RH-009] the unqualified enforcement claims are absent",
+      "file": "src/publish.test.ts",
+      "status": "red",
+      "failure": "AssertionError: the intent and policy files it names under code-owner review: expected '# symspec [![License: Apache 2.0](htt…' not to contain 'the intent and policy files it names …'"
+    },
+    {
+      "id": "RH-009",
+      "test": "[RH-009] the README claims no v4 enforcement this build does not perform [RH-009] every README paragraph about v4, intent.json, policy.json or init --split carries the statement",
+      "file": "src/publish.test.ts",
+      "status": "red",
+      "failure": "AssertionError: V4_EXPERIMENTAL_STATEMENT is exported as a string: expected 'undefined' to be 'string' // Object.is equality"
+    },
+    {
+      "id": "RH-009",
+      "test": "[RH-009] AGENTS.md labels the v4 anchors experimental and claims no enforcement [RH-009] every paragraph about init --split, intent.json, policy.json or format v4 carries the statement",
+      "file": "src/app/runtime/agents-doc.test.ts",
+      "status": "red",
+      "failure": "AssertionError: V4_EXPERIMENTAL_STATEMENT is exported as a string: expected 'undefined' to be 'string' // Object.is equality"
+    },
+    {
+      "id": "RH-009",
+      "test": "[RH-009] AGENTS.md labels the v4 anchors experimental and claims no enforcement [RH-009] the unqualified enforcement claims are absent",
+      "file": "src/app/runtime/agents-doc.test.ts",
+      "status": "red",
+      "failure": "AssertionError: the intent and policy files it names under code-owner review: expected '<!-- GENERATED FILE — do not edit by …' not to contain 'the intent and policy files it names …'"
+    },
+    {
+      "id": "RH-009",
+      "test": "[RH-009] AGENTS.md labels the v4 anchors experimental and claims no enforcement [RH-009] the config`s pins are not labelled experimental",
+      "file": "src/app/runtime/agents-doc.test.ts",
+      "status": "red",
+      "failure": "AssertionError: V4_EXPERIMENTAL_STATEMENT is exported as a string: expected 'undefined' to be 'string' // Object.is equality"
+    },
+    {
+      "id": "RH-009",
+      "test": "the scope corpus is pinned, claim by claim [RH-009] the pinned-config claim puts the config, and nothing no tier reads, under code-owner review",
+      "file": "src/app/runtime/scope.test.ts",
+      "status": "red",
+      "failure": "AssertionError: pinnedConfig was reworded: expected 'The pinned run configuration is a gat…' to be 'The pinned run configuration is a gat…' // Object.is equality"
+    },
+    {
+      "id": "RH-007",
+      "test": "[RH-007] the v4 schema says what this build does with the v4 keys [RH-007] one exported constant states that v4 is experimental and read by no check tier",
+      "file": "src/domain/requirements/document.test.ts",
+      "status": "red",
+      "failure": "AssertionError: V4_EXPERIMENTAL_STATEMENT is exported as a string: expected 'undefined' to be 'string' // Object.is equality"
+    },
+    {
+      "id": "RH-007",
+      "test": "[RH-007] the v4 schema says what this build does with the v4 keys [RH-007] the vocabulary, intent and policy keys and the intentRef and derived fields interpolate it",
+      "file": "src/domain/requirements/document.test.ts",
+      "status": "red",
+      "failure": "AssertionError: V4_EXPERIMENTAL_STATEMENT is exported as a string: expected 'undefined' to be 'string' // Object.is equality"
+    },
+    {
+      "id": "RH-007",
+      "test": "[RH-007] the v4 schema says what this build does with the v4 keys [RH-007] states neither unqualified enforcement claim anywhere in the document schema",
+      "file": "src/domain/requirements/document.test.ts",
+      "status": "red",
+      "failure": "AssertionError: Every requirement names one intent item, or is marked: expected '{\"dialect\":\"draft-2020-12\",\"schema\":{…' not to contain 'Every requirement names one intent it…'"
+    }
+  ],
+  "existing_pinned": [
+    {
+      "id": "RH-004",
+      "test": "release hardening — a git refusal and the v4 anchors, through the real process [RH-004] a git refusal with a config beside the document fails closed, naming the refusal",
+      "file": "src/cli.test.ts",
+      "status": "green"
+    },
+    {
+      "id": "RH-004",
+      "test": "release hardening — a git refusal and the v4 anchors, through the real process [RH-004] a git refusal with a config in an ANCESTOR fails closed, and never loads that config",
+      "file": "src/cli.test.ts",
+      "status": "green"
+    },
+    {
+      "id": "RH-005",
+      "test": "release hardening — a git refusal and the v4 anchors, through the real process [RH-005] the bare-repository refusal stays ERR_CONFIG_INVALID even with no config anywhere",
+      "file": "src/cli.test.ts",
+      "status": "green"
+    },
+    {
+      "id": "RH-006",
+      "test": "release hardening — a git refusal and the v4 anchors, through the real process [RH-006] --config and SYMSPEC_CONFIG under a git refusal behave as they do today",
+      "file": "src/cli.test.ts",
+      "status": "green"
+    }
+  ],
+  "earlier": {
+    "passed": 3257,
+    "failed": 0,
+    "files": 108
+  },
+  "totals": {
+    "tests": 3276,
+    "passed": 3261,
+    "failed": 15,
+    "files": 108,
+    "files_failed": 5
+  },
+  "broken": [],
+  "verdict": "clean"
+}

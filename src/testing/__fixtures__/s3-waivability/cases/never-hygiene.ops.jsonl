@@ -1,0 +1,3 @@
+# A waiver of the exclusion disclosure itself (FND_EXCLUDED_FROM_FORMAL, hygiene), scoped by ref and by refs+hash.
+{"op":"waive","code":"FND_EXCLUDED_FROM_FORMAL","reason":"ORD-R1 is reviewed by hand","ref":"ORD-R1"}
+{"op":"waive","code":"FND_EXCLUDED_FROM_FORMAL","reason":"ORD-R2 is reviewed by hand","refs":["ORD-R2"],"contentHash":"sha256:447120f0804d769c9c5e1c0b473058543e1cc9dcbf30776a0d6f16b5956067e3"}

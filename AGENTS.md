@@ -20,7 +20,7 @@ symspec install                            # drop this guidance into your agent 
 ```
 
 `manifest` is the machine-readable version of this document. `explain` answers for a
-single code across all 83 of them (21 `ERR_*`, 38 `FND_*`, 24 `GTWR_*`) and returns
+single code across all 90 of them (24 `ERR_*`, 42 `FND_*`, 24 `GTWR_*`) and returns
 its family, severity, tier, meaning, remedy, and a worked example where the catalog carries
 one — so a fix loop never pays for the whole contract to learn what one code means.
 
@@ -68,18 +68,57 @@ Failure:
   from the work THIS run completed and the time it took. Absent on an unbounded run and on a
   run with comfortable headroom — the absence is the all-clear.
 
+### Pinned runs
+
+A committed `symspec.config.json` pins the run settings the gate uses.
+
+Resolution precedence, in order: --config, then the SYMSPEC_CONFIG environment variable, then symspec.config.json at the toplevel `git rev-parse --show-toplevel` prints in the document's directory (symlinks resolved first), or in the document's own directory when git names no repository there. Nothing else is searched, and data.run.config names the path and which of these chose it.
+
+A config dropped beside the document inside a repository is not read, and git is asked with
+`safe.bareRepository=explicit`, so a document that resolves into a committed directory laid out
+as a bare repository fails closed as `ERR_CONFIG_INVALID`. Any other git refusal (unsafe
+ownership, an unreadable `.git`) fails closed too, unless no config is named and no
+`symspec.config.json` exists in the document's directory or any ancestor: then no config could
+govern the run, so it runs as with no repository and `data.run.config` adds `gitRefusal`, the
+first line of git's refusal. `data.run.config` is
+`{path, source}`, where `source` is `toplevel`, `directory`, `flag` or `env`. The pins are
+authoritative in a CI job on a fresh clone that asserts `source` is `toplevel` and `path` is its
+checkout's config. A local agent that can write `.git/`, pass `--config` or set
+`SYMSPEC_CONFIG` can change what a local run reads, and that run discloses it there.
+
+`symspec init --split` writes one pinning every knob at its default, beside skeleton intent
+and policy files, and never overwrites any of the three. The intent and policy files:
+Experimental in this release: decoded and preserved on save, read by no check tier yet; its shape may change in a minor release.
+
+A `check` below a pin is demoted
+`run-weakened` once per knob and listed in `data.run.belowPinned` next to
+`data.run.pinned`; every such demotion carries the one command that runs at all the pins,
+built from the pins rather than the run's flags, so running it leaves `belowPinned` empty. The
+comparison reads the value each tier actually ran at:
+
+| Knob | Set by | Order |
+|---|---|---|
+| `semantic` | `--semantic` | false is weaker than true (the semantic tier did not run). |
+| `embedder` | `SYMSPEC_EMBED_STUB` | no embedder is weaker than the TEST stub, which is weaker than the pinned model. |
+| `semanticThreshold` | `--semantic-threshold` | higher is weaker (the paraphrase pass proposes less). |
+| `timeoutMs` | `--timeout-ms` | lower is weaker; the minimum legal value is 1. |
+| `reachabilityTimeoutMs` | `--reachability-timeout-ms` | lower is weaker, compared on the resolved bound (0 inherits --timeout-ms). |
+| `solverBudgetMs` | `--solver-budget-ms` | 0 (unbounded) is strongest; otherwise lower is weaker. |
+| `temporalBound` | `--temporal-bound` | 0 (off) is weakest; otherwise lower is weaker. |
+| `strict` | `--strict` | false is weaker than true (the strict gate did not run). |
+
 ## Operations
 
 | Operation | What it does |
 |---|---|
 | `symspec init` | Create an empty requirements document at the resolved path |
-| `symspec import` | Import a reproduce-op stream (JSONL on stdin or --file) into a new v3 document |
+| `symspec import` | Import a reproduce-op stream (JSONL on stdin or --file) into a new v3 document; exits 1 when a write fence refuses a record, still writing the rest |
 | `symspec parse` | Parse prose into structured EARS requirements and emit the ready-to-apply add ops |
 | `symspec add` | Add one requirement from EARS slots, or from a parsed line of prose |
 | `symspec update` | Set or clear one attribute on one requirement, or on every requirement matching a filter |
 | `symspec link` | Add or remove one typed edge between two requirements |
 | `symspec delete` | Delete one requirement, leaving any inbound edges as dangling references |
-| `symspec waive` | Commit or remove a reviewed finding waiver, optionally scoped to one requirement |
+| `symspec waive` | Commit or remove a reviewed finding waiver, scoped to the requirement it names |
 | `symspec propose-glossary` | Propose a whole-document glossary in one pass — the PROPOSE half of the semantic tier, at document scale |
 | `symspec glossary` | Commit or remove a synonym alias — the DECIDE half of the semantic tier |
 | `symspec antonym` | Commit or remove a polar-opposite verb pair — the opposition twin of the glossary |
@@ -175,21 +214,23 @@ when NOTHING was cross-compared at all.
    only those. Paraphrase is the enemy here, not repetition — a spec that reads
    repetitively is a spec whose conflicts are provable.
 4. **Commit oppositions you rely on.** If the conflict you care about is
-   "start" vs "halt", run `symspec antonym add start halt` so the atomizer collapses
-   them to one atom at opposite polarity. Until you do, the solver sees two unrelated
-   facts and proves nothing.
+   "start" vs "halt", run `symspec antonym start halt` so the solver treats them
+   as contraries — two actions that cannot both hold. Until you do, the solver sees two
+   unrelated facts and proves nothing.
 5. **Commit synonyms you could not avoid.** Where two teams genuinely use different
-   words for one thing, `symspec glossary add "<canonical>" "<alias>"` unifies them.
+   words for one thing, `symspec glossary "<canonical>" "<alias>"` unifies them.
 6. **Only then `check`.** The propose-only tier will suggest what you missed
    (`FND_SIMILAR_SEMANTIC`, `FND_OPPOSITION_CANDIDATE`,
    `FND_QUANTITY_ALIAS_CANDIDATE`) — treat each as a gap in step 3, not as a chore.
 
 **The one thing never to do mechanically.** An `FND_OPPOSITION_CANDIDATE` offers TWO
-mutually exclusive remedies: `antonym add` if the verbs are opposites,
-`glossary add` if they are synonyms. Committing the wrong one MANUFACTURES a false
+mutually exclusive remedies: `symspec antonym` if the verbs are opposites,
+`symspec glossary` if they are synonyms. Committing the wrong one MANUFACTURES a false
 contradiction, and embeddings cannot tell which is right because antonyms embed close
-together. Read the pair and decide; the always-safe third option is a reviewed waiver
-that records "I triaged this and it is not a conflict".
+together. Read the pair and decide. If the two do not conflict, reword one so they no
+longer read as opposite responses to one trigger: a candidate is triage, and only an edit
+that lets the solver decide the pair discharges it. Nothing accepts the pair as written,
+so there is no third option to apply blind.
 
 ## Decomposition: when to split, and which edge to use
 
@@ -367,8 +408,8 @@ field rather than assuming a code's severity from its name.
 
 ## A worked example: the silent contradiction, and the loop that finds it
 
-Measured on this build. The point of the example is that **step 1 looks
-perfect and is wrong.**
+Measured on this build, with the pinned embedding model. The point of the example
+is that **step 1 exits 0 and is wrong.**
 
 **Step 1 — author two requirements that contradict each other.**
 
@@ -385,15 +426,31 @@ symspec check
 Result:
 
 ```
-verified: true    findings: 0    counts.error: 0    exit 0
-pairsChecked: 1   progress.atomsUncompared: 2
+counts.error: 0    counts.warn: 0    counts.info: 3    exit 0
+verified: false    progress.demotions: 1    progress.atomsUncompared: 2
+pairsChecked: 1
 ```
 
 The document says the scheduler shall both start and halt the same run on the same
-trigger, and `check` is **clean**. Nothing is broken — this is the soundness boundary
-working as designed. "start" and "halt" are two unrelated atoms, so the solver had
-nothing to contradict. The only signal is `atomsUncompared: 2`: two atoms had no
-cross-requirement partner.
+trigger, and `check` exits **0** with no error. Nothing is broken — this is the soundness
+boundary working as designed. "start" and "halt" are two unrelated atoms, so the solver had
+nothing to contradict, and `atomsUncompared: 2` says two atoms had no cross-requirement
+partner.
+
+What keeps it from being silent is the propose tier, and all three info findings are worth
+reading:
+
+- `FND_OPPOSITION_CANDIDATE` — the two responses share an object and differ in their
+  leading verb, so they may be opposites. The open candidate is the one demotion, which is why
+  `verified` is false and `check --strict` exits 3.
+- `FND_SIMILAR_SEMANTIC` — the model scores the responses at cosine 0.813, above the
+  0.72 threshold. Similarity alone cannot tell a paraphrase from an opposite, which is the point.
+- `FND_REACHABILITY_NOT_CHECKED` — no state model is committed, so the reachability tier
+  did not run. It says nothing about these two sentences.
+
+The demotion's `repair.commands` hand back BOTH readings, `symspec antonym start halt` and
+`symspec glossary "start the nightly run" "halt the nightly run"`, and do not choose. An agent
+that branches only on the exit code stops here and ships the contradiction.
 
 **Step 2 — commit the opposition, so the solver can SEE it.**
 
@@ -405,19 +462,21 @@ symspec check
 Result:
 
 ```
-verified: true    findings: 1    counts.error: 1    exit 1
+counts.error: 1    counts.info: 1    exit 1
+verified: true    progress.demotions: 0    progress.atomsUncompared: 0    progress.openFindings: 1
 FND_CONTRADICTION (error) — names BOTH requirement ids, with the unsat core as evidence
-progress.atomsUncompared: 0    progress.openFindings: 1
 ```
 
 **What changed, and what did not.** The document is byte-identical apart from one
 antonym entry. No requirement was edited. The conflict was always there; committing the
 vocabulary is what made it PROVABLE. `atomsUncompared` fell from 2 to 0 because the
-two responses now collapse to one atom at opposite polarity.
+two responses are now contraries, so the solver compares them, and the opposition candidate
+is gone because the pair is decided.
 
-**Read `verified` correctly.** It is `true` in BOTH runs, and that is not a bug —
-`verified` answers "was consistency actually CHECKED", not "is the document clean". A
-proven contradiction is the strongest evidence the decide tier ran. What says the
+**Read `verified` correctly.** It went from `false` to `true` while the document went
+from exit 0 to exit 1, and that is not a bug — `verified` answers "was consistency actually
+CHECKED", not "is the document clean". It was false while an opposition candidate was open,
+and a proven contradiction is the strongest evidence the decide tier ran. What says the
 document is bad is `counts.error` and the exit code, which went 0 → 1.
 
 **The loop, generalized.**
@@ -543,19 +602,24 @@ whose `alarm` variable is written by NO requirement, the framed run returns UNRE
 back a certificate for it. A frame-by-default tool would therefore certify fictions, so
 `volatile` is the default and the safe direction is the one that proves less.
 
-What that means in practice is the verdict you will actually see most often:
+What that means in practice — the three verdicts a multi-variable model actually produces:
 
 - **`FND_REACHABILITY_PROVED`** — proved with nothing assumed. Frame-closed, and the
   strongest thing the tier says. Realistically a property of single-variable models.
-- **`FND_REACHABILITY_UNDER_HYPOTHESES`** — proved only once the unwritten variables are
-  held fixed. The message NAMES the variables relied upon together with the requirements
-  that write them, says **THE DOCUMENT DOES NOT STATE THAT**, and DEMOTES `verified`. With
+- **`FND_REACHABILITY_UNDER_HYPOTHESES`** — proved once the variables YOU declared
+  `stable` are held fixed. The message NAMES them together with the requirements that
+  write them, says no requirement establishes the hypothesis, and DEMOTES `verified`. With
   more than one state variable this is the honest common outcome, not a failure.
+- **`FND_REACHABILITY_UNKNOWN`, reason `frame-undeclared`** — the same proof when the
+  variables it needs held are left `volatile`: it holds only if they stay put, and
+  **THE DOCUMENT DOES NOT STATE THAT**. Its repair is the `state` ops that declare them
+  `stable`, and applying them moves the verdict to PROVED_UNDER_HYPOTHESES. Releasing the
+  frame again moves it back. Both demote.
 
-So do not chase `PROVED`. Declaring everything `stable` does not upgrade the verdict —
-it TIGHTENS the disclosed hypothesis, because the tier re-runs with your declared set and
-names exactly what you wrote down instead of all N variables. The discharge is to author the
-requirements that justify the assumption, which is spec work rather than a flag.
+So do not chase `PROVED`. Declaring a variable `stable` does not upgrade a verdict to
+proven — it STATES a hypothesis, which the tier then names instead of leaving the question
+open. The discharge is to author the requirements that justify the assumption, which is spec
+work rather than a flag.
 
 ### The worked example: the real TX-C1, proved and then broken
 
@@ -565,15 +629,16 @@ Measured on the built CLI, on the hex-bonk `agent-run-triggers` production requi
 > lock keyed on the conversation id so they execute sequentially.
 
 That is a mutual-exclusion invariant. Two variables and three effects express the lock's
-lifecycle.
+lifecycle, and both variables are declared `stable`: the lock count and the waiting flag
+change only when a requirement changes them.
 
 **Step 1 — declare, classify, and PROVE.**
 
 ```bash
 symspec init ./requirements.json
 cat > plan.jsonl <<'OPS'
-{"op":"state","name":"held","type":"int","min":0,"max":3,"initial":"held = 0"}
-{"op":"state","name":"queued","type":"bool","initial":"queued = false"}
+{"op":"state","name":"held","type":"int","min":0,"max":3,"initial":"held = 0","frame":"stable"}
+{"op":"state","name":"queued","type":"bool","initial":"queued = false","frame":"stable"}
 {"op":"add","key":"TX-A1","patternType":"event-driven","trigger":"an agent worker claims a run","systemName":"run service","systemResponse":"acquire the conversation lock"}
 {"op":"add","key":"TX-A2","patternType":"event-driven","trigger":"a run reaches a terminal state","systemName":"run service","systemResponse":"release the conversation lock"}
 {"op":"add","key":"TX-A3","patternType":"event-driven","trigger":"a run for a locked conversation is queued","systemName":"run service","systemResponse":"mark the run waiting"}
@@ -589,16 +654,23 @@ symspec check --field data.reachability
 
 ```json
 {"variables":2,"effects":3,"constraints":1,"proved":0,
- "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":337,"timeoutMs":2000}
+ "provedUnderHypotheses":1,"violated":0,"unknown":0,"elapsedMs":148,"timeoutMs":2000}
 ```
+
+(`elapsedMs` is wall-clock time on the machine that measured it, so yours will differ.
+Every other number is the model's.)
 
 TX-C1 holds — and the verdict is `PROVED_UNDER_HYPOTHESES`, not `PROVED`, exactly as
 the frame section predicts. The finding says so and names the hypothesis:
 
 ```
 TX-C1: PROVED_UNDER_HYPOTHESES — no reachable state violates this constraint, ASSUMING
-these variables change only when a requirement changes them: held (written by TX-A1,
-TX-A2); queued (written by TX-A1, TX-A3). THE DOCUMENT DOES NOT STATE THAT.
+these variables, which the document declares `frame: stable`, change only when a
+requirement changes them: held (written by TX-A1, TX-A2); queued (written by TX-A1, TX-A3).
+That is a HYPOTHESIS: no requirement establishes it, and with the frame released the
+constraint IS violable, so this is a proof about the declared model and not about the
+system as specified — `verified` is demoted accordingly. A variable written by NO
+requirement is the sharpest case: nothing in the document keeps it from changing.
 ```
 
 **Step 2 — add a second invariant that sounds obviously true, and watch it FAIL.**
@@ -612,7 +684,7 @@ symspec check --field data.reachability
 
 ```json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":537,"timeoutMs":2000}
+ "provedUnderHypotheses":1,"violated":1,"unknown":0,"elapsedMs":344,"timeoutMs":2000}
 ```
 
 Exit **1**, through the existing contract — the error-severity finding lands in
@@ -643,7 +715,7 @@ symspec check --field data.reachability
 
 ```json
 {"variables":2,"effects":3,"constraints":2,"proved":0,
- "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":350,"timeoutMs":2000}
+ "provedUnderHypotheses":2,"violated":0,"unknown":0,"elapsedMs":179,"timeoutMs":2000}
 ```
 
 Exit **0**. Both invariants now hold, and the change was to the requirement the trace
@@ -672,23 +744,116 @@ repair intended.
 
 ## Honest scope — read before trusting a verdict
 
-All 8 claims, verbatim:
+All 9 claims, verbatim:
 
 > The formal (SMT) tier is sound modulo atomization, given the conservative near-exact normalization of the atom table: every reported conflict is a genuine logical conflict of the requirements as atomized, and the atom table attached to each finding shows exactly what the solver compared.
 >
 > Because paraphrases become distinct atoms, a real conflict can be missed (a false negative): silence is not a consistency certificate, so the formal tier reporting no conflict does not prove the spec consistent.
 >
-> The one false-positive risk is over-unification (too-aggressive normalization collapsing two distinct conditions into one atom); it is mitigated by conservative normalization (no stemming or stopword-stripping beyond leading articles) and the info-severity FND_SIMILAR_UNUNIFIED reporter.
+> The one false-positive risk is over-unification: too-aggressive normalization collapsing two distinct conditions into one atom, or a committed vocabulary entry relating two things the domain keeps apart (a glossary or term alias naming two different things as one, or an antonym pair naming two compatible actions as contraries). It is mitigated by conservative normalization (no stemming or stopword-stripping beyond a leading article, a single copula in a trigger or precondition, and a closed third-person -s rule on the leading response verb), by the refusal of any term that rewrites a verb the solver reads, and by the info-severity FND_SIMILAR_UNUNIFIED reporter.
 >
 > Deterministic ambiguity detectors (vague terms, quantifier/coordination scope, and referential ambiguity) run and report; but whether a phrase is vague in its domain context — pragmatic/contextual ambiguity — is surfaced for review (FND_AMBIGUITY_NEEDS_JUDGMENT), not decided by symspec, and any LLM ambiguity judgment is propose-only, never a verdict.
 >
 > Semantic similarity is a propose-only assist: the always-on embedding tier suggests glossary merges and opposition candidates for paraphrased or polar-opposite responses but never emits a conflict verdict, so `check` remains reproducible given the document, its glossary, and the pinned embedding model. A missing model fails the run closed (ERR_EMBED_MODEL_MISSING) rather than silently skipping the tier; pre-warm with `symspec download-model`.
 >
-> Numeric conflicts are checked over linear integer/real arithmetic (LIA/LRA): requirements placing jointly unsatisfiable bounds on the same per-system quantity (unit-normalized) are reported as FND_NUMERIC_CONTRADICTION. Nonlinear-integer arithmetic remains out of scope (undecidable).
+> Numeric conflicts are checked over linear integer/real arithmetic (LIA/LRA): requirements placing jointly unsatisfiable bounds on the same per-system quantity, in one role and one dimension, are reported as FND_NUMERIC_CONTRADICTION. A deadline (`within`), a duration (`for`), and a period (`every`) are three roles, an unmarked bound meets every role, and units convert exactly within a dimension. A pair the tier cannot decide as written (a deadline against a duration, two units no conversion relates, or guards the solver never asserted together) is disclosed as FND_NUMERIC_UNCOMPARED, which demotes verified and is never a verdict. Nonlinear-integer arithmetic remains out of scope (undecidable).
 >
-> The unbounded reachability tier proves a declared constraint over EVERY reachable state with no bound on path length (Z3 Spacer), every proof is independently re-verified by three plain-SMT obligations so a claim never rests on trusting the solver, and a violation carries the counterexample trace naming which requirements fired, in order. But the claim is about the STATE MODEL you declared, not about the requirement text: the `classify` expressions ARE the model, so a mis-declared effect yields a sound proof of the wrong thing. It runs only when a state model is committed (otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not run), its common success is FND_REACHABILITY_UNDER_HYPOTHESES — proved only once variables no requirement writes are held fixed, a hypothesis the document does not state, which demotes verified — and an unsatisfiable initial state makes every constraint hold vacuously, reported at error severity because it MASKS violations rather than merely failing to prove one.
+> The unbounded reachability tier proves a declared constraint over EVERY reachable state with no bound on path length (Z3 Spacer), every proof is independently re-verified by three plain-SMT obligations so a claim never rests on trusting the solver, and a violation carries the counterexample trace naming which requirements fired, in order. But the claim is about the STATE MODEL you declared, not about the requirement text: the `classify` expressions ARE the model, so a mis-declared effect yields a sound proof of the wrong thing. It runs only when a state model is committed (otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not run), every proof over a small model is ALSO re-decided by an independent explicit-state search (a disagreement is FND_CERTIFICATE_DISAGREES and withdraws the proof, and a search that stops without showing the model is too large to cover withholds the proof as FND_REACHABILITY_UNKNOWN), a proof that needs variables held fixed is FND_REACHABILITY_UNDER_HYPOTHESES only when the document DECLARES them `frame: stable` — and demotes verified — while one that needs undeclared frames is FND_REACHABILITY_UNKNOWN naming them, a write outside a declared range is FND_RANGE_VIOLATION rather than a silently disabled step, and an unsatisfiable initial state makes every constraint hold vacuously, reported at error severity because it MASKS violations rather than merely failing to prove one.
 >
-> `data.verified` is a COVERAGE claim about the whole document, not a verdict on it: it is true only when every requirement that COULD be cross-compared was (each participates in a comparison with a peer), every opposition candidate has been triaged (committed via `symspec antonym` / `symspec glossary`, or waived), and a decide-tier comparison actually ran. Two things it therefore does NOT mean. It does not account for proven findings: a document with a proven FND_CONTRADICTION reports `verified: true` and exits 1, because "I compared enough to certify" and "the spec is correct" are different claims and the exit codes are what keep them apart. And a document with fewer than two requirements is vacuously verified — there is no peer to share vocabulary with, so the absence of any cross-comparison is disclosed in `data.coverage.pairsCheckedNote` and `data.residualRisk` rather than as a demotion that could never be discharged. Propose-only findings and coverage statistics can only demote verified, never promote it. Each demotion is listed in `data.coverage.demotions` with the concrete command that discharges it, so an agent can iterate: `check --strict` (exit 3 on demotion) -> apply the listed ops or rewrite the named requirements -> re-check -> exit 0.
+> The pinned run configuration is a gate only inside a boundary: a CI job that checks a fresh clone, with `symspec.config.json` under code-owner review. There the config is read from one place, `symspec.config.json` at the toplevel `git rev-parse --show-toplevel` prints for the document's real directory (symlinks resolved), asked with `safe.bareRepository=explicit` so a committed directory laid out as a bare repository is refused as ERR_CONFIG_INVALID rather than taken for a toplevel (git 2.38 or later honors that setting; an older git ignores it), nothing is searched, so a config committed beside the document is not read, and `data.run.config` reports `{path, source}` for the job to assert (`source` is `toplevel` and `path` is its checkout's config). Outside that boundary it is a disclosure, not a guard: a local agent that can write `.git/`, pass `--config` or set `SYMSPEC_CONFIG` can change which config a local run reads, and that run names what it read and why in `data.run.config`. A run below any pin is demoted `run-weakened`, so a config can only push `verified` toward false.
+>
+> `data.verified` is a COVERAGE claim about the whole document, not a verdict on it: it is true only when every requirement that COULD be cross-compared was (each was asserted together with a peer it shares vocabulary with, in a context group the solver decided — sharing a word is not a comparison), no two requirements demand opposite things of one response (an action and its negation, or two contrary actions such as open and close) under guards the solver never asserted together, every opposition candidate has been triaged (committed via `symspec antonym` / `symspec glossary`), no committed glossary entry names two contraries as one action, no solver call returned unknown, a decide-tier comparison actually ran, and the run itself was not weakened (the TEST stub embedder demotes, disclosed as `data.run.embedder`, and so does a `--semantic-threshold` above its default, disclosed as `data.run.semanticThreshold`). Two things it therefore does NOT mean. It does not account for proven findings: a document with a proven FND_CONTRADICTION reports `verified: true` and exits 1, because "I compared enough to certify" and "the spec is correct" are different claims and the exit codes are what keep them apart. And a document with fewer than two requirements is vacuously verified — there is no peer to share vocabulary with, so the absence of any cross-comparison is disclosed in `data.coverage.pairsCheckedNote` and `data.residualRisk` rather than as a demotion that could never be discharged. Propose-only findings and coverage statistics can only demote verified, never promote it. Each demotion is listed in `data.coverage.demotions` with the concrete command that discharges it, or the reads that inform the rewrite it needs, so an agent can iterate: `check --strict` (exit 3 on demotion) -> apply the listed ops or rewrite the named requirements -> re-check -> exit 0. A waiver's content hash binds the text it was reviewed on, not the reviewer: any writer can mint a waiver whose hash matches, so a scoped waiver of a wording or structural finding records that the current text was accepted, not who accepted it.
+
+## Op directions — what each op can do to the verdict
+
+Every op verb carries a direction, as data. A direction is an UPPER BOUND on what the verb can
+do to D, and the gaming gate measures it on every registered move rather than trusting it.
+
+D, the verdict-bearing set, is every error-severity finding of class `verdict` or `structural`, and every demotion of class `conflict-signal` or `triage`.
+
+A member of D is its code or demotion reason over the requirements it names, compared under these identity maps. A `conflict-signal` demotion is kept by a `verdict` finding that names every requirement it named: the proof is the same conflict, seen. And requirements the same report states equivalent (`FND_EXACT_DUPLICATE`, `FND_REDUNDANCY`) count as one: an equivalent pair makes two overlapping conflicts, and the formal tier reports one representative of them.
+
+- **`strengthening`** — The verb only adds constraints, so no conflict the document carries goes away. What it can do to the REPORT is DISPLACE a member of D, as far as the reporting granularity of the tier that emits it reaches: for `FND_CONTRADICTION`, the propositional contradiction tier enumerates pairwise-disjoint minimal cores in each context group, so a new member of the same code over an overlapping set of requirements displaces; for `FND_NUMERIC_CONTRADICTION`, the numeric tier proves each (quantity, base unit, context group) cell once and reports one minimized core per cell, so a new member of the same code in the SAME CELL displaces, whether or not it shares a requirement; for `FND_TEMPORAL_CONTRADICTION`, the temporal tier makes one joint check over the whole document and reports one minimized core, so ANY new member of the same code displaces; for `FND_CYCLE`, the trace tier reports the cycle each depth-first back edge closes, so a new member of the same code over an overlapping set of requirements displaces. A numeric finding names its cell by the quantity and base unit in its evidence, and not its context group, so that pair is the cell compared. No other member of D is displaced by anything. That is the only loss the label allows. The gaming gate lists every measured displacement, and fails on any loss that is not one.
+- **`conditional`** — symspec decides the effect per instance, with a counterfactual run or baseline drift attribution.
+- **`weakening`** — The verb can remove a member of D.
+
+| Verb | Direction | Why |
+|---|---|---|
+| `add` | strengthening | Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). A new conflict can DISPLACE a reported one, as far as the reporting granularity of the tier that reports it reaches. The propositional contradiction tier enumerates disjoint cores, so an overlapping FND_CONTRADICTION displaces (measured: `overlapping-contrary` × `add-negation`). The numeric tier reports one core per (quantity, base unit, context group) cell, so any FND_NUMERIC_CONTRADICTION in the same cell displaces, sharing a requirement or not (measured: `numeric-bystander` × `add-bound-past-bystander`, a bound that conflicts with a culprit and a bystander). The temporal tier reports one joint core, so any FND_TEMPORAL_CONTRADICTION displaces (measured: `temporal-conflict` × `add-bystander-negation`). An equivalent requirement under a lower id re-keys a verdict onto itself, which the identity map reads as the same member. It can discharge coverage demotions, and with an explicit `id` the FND_DANGLING_REFERENCE of an edge that names that id; both are outside D. |
+| `update` | weakening | Rewriting a slot, `negated`, the pattern, `stateEffect` or `stateConstraint` changes what the requirement MEANS, so it can remove a conflict the old wording carried. Metadata attributes change nothing a tier reads, but the verb is labelled by what it can do. |
+| `delete` | weakening | Removes a requirement, and with it every finding and demotion that named it. Deleting one side of a conflict leaves a consistent document. |
+| `derive` | strengthening | Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`). |
+| `satisfy` | strengthening | Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`). |
+| `verify` | strengthening | Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`). |
+| `refine` | strengthening | Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`). |
+| `remove-edge` | weakening | Removes a trace edge, which can remove an FND_CYCLE (a structural error finding, and so a member of D). |
+| `glossary` | weakening | Identifies two phrases as one atom. An equality cannot make an unsatisfiable set satisfiable, but it can REFUTE a conflict signal: aliasing the two sides of an open opposition candidate says they are one action, so the candidate and its demotion go away and nothing replaces them (measured: `opposition-candidate` × `alias-contraries-glossary`, a clean run over fill and drain). The fold refuses an alias only over committed contraries, and it cannot see an embedding-proposed pair. The table is also a one-pass lookup that runs before term substitution, so an alias over a phrase the term table rewrites removes the verdict the term carried (`term-bridged` × `glossary-over-term`). |
+| `antonym` | weakening | Commits a contrary axiom, and it is also the answer to an open opposition candidate: declaring the candidate's own two verbs contraries discharges the candidate, and nothing need replace it. With one side negated (fill the tank, and never drain it) the pair is then provably consistent, the demotion goes and the run can verify (measured: `opposition-negated` × `antonym-over-candidate`, a clean run). Under two different triggers the candidate becomes `conditional-conflict-unchecked`, a different member of D (measured: `opposition-split` × `antonym-over-candidate`). The verb cannot tell a true contrary from two synonyms declared contraries, and a wrong one hides a real conflict. The fold refuses a pair the committed tables make inconsistent. |
+| `waive` | weakening | Suppresses a finding. A waiver removes what the report shows without changing what the document says. |
+| `unwaive` | weakening | Removes a waiver. That can reinstate a finding the waiver hid, but a waived error-severity GtWR lint is what re-admits its requirement to the solver (AC-3-7), so removing that waiver takes the requirement out again and every verdict it was part of disappears. |
+| `unglossary` | weakening | Splits two phrases the glossary made one atom, so a conflict that rested on the alias disappears. |
+| `unantonym` | weakening | Removes a contrary axiom, so a conflict that rested on the two phrases being contraries disappears. |
+| `state` | weakening | Declares or REDECLARES a state variable. A redeclaration can release a frame, widen a range, or change the initial state, and each can remove a reachability violation. |
+| `unstate` | weakening | Undeclares a state variable, which takes the constraints that read it out of the reachability tier. |
+| `state-initial` | weakening | Sets or clears the model-wide initial predicate. A changed initial state changes which states are reachable, so a violation can disappear. |
+| `classify` | weakening | Sets or retracts one requirement's response kind and its expression. That rebinds what the requirement does to the state model, and a retraction takes a constraint out of the reachability tier. |
+| `term` | weakening | Identifies two noun phrases inside every atom body. The table is a one-pass substitution, not an equivalence, so an entry can rewrite two contraries onto one phrase and the conflict the contrary carried is gone (measured: `registered-contrary` × `alias-contraries-term`, where ratify/veto are contraries only through the committed antonym table). The fold refuses a term that contains a verb the seed antonym or state-bridge tables read, and does not read the committed antonyms. |
+| `unterm` | weakening | Splits two noun phrases the term table made one, so a conflict that rested on the term disappears. |
+
+## Signal classes — what a finding or a demotion MEANS
+
+A class is decided per code, by meaning, not by tier or severity. Waivability is derived from
+the class.
+
+Waivability is enforced: `waive` refuses a `never` code, and `check` ignores a stored waiver on one.
+
+| Finding class | Waivable | In D | Meaning |
+|---|---|---|---|
+| `verdict` | never | yes | The document is inconsistent, or a declared constraint is violated, and the tool proved it. Discharged only by changing what the document says. |
+| `disclosure` | never | no | "I did not decide": a comparison was not attempted, not finished, or holds only under an assumption. It claims nothing about the document either way. |
+| `triage` | never | no | A propose-side candidate: two phrases or numbers that may be one thing, or may conflict. Discharged by committing the table entry the finding proposes, or by rewording. |
+| `hygiene` | never | no | An obligation the document has not met (a requirement no tier could read, a slot its pattern needs, an edge target that does not exist). Discharged by supplying what is missing. |
+| `wording` | scoped | no | A wording defect a reviewer can accept: a GtWR rule, an ambiguity, a duplicate spelling, a term used two ways. It says nothing about consistency. |
+| `structural` | scoped | yes | A fact about the trace graph (an orphan, a cycle, a missing link), not about what any requirement means. |
+| `anchor` | never | no | A change to something the loop may not change from inside: intent, policy, the pinned configuration, or the baseline binding. |
+
+| Demotion class | In D | Meaning |
+|---|---|---|
+| `conflict-signal` | yes | A conflict the document may carry that the decide tier could not see. The signal is evidence about the document. |
+| `coverage` | no | A requirement, or a group, that no decide-tier comparison covered. Adding requirements can discharge it, so it is outside D. |
+| `disclosure` | no | "I did not decide": a comparison not attempted, not finished, or not expressible. |
+| `triage` | yes | A candidate the author settles, by a table entry or a rewrite. |
+| `hygiene` | no | A committed table entry that cannot mean what it says. Discharged by removing it. |
+| `run` | no | The run itself was weakened below the armed configuration. |
+| `anchor` | no | The document moved against its baseline, intent, or pinned configuration. |
+
+| Demotion reason | Class | Drift | Why |
+|---|---|---|---|
+| `uncovered-requirement` | coverage | no | The requirement shared no atom with any other, so nothing compared it. Adding requirements discharges it. |
+| `open-opposition-candidate` | conflict-signal | yes | Two responses may be contraries no table relates: evidence of a conflict the solver cannot see. |
+| `no-decide-tier-comparison` | coverage | no | No decide-tier comparison happened anywhere in the run, so nothing was verified. |
+| `semantic-tier-skipped` | disclosure | no | The semantic tier did not run, so the candidates it proposes were never looked for. |
+| `excluded-from-formal` | coverage | no | A blocking lint finding kept the requirement from the solver, so no comparison covered it. |
+| `waived-blocking-lint` | coverage | no | A requirement a blocking wording defect excluded reached the solver only through a reviewer's waiver of that defect, so its comparison cannot certify. It replaces `excluded-from-formal` for the same requirement; rephrasing discharges it. |
+| `quantity-alias-candidate` | conflict-signal | yes | Two co-active bounds may be one quantity: evidence of a numeric conflict never compared. |
+| `relational-reasoning-not-attempted` | disclosure | no | Aggregate or cross-quantity reasoning is not attempted by the numeric tier. |
+| `numeric-bounds-uncompared` | disclosure | no | Bounds on one quantity were neither proved nor dismissed, because the sentences do not fix a reading. |
+| `solver-budget-exhausted` | disclosure | no | The whole-run solver budget ran out before a tier finished its work. |
+| `inconclusive-group` | coverage | no | A group's solver check returned unknown, so its requirements are not covered. |
+| `solver-unknown` | disclosure | no | A solver call inside the enumeration returned unknown, so conflicts after it were never looked for. |
+| `conditional-conflict-unchecked` | conflict-signal | yes | Two responses conflict as written under guards no context group makes co-live: evidence of a conflict whose reachability is undecided. |
+| `run-weakened` | run | no | The run used the stub embedder or a raised threshold: a statement about the run, not the document. |
+| `opposite-polarity-near-duplicate` | conflict-signal | yes | Two near-identical responses at opposite polarity: evidence of a contradiction on two atoms the solver cannot see as one. |
+| `number-spelling-candidate` | triage | no | Two numbers differ only in a digit separator. Settled by spelling them one way, which is a rewrite, not a drift. |
+| `contrary-glossary-alias` | hygiene | no | A committed glossary entry names two contraries as one action, which cannot mean what it says. Discharged by removing the alias. |
+| `reachability-not-checked` | disclosure | no | The reachability tier left part of a committed state model unchecked. |
+| `reachability-frame-relied-upon` | disclosure | no | A proof holds only under declared frame assumptions. |
+| `reachability-budget-exhausted` | disclosure | no | The reachability budget ran out before the constraint was decided. |
+| `reachability-undecidable` | disclosure | no | The solver could not decide the constraint over an unbounded model. |
+| `reachability-vacuous-initial-state` | disclosure | no | The model has no initial state, so no constraint was checked. The error finding beside it is the verdict. |
+| `reachability-certificate-disagrees` | disclosure | no | A proof was withdrawn because an independent search refuted it. The error finding beside it is the verdict. |
+| `reachability-frame-undeclared` | disclosure | no | The proof needs a frame the document does not declare, so it was withheld. |
+| `reachability-cross-check-incomplete` | disclosure | no | The explicit-state cross-check did not finish, so the proof was withheld. |
 
 ## Error codes (`ERR_*`)
 
@@ -701,7 +866,7 @@ one.
 | `ERR_USAGE` | Invalid or missing CLI arguments. |
 | `ERR_DOC_NOT_FOUND` | The requirements-document path did not resolve. |
 | `ERR_DOC_PARSE` | The document is not valid JSON or fails RequirementsDocSchema. |
-| `ERR_SCHEMA_VERSION` | The document's schemaVersion does not equal the current SCHEMA_VERSION, though it does satisfy the current document schema. The suggestions therefore carry the exact ops that reproduce it: a `symspec init` step, one `symspec apply` JSONL op record per requirement and per edge in dependency order, the `symspec glossary`/`antonym`/`waive` commands for the tables `apply` has no op for, and an explicit statement of anything the ops do not reproduce. |
+| `ERR_SCHEMA_VERSION` | The document's schemaVersion does not equal the current SCHEMA_VERSION, though it does satisfy the current document schema. The suggestions therefore carry the exact ops that reproduce it: a `symspec init` step, one `symspec apply` JSONL op record per requirement and per edge in dependency order, the `symspec glossary "<canonical>" "<alias>"`, `symspec antonym <a> <b>` and `symspec waive <code> --ref <id> --reason "<reason>"` commands for the tables `apply` has no op for, and an explicit statement of anything the ops do not reproduce. |
 | `ERR_IO` | An atomic write to the document failed (permissions or disk). The original file is left intact. |
 | `ERR_DUPLICATE_ID` | A CreateRequirement supplied a UUID that already exists. |
 | `ERR_NOT_FOUND` | The referenced requirement id is not present. |
@@ -719,52 +884,61 @@ one.
 | `ERR_DOC_EXISTS` | `init` refused to overwrite an existing document at the resolved path. |
 | `ERR_EMBED_MODEL_MISSING` | The embedding model (core to every `check`) is not cached and remote loading is disabled — the run fails closed rather than silently skipping the semantic/opposition tier. |
 | `ERR_DUPLICATE_KEY` | A create supplied a --key that another requirement already uses; keys must be unique. |
+| `ERR_CLAUSE_UNBOUND` | The words before the modal that no stored slot holds include an unbound clause marker (Unless, Provided (that), In case, Except, Before, Until, Only if, Even if), so the requirement is refused rather than stored without its condition. |
+| `ERR_CONFIG_INVALID` | `symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, the document carries an inline intent or policy alongside a split one, a config named by --config or SYMSPEC_CONFIG does not exist, or `git rev-parse --show-toplevel` fails in the document directory with anything but the whole "not a git repository" discovery message git itself prints (a refusal that quotes a path spelling that phrase is still a refusal), including git refusing a bare repository the document resolves into (so where the config lives cannot be known). The run fails closed rather than checking without the pins. The one exception: with no config named, a refusal other than the bare-repository one, and no `symspec.config.json` in the document directory or any ancestor, no config could govern the run, so `check` runs as with no repository and discloses the first line of the refusal in `data.run.config.gitRefusal`. |
+| `ERR_WAIVER_REFUSED` | A `waive` was refused by the waivability policy (spec 007 AC-5-6): the code is a `never`-class finding (verdict, disclosure, triage, hygiene or anchor), which only a change to the document discharges; or no catalog publishes the code, so it has no class; or the waive names no requirement, and a waiver binds only the requirement ids and text a reviewer read. The op is refused and an atomic batch writes nothing. |
 
 ## Finding codes (`FND_*`)
 
 A finding inside a **successful** `check`. Only `error` severity gates the exit code, and
 an error-severity finding also excludes its requirement from the formal tier.
 
-| Code | Severity | Tier | Meaning |
-|---|---|---|---|
-| `FND_DANGLING_REFERENCE` | error | structural | an edge targets a nonexistent requirement UUID. |
-| `FND_MISSING_TRIGGER` | error | structural | an event-driven / unwanted-behavior requirement has no trigger. |
-| `FND_MISSING_PRECONDITION` | error | structural | a state-driven / optional-feature requirement has no precondition. |
-| `FND_CYCLE` | error | structural | a cycle in `derives`/`refines` (canonical-rotation deduplicated). |
-| `FND_ORPHAN` | warn | structural | a requirement with zero inbound/outbound edges (document size > 1). |
-| `FND_EXACT_DUPLICATE` | error | lint | an identical slot-tuple hash: two requirements are exact duplicates. |
-| `FND_CONTRADICTION` | error | formal | a context group is unsat; ids are the filtered MINIMAL unsat core; requires same-atom opposite-polarity responses. |
-| `FND_SUBSUMPTION` | warn | formal | a directional implication is valid; `moreGeneral` is the superset-of-cases side. |
-| `FND_REDUNDANCY` | warn | formal | a bi-implication is valid: the two requirements are logical duplicates. |
-| `FND_VACUITY` | warn | formal | a guard is unreachable given all OTHER requirement formulas (relational, labeled lower confidence). |
-| `FND_SIMILAR_UNUNIFIED` | info | formal | responses with Jaccard ≥ 0.7 that did not unify to one atom; an over-unification-adjacent review prompt (suggests rewording one response via `symspec update`). |
-| `FND_NEEDS_REVIEW` | info | formal | a per-group solver `unknown`/timeout/unencodable result; explicitly NOT a "no conflict". |
-| `FND_INCOMPLETE` | info | formal | a heuristic guard-coverage gap over a same-trigger-family group; NOT a formal completeness guarantee. |
-| `FND_CERTIFIED` | info | formal | the Lean toolchain elaborated the generated file; carries `#print axioms` provenance. NOT a proof about the spec: every requirement is emitted as a placeholder `True` theorem, so this fires identically for a document `check` proves contradictory. Never gate a consistency claim on it. |
-| `FND_CERTIFY_FAILED` | error | formal | Lean produced a `severity:"error"` diagnostic; certification failed. |
-| `FND_SIMILAR_SEMANTIC` | info | formal | two responses embed with cosine ≥ threshold but did not unify to one atom; a PROPOSE-only prompt to add a `symspec glossary` entry. Never a verdict. |
-| `FND_NUMERIC_CONTRADICTION` | error | formal | two+ requirements place jointly unsatisfiable linear numeric constraints (LIA/LRA) on the same per-system quantity; ids are the minimal unsat core, evidence lists the conflicting predicates (unit-normalized). |
-| `FND_LEAF_UNVERIFIABLE` | warn | structural | a refinement-DAG leaf (inbound refines/derives, no outbound) with no `verifies` edge; a leaf must be independently verifiable (KAOS/SysML leaf-verifiability). |
-| `FND_MISSING_TRACE_LINK` | info | formal | two requirements embed with cosine ≥ threshold but share no committed refines/derives/satisfies edge; a PROPOSE-only candidate trace link. Never a verdict. |
-| `FND_DUPLICATE_CLUSTER` | info | formal | three+ requirements form a tight semantic cluster; a PROPOSE-only prompt to review for near-duplication or an unstated shared parent. Never a verdict. |
-| `FND_AMBIGUOUS_VAGUE` | info | lint | a vague/weasel term (e.g. "fast", "user-friendly", "as appropriate") with no measurable meaning; deterministic lexical scan, carries the offending span. |
-| `FND_AMBIGUOUS_QUANTIFIER` | warn/info | lint | scope/quantifier ambiguity: un-parenthesized "and…or" coordination (warn), leading "all/each/every", or a bare-plural subject; deterministic pattern scan with a span. |
-| `FND_AMBIGUOUS_REFERENCE` | info | lint | a pronoun or bare definite NP ("it", "the system") with ≥2 candidate antecedents in scope; deterministic detection (recall-first), resolution is punted to the agent. |
-| `FND_AMBIGUITY_NEEDS_JUDGMENT` | info | lint | pragmatic/contextual ambiguity was not assessed deterministically; a structured prompt to hand the requirement to an LLM/agent review. Never a verdict, never in the reproducibility hash. |
-| `FND_TEMPORAL_CONTRADICTION` | error | formal | a set of requirements is temporally inconsistent under bounded LTL→SMT (no trace of length ≤ k satisfies them jointly); sound-for-UNSAT, evidence carries {bound,complete:false}. Opt-in via `check --temporal`. |
-| `FND_NO_PAIRS_CHECKED` | info | formal | the formal tier evaluated 0 candidate pairs (no two requirements shared an atom), so no cross-requirement conflict/subsumption analysis actually ran. Silence here is not a consistency certificate; consider glossary entries to align vocabulary so related requirements share atoms. |
-| `FND_OPPOSITION_CANDIDATE` | info | formal | two same-system responses share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified. Propose-only: if the verbs are truly opposite, run `symspec antonym add <verbA> <verbB>` so the formal tier collapses them to one atom at opposite polarity and can prove any conflict. Never a verdict. |
-| `FND_EXCLUDED_FROM_FORMAL` | info | structural | a requirement was excluded from the formal (SMT) tier because an error-severity lint or parse finding blocked its surface, so no cross-requirement analysis covered it. A LOUD coverage signal that DEMOTES `verified` (silence over an unchecked requirement is not a consistency certificate); discharge by fixing the blocking finding (rephrase) — waiving the finding alone does NOT restore formal coverage. |
-| `FND_QUANTITY_ALIAS_CANDIDATE` | info | formal | two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "run the infusion for ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary add` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict. |
-| `FND_RELATIONAL_UNCHECKED` | info | formal | requirements under one shared guard carry numeric bounds alongside unmatched (singleton) atoms — the shape where aggregate/conservation or cross-quantity relational conflicts hide. symspec's numeric tier is pairwise same-quantity only and does NOT attempt aggregate sums or cross-quantity arithmetic, so this reasoning was not attempted. DEMOTES `verified` so it never outruns what was compared; never a verdict. |
-| `FND_REACHABILITY_VIOLATED` | error | formal | a REACHABLE state violates a declared constraint, and the evidence carries the counterexample trace naming which requirements fired, in order, to get there. Proven over ALL reachable states with no bound (Z3 Spacer), and proven in BOTH the strict and the framed configuration, so it is a genuine defect rather than an artifact of assuming nothing about unwritten variables. |
-| `FND_REACHABILITY_PROVED` | info | formal | a declared constraint holds in EVERY reachable state, proven with no bound and with nothing assumed beyond the document (frame-closed). The evidence carries the inductive invariant the solver inferred, which was then INDEPENDENTLY re-checked by three plain-SMT obligations (Init implies Inv, Inv and the transition relation imply Inv-prime, Inv implies not-Bad) — so the claim does not rest on trusting the solver. Reported rather than left silent because a proof the tool performed and did not mention is a proof the reader cannot rely on. |
-| `FND_REACHABILITY_UNDER_HYPOTHESES` | info | formal | a declared constraint holds only WHEN the declared frame assumptions are granted: it is reachable-violating with nothing assumed, and unreachable once the variables declared `frame: stable` are held fixed except where a requirement writes them. That is a proof given a hypothesis THE DOCUMENT DOES NOT STATE, so it DEMOTES `verified` and names the exact variables relied upon together with the requirements that write them. Never rendered as proven-unconditionally. |
-| `FND_REACHABILITY_UNKNOWN` | info | formal | the solver did not decide whether a declared constraint can be violated, so nothing is claimed either way and `verified` is DEMOTED. The message states which of the two causes applies, because they need different remedies and the solver cannot be asked: a timed-out Spacer query reports its reason as the literal string "ok", so the distinction is derived out-of-band from measured elapsed time against the budget that was set. |
-| `FND_REACHABILITY_NOT_CHECKED` | info | formal | the unbounded reachability tier did NOT cover part or all of this document, and `verified` is DEMOTED accordingly. Emitted when no state model is committed, when no requirement carries a constraint to check, when a classified requirement could not be read, or when the model admits no transitions at all (in which case only the initial state exists and any invariant over it holds almost vacuously). This is a coverage DISCLOSURE, not a defect: silence over a question that was never asked reads exactly like a pass, which is the one thing this tool must never do. |
-| `FND_REACHABILITY_VACUOUS_INITIAL` | error | formal | the INITIAL STATE is UNSATISFIABLE: the model-wide `initial` predicate, the per-variable `initial` predicates, and the declared integer/enum ranges cannot all hold at once, so the model has NO initial state, the reachable-state set is EMPTY, and every constraint holds VACUOUSLY. Nothing is proven about anything and every constraint is DEMOTED. Error severity rather than a disclosure because a vacuous model does not merely fail to prove — it MASKS proven violations: measured, adding a contradictory initial predicate to a document with a genuine reachable violation turned an error-severity FND_REACHABILITY_VIOLATED into a confident "PROVED with nothing assumed" and flipped the exit code from 1 to 0. The independent certificate check cannot catch this, because an unsatisfiable Init makes `Inv := false` discharge all three obligations validly. |
-| `FND_TERM_INCONSISTENT` | info | formal | one COMMITTED vocabulary entry (a `terms` noun or a `glossary` phrase) is being applied in two requirements whose surrounding text is unrelated, which is what a single spelling used for two different things looks like. The DUAL of the synonym bridge: where FND_SIMILAR_SEMANTIC proposes ADDING an entry because two phrasings mean one thing, this questions an existing entry because one phrasing may mean two. It matters because the failure is in the masking direction — a term entry rewrites every body containing the noun, so if the two concepts differ, both requirements land on ONE atom and a genuine conflict between them can no longer be proven. Cosine PROPOSES this and nothing more: the finding is info-severity and pushes no coverage demotion, so it cannot move `verified`, the strict gate, or the exit code. |
-| `FND_ACRONYM_UNDEFINED` | info | formal | an acronym appears in the document text but in neither committed table, so nothing records what it expands to. This is the DOCUMENT-LEVEL check that GTWR_R37_ACRONYM describes but cannot perform: R37 reads one statement at a time and has no table in scope, so it can only say that a statement carries an unexpanded acronym. The two are different claims and neither subsumes the other — R37 is per-statement style, which a glossary entry does not satisfy, while this is definition coverage, which a glossary entry does satisfy and therefore SILENCES. |
+Waivability is enforced: `waive` refuses a `never` code, and `check` ignores a stored waiver on one.
+
+| Code | Severity | Tier | Class | Waivable | Meaning |
+|---|---|---|---|---|---|
+| `FND_DANGLING_REFERENCE` | error | structural | hygiene | never | an edge targets a nonexistent requirement UUID. |
+| `FND_MISSING_TRIGGER` | error | structural | hygiene | never | an event-driven / unwanted-behavior requirement has no trigger. |
+| `FND_MISSING_PRECONDITION` | error | structural | hygiene | never | a state-driven / optional-feature requirement has no precondition. |
+| `FND_CYCLE` | error | structural | structural | scoped | a cycle in `derives`/`refines` (canonical-rotation deduplicated). |
+| `FND_ORPHAN` | warn | structural | structural | scoped | a requirement with zero inbound/outbound edges (document size > 1). |
+| `FND_EXACT_DUPLICATE` | error | lint | wording | scoped | an identical slot-tuple hash: two requirements are exact duplicates. |
+| `FND_CONTRADICTION` | error | formal | verdict | never | a context group is unsat; ids are the filtered MINIMAL unsat core; requires same-atom opposite-polarity responses. |
+| `FND_SUBSUMPTION` | warn | formal | verdict | never | a directional implication is valid; `moreGeneral` is the superset-of-cases side. |
+| `FND_REDUNDANCY` | warn | formal | verdict | never | a bi-implication is valid: the two requirements are logical duplicates. |
+| `FND_VACUITY` | warn | formal | verdict | never | a guard is unreachable given all OTHER requirement formulas (relational, labeled lower confidence). |
+| `FND_SIMILAR_UNUNIFIED` | info | formal | triage | never | responses with Jaccard ≥ 0.7 that did not unify to one atom; an over-unification-adjacent review prompt (suggests rewording one response via `symspec update --ref <id> systemResponse "<wording>"`). |
+| `FND_NEEDS_REVIEW` | info | formal | disclosure | never | a per-group solver `unknown`/timeout/unencodable result; explicitly NOT a "no conflict". |
+| `FND_INCOMPLETE` | info | formal | disclosure | never | a heuristic guard-coverage gap over a same-trigger-family group; NOT a formal completeness guarantee. |
+| `FND_CERTIFIED` | info | formal | disclosure | never | the Lean toolchain elaborated the generated file; carries `#print axioms` provenance. NOT a proof about the spec: every requirement is emitted as a placeholder `True` theorem, so this fires identically for a document `check` proves contradictory. Never gate a consistency claim on it. |
+| `FND_CERTIFY_FAILED` | error | formal | disclosure | never | Lean produced a `severity:"error"` diagnostic; certification failed. |
+| `FND_SIMILAR_SEMANTIC` | info | formal | triage | never | two responses embed with cosine ≥ threshold but did not unify to one atom; a PROPOSE-only prompt to add a `symspec glossary "<canonical>" "<alias>"` entry. Never a verdict. |
+| `FND_NUMERIC_CONTRADICTION` | error | formal | verdict | never | two+ requirements place jointly unsatisfiable linear numeric constraints (LIA/LRA) on the same per-system quantity; ids are the minimal unsat core, evidence lists the conflicting predicates (unit-normalized). A culprit that performs the bounded action with no bound of its own ("keep the door unlocked" against "shall not keep the door unlocked above 30 seconds" and "... below 40 seconds") has no predicate to list, and the message names it. |
+| `FND_LEAF_UNVERIFIABLE` | warn | structural | structural | scoped | a refinement-DAG leaf (inbound refines/derives, no outbound) with no `verifies` edge; a leaf must be independently verifiable (KAOS/SysML leaf-verifiability). |
+| `FND_MISSING_TRACE_LINK` | info | formal | structural | scoped | two requirements embed with cosine ≥ threshold but share no committed refines/derives/satisfies edge; a PROPOSE-only candidate trace link. Never a verdict. |
+| `FND_DUPLICATE_CLUSTER` | info | formal | triage | never | three+ requirements form a tight semantic cluster; a PROPOSE-only prompt to review for near-duplication or an unstated shared parent. Never a verdict. |
+| `FND_AMBIGUOUS_VAGUE` | info | lint | wording | scoped | a vague/weasel term (e.g. "fast", "user-friendly", "as appropriate") with no measurable meaning; deterministic lexical scan, carries the offending span. |
+| `FND_AMBIGUOUS_QUANTIFIER` | warn/info | lint | wording | scoped | scope/quantifier ambiguity: un-parenthesized "and…or" coordination (warn), leading "all/each/every", or a bare-plural subject; deterministic pattern scan with a span. |
+| `FND_AMBIGUOUS_REFERENCE` | info | lint | wording | scoped | a pronoun or bare definite NP ("it", "the system") with ≥2 candidate antecedents in scope; deterministic detection (recall-first), resolution is punted to the agent. |
+| `FND_AMBIGUITY_NEEDS_JUDGMENT` | info | lint | wording | scoped | pragmatic/contextual ambiguity was not assessed deterministically; a structured prompt to hand the requirement to an LLM/agent review. Never a verdict, never in the reproducibility hash. |
+| `FND_TEMPORAL_CONTRADICTION` | error | formal | verdict | never | a set of requirements is temporally inconsistent under bounded LTL→SMT (no trace of length ≤ k satisfies them jointly); sound-for-UNSAT, evidence carries {bound,complete:false}. Reported at warn instead when the conflict needs two or more guarded triggers to all occur within k steps (it vanishes with the reachability premise reduced to any single trigger), since that can be an artifact of the bound; re-check at a larger --temporal-bound. Opt-in via `check --temporal`. |
+| `FND_NO_PAIRS_CHECKED` | info | formal | disclosure | never | the formal tier evaluated 0 candidate pairs, so no pairwise cross-requirement comparison was recorded: usually no two requirements shared an atom, and otherwise the pairs that did were exact duplicates (reported as FND_EXACT_DUPLICATE instead) or under guards no decided context group asserts together; the message names which. Silence here is not a consistency certificate; where vocabulary is the gap, consider glossary entries to align it so related requirements share atoms. |
+| `FND_OPPOSITION_CANDIDATE` | info | formal | triage | never | two same-system responses that may conflict but share no exact key: they share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified; or they are one verb at opposite polarity, or two contraries, whose objects differ only in their prepositions (e.g. "stop the pump on Monday" vs "shall not stop the pump Monday"). Propose-only, and DEMOTES `verified`: make the pair provable with the edit the message names (`symspec antonym <verbA> <verbB>`, the rewording, or a glossary entry). A triage candidate is discharged only by an edit that lets the solver decide the pair, never by accepting it as written. Never a verdict. |
+| `FND_EXCLUDED_FROM_FORMAL` | info | structural | hygiene | never | a requirement was excluded from the formal (SMT) tier because an error-severity lint or parse finding blocked its surface, so no cross-requirement analysis covered it. A LOUD coverage signal that DEMOTES `verified` (silence over an unchecked requirement is not a consistency certificate); discharge by fixing the blocking finding (rephrase) — suppressing the blocking finding without a rephrase does NOT restore formal coverage. |
+| `FND_QUANTITY_ALIAS_CANDIDATE` | info | formal | triage | never | two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "run the infusion for ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary "<canonical>" "<alias>"` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict. |
+| `FND_RELATIONAL_UNCHECKED` | info | formal | disclosure | never | requirements under one shared guard carry numeric bounds alongside unmatched (singleton) atoms — the shape where aggregate/conservation or cross-quantity relational conflicts hide. symspec's numeric tier is pairwise same-quantity only and does NOT attempt aggregate sums or cross-quantity arithmetic, so this reasoning was not attempted. DEMOTES `verified` so it never outruns what was compared; never a verdict. |
+| `FND_NUMERIC_UNCOMPARED` | info | formal | disclosure | never | two or more numeric bounds on ONE quantity key were neither proved nor dismissed. Either the verdict depends on a reading the sentences do not fix: a deadline and a duration (e.g. "complete the infusion within 30 min" vs "... for at least 60 min"), which the numeric tier keeps on two variables; a °F or K bound that conflicts read as an absolute temperature and not as a difference (a differential, rise, or overshoot), or the reverse; a day or week bound that conflicts at a nominal 24-hour day but not at every civil day length (23 to 25 hours); or two units no conversion relates (e.g. "400 days" vs "1 year", "50%" vs a bare "0.9"). Or no solver call asserted the two together, and they conflict if both apply at once: their guards are never live in one context group (e.g. "When the request arrives, ... respond within 30 ms" vs "When the cache misses, ... respond in at least 50 ms"), or the text trailing each bound differs, a condition or a referent the tier does not read (e.g. "... when the mode is heating" vs "... when the mode is cooling", "at least 30 days of logs" vs "at most 2 hours of video"); or they are a set whose every pair holds and which conflicts only all together, because a prohibition bounds an action only where it happens (e.g. "shall not keep the door unlocked above 30 seconds" and "... below 40 seconds" under two triggers, and "keep the door unlocked for at least 1 second", or just "keep the door unlocked", under a third). Or, naming ONE requirement, its response states a number in a unit the numeric tier converts that no bound it read covers, so it was compared with nothing: no comparator phrase the tier knows introduces it (e.g. "poll the sensor every 5 seconds", "lock the account after 5 minutes"), or the tier declined the bound (a toleranced value, a digit spelling it does not read, a negated response with more than its one bound). DEMOTES `verified`; discharge by restating the bounds in one sense and one unit, after a comparator phrase the tier reads, or moving each condition into a trigger or precondition, so the solver compares them. Nothing short of that rewording discharges it: an uncompared bound is a comparison that did not happen. Never a verdict. |
+| `FND_NUMBER_SPELLING_CANDIDATE` | info | formal | triage | never | two requirements write the same phrase with numbers that differ only in a digit separator (e.g. "respond within 1.5 ms" vs "not respond within 1,5 ms", or 1_500 vs 1.500), so they landed on two atoms and were never compared. A `,` or `.` between digits is a thousands separator in one convention and a decimal point in the other, so symspec does not decide whether they are one number. Propose-only: if they are, rewrite one with `symspec update --ref <id> <attr> "<wording>"` so both spell the number identically and the solver compares them on one atom; if not, rewrite one so both follow one digit-separator convention, and the solver compares the two numbers as written. DEMOTES `verified`; never a verdict. |
+| `FND_REACHABILITY_VIOLATED` | error | formal | verdict | never | a REACHABLE state violates a declared constraint, and the evidence carries the counterexample trace naming which requirements fired, in order, to get there. Proven over ALL reachable states with no bound (Z3 Spacer), and proven in BOTH the strict and the framed configuration, so it is a genuine defect rather than an artifact of assuming nothing about unwritten variables. |
+| `FND_REACHABILITY_PROVED` | info | formal | disclosure | never | a declared constraint holds in EVERY reachable state, proven with no bound and with nothing assumed beyond the document (frame-closed). The evidence carries the inductive invariant the solver inferred, which was then INDEPENDENTLY re-checked by three plain-SMT obligations (Init implies Inv, Inv and the transition relation imply Inv-prime, Inv implies not-Bad) — so the claim does not rest on trusting the solver. Reported rather than left silent because a proof the tool performed and did not mention is a proof the reader cannot rely on. |
+| `FND_REACHABILITY_UNDER_HYPOTHESES` | info | formal | disclosure | never | a declared constraint holds only WHEN the declared frame assumptions are granted: it is reachable-violating with nothing assumed, and unreachable once the variables declared `frame: stable` are held fixed except where a requirement writes them. That is a proof given a hypothesis NO REQUIREMENT ESTABLISHES, so it DEMOTES `verified` and names the exact variables relied upon together with the requirements that write them. Never rendered as proven-unconditionally. |
+| `FND_REACHABILITY_UNKNOWN` | info | formal | disclosure | never | whether a declared constraint (or a declared range) can be violated was not decided, so nothing is claimed either way and `verified` is DEMOTED. The message states which cause applies, because the causes need different remedies. Budget exhaustion and undecidability are solver limits the solver cannot be asked about: a timed-out Spacer query reports its reason as the literal string "ok", so budget exhaustion is told from undecidability out-of-band, by measured elapsed time against the budget that was set. Frame-undeclared is not a solver limit: the constraint holds once every unwritten variable is held fixed and is violable when the variables the document declares `volatile` change on their own, which the document does not rule out. Cross-check-incomplete withholds a proof: the solver proved the constraint, but the independent explicit-state search stopped without showing the model is beyond the size it must re-decide. |
+| `FND_REACHABILITY_NOT_CHECKED` | info | formal | disclosure | never | the unbounded reachability tier did NOT cover part or all of this document. Emitted when no state model is committed (the tier is opt-in, so this one does not demote `verified`), and — DEMOTING `verified` — when a committed model leaves a gap: no requirement carries a constraint to check, a classified requirement could not be read, or the model admits no transitions at all (in which case only the initial state exists and any invariant over it holds almost vacuously). This is a coverage DISCLOSURE, not a defect: silence over a question that was never asked reads exactly like a pass, which is the one thing this tool must never do. |
+| `FND_REACHABILITY_VACUOUS_INITIAL` | error | formal | verdict | never | the INITIAL STATE is UNSATISFIABLE: the model-wide `initial` predicate, the per-variable `initial` predicates, and the declared integer/enum ranges cannot all hold at once, so the model has NO initial state, the reachable-state set is EMPTY, and every constraint holds VACUOUSLY. Nothing is proven about anything and every constraint is DEMOTED. Error severity rather than a disclosure because a vacuous model does not merely fail to prove — it MASKS proven violations: measured, adding a contradictory initial predicate to a document with a genuine reachable violation turned an error-severity FND_REACHABILITY_VIOLATED into a confident "PROVED with nothing assumed" and flipped the exit code from 1 to 0. The independent certificate check cannot catch this, because an unsatisfiable Init makes `Inv := false` discharge all three obligations validly. |
+| `FND_RANGE_VIOLATION` | error | formal | verdict | never | an EFFECT writes a value OUTSIDE its target variable`s declared --min/--max range from a REACHABLE state, so the declared range is false of the system as specified. The evidence names the effect, the variable, the value written, the reachable pre-state, and the trace that reaches it (every step requirement-sanctioned). The step is NOT disabled: enforcing the range by conjoining it into the transition relation made an overflowing step silently never fire, which "proved" everything downstream of it impossible. |
+| `FND_CERTIFICATE_DISAGREES` | error | formal | verdict | never | the unbounded solver PROVED a constraint (or proved it under hypotheses), and an INDEPENDENT explicit-state search of the same model found a reachable state that violates it. The search shares nothing with the SMT encoder beyond the parsed expression, and it runs on every proof over a model whose reachable state space is small enough to enumerate, so a disagreement means one of the two checkers is wrong about THIS model. The proof is WITHDRAWN rather than reported, and `verified` is demoted. The evidence carries the explicit witness: the path of states and the requirements that fired. |
+| `FND_TERM_INCONSISTENT` | info | formal | wording | scoped | one COMMITTED vocabulary entry (a `terms` noun or a `glossary` phrase) is being applied in two requirements whose surrounding text is unrelated, which is what a single spelling used for two different things looks like. The DUAL of the synonym bridge: where FND_SIMILAR_SEMANTIC proposes ADDING an entry because two phrasings mean one thing, this questions an existing entry because one phrasing may mean two. It matters because the failure is in the masking direction — a term entry rewrites every body containing the noun, so if the two concepts differ, both requirements land on ONE atom and a genuine conflict between them can no longer be proven. Cosine PROPOSES this and nothing more: the finding is info-severity and pushes no coverage demotion, so it cannot move `verified`, the strict gate, or the exit code. |
+| `FND_ACRONYM_UNDEFINED` | info | formal | wording | scoped | an acronym appears in the document text but in neither committed table, so nothing records what it expands to. This is the DOCUMENT-LEVEL check that GTWR_R37_ACRONYM describes but cannot perform: R37 reads one statement at a time and has no table in scope, so it can only say that a statement carries an unexpanded acronym. The two are different claims and neither subsumes the other — R37 is per-statement style, which a glossary entry does not satisfy, while this is definition coverage, which a glossary entry does satisfy and therefore SILENCES. |
 
 ## Lint rule codes (`GTWR_*`)
 

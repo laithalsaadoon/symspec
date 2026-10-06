@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { argvRejections, rejectionLines, symspecCommandsDeep } from '../../testing/cli-argv.ts'
 import type { Embedder } from '../engine/formal/embed.ts'
 import { COMMON_ACRONYMS } from '../engine/lint/gtwr.ts'
 import { DOC_VERSION, type RequirementsDocument } from '../requirements/document.ts'
@@ -170,6 +171,27 @@ describe('FND_TERM_INCONSISTENT', () => {
     // Leaving it must be offered as correct, or the finding reads as a defect report.
     expect(drift[0]?.suggestion).toContain('leave it')
     expect(drift[0]?.suggestion).toContain('symspec term "<canonical>" "token" --remove')
+  })
+
+  it('groups two spellings of one system as the one scope its atoms share', async () => {
+    // "Auth Service" and "auth service" are one atom scope, so the term drifts inside ONE
+    // system. Grouped on the raw name, the two sites sat in two groups of one and the drift
+    // was never compared.
+    const doc = docOf(
+      [
+        req('Auth Service', {
+          trigger: 'the token expires',
+          systemResponse: 'revoke the active session',
+        }),
+        req('auth service', {
+          trigger: 'the player places the token on the board',
+          systemResponse: 'advance the turn',
+        }),
+      ],
+      { terms: [{ canonical: 'token', aliases: [] }] },
+    )
+    const report = await runTerminology(doc, angleEmbedder({ [AUTH_SLOTS]: 0, [GAME_SLOTS]: 55 }))
+    expect(report.findings.filter((f) => f.code === 'FND_TERM_INCONSISTENT')).toHaveLength(1)
   })
 
   it('stays silent when the same term is used coherently', async () => {
@@ -439,4 +461,29 @@ describe('the tier can never move a verdict', () => {
       'pairsCompared',
     ])
   })
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R61): the split remedy names full commands
+// ---------------------------------------------------------------------------
+
+describe('[S3-045] the FND_TERM_INCONSISTENT split remedy names only commands the parser accepts with their required arguments (R61)', () => {
+  it.each([
+    ['terms', { terms: [{ canonical: 'token', aliases: [] }] }],
+    ['glossary', { glossary: [{ canonical: 'token', aliases: [] }] }],
+  ] as const)(
+    '[S3-045] a %s entry: every command its message and suggestion name parses with the built binary, full argv',
+    async (_, tables) => {
+      const embedder = angleEmbedder({ [AUTH_SLOTS]: 0, [GAME_SLOTS]: 55 })
+      const drift = (await runTerminology(driftDoc(tables), embedder)).findings.filter(
+        (f) => f.code === 'FND_TERM_INCONSISTENT',
+      )
+      expect(drift).toHaveLength(1)
+      const commands = symspecCommandsDeep(drift)
+      // Anti-vacuity: the --remove command of the owning table is among them.
+      expect(commands.some((c) => c.includes('--remove'))).toBe(true)
+      expect(rejectionLines(await argvRejections(commands))).toEqual([])
+    },
+    60_000,
+  )
 })

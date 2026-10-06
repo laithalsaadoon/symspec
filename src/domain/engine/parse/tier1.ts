@@ -47,6 +47,12 @@ export interface Tier1Ok {
   slots: Tier1Slots
   /** True when the modal carried an explicit negator; `systemResponse` holds the positive atom. */
   negated: boolean
+  /**
+   * Where the modal this parse pivoted on starts, as a character offset into the
+   * {@link preprocess}ed line. Everything left of it is the source a leading clause and the
+   * subject came from (spec 007 AC-2-2 measures its dropped span there).
+   */
+  pivot: number
   confidence: Confidence
   tier: 1
   /** Provenance notes (e.g. `nonstandard-modal`, `weak-subject`, `if-without-then`). */
@@ -106,12 +112,15 @@ const MODAL_ANYWHERE = new RegExp(String.raw`\b${KW.modal}\b`, 'i')
  * indefinite (`a`/`an`) — to match symspec's article-free `systemName`
  * convention (validate-parse-lint.md finding P22: `a virus scan` → `virus
  * scan`). The `neg` group captures an explicit negator so the formal tier
- * receives `¬R` rather than a string containing "not".
+ * receives `¬R` rather than a string containing "not". `not only` is not a
+ * negator: "shall not only X but also Y" obliges both (spec 007 AC-2-3), so it
+ * stays in the response and the line stays positive.
  */
 export const MAIN = new RegExp(
   String.raw`^(?:(?:the|an|a)\s+)?(?<system>.+?)\s+(?<modal>${KW.modal})\s+` +
-    String.raw`(?<neg>not\s+|never\s+|not\s+be\s+able\s+to\s+)?(?<response>.+)$`,
-  'i',
+    String.raw`(?<neg>not\s+(?!only\b)|never\s+|not\s+be\s+able\s+to\s+)?(?<response>.+)$`,
+  // `d`: {@link parseMain} reads where the `modal` group starts, to report the pivot.
+  'di',
 )
 
 // ---------------------------------------------------------------------------
@@ -216,18 +225,29 @@ interface MainParse {
   systemResponse: string
   negated: boolean
   modal: string
+  /** Offset of the modal in the preprocessed line (see {@link Tier1Ok.pivot}). */
+  pivot: number
 }
 
-function parseMain(main: string): MainParse | null {
-  const m = MAIN.exec(main.trim())
+/**
+ * @param main  The main clause: a suffix of the preprocessed line (every rung's `main` group
+ *              runs to the end), so its offset in the line is `line.length - main.length`.
+ * @param line  The preprocessed line `main` ends.
+ */
+function parseMain(main: string, line: string): MainParse | null {
+  const trimmed = main.trim()
+  const m = MAIN.exec(trimmed)
   if (!m?.groups) return null
   const { system, modal, neg, response } = m.groups
-  if (!system || !modal || !response) return null
+  const modalAt = m.indices?.groups?.modal?.[0]
+  if (!system || !modal || !response || modalAt === undefined) return null
+  const trimmedAt = line.length - main.length + (main.length - main.trimStart().length)
   return {
     systemName: system.trim(),
     systemResponse: response.trim(),
     negated: neg != null,
     modal: modal.toLowerCase(),
+    pivot: trimmedAt + modalAt,
   }
 }
 
@@ -243,7 +263,7 @@ export function classifyTier1(input: string): Tier1Result {
   for (const rung of ORDER) {
     const m = rung.re.exec(text)
     if (!m?.groups?.main) continue
-    const main = parseMain(m.groups.main)
+    const main = parseMain(m.groups.main, text)
     if (!main) continue // main-clause gate failed → fall through (research §1.4)
 
     const built = buildResult({
@@ -258,7 +278,7 @@ export function classifyTier1(input: string): Tier1Result {
   }
 
   // No cascade rung matched — try the bare main clause → ubiquitous.
-  const main = parseMain(text)
+  const main = parseMain(text, text)
   if (main) {
     const built = buildResult({ label: 'ubiquitous', confidence: 'high', main })
     if (built) return built
@@ -324,6 +344,7 @@ function buildResult(args: {
     pattern: patternType,
     slots,
     negated: main.negated,
+    pivot: main.pivot,
     confidence,
     tier: 1,
     notes,

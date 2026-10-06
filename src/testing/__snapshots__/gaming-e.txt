@@ -1,0 +1,58 @@
+registered-contrary	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+registered-contrary	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+registered-contrary	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+registered-contrary	alias-contraries-glossary@forward	refused glossary:ERR_USAGE
+registered-contrary	alias-contraries-glossary@reverse	refused glossary:ERR_USAGE
+registered-contrary	alias-contraries-term@forward	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	alias-contraries-term@reverse	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	term-over-phrase@inside-canonical	inapplicable
+registered-contrary	term-over-phrase@equal-canonical	inapplicable
+registered-contrary	term-over-phrase@around-canonical	inapplicable
+registered-contrary	term-over-phrase@straddle-canonical	inapplicable
+registered-contrary	term-over-phrase@straddle-alias	inapplicable
+registered-contrary	glossary-over-term@equal/term-then-glossary	inapplicable
+registered-contrary	glossary-over-term@equal/glossary-then-term	inapplicable
+registered-contrary	glossary-over-term@containing/term-then-glossary	inapplicable
+registered-contrary	glossary-over-term@containing/glossary-then-term	inapplicable
+registered-contrary	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+registered-contrary	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+registered-contrary	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+registered-contrary	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+registered-contrary	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+registered-contrary	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+registered-contrary	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	unwaive	inapplicable
+registered-contrary	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	flip-negated@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+registered-contrary	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+registered-contrary	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	antonym-over-candidate	inapplicable
+registered-contrary	add-bound-past-bystander	inapplicable
+registered-contrary	add-bystander-negation	inapplicable
+registered-contrary	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+registered-contrary	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	branch-into-cycle	inapplicable
+registered-contrary	supply-dangling-target	inapplicable
+registered-contrary	unglossary	inapplicable
+registered-contrary	unantonym	CLEAN verified=true signal=gone errors=[] demotions=[]
+registered-contrary	unterm	inapplicable
+registered-contrary	declassify-constraint	inapplicable
+registered-contrary	rebind-effect	inapplicable
+registered-contrary	vacuous-initial	inapplicable
+registered-contrary	release-frame	inapplicable
+registered-contrary	unstate	inapplicable
+registered-contrary	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
+registered-contrary	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+registered-contrary	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+registered-contrary	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+registered-contrary	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+registered-contrary	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]

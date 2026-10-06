@@ -15,6 +15,17 @@
  * the decide tier can prove it (GitHub issue #2, reproducer a). This tier is what
  * stops `check` certifying such a document.
  *
+ * This tier is a DISCLOSER, so it pairs on the COARSE unit class (`numeric.ts`
+ * `unitClassOf`), never on the bound's role. The decide tier keeps two different
+ * marked roles apart (`complete the infusion within 30 minutes` is a deadline, `run
+ * the infusion for at least 60 minutes` a duration — spec 007 AC-2-6), and pairing on
+ * that finer key deleted this candidate on issue #2's own reproducer, which then
+ * certified (`.erpaval/solutions/architecture/a-finer-key-is-not-uniformly-safer.md`).
+ * When the two roles are ones the decide tier would still keep apart under one key,
+ * the message says so: the `glossary add` still records that the phrasings are one
+ * quantity, and the pair then meets on one key where `FND_NUMERIC_UNCOMPARED`
+ * discloses it rather than proves it.
+ *
  * ## Why this is propose-only, not an automatic merge
  *
  * We must NOT strip the verb and force the two keys together: "transmit the
@@ -47,9 +58,14 @@
  * those are distinct quantities that merely start the same, not a verb split.
  */
 
-import { normalize } from './atomize.ts'
-import type { NumericComparator } from './encode.ts'
-import type { NumericPredicate } from './numeric.ts'
+import { shellQuoted } from '../core/shell-word.ts'
+import { normalize, normalizeScope } from './atomize.ts'
+import {
+  type NumericPredicate,
+  opposedComparators,
+  rolesCompatible,
+  unitClassOf,
+} from './numeric.ts'
 
 /** One requirement's numeric predicates + the context needed to group it. */
 export interface QuantityAliasInput {
@@ -105,23 +121,6 @@ const LABEL_STOPWORDS: ReadonlySet<string> = new Set([
   'exceeding',
   'exceed',
 ])
-
-/** Is `c` an upper bound (`<`, `<=`)? */
-const isUpper = (c: NumericComparator): boolean => c === '<' || c === '<='
-/** Is `c` a lower bound (`>`, `>=`)? */
-const isLower = (c: NumericComparator): boolean => c === '>' || c === '>='
-
-/**
- * Two comparators are directionally OPPOSED — the only shape that can be jointly
- * unsatisfiable once the two bounds share a quantity. An equality opposes any
- * strict bound in the other direction, and two opposed inequalities oppose. Two
- * same-direction bounds only TIGHTEN when unified (never conflict), so they are
- * not worth demoting `verified` over.
- */
-function opposed(a: NumericComparator, b: NumericComparator): boolean {
-  if (a === '=' || b === '=') return a !== b
-  return (isUpper(a) && isLower(b)) || (isLower(a) && isUpper(b))
-}
 
 /** Split a quantity label into lowercased word tokens (drops articles/preps). */
 function contentTokens(label: string): string[] {
@@ -190,7 +189,9 @@ export function findQuantityAliasCandidates(
       // alone maps every precondition-guarded requirement to `''`: it co-asserts
       // guards the document keeps apart, and it makes the message below claim "no
       // trigger" about a document that has two.
-      if (ra.systemName !== rb.systemName) continue
+      // Same system by atom scope, never the raw name: a case or punctuation variant of one
+      // system is one scope, and a discloser that is finer than the scope under-discloses.
+      if (normalizeScope(ra.systemName) !== normalizeScope(rb.systemName)) continue
       if (ra.guardKey !== rb.guardKey) continue
 
       const pairKey = [ra.id, rb.id].sort().join('|')
@@ -201,10 +202,13 @@ export function findQuantityAliasCandidates(
         for (const pb of rb.predicates) {
           // Already the same quantity → the numeric tier handles it; skip.
           if (pa.quantity === pb.quantity) continue
-          // Comparable unit: both unitless or the same normalized base. A time
-          // bound and a byte bound are genuinely different quantities.
-          if (pa.baseUnit !== pb.baseUnit) continue
-          if (!opposed(pa.comparator, pb.comparator)) continue
+          // Comparable unit: the same class the decide tier partitions on. A time
+          // bound and a byte bound are genuinely different quantities. The ROLE is
+          // deliberately not compared here (see the module header).
+          if (unitClassOf(pa) !== unitClassOf(pb)) continue
+          // Same-direction bounds only TIGHTEN when unified (never conflict), so they
+          // are not worth demoting `verified` over.
+          if (!opposedComparators(pa.comparator, pb.comparator)) continue
           const object = sharedObjectSuffix(pa.label, pb.label)
           if (object === null) continue
           hit = { pa, pb, object }
@@ -227,18 +231,35 @@ export function findQuantityAliasCandidates(
         ra.guardKey === ''
           ? 'in the same system with no precondition or trigger, so both bounds always hold'
           : 'under the same system and the same precondition and trigger'
+      const head =
+        `${loId} and ${hiId} place opposed numeric bounds (${pa.sourceText} vs ${pb.sourceText}) ` +
+        `${context}, on quantities that share the object "${object}" but ` +
+        `differ in their leading verb ("${pa.label}" vs "${pb.label}"), so they atomized to ` +
+        'different quantity keys and were never compared. '
+      // Two different marked roles stay apart on one key too, so the alias alone does not
+      // make the pair provable. The command is still the right first step (it records that
+      // the two phrasings are one quantity), but the message must not promise a proof.
+      const roles = rolesCompatible(pa.role, pb.role)
+        ? ''
+        : `They also bound two roles (${pa.role} and ${pb.role}), which the numeric tier keeps on two ` +
+          'variables even under one key, so after the alias it DISCLOSES the pair ' +
+          '(FND_NUMERIC_UNCOMPARED) rather than proving it; restate them if the deadline is on ' +
+          'the completion of what the duration measures. '
+      const advice =
+        'If both bounds constrain the SAME ' +
+        `physical quantity, run \`symspec glossary ${shellQuoted(labelLo)} ${shellQuoted(labelHi)}\` so the numeric ` +
+        (roles === ''
+          ? 'tier keys them together and can prove any conflict, then re-run `symspec check`. '
+          : 'tier keys them together, then re-run `symspec check`. ') +
+        roles +
+        'If they are genuinely different quantities, reword one so each names its own quantity ' +
+        'in different words (the two verb phrasings are what made them look like one). This is a ' +
+        'suggestion, not a verdict.'
       findings.push({
         code: 'FND_QUANTITY_ALIAS_CANDIDATE',
         severity: 'info',
         requirementIds: [loId, hiId],
-        message:
-          `${loId} and ${hiId} place opposed numeric bounds (${pa.sourceText} vs ${pb.sourceText}) ` +
-          `${context}, on quantities that share the object "${object}" but ` +
-          `differ in their leading verb ("${pa.label}" vs "${pb.label}"), so they atomized to ` +
-          'different quantity keys and were never compared. If both bounds constrain the SAME ' +
-          `physical quantity, run \`symspec glossary add "${labelLo}" "${labelHi}"\` so the numeric ` +
-          'tier keys them together and can prove any conflict, then re-run `symspec check`. If they ' +
-          'are genuinely different quantities, waive this finding. This is a suggestion, not a verdict.',
+        message: head + advice,
       })
     }
   }

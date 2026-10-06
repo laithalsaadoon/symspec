@@ -36,7 +36,10 @@ const NESTED_VERB = /^symspec (glossary|antonym|waive) add(?=\s|$)/
  * CLI wants, and `symspec add --pattern-type …`, where `add` IS the operation.
  */
 export const runnable = (command: string): string =>
-  command.replace(NESTED_VERB, (_, operation: string) => `symspec ${operation}`)
+  command.replace(
+    NESTED_VERB,
+    (_, operation: 'glossary' | 'antonym' | 'waive') => `symspec ${operation}`,
+  )
 
 /**
  * Rewrite every backticked `symspec …` span inside a paragraph of advice.

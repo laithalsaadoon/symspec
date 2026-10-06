@@ -7,6 +7,12 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { REACHABILITY_FND_CODES } from '../../domain/reachability/reachability-codes.ts'
+import {
+  OP_DIRECTION,
+  OP_DIRECTIONS,
+  OP_VERBS,
+  type OpVerb,
+} from '../../domain/requirements/ops.ts'
 import { ERR_CODES, errCodeCatalog } from '../../ports/errors.ts'
 import { API_VERSION } from '../runtime/envelope.ts'
 import { toErrorEnvelope } from '../runtime/errors.ts'
@@ -135,7 +141,7 @@ describe('manifest', () => {
     }
   })
 
-  it('publishes all 21 error codes, single-sourced from the catalog', () => {
+  it('publishes every error code, single-sourced from the catalog', () => {
     expect(currentManifest().errorCodes).toEqual([...errCodeCatalog()])
     expect(currentManifest().errorCodes.map((e) => e.code)).toEqual([...ERR_CODES])
   })
@@ -165,6 +171,26 @@ describe('manifest', () => {
     expect(scope.silence).toContain('silence is not a consistency certificate')
     expect(scope.soundness).toContain('sound modulo atomization')
     expect(scope.reachabilityModelScoped).toContain('STATE MODEL you declared')
+  })
+
+  it('publishes every op verb with its direction, in the append-only verb order (AC-5-1)', () => {
+    const { opDirections } = currentManifest()
+    expect(opDirections.verbs.map((v) => v.verb)).toEqual([...OP_VERBS])
+    for (const v of opDirections.verbs) {
+      expect(v.direction, v.verb).toBe(OP_DIRECTION[v.verb as OpVerb].direction)
+    }
+    // The set the directions are stated over is published with them, or a label is a word.
+    expect(opDirections.rule).toContain('verdict-bearing')
+    expect(opDirections.directions.map((d) => d.direction)).toEqual([...OP_DIRECTIONS])
+  })
+
+  it('publishes a class for every finding code it publishes', () => {
+    const { signalClasses, findingCodes, lintCodes } = currentManifest()
+    const classed = new Set(signalClasses.findings.map((f) => f.code))
+    for (const row of findingCodes) expect(classed.has(row.code), row.code).toBe(true)
+    // The lint family is one row: every GtWR rule is a wording rule.
+    expect(lintCodes.length).toBeGreaterThan(0)
+    expect(classed.has('GTWR')).toBe(true)
   })
 
   it('publishes an honest input schema for every operation', () => {
@@ -209,12 +235,13 @@ describe('explain — success', () => {
  * `FND_CONTRADICTION` from `check` could list it in the manifest and not explain it.
  */
 describe('explain — AC-A-3: every code through the operation', () => {
-  it('resolves every code the MANIFEST publishes, across all three catalogs', async () => {
+  it('[S3-001] resolves every code the MANIFEST publishes, across all three catalogs, ERR_WAIVER_REFUSED included (R47)', async () => {
     const manifest = currentManifest()
     const published = [...manifest.errorCodes, ...manifest.findingCodes, ...manifest.lintCodes].map(
       (row) => row.code,
     )
-    expect(published).toHaveLength(83)
+    expect(published).toHaveLength(90)
+    expect(published).toContain('ERR_WAIVER_REFUSED')
 
     for (const code of published) {
       const env = await Effect.runPromise(runOperation(explainOp, { code }))
@@ -237,6 +264,8 @@ describe('explain — AC-A-3: every code through the operation', () => {
     expect(env.data.family).toBe('FND')
     expect(env.data.severity).toBe('error')
     expect(env.data.tier).toBe('formal')
+    expect(env.data.class).toBe('verdict')
+    expect(env.data.waivable).toBe('never')
     expect(env.data.meaning).toContain('unsat')
   })
 
@@ -276,7 +305,7 @@ describe('explain — AC-A-3: every code through the operation', () => {
       // the engine's transplanted 30 plus the 6 `FND_REACHABILITY_*`. Read from
       // `catalogCounts()` at runtime rather than hardcoded in the message, which is why
       // this number moves on its own when the vocabulary grows.
-      expect(env.suggestions.join(' ')).toContain('38 FND_*')
+      expect(env.suggestions.join(' ')).toContain('42 FND_*')
     }
   })
 
@@ -292,8 +321,8 @@ describe('explain — AC-A-3: every code through the operation', () => {
    * what an agent does about a reachability finding is whether it gates the build, and the
    * ONE fact that decides how it fixes it is which knob the remedy names.
    */
-  it('explains all six FND_REACHABILITY_* codes with the right severity', async () => {
-    expect(REACHABILITY_FND_CODES).toHaveLength(6)
+  it('explains every reachability-tier code with the right severity', async () => {
+    expect(REACHABILITY_FND_CODES).toHaveLength(8)
     for (const code of REACHABILITY_FND_CODES) {
       const env = await Effect.runPromise(runOperation(explainOp, { code }))
       expect(env.data.code, code).toBe(code)
@@ -303,7 +332,15 @@ describe('explain — AC-A-3: every code through the operation', () => {
       // vacuous initial state earns error severity because it MASKS proven violations —
       // every constraint holds over an empty reachable set — rather than merely failing
       // to prove one.
-      const gating = ['FND_REACHABILITY_VIOLATED', 'FND_REACHABILITY_VACUOUS_INITIAL']
+      // FND_RANGE_VIOLATION (spec 007 AC-1-2) gates too: a reachable, requirement-sanctioned
+      // step writes outside a declared range, so the declared model is false of itself.
+      const gating = [
+        'FND_REACHABILITY_VIOLATED',
+        'FND_REACHABILITY_VACUOUS_INITIAL',
+        'FND_RANGE_VIOLATION',
+        // CERTIFICATE_DISAGREES (AC-1-5): an independent search refuted a proof.
+        'FND_CERTIFICATE_DISAGREES',
+      ]
       expect(env.data.severity, code).toBe(gating.includes(code) ? 'error' : 'info')
       expect(env.data.meaning.length, code).toBeGreaterThan(80)
       expect(exitCodeForEnvelope(env), code).toBe(0)

@@ -1,0 +1,116 @@
+one-trigger-contradiction	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+one-trigger-contradiction	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+one-trigger-contradiction	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+one-trigger-contradiction	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+one-trigger-contradiction	alias-contraries-glossary@forward	inapplicable
+one-trigger-contradiction	alias-contraries-glossary@reverse	inapplicable
+one-trigger-contradiction	alias-contraries-term@forward	inapplicable
+one-trigger-contradiction	alias-contraries-term@reverse	inapplicable
+one-trigger-contradiction	term-over-phrase@inside-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@equal-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@around-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@straddle-canonical	inapplicable
+one-trigger-contradiction	term-over-phrase@straddle-alias	inapplicable
+one-trigger-contradiction	glossary-over-term@equal/term-then-glossary	inapplicable
+one-trigger-contradiction	glossary-over-term@equal/glossary-then-term	inapplicable
+one-trigger-contradiction	glossary-over-term@containing/term-then-glossary	inapplicable
+one-trigger-contradiction	glossary-over-term@containing/glossary-then-term	inapplicable
+one-trigger-contradiction	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+one-trigger-contradiction	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+one-trigger-contradiction	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+one-trigger-contradiction	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+one-trigger-contradiction	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+one-trigger-contradiction	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+one-trigger-contradiction	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	unwaive	inapplicable
+one-trigger-contradiction	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+one-trigger-contradiction	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+one-trigger-contradiction	flip-negated@first	exit 1 verified=false signal=gone errors=[FND_EXACT_DUPLICATE] demotions=[no-decide-tier-comparison]
+one-trigger-contradiction	flip-negated@second	exit 1 verified=false signal=gone errors=[FND_EXACT_DUPLICATE] demotions=[no-decide-tier-comparison]
+one-trigger-contradiction	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+one-trigger-contradiction	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+one-trigger-contradiction	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	antonym-over-candidate	inapplicable
+one-trigger-contradiction	add-bound-past-bystander	inapplicable
+one-trigger-contradiction	add-bystander-negation	inapplicable
+one-trigger-contradiction	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+one-trigger-contradiction	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+one-trigger-contradiction	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	branch-into-cycle	inapplicable
+one-trigger-contradiction	supply-dangling-target	inapplicable
+one-trigger-contradiction	unglossary	inapplicable
+one-trigger-contradiction	unantonym	inapplicable
+one-trigger-contradiction	unterm	inapplicable
+one-trigger-contradiction	declassify-constraint	inapplicable
+one-trigger-contradiction	rebind-effect	inapplicable
+one-trigger-contradiction	vacuous-initial	inapplicable
+one-trigger-contradiction	release-frame	inapplicable
+one-trigger-contradiction	unstate	inapplicable
+one-trigger-contradiction	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
+one-trigger-contradiction	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+one-trigger-contradiction	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+one-trigger-contradiction	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+one-trigger-contradiction	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+one-trigger-contradiction	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+contrary-pair	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+contrary-pair	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+contrary-pair	alias-contraries-glossary@forward	refused glossary:ERR_USAGE
+contrary-pair	alias-contraries-glossary@reverse	refused glossary:ERR_USAGE
+contrary-pair	alias-contraries-term@forward	refused term:ERR_USAGE
+contrary-pair	alias-contraries-term@reverse	refused term:ERR_USAGE
+contrary-pair	term-over-phrase@inside-canonical	inapplicable
+contrary-pair	term-over-phrase@equal-canonical	inapplicable
+contrary-pair	term-over-phrase@around-canonical	inapplicable
+contrary-pair	term-over-phrase@straddle-canonical	inapplicable
+contrary-pair	term-over-phrase@straddle-alias	inapplicable
+contrary-pair	glossary-over-term@equal/term-then-glossary	inapplicable
+contrary-pair	glossary-over-term@equal/glossary-then-term	inapplicable
+contrary-pair	glossary-over-term@containing/term-then-glossary	inapplicable
+contrary-pair	glossary-over-term@containing/glossary-then-term	inapplicable
+contrary-pair	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+contrary-pair	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+contrary-pair	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+contrary-pair	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+contrary-pair	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+contrary-pair	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+contrary-pair	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	unwaive	inapplicable
+contrary-pair	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	flip-negated@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+contrary-pair	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+contrary-pair	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+contrary-pair	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	antonym-over-candidate	inapplicable
+contrary-pair	add-bound-past-bystander	inapplicable
+contrary-pair	add-bystander-negation	inapplicable
+contrary-pair	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+contrary-pair	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	branch-into-cycle	inapplicable
+contrary-pair	supply-dangling-target	inapplicable
+contrary-pair	unglossary	inapplicable
+contrary-pair	unantonym	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	unterm	inapplicable
+contrary-pair	declassify-constraint	inapplicable
+contrary-pair	rebind-effect	inapplicable
+contrary-pair	vacuous-initial	inapplicable
+contrary-pair	release-frame	inapplicable
+contrary-pair	unstate	inapplicable
+contrary-pair	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
+contrary-pair	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+contrary-pair	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+contrary-pair	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+contrary-pair	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+contrary-pair	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]

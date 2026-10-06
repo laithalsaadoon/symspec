@@ -26,6 +26,7 @@
  * byte-identical across runs (AC-32-5).
  */
 
+import { shellWord } from '../core/shell-word.ts'
 import type { Embedder } from './embed.ts'
 
 /** A requirement projection this tier needs: id, its text, and its committed edges. */
@@ -202,7 +203,7 @@ export async function buildSimilarityGraph(
         message:
           `${lo} and ${hi} are semantically similar (cosine ${e.score} ≥ ${threshold}) but have no ` +
           'committed trace link. If one refines or derives the other, add the edge (e.g. ' +
-          `\`symspec derive ${lo} ${hi}\`). This is a suggestion, not a verdict.`,
+          `\`symspec derive ${shellWord(lo)} ${shellWord(hi)}\`). This is a suggestion, not a verdict.`,
       })
     }
   }

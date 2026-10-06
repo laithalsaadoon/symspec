@@ -21,9 +21,10 @@ import {
   type LoadedDocument,
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
-import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/doc-store.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
+import { hasErrorSeverityFinding } from '../runtime/exit.ts'
 import {
   type AnyOperation,
   fieldMetadata,
@@ -56,7 +57,7 @@ interface Fs {
 const layers = (fs: Fs, stream = '') =>
   Layer.mergeAll(
     Layer.succeed(DocStore)(
-      DocStore.of({
+      documentOnlyStore({
         load: (path) =>
           path === 'doc.json'
             ? Effect.succeed({
@@ -271,6 +272,33 @@ describe('the two failure contracts', () => {
     expect(data.abortedAt).toBe(1)
     expect(data.results[1]?.code).toBe('ERR_NOT_FOUND')
     expect(fs.saves).toHaveLength(0)
+    // …and the refused op is an ERROR-severity finding, so the process exits NON-ZERO
+    // (spec 007 AC-1-6). An aborted atomic apply used to exit 0 with `abortedAt` set.
+    expect(data.findings).toEqual([
+      expect.objectContaining({ code: 'ERR_NOT_FOUND', severity: 'error', index: 1, op: 'derive' }),
+    ])
+    expect(hasErrorSeverityFinding(data)).toBe(true)
+  })
+
+  it('a refused op exits non-zero in continue-on-error mode too, while the rest applies', async () => {
+    const fs = await seeded()
+    const stream = [
+      '{"op":"add","key":"S1","patternType":"ubiquitous","systemName":"s","systemResponse":"do a"}',
+      '{"op":"derive","from":"S1","to":"MISSING"}',
+    ].join('\n')
+    const data = await ok(APPLY, { file: 'doc.json', continueOnError: true }, fs, stream)
+    expect(data.written).toBe(true)
+    expect(data.findings?.map((f) => f.index)).toEqual([1])
+    expect(hasErrorSeverityFinding(data)).toBe(true)
+  })
+
+  it('a batch where every op applies carries no findings and exits 0', async () => {
+    const fs = await seeded()
+    const stream =
+      '{"op":"add","key":"S1","patternType":"ubiquitous","systemName":"s","systemResponse":"do a"}'
+    const data = await ok(APPLY, { file: 'doc.json' }, fs, stream)
+    expect(data.findings).toBeUndefined()
+    expect(hasErrorSeverityFinding(data)).toBe(false)
   })
 
   it('a BULK update is not `single` — a partial outcome is data, not a failure', async () => {
@@ -305,7 +333,8 @@ describe('--dry-run writes nothing, on EVERY mutation op', () => {
     ['update', UPDATE, { ref: 'G1', attr: 'status', value: 'approved' }],
     ['delete', DELETE, { ref: 'G1' }],
     ['link', LINK, { from: 'G1', to: 'G1', relation: 'refines' }],
-    ['waive', WAIVE, { code: 'GTWR_R7_VAGUE', reason: 'reviewed' }],
+    // Scoped: ruling R5 (S3-003) refuses a code-only waive, so the preview names a requirement.
+    ['waive', WAIVE, { code: 'GTWR_R7_VAGUE', reason: 'reviewed', ref: 'G1' }],
     ['glossary', GLOSSARY, { canonical: 'issue a session token', alias: 'mint a token' }],
     ['antonym', ANTONYM, { a: 'open', b: 'shut' }],
   ]
@@ -403,6 +432,65 @@ describe('the injected fold options reach the fold', () => {
     ])
   })
 
+  it('REFUSES a glossary alias that names a contrary of its entry, using the real tables', async () => {
+    // "close the door" as an alias of "open the door" says they are one action, and the seed
+    // pair open/close says they cannot both happen: together, neither ever happens. Accepted,
+    // it turned FND_CONTRADICTION into `verified: true`. The same merge as a PROPOSAL was already
+    // withheld (AC-3-6); the committed op now refuses it too, on every path that writes one.
+    for (const [canonical, alias] of [
+      ['open the door', 'close the door'],
+      ['Close the door', 'open the door'],
+      ['grant access', 'revoke access'],
+    ] as const) {
+      const fs = fresh()
+      const result = await run(GLOSSARY, { canonical, alias, file: 'doc.json' }, fs)
+      expect(result._tag, `${canonical} / ${alias}`).toBe('Failure')
+      if (result._tag !== 'Failure') return
+      expect(result.failure._tag).toBe('ERR_USAGE')
+      expect(result.failure.error).toContain('contrar')
+      expect(fs.document.glossary).toEqual([])
+    }
+    // The second alias that brings the other side into one entry is refused as well.
+    const fs = fresh()
+    await ok(
+      GLOSSARY,
+      { canonical: 'operate the door', alias: 'open the door', file: 'doc.json' },
+      fs,
+    )
+    const second = await run(
+      GLOSSARY,
+      { canonical: 'operate the door', alias: 'close the door', file: 'doc.json' },
+      fs,
+    )
+    expect(second._tag).toBe('Failure')
+    expect(fs.document.glossary).toEqual([
+      { canonical: 'operate the door', aliases: ['open the door'] },
+    ])
+    // And through `apply`, which folds the same op.
+    const batch = fresh()
+    const data = await ok(
+      APPLY,
+      { file: 'doc.json' },
+      batch,
+      '{"op":"glossary","canonical":"open the door","alias":"close the door"}\n',
+    )
+    expect(data.written).toBe(false)
+    expect(data.results[0]?.code).toBe('ERR_USAGE')
+    expect(batch.document.glossary).toEqual([])
+  })
+
+  it('COMMITS a glossary alias that is no contrary of its entry', async () => {
+    const fs = fresh()
+    await ok(
+      GLOSSARY,
+      { canonical: 'open the door', alias: 'open the hatch', file: 'doc.json' },
+      fs,
+    )
+    expect(fs.document.glossary).toEqual([
+      { canonical: 'open the door', aliases: ['open the hatch'] },
+    ])
+  })
+
   it('REFUSES an inconsistent antonym pair, using the real union-find', async () => {
     // The false-contradiction guard, running against the transplanted
     // `buildAntonymIndexWithDoc` rather than a stub. `grant`/`revoke` are already polar
@@ -438,10 +526,11 @@ describe('the injected fold options reach the fold', () => {
     // The defect V27 recorded was a mutation round-tripping a document through a
     // strip-mode parse and silently dropping a forward-compatible table. The write path
     // carries the load's `unknownKeys` back, so a mutation cannot strip one.
-    const fs = fresh()
+    // Seeded, so the waive can name G1 (ruling R5, S3-003: a code-only waive is refused).
+    const fs = await seeded()
     const withUnknown = Layer.mergeAll(
       Layer.succeed(DocStore)(
-        DocStore.of({
+        documentOnlyStore({
           load: () =>
             Effect.succeed({
               document: fs.document,
@@ -464,6 +553,8 @@ describe('the injected fold options reach the fold', () => {
       runOperation(waiveOp, {
         code: 'GTWR_R7_VAGUE',
         reason: 'reviewed',
+        // Scoped: ruling R5 (S3-003) refuses a code-only waive.
+        ref: 'G1',
         file: 'doc.json',
       }).pipe(Effect.provide(withUnknown)),
     )

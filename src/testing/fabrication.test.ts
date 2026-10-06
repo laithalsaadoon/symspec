@@ -28,6 +28,7 @@ import { solverServiceLayer } from '../adapters/z3/solver-service.ts'
 import { type CheckPayload, checkOp } from '../app/operations/check.ts'
 import { runOperation } from '../app/runtime/operation.ts'
 import { toEngineDoc } from '../domain/compat.ts'
+import { contraryPairs } from '../domain/engine/formal/atomize.ts'
 import { contextAtomsOf, liveIn, planContextGroups } from '../domain/engine/formal/contradiction.ts'
 import type { Embedder } from '../domain/engine/formal/embed.ts'
 import { encodeIncluded } from '../domain/engine/pipeline/check.ts'
@@ -35,7 +36,7 @@ import { buildGlossaryPlan } from '../domain/glossary/glossary-plan.ts'
 import type { RequirementsDocument } from '../domain/requirements/document.ts'
 import { foldOps } from '../domain/requirements/mutate.ts'
 import type { DocumentOp } from '../domain/requirements/ops.ts'
-import { DocPath, DocStore, makeDocPath } from '../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../ports/doc-store.ts'
 import { embedderLayerOf } from '../ports/embedder.ts'
 import { ErrDocNotFound } from '../ports/errors.ts'
 import { crossSlotBridgeDoc, fabricationCases, req } from './fabrication.ts'
@@ -68,7 +69,7 @@ const ARMED = { strict: true, temporalBound: 10, semantic: true } as const
 
 const check = async (document: RequirementsDocument): Promise<CheckPayload> => {
   const store = Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: (path) =>
         path === 'doc.json'
           ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })
@@ -261,16 +262,15 @@ describe('a cross-slot bridge is a fabrication surface still open', () => {
 
   it('blames the two requirements that do not conflict', async () => {
     const report = await check(crossSlotBridgeDoc())
-    // TWO error-severity findings on a document whose only defect is that req 72 can never
-    // fire. Both tiers reach the same wrong conclusion through the same bridge group.
+    // An error-severity finding on a document whose only defect is that req 72 can never fire.
+    // The propositional tier reaches it through the bridge group. The numeric tier's half is
+    // fenced: a core whose requirements' guard bounds cannot hold at once is not a conflict
+    // (`numeric-contradiction.ts` `canCoApply`), so it no longer blames A and B.
     expect(
       report.findings
         .filter((f) => f.severity === 'error')
         .map((f) => [f.code, f.requirementIds] as const),
-    ).toEqual([
-      ['FND_CONTRADICTION', [A, B]],
-      ['FND_NUMERIC_CONTRADICTION', [A, B]],
-    ])
+    ).toEqual([['FND_CONTRADICTION', [A, B]]])
     // And the honest reading of the document is present on the same run, at warn severity:
     // the bridge requirement's guard is unreachable. That finding is the whole story; the two
     // above are the fabrication.
@@ -411,11 +411,17 @@ describe('what a GUARD merge would cost, without booting the solver', () => {
       `aligning ${JSON.stringify(guards)} should have put both requirements in one group`,
     ).toBeGreaterThan(0)
 
-    // And the other half of the antecedent: one response atom, opposite polarities.
+    // And the other half of the antecedent: the two responses cannot both hold — one atom at
+    // opposite polarities, or (spec 007 AC-2-1) two positive atoms a contrary axiom relates.
     const responses = encodeIncluded(toEngineDoc(merged)).flatMap((e) =>
-      e.atoms.filter((a) => a.kind === 'resp').map((a) => ({ atom: a.atom, negated: a.negated })),
+      e.atoms.filter((a) => a.kind === 'resp'),
     )
-    expect(new Set(responses.map((r) => r.atom)).size, JSON.stringify(responses)).toBe(1)
-    expect(new Set(responses.map((r) => r.negated))).toEqual(new Set([true, false]))
+    const shown = JSON.stringify(responses.map((r) => ({ atom: r.atom, negated: r.negated })))
+    const oneAtomOpposed =
+      new Set(responses.map((r) => r.atom)).size === 1 &&
+      new Set(responses.map((r) => r.negated)).size === 2
+    const contraries =
+      contraryPairs(responses).length === 1 && responses.every((r) => r.negated === false)
+    expect(oneAtomOpposed || contraries, shown).toBe(true)
   })
 })

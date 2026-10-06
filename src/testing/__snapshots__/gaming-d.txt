@@ -1,0 +1,116 @@
+glossary-bridged	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+glossary-bridged	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+glossary-bridged	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+glossary-bridged	alias-contraries-glossary@forward	inapplicable
+glossary-bridged	alias-contraries-glossary@reverse	refused glossary:ERR_USAGE
+glossary-bridged	alias-contraries-term@forward	refused term:ERR_USAGE
+glossary-bridged	alias-contraries-term@reverse	refused term:ERR_USAGE
+glossary-bridged	term-over-phrase@inside-canonical	inapplicable
+glossary-bridged	term-over-phrase@equal-canonical	inapplicable
+glossary-bridged	term-over-phrase@around-canonical	inapplicable
+glossary-bridged	term-over-phrase@straddle-canonical	inapplicable
+glossary-bridged	term-over-phrase@straddle-alias	inapplicable
+glossary-bridged	glossary-over-term@equal/term-then-glossary	inapplicable
+glossary-bridged	glossary-over-term@equal/glossary-then-term	inapplicable
+glossary-bridged	glossary-over-term@containing/term-then-glossary	inapplicable
+glossary-bridged	glossary-over-term@containing/glossary-then-term	inapplicable
+glossary-bridged	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+glossary-bridged	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+glossary-bridged	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+glossary-bridged	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+glossary-bridged	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+glossary-bridged	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+glossary-bridged	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	unwaive	inapplicable
+glossary-bridged	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	flip-negated@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+glossary-bridged	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+glossary-bridged	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	antonym-over-candidate	refused antonym:ERR_USAGE
+glossary-bridged	add-bound-past-bystander	inapplicable
+glossary-bridged	add-bystander-negation	inapplicable
+glossary-bridged	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+glossary-bridged	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	branch-into-cycle	inapplicable
+glossary-bridged	supply-dangling-target	inapplicable
+glossary-bridged	unglossary	CLEAN verified=true signal=gone errors=[] demotions=[]
+glossary-bridged	unantonym	inapplicable
+glossary-bridged	unterm	inapplicable
+glossary-bridged	declassify-constraint	inapplicable
+glossary-bridged	rebind-effect	inapplicable
+glossary-bridged	vacuous-initial	inapplicable
+glossary-bridged	release-frame	inapplicable
+glossary-bridged	unstate	inapplicable
+glossary-bridged	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
+glossary-bridged	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+glossary-bridged	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+glossary-bridged	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+glossary-bridged	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+glossary-bridged	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+term-bridged	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+term-bridged	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+term-bridged	alias-contraries-glossary@forward	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	alias-contraries-glossary@reverse	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	alias-contraries-term@forward	refused term:ERR_USAGE
+term-bridged	alias-contraries-term@reverse	refused term:ERR_USAGE
+term-bridged	term-over-phrase@inside-canonical	refused term:ERR_USAGE
+term-bridged	term-over-phrase@equal-canonical	refused term:ERR_USAGE
+term-bridged	term-over-phrase@around-canonical	refused term:ERR_USAGE
+term-bridged	term-over-phrase@straddle-canonical	refused term:ERR_USAGE
+term-bridged	term-over-phrase@straddle-alias	refused term:ERR_USAGE
+term-bridged	glossary-over-term@equal/term-then-glossary	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	glossary-over-term@equal/glossary-then-term	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	glossary-over-term@containing/term-then-glossary	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	glossary-over-term@containing/glossary-then-term	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	glossary-over-term@equal-canonical/term-then-glossary	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	glossary-over-term@equal-canonical/glossary-then-term	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	glossary-over-term@containing-canonical/term-then-glossary	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	glossary-over-term@containing-canonical/glossary-then-term	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+term-bridged	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+term-bridged	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	unwaive	inapplicable
+term-bridged	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	flip-negated@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+term-bridged	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+term-bridged	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	antonym-over-candidate	inapplicable
+term-bridged	add-bound-past-bystander	inapplicable
+term-bridged	add-bystander-negation	inapplicable
+term-bridged	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+term-bridged	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	branch-into-cycle	inapplicable
+term-bridged	supply-dangling-target	inapplicable
+term-bridged	unglossary	inapplicable
+term-bridged	unantonym	inapplicable
+term-bridged	unterm	CLEAN verified=true signal=gone errors=[] demotions=[]
+term-bridged	declassify-constraint	inapplicable
+term-bridged	rebind-effect	inapplicable
+term-bridged	vacuous-initial	inapplicable
+term-bridged	release-frame	inapplicable
+term-bridged	unstate	inapplicable
+term-bridged	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
+term-bridged	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+term-bridged	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+term-bridged	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+term-bridged	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+term-bridged	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]

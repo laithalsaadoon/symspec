@@ -17,6 +17,25 @@
  * What it does NOT own: mutation. The store loads and saves; changing a document
  * is the ops' business. That is why there is no `update` method here.
  *
+ * ## The bundle `check` reads
+ *
+ * `loadBundle` is `load` plus the pinned `symspec.config.json` and the split intent and
+ * policy it names (spec 007 AC-5-10). An explicit config (`--config`, then `SYMSPEC_CONFIG`)
+ * is read when one is named. Otherwise the config has ONE location, `configPath`: the document's
+ * symlinks are resolved, and the config is `symspec.config.json` at the toplevel
+ * `git rev-parse --show-toplevel` prints in the document's real directory, or in that directory
+ * when git names no repository there. Git is asked; nothing about `.git` is parsed here. The
+ * trust boundary is a CI job on a fresh clone, where no `.git` content travels in a push, and git
+ * is asked with implicit bare-repository discovery refused (the one repository layout committed
+ * content CAN hold), so git's answer there is the committed repository's. The lookup never
+ * searches for a config, so a config placed between the document and the toplevel is not read.
+ * A git refusal (anything but "not a git repository") is `ERR_CONFIG_INVALID`, except that with no
+ * config named, a refusal other than the bare-repository one, and no `symspec.config.json` in the
+ * document's directory or any ancestor (looked for only to refuse, never read), the run is the
+ * no-repository run and `unresolvedConfig` discloses the refusal. Every failure to read what
+ * the config names is `ERR_CONFIG_INVALID`: fail closed, never "no config". `create` is the
+ * exclusive write `init --split` uses for those owner-authored files.
+ *
  * ## The atomic-write pattern, ported from v4's `storage.ts`
  *
  * A write lands on a SIBLING temp file first, then `rename()`s over the target.
@@ -62,23 +81,41 @@
  * disjointness, same agent-visible outcome, opposite mechanism.)
  */
 
-import { Effect, FileSystem, Layer, Path, type Schema } from 'effect'
+import { Effect, FileSystem, Layer, Path, Schema, Stream } from 'effect'
+import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
+import { Intent, Policy } from '../../domain/anchor/anchor.ts'
+import { CONFIG_FILE_NAME, decodeConfig } from '../../domain/config/config.ts'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import {
+  ACCEPTED_DOC_VERSIONS,
   DOC_VERSION,
+  type DocVersion,
   decodeDocument,
   type LoadedDocument,
   type RequirementsDocument,
   withUnknownKeys,
 } from '../../domain/requirements/document.ts'
 import {
+  type DefaultConfigLocation,
   DOC_PATH_CONVENTION,
   DOC_PATH_ENV_VAR,
   DocPath,
   DocStore,
+  type DocumentBundle,
+  documentBundle,
+  type ExplicitConfig,
+  type LoadedAnchor,
   makeDocPath,
   type SaveInput,
 } from '../../ports/doc-store.ts'
-import { ErrDocNotFound, ErrDocParse, ErrIo, ErrSchemaVersion } from '../../ports/errors.ts'
+import {
+  ErrConfigInvalid,
+  ErrDocExists,
+  ErrDocNotFound,
+  ErrDocParse,
+  ErrIo,
+  ErrSchemaVersion,
+} from '../../ports/errors.ts'
 
 // ---------------------------------------------------------------------------
 // Serialization — pure, no I/O
@@ -142,7 +179,7 @@ export const parseDocumentText = (
           error: `${path} is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
           suggestions: [
             'Check the path points at a symspec requirements document (JSON).',
-            `Run \`symspec init ${path}\` to create a fresh v${DOC_VERSION} document.`,
+            `Run \`symspec init ${shellWord(path)}\` to create a fresh v${DOC_VERSION} document.`,
           ],
         }),
     })
@@ -153,11 +190,11 @@ export const parseDocumentText = (
       decodeDocument(raw),
       (cause) =>
         new ErrDocParse({
-          error: `${path} does not satisfy the v${DOC_VERSION} document schema: ${formatSchemaError(cause)}`,
+          error: `${path} does not satisfy the v${declaredVersion(raw)} document schema: ${formatSchemaError(cause)}`,
           suggestions: [
             'Fix the offending JSON path named in the message above.',
             'Run `symspec manifest` to see the exact field shapes, including which fields are optional.',
-            `Or re-create the document from source: \`symspec init ${path}\` then \`symspec import\`.`,
+            `Or re-create the document from source: \`symspec init ${shellWord(path)}\` then \`symspec import\`.`,
           ],
         }),
     )
@@ -173,6 +210,26 @@ export const parseDocumentText = (
 const formatSchemaError = (error: Schema.SchemaError): string =>
   String(error).replace(/\s*\n\s*/g, ' ')
 
+/** Whether a raw value is one of the {@link ACCEPTED_DOC_VERSIONS}. */
+const isAcceptedVersion = (value: unknown): value is DocVersion =>
+  (ACCEPTED_DOC_VERSIONS as readonly unknown[]).includes(value)
+
+/** The readable versions, for a message: `3 or 4`. */
+const ACCEPTED = ACCEPTED_DOC_VERSIONS.join(' or ')
+
+/**
+ * The version a raw value declares, for the schema-failure message: its `docVersion` when
+ * that is readable, and {@link DOC_VERSION} when it is absent (the decoder then reports the
+ * missing key).
+ */
+const declaredVersion = (raw: unknown): DocVersion => {
+  const declared =
+    typeof raw === 'object' && raw !== null
+      ? (raw as Record<string, unknown>).docVersion
+      : undefined
+  return isAcceptedVersion(declared) ? declared : DOC_VERSION
+}
+
 /**
  * Check a raw parsed value's `docVersion` BEFORE schema decoding.
  *
@@ -180,7 +237,7 @@ const formatSchemaError = (error: Schema.SchemaError): string =>
  * its whole job is to produce a better error than the decoder would. Three cases,
  * each with a different remedy, so each gets its own message:
  *
- * - `docVersion` equals {@link DOC_VERSION} → proceed.
+ * - `docVersion` is one of the {@link ACCEPTED_DOC_VERSIONS} → proceed.
  * - a v2 `schemaVersion` is present instead → `ERR_SCHEMA_VERSION` naming the
  *   v4-CLI migration pipeline, which is the ONE command pair that fixes it.
  * - any other value → `ERR_SCHEMA_VERSION` stating both numbers.
@@ -193,7 +250,7 @@ const checkDocVersion = (raw: unknown, path: string): Effect.Effect<void, ErrSch
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return Effect.void
   const record = raw as Record<string, unknown>
   const declared = record.docVersion
-  if (declared === DOC_VERSION) return Effect.void
+  if (isAcceptedVersion(declared)) return Effect.void
 
   const legacy = record.schemaVersion
   // NEITHER key present ⇒ not a version mismatch at all. Fall through to the
@@ -218,10 +275,10 @@ const checkDocVersion = (raw: unknown, path: string): Effect.Effect<void, ErrSch
 
   return Effect.fail(
     new ErrSchemaVersion({
-      error: `${path} declares docVersion ${JSON.stringify(declared)}; symspec expects ${DOC_VERSION}.`,
+      error: `${path} declares docVersion ${JSON.stringify(declared)}; symspec reads ${ACCEPTED}.`,
       suggestions: [
-        `Only document format v${DOC_VERSION} is readable by this build.`,
-        `If this document is NEWER than v${DOC_VERSION}, upgrade symspec rather than editing the file — a downgrade would have to guess at fields it does not know.`,
+        `Only document formats ${ACCEPTED_DOC_VERSIONS.map((v) => `v${v}`).join(' and ')} are readable by this build.`,
+        `If this document is NEWER than v${ACCEPTED_DOC_VERSIONS[ACCEPTED_DOC_VERSIONS.length - 1]}, upgrade symspec rather than editing the file — a downgrade would have to guess at fields it does not know.`,
         `If it is older, migrate it: \`symspec init <new.json>\` then \`symspec import\` the op stream that rebuilds it.`,
       ],
     }),
@@ -240,6 +297,67 @@ export const docPathLayer = Layer.sync(DocPath)(() => makeDocPath(process.env))
 let tempCounter = 0
 
 /**
+ * The environment `git rev-parse` runs in: the caller's, minus every `GIT_*` variable (a hook's
+ * `GIT_DIR` or `GIT_WORK_TREE` would answer for another repository than the document's), with
+ * the C locale so "not a git repository" reads the same everywhere.
+ */
+const gitEnvironment = (): Record<string, string> => ({
+  ...Object.fromEntries(
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => !entry[0].startsWith('GIT_') && entry[1] !== undefined,
+    ),
+  ),
+  LC_ALL: 'C',
+})
+
+/** The toplevel probe's arguments; see `revParseToplevel` for why bare discovery is refused. */
+const GIT_TOPLEVEL_ARGS = ['-c', 'safe.bareRepository=explicit', 'rev-parse', '--show-toplevel']
+
+/**
+ * Git's answer outside any repository, the one failure that means "no toplevel": the WHOLE of
+ * stderr is one of discovery's two messages (it stopped at the root, or at a filesystem
+ * boundary). Matched whole and case-sensitively, never as a substring, because other refusals
+ * quote a path, and a path is committable: "cannot use bare repository '<clone>/not a git
+ * repository'" is a refusal, and reading it as "no repository" would fall back to the config
+ * beside the document.
+ */
+const NOT_A_REPOSITORY =
+  /^fatal: not a git repository \((?:or any of the parent directories\): \.git|or any parent up to mount point [^\n]*\)\nStopping at filesystem boundary \(GIT_DISCOVERY_ACROSS_FILESYSTEM not set\)\.)$/
+
+/** Whether `git rev-parse` stderr (trimmed) says only that no repository encloses the directory. */
+export const isNotARepository = (stderr: string): boolean => NOT_A_REPOSITORY.test(stderr)
+
+/** The first line of git's stderr, verbatim (git's refusals continue with advice lines). */
+const firstLineOf = (stderr: string): string => stderr.split('\n', 1)[0] ?? ''
+
+/** How git's bare-repository refusal opens: `die()`'s prefix, the message, the quoted path. */
+const BARE_REFUSAL_PREFIX = "fatal: cannot use bare repository '"
+
+/**
+ * Whether `git rev-parse` stderr is git refusing an implicit bare repository, recognised from
+ * git's message form: its FIRST line opens with {@link BARE_REFUSAL_PREFIX}. Not a substring of
+ * the whole stderr, because other refusals quote a path, and a path is committable: an ownership
+ * refusal for a directory named "fatal: cannot use bare repository '" carries the phrase inside
+ * its quoted path, on its first line or (with a newline in the name) at the start of a later
+ * one, and stays the ordinary refusal that falls back when no config could govern the run.
+ */
+const isBareRepositoryRefusal = (stderr: string): boolean =>
+  firstLineOf(stderr).startsWith(BARE_REFUSAL_PREFIX)
+
+/** A git refusal: the directory it was asked in, its exit code and its (trimmed) stderr. */
+interface GitRefusal {
+  readonly dir: string
+  readonly code: number
+  readonly stderr: string
+}
+
+/** What git says about a directory: its toplevel, no repository, or a refusal. */
+type Toplevel =
+  | { readonly _tag: 'toplevel'; readonly path: string }
+  | { readonly _tag: 'none' }
+  | ({ readonly _tag: 'refused' } & GitRefusal)
+
+/**
  * The production {@link DocStore}, over the platform `FileSystem` and `Path`.
  *
  * `Layer.effect` (NOT `Layer.scoped`, which does not exist on beta.102) because
@@ -250,6 +368,7 @@ export const docStoreLayer = Layer.effect(DocStore)(
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 
     const exists = (target: string): Effect.Effect<boolean> =>
       fs.exists(target).pipe(Effect.orElseSucceed(() => false))
@@ -264,7 +383,7 @@ export const docStoreLayer = Layer.effect(DocStore)(
             new ErrDocNotFound({
               error: `Could not read a requirements document at ${target}.`,
               suggestions: [
-                `Run \`symspec init ${target}\` to create one.`,
+                `Run \`symspec init ${shellWord(target)}\` to create one.`,
                 `Or point ${DOC_PATH_ENV_VAR} at an existing document.`,
                 DOC_PATH_CONVENTION,
               ],
@@ -313,7 +432,276 @@ export const docStoreLayer = Layer.effect(DocStore)(
         }).pipe(Effect.tapError(() => cleanup))
       })
 
-    return DocStore.of({ load, save, exists })
+    /**
+     * `target` with every symlink resolved. An absent tail (a document `init` is about to
+     * create) is kept as written beneath the nearest ancestor that resolves.
+     */
+    const realOf = (target: string): Effect.Effect<string> =>
+      fs.realPath(target).pipe(
+        Effect.catchCause(() => {
+          const parent = path.dirname(target)
+          return parent === target
+            ? Effect.succeed(target)
+            : Effect.map(realOf(parent), (real) => path.join(real, path.basename(target)))
+        }),
+      )
+
+    /**
+     * Run `git rev-parse --show-toplevel` in `dir`, refusing implicit bare repositories: its exit
+     * code, stdout and stderr. Git's default (`safe.bareRepository=all`) discovers ANY directory
+     * holding `HEAD`, `objects/` and `refs/` as a bare repository and honors the `core.worktree`
+     * its `config` names, and all four are committable. Unrefused, a committed directory laid out
+     * that way plus a document symlinked into it makes a fresh clone print a toplevel the commit
+     * chose. `explicit` makes git refuse it ("cannot use bare repository"), which fails closed
+     * below. A `.git` itself cannot be committed, so a real clone, linked work tree or submodule
+     * is still discovered through its `.git` as before.
+     */
+    const revParseToplevel = (dir: string) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const handle = yield* spawner.spawn(
+            ChildProcess.make('git', GIT_TOPLEVEL_ARGS, {
+              cwd: dir,
+              env: gitEnvironment(),
+              extendEnv: false,
+            }),
+          )
+          const [stdout, stderr, code] = yield* Effect.all(
+            [
+              Stream.mkString(Stream.decodeText(handle.stdout)),
+              Stream.mkString(Stream.decodeText(handle.stderr)),
+              handle.exitCode,
+            ],
+            { concurrency: 'unbounded' },
+          )
+          return { code: Number(code), stdout: stdout.trim(), stderr: stderr.trim() }
+        }),
+      )
+
+    /**
+     * The toplevel git prints for `dir`, `undefined` when git names no repository there (or is
+     * not installed), or git's refusal. Any other failure (an unsafe-ownership refusal, a
+     * `.git` git cannot read, a bare repository) is a refusal: the location cannot be known.
+     */
+    const askToplevel = (dir: string): Effect.Effect<Toplevel> =>
+      Effect.gen(function* () {
+        const result = yield* Effect.result(revParseToplevel(dir))
+        // No git to ask: there is no repository this build can see.
+        if (result._tag === 'Failure') return { _tag: 'none' } as const
+        const { code, stdout, stderr } = result.success
+        if (code === 0 && stdout.length > 0)
+          return { _tag: 'toplevel', path: yield* realOf(stdout) } as const
+        if (isNotARepository(stderr)) return { _tag: 'none' } as const
+        return { _tag: 'refused', dir, code, stderr } as const
+      })
+
+    /** A refusal as `ERR_CONFIG_INVALID`, optionally naming a config that cannot be ignored. */
+    const refusalError = (refusal: GitRefusal, present?: string): ErrConfigInvalid =>
+      new ErrConfigInvalid({
+        error: `\`git rev-parse --show-toplevel\` failed in ${refusal.dir} (exit ${refusal.code}): ${refusal.stderr || 'no output'}. The pinned config is read at the repository toplevel, so its location cannot be known.${present !== undefined ? ` A config exists at ${present}, so the run does not proceed without knowing whether it governs this document.` : ''}`,
+        suggestions: [
+          `Run \`git -C ${refusal.dir} rev-parse --show-toplevel\` and fix what it reports.`,
+          `If git refuses the repository's ownership, mark it safe: \`git config --global --add safe.directory ${refusal.dir}\`.`,
+          "If git refuses a bare repository, the document resolves into a directory laid out as one; move the document into the repository's work tree.",
+          'Or name the config explicitly with --config.',
+        ],
+      })
+
+    /** The document's real path and directory, and what git says about that directory. */
+    const locate = (target: string) =>
+      Effect.gen(function* () {
+        const document = yield* realOf(path.resolve(target))
+        const dir = path.dirname(document)
+        return { document, dir, toplevel: yield* askToplevel(dir) }
+      })
+
+    const configPath = (target: string): Effect.Effect<DefaultConfigLocation, ErrConfigInvalid> =>
+      Effect.gen(function* () {
+        const { document, dir, toplevel } = yield* locate(target)
+        if (toplevel._tag === 'refused') return yield* Effect.fail(refusalError(toplevel))
+        return toplevel._tag === 'toplevel'
+          ? { path: path.join(toplevel.path, CONFIG_FILE_NAME), source: 'toplevel', document }
+          : { path: path.join(dir, CONFIG_FILE_NAME), source: 'directory', document }
+      })
+
+    /**
+     * Whether a directory entry named `candidate` is there at all, for a lookup that only ever
+     * REFUSES. A dangling symlink is present (ruling RH-R4: the run cannot tell which config it
+     * meant, and a committed dangling link must not steer discovery), and so is a path whose
+     * existence cannot be determined (an unreadable directory, a self-symlink's ELOOP). Only
+     * "no such entry" reads as absent.
+     */
+    const entryPresent = (candidate: string): Effect.Effect<boolean> =>
+      fs.exists(candidate).pipe(
+        Effect.flatMap((found) =>
+          found ? Effect.succeed(true) : Effect.as(fs.readLink(candidate), true),
+        ),
+        Effect.catchTag('PlatformError', (cause) =>
+          Effect.succeed(cause.reason._tag !== 'NotFound'),
+        ),
+      )
+
+    /**
+     * The first `symspec.config.json` in `dir` or any ancestor, or `undefined` when there is
+     * none. Only ever used to REFUSE: the file is never read. An entry counts as present when
+     * {@link entryPresent} says so, so a dangling link or an unreadable directory fails closed.
+     */
+    const configAtOrAbove = (dir: string): Effect.Effect<string | undefined> =>
+      Effect.gen(function* () {
+        for (let at = dir; ; at = path.dirname(at)) {
+          const candidate = path.join(at, CONFIG_FILE_NAME)
+          if (yield* entryPresent(candidate)) return candidate
+          if (path.dirname(at) === at) return undefined
+        }
+      })
+
+    /** Read, parse and decode one owner-authored JSON file, failing as ERR_CONFIG_INVALID. */
+    const readDecoded = <A>(
+      file: string,
+      what: string,
+      decode: (raw: unknown) => Effect.Effect<A, Schema.SchemaError>,
+    ): Effect.Effect<A, ErrConfigInvalid> =>
+      Effect.gen(function* () {
+        const invalid = (reason: string) =>
+          new ErrConfigInvalid({
+            error: `The ${what} at ${file} ${reason}`,
+            suggestions: [
+              `Fix ${file}; the check does not run without it rather than run without its pins.`,
+              'Compare against the skeleton `symspec init --split` writes in an empty directory.',
+            ],
+          })
+        const text = yield* Effect.mapError(fs.readFileString(file), (cause) =>
+          invalid(`could not be read: ${describePlatformError(cause)}`),
+        )
+        const raw = yield* Effect.try({
+          try: () => JSON.parse(text) as unknown,
+          catch: (cause) =>
+            invalid(`is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`),
+        })
+        return yield* Effect.mapError(decode(raw), (cause) =>
+          invalid(`does not satisfy its schema: ${formatSchemaError(cause)}`),
+        )
+      })
+
+    const decodeIntent = Schema.decodeUnknownEffect(Intent, { onExcessProperty: 'error' })
+    const decodePolicy = Schema.decodeUnknownEffect(Policy, { onExcessProperty: 'error' })
+
+    /**
+     * One split anchor, when the config names it: refused when the document carries the same
+     * anchor inline, because two copies of what the specification is for cannot both be it.
+     */
+    const splitAnchor = <A>(
+      named: string | undefined,
+      inline: LoadedAnchor<A> | undefined,
+      what: 'intent' | 'policy',
+      configFile: string,
+      decode: (raw: unknown) => Effect.Effect<A, Schema.SchemaError>,
+    ): Effect.Effect<LoadedAnchor<A> | undefined, ErrConfigInvalid> =>
+      Effect.gen(function* () {
+        if (named === undefined) return inline
+        const file = path.resolve(path.dirname(configFile), named)
+        if (inline !== undefined) {
+          return yield* Effect.fail(
+            new ErrConfigInvalid({
+              error: `The document carries an inline \`${what}\`, and ${configFile} names a split ${what} file (${file}) too.`,
+              suggestions: [
+                `Keep one: move the document's \`${what}\` into ${file}, or remove \`files.${what}\` from ${configFile}.`,
+              ],
+            }),
+          )
+        }
+        return {
+          value: yield* readDecoded(file, what, decode),
+          source: { from: 'file', path: file },
+        }
+      })
+
+    const loadBundle = (target: string, explicit?: ExplicitConfig) =>
+      Effect.gen(function* () {
+        const loaded = yield* load(target)
+        const inline = documentBundle(loaded)
+        const located = yield* locate(target)
+        const { toplevel } = located
+        if (toplevel._tag === 'refused') {
+          // A named config still needs the default location (it decides which document the
+          // named config governs), and the bare-repository refusal is the one committed
+          // content can cause: both fail closed, as does any config that could govern the run.
+          if (explicit !== undefined || isBareRepositoryRefusal(toplevel.stderr))
+            return yield* Effect.fail(refusalError(toplevel))
+          const present = yield* configAtOrAbove(located.dir)
+          if (present !== undefined) return yield* Effect.fail(refusalError(toplevel, present))
+          return {
+            ...inline,
+            unresolvedConfig: {
+              path: path.join(located.dir, CONFIG_FILE_NAME),
+              source: 'directory',
+              gitRefusal: firstLineOf(toplevel.stderr),
+            },
+          } satisfies DocumentBundle
+        }
+        const location: DefaultConfigLocation =
+          toplevel._tag === 'toplevel'
+            ? {
+                path: path.join(toplevel.path, CONFIG_FILE_NAME),
+                source: 'toplevel',
+                document: located.document,
+              }
+            : {
+                path: path.join(located.dir, CONFIG_FILE_NAME),
+                source: 'directory',
+                document: located.document,
+              }
+        // An explicit config is read or refused: a named file that is absent is not "no config".
+        const chosen = explicit ?? location
+        const configFile = path.resolve(chosen.path)
+        if (explicit === undefined && !(yield* exists(configFile))) return inline
+        const config = yield* readDecoded(configFile, 'config', decodeConfig)
+        const governed = config.files?.document
+        const governsDocument =
+          governed === undefined ||
+          (yield* realOf(path.resolve(path.dirname(configFile), governed))) === location.document
+        const files = governsDocument ? config.files : undefined
+        const intent = yield* splitAnchor(
+          files?.intent,
+          inline.intent,
+          'intent',
+          configFile,
+          decodeIntent,
+        )
+        const policy = yield* splitAnchor(
+          files?.policy,
+          inline.policy,
+          'policy',
+          configFile,
+          decodePolicy,
+        )
+        return {
+          loaded,
+          config: { path: configFile, source: chosen.source, config, governsDocument },
+          ...(intent !== undefined ? { intent } : {}),
+          ...(policy !== undefined ? { policy } : {}),
+        } satisfies DocumentBundle
+      })
+
+    /**
+     * Exclusive create: the `wx` flag makes the OPEN fail when the file exists, so the check
+     * and the write are one syscall and there is no window in which a file can appear between
+     * them and be clobbered.
+     */
+    const create = (target: string, contents: string): Effect.Effect<void, ErrDocExists | ErrIo> =>
+      Effect.mapError(fs.writeFileString(target, contents, { flag: 'wx' }), (cause) =>
+        cause.reason._tag === 'AlreadyExists'
+          ? new ErrDocExists({
+              error: `A file already exists at ${target}; it was not overwritten.`,
+              suggestions: ['The existing file was NOT modified.'],
+            })
+          : new ErrIo({
+              error: `Failed to create ${target}: ${describePlatformError(cause)}`,
+              suggestions: ['Check filesystem permissions and that the directory exists.'],
+            }),
+      )
+
+    return DocStore.of({ load, save, exists, loadBundle, configPath, create })
   }),
 )
 

@@ -49,7 +49,7 @@ import { describe, expect, it } from 'vitest'
 import { getContext, type Z3Context } from './backend.ts'
 import { findContradictions, minimizeCore } from './contradiction.ts'
 import { cmp, type EncodableRequirement, materialize, type Z3Bool } from './encode.ts'
-import type { NumericPredicate } from './numeric.ts'
+import { type NumericPredicate, parseRational } from './numeric.ts'
 import {
   findNumericContradictions,
   minimizeNumericCore,
@@ -175,6 +175,9 @@ function bound(comparator: NumericPredicate['comparator'], value: number): Numer
     label: 'replication lag',
     comparator,
     value,
+    exact: parseRational(String(value)),
+    dimension: 'time',
+    role: '',
     baseUnit: 'ms',
     slot: 'resp',
     sourceText: `${comparator} ${value} ms`,
@@ -356,5 +359,22 @@ describe('the culprit set is a function of the requirement set, not of document 
       ['req-a', 'req-c'],
     ])
     expect(await temporal(['req-b', 'req-c'])).toEqual([])
+  })
+})
+
+describe('minimizeCore discloses an unknown re-check (AC-3-4)', () => {
+  it('keeps the guard it could not prove inessential, and reports the unknown', async () => {
+    const ctx = await getContext('symspec-contradiction-minimize-unknown')
+    const { solver, guards } = twoMinimalCores(ctx, ['req-a', 'req-b', 'req-c'], 'unknown')
+    let unknowns = 0
+    const minimal = await minimizeCore(solver, guards, {
+      check: async () => 'unknown',
+      onUnknown: () => {
+        unknowns += 1
+      },
+    })
+    // Every re-check is undecided, so nothing may be dropped — and every one is told.
+    expect(minimal.map(guardIdOf)).toEqual(['req-a', 'req-b', 'req-c'])
+    expect(unknowns).toBe(3)
   })
 })

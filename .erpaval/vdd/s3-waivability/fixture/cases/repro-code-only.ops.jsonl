@@ -1,0 +1,5 @@
+# AC-5-6 reproducer, as the spec states it: a code-only waiver of the heat/cool opposition
+# candidate, then a new fill/drain pair under its own trigger. Applied to base.json.
+{"op":"waive","code":"FND_OPPOSITION_CANDIDATE","reason":"heating and cooling are separate climate modes"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000d1","key":"TNK-R1","patternType":"event-driven","trigger":"the level sensor reports low","systemName":"pump controller","systemResponse":"fill the tank"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000d2","key":"TNK-R2","patternType":"event-driven","trigger":"the level sensor reports low","systemName":"pump controller","systemResponse":"drain the tank"}

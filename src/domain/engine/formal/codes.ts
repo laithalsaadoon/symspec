@@ -102,7 +102,7 @@ export const FND_CODES = [
   // Bounded temporal tier (AC-33-2) — sound-for-UNSAT verdict over a trace bound
   'FND_TEMPORAL_CONTRADICTION',
   // Formal-coverage disclosure (appended) — the formal tier evaluated ZERO
-  // pairs (no two requirements shared an atom), so `check` performed no
+  // pairs (usually because no two requirements shared an atom), so `check` performed no
   // cross-requirement conflict analysis. An info finding so silence that looks
   // like a pass is loud instead.
   'FND_NO_PAIRS_CHECKED',
@@ -133,6 +133,18 @@ export const FND_CODES = [
   // aggregate sums or cross-quantity arithmetic. Info-tier, DEMOTES `verified`
   // so "verified" never outruns what the solver actually compared.
   'FND_RELATIONAL_UNCHECKED',
+  // Numeric-uncompared disclosure (appended, spec 007 AC-2-5/AC-2-6) — co-live bounds
+  // on ONE quantity key that the numeric tier neither proved nor dismissed: a deadline
+  // and a duration it keeps on two variables, a °F/K bound whose absolute and
+  // difference readings disagree, or two units no conversion relates. Info-tier,
+  // DEMOTES `verified`; never a verdict.
+  'FND_NUMERIC_UNCOMPARED',
+  // Number-spelling proposal (appended, spec 007 AC-2-4) — two requirements write one
+  // phrase with numbers that differ only in a digit separator (`1.5` / `1,5`, `1_500` /
+  // `1.500`), so they land on two atoms. Whether they are one number depends on the
+  // decimal convention, which no closed rule fixes. Info-tier, DEMOTES `verified`;
+  // never a verdict.
+  'FND_NUMBER_SPELLING_CANDIDATE',
 ] as const
 
 export type FndCode = (typeof FND_CODES)[number]
@@ -189,7 +201,7 @@ export const FndCodeMeta = {
   FND_SIMILAR_UNUNIFIED: {
     code: 'FND_SIMILAR_UNUNIFIED',
     description:
-      'info — responses with Jaccard ≥ 0.7 that did not unify to one atom; an over-unification-adjacent review prompt (suggests rewording one response via `symspec update`).',
+      'info — responses with Jaccard ≥ 0.7 that did not unify to one atom; an over-unification-adjacent review prompt (suggests rewording one response via `symspec update --ref <id> systemResponse "<wording>"`).',
   },
   FND_NEEDS_REVIEW: {
     code: 'FND_NEEDS_REVIEW',
@@ -213,12 +225,12 @@ export const FndCodeMeta = {
   FND_SIMILAR_SEMANTIC: {
     code: 'FND_SIMILAR_SEMANTIC',
     description:
-      'info — two responses embed with cosine ≥ threshold but did not unify to one atom; a PROPOSE-only prompt to add a `symspec glossary` entry. Never a verdict.',
+      'info — two responses embed with cosine ≥ threshold but did not unify to one atom; a PROPOSE-only prompt to add a `symspec glossary "<canonical>" "<alias>"` entry. Never a verdict.',
   },
   FND_NUMERIC_CONTRADICTION: {
     code: 'FND_NUMERIC_CONTRADICTION',
     description:
-      'error — two+ requirements place jointly unsatisfiable linear numeric constraints (LIA/LRA) on the same per-system quantity; ids are the minimal unsat core, evidence lists the conflicting predicates (unit-normalized).',
+      'error — two+ requirements place jointly unsatisfiable linear numeric constraints (LIA/LRA) on the same per-system quantity; ids are the minimal unsat core, evidence lists the conflicting predicates (unit-normalized). A culprit that performs the bounded action with no bound of its own ("keep the door unlocked" against "shall not keep the door unlocked above 30 seconds" and "... below 40 seconds") has no predicate to list, and the message names it.',
   },
   FND_LEAF_UNVERIFIABLE: {
     code: 'FND_LEAF_UNVERIFIABLE',
@@ -258,32 +270,42 @@ export const FndCodeMeta = {
   FND_TEMPORAL_CONTRADICTION: {
     code: 'FND_TEMPORAL_CONTRADICTION',
     description:
-      'error — a set of requirements is temporally inconsistent under bounded LTL→SMT (no trace of length ≤ k satisfies them jointly); sound-for-UNSAT, evidence carries {bound,complete:false}. Opt-in via `check --temporal`.',
+      'error — a set of requirements is temporally inconsistent under bounded LTL→SMT (no trace of length ≤ k satisfies them jointly); sound-for-UNSAT, evidence carries {bound,complete:false}. Reported at warn instead when the conflict needs two or more guarded triggers to all occur within k steps (it vanishes with the reachability premise reduced to any single trigger), since that can be an artifact of the bound; re-check at a larger --temporal-bound. Opt-in via `check --temporal`.',
   },
   FND_NO_PAIRS_CHECKED: {
     code: 'FND_NO_PAIRS_CHECKED',
     description:
-      'info — the formal tier evaluated 0 candidate pairs (no two requirements shared an atom), so no cross-requirement conflict/subsumption analysis actually ran. Silence here is not a consistency certificate; consider glossary entries to align vocabulary so related requirements share atoms.',
+      'info — the formal tier evaluated 0 candidate pairs, so no pairwise cross-requirement comparison was recorded: usually no two requirements shared an atom, and otherwise the pairs that did were exact duplicates (reported as FND_EXACT_DUPLICATE instead) or under guards no decided context group asserts together; the message names which. Silence here is not a consistency certificate; where vocabulary is the gap, consider glossary entries to align it so related requirements share atoms.',
   },
   FND_OPPOSITION_CANDIDATE: {
     code: 'FND_OPPOSITION_CANDIDATE',
     description:
-      'info — two same-system responses share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified. Propose-only: if the verbs are truly opposite, run `symspec antonym add <verbA> <verbB>` so the formal tier collapses them to one atom at opposite polarity and can prove any conflict. Never a verdict.',
+      'info — two same-system responses that may conflict but share no exact key: they share an object phrase but differ on the leading verb (e.g. "open the valve" vs "shut the valve"), a LIKELY antonym pair the seed/committed antonym tables have not unified; or they are one verb at opposite polarity, or two contraries, whose objects differ only in their prepositions (e.g. "stop the pump on Monday" vs "shall not stop the pump Monday"). Propose-only, and DEMOTES `verified`: make the pair provable with the edit the message names (`symspec antonym <verbA> <verbB>`, the rewording, or a glossary entry). A triage candidate is discharged only by an edit that lets the solver decide the pair, never by accepting it as written. Never a verdict.',
   },
   FND_EXCLUDED_FROM_FORMAL: {
     code: 'FND_EXCLUDED_FROM_FORMAL',
     description:
-      'info — a requirement was excluded from the formal (SMT) tier because an error-severity lint or parse finding blocked its surface, so no cross-requirement analysis covered it. A LOUD coverage signal that DEMOTES `verified` (silence over an unchecked requirement is not a consistency certificate); discharge by fixing the blocking finding (rephrase) — waiving the finding alone does NOT restore formal coverage.',
+      'info — a requirement was excluded from the formal (SMT) tier because an error-severity lint or parse finding blocked its surface, so no cross-requirement analysis covered it. A LOUD coverage signal that DEMOTES `verified` (silence over an unchecked requirement is not a consistency certificate); discharge by fixing the blocking finding (rephrase) — suppressing the blocking finding without a rephrase does NOT restore formal coverage.',
   },
   FND_QUANTITY_ALIAS_CANDIDATE: {
     code: 'FND_QUANTITY_ALIAS_CANDIDATE',
     description:
-      'info — two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "run the infusion for ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary add` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict.',
+      'info — two co-active numeric bounds (same system, same guard, or both unguarded) landed on different quantity keys that share a noun token (e.g. "complete the infusion within ≤30 min" vs "run the infusion for ≥60 min"), so a possible single-quantity conflict was never compared. Propose-only: if the bounds constrain ONE quantity, run the suggested `symspec glossary "<canonical>" "<alias>"` to unify them so the LIA tier can prove any conflict. DEMOTES `verified`; never a verdict.',
+  },
+  FND_NUMERIC_UNCOMPARED: {
+    code: 'FND_NUMERIC_UNCOMPARED',
+    description:
+      'info — two or more numeric bounds on ONE quantity key were neither proved nor dismissed. Either the verdict depends on a reading the sentences do not fix: a deadline and a duration (e.g. "complete the infusion within 30 min" vs "... for at least 60 min"), which the numeric tier keeps on two variables; a °F or K bound that conflicts read as an absolute temperature and not as a difference (a differential, rise, or overshoot), or the reverse; a day or week bound that conflicts at a nominal 24-hour day but not at every civil day length (23 to 25 hours); or two units no conversion relates (e.g. "400 days" vs "1 year", "50%" vs a bare "0.9"). Or no solver call asserted the two together, and they conflict if both apply at once: their guards are never live in one context group (e.g. "When the request arrives, ... respond within 30 ms" vs "When the cache misses, ... respond in at least 50 ms"), or the text trailing each bound differs, a condition or a referent the tier does not read (e.g. "... when the mode is heating" vs "... when the mode is cooling", "at least 30 days of logs" vs "at most 2 hours of video"); or they are a set whose every pair holds and which conflicts only all together, because a prohibition bounds an action only where it happens (e.g. "shall not keep the door unlocked above 30 seconds" and "... below 40 seconds" under two triggers, and "keep the door unlocked for at least 1 second", or just "keep the door unlocked", under a third). Or, naming ONE requirement, its response states a number in a unit the numeric tier converts that no bound it read covers, so it was compared with nothing: no comparator phrase the tier knows introduces it (e.g. "poll the sensor every 5 seconds", "lock the account after 5 minutes"), or the tier declined the bound (a toleranced value, a digit spelling it does not read, a negated response with more than its one bound). DEMOTES `verified`; discharge by restating the bounds in one sense and one unit, after a comparator phrase the tier reads, or moving each condition into a trigger or precondition, so the solver compares them. Nothing short of that rewording discharges it: an uncompared bound is a comparison that did not happen. Never a verdict.',
   },
   FND_RELATIONAL_UNCHECKED: {
     code: 'FND_RELATIONAL_UNCHECKED',
     description:
       "info — requirements under one shared guard carry numeric bounds alongside unmatched (singleton) atoms — the shape where aggregate/conservation or cross-quantity relational conflicts hide. symspec's numeric tier is pairwise same-quantity only and does NOT attempt aggregate sums or cross-quantity arithmetic, so this reasoning was not attempted. DEMOTES `verified` so it never outruns what was compared; never a verdict.",
+  },
+  FND_NUMBER_SPELLING_CANDIDATE: {
+    code: 'FND_NUMBER_SPELLING_CANDIDATE',
+    description:
+      'info — two requirements write the same phrase with numbers that differ only in a digit separator (e.g. "respond within 1.5 ms" vs "not respond within 1,5 ms", or 1_500 vs 1.500), so they landed on two atoms and were never compared. A `,` or `.` between digits is a thousands separator in one convention and a decimal point in the other, so symspec does not decide whether they are one number. Propose-only: if they are, rewrite one with `symspec update --ref <id> <attr> "<wording>"` so both spell the number identically and the solver compares them on one atom; if not, rewrite one so both follow one digit-separator convention, and the solver compares the two numbers as written. DEMOTES `verified`; never a verdict.',
   },
 } satisfies Record<FndCode, { readonly code: FndCode; readonly description: string }>
 

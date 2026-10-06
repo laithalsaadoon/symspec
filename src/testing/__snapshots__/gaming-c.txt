@@ -1,0 +1,115 @@
+numeric-conflict	(baseline)	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+temporal-conflict	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+numeric-conflict	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+numeric-conflict	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+numeric-conflict	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+numeric-conflict	alias-contraries-glossary@forward	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	alias-contraries-glossary@reverse	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	alias-contraries-term@forward	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	alias-contraries-term@reverse	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	term-over-phrase@inside-canonical	inapplicable
+numeric-conflict	term-over-phrase@equal-canonical	inapplicable
+numeric-conflict	term-over-phrase@around-canonical	inapplicable
+numeric-conflict	term-over-phrase@straddle-canonical	inapplicable
+numeric-conflict	term-over-phrase@straddle-alias	inapplicable
+numeric-conflict	glossary-over-term@equal/term-then-glossary	inapplicable
+numeric-conflict	glossary-over-term@equal/glossary-then-term	inapplicable
+numeric-conflict	glossary-over-term@containing/term-then-glossary	inapplicable
+numeric-conflict	glossary-over-term@containing/glossary-then-term	inapplicable
+numeric-conflict	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+numeric-conflict	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+numeric-conflict	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+numeric-conflict	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+numeric-conflict	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+numeric-conflict	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+numeric-conflict	waive-raw	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	unwaive	inapplicable
+numeric-conflict	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+numeric-conflict	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+numeric-conflict	flip-negated@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+numeric-conflict	flip-negated@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+numeric-conflict	condition-into-response@first	inapplicable
+numeric-conflict	condition-into-response@second	inapplicable
+numeric-conflict	add-decoys	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	link-culprits	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	antonym-over-candidate	inapplicable
+numeric-conflict	add-bound-past-bystander	inapplicable
+numeric-conflict	add-bystander-negation	inapplicable
+numeric-conflict	add-negation	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_NUMERIC_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+numeric-conflict	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_EXACT_DUPLICATE,FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	branch-into-cycle	inapplicable
+numeric-conflict	supply-dangling-target	inapplicable
+numeric-conflict	unglossary	inapplicable
+numeric-conflict	unantonym	inapplicable
+numeric-conflict	unterm	inapplicable
+numeric-conflict	declassify-constraint	inapplicable
+numeric-conflict	rebind-effect	inapplicable
+numeric-conflict	vacuous-initial	inapplicable
+numeric-conflict	release-frame	inapplicable
+numeric-conflict	unstate	inapplicable
+numeric-conflict	embedding-stub	exit 1 verified=false signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[run-weakened]
+numeric-conflict	semantic-off	exit 1 verified=false signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[semantic-tier-skipped]
+numeric-conflict	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+numeric-conflict	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+numeric-conflict	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+numeric-conflict	temporal-off	exit 1 verified=true signal=fires errors=[FND_NUMERIC_CONTRADICTION] demotions=[]
+temporal-conflict	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[uncovered-requirement]
+temporal-conflict	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+temporal-conflict	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+temporal-conflict	alias-contraries-glossary@forward	inapplicable
+temporal-conflict	alias-contraries-glossary@reverse	inapplicable
+temporal-conflict	alias-contraries-term@forward	inapplicable
+temporal-conflict	alias-contraries-term@reverse	inapplicable
+temporal-conflict	term-over-phrase@inside-canonical	inapplicable
+temporal-conflict	term-over-phrase@equal-canonical	inapplicable
+temporal-conflict	term-over-phrase@around-canonical	inapplicable
+temporal-conflict	term-over-phrase@straddle-canonical	inapplicable
+temporal-conflict	term-over-phrase@straddle-alias	inapplicable
+temporal-conflict	glossary-over-term@equal/term-then-glossary	inapplicable
+temporal-conflict	glossary-over-term@equal/glossary-then-term	inapplicable
+temporal-conflict	glossary-over-term@containing/term-then-glossary	inapplicable
+temporal-conflict	glossary-over-term@containing/glossary-then-term	inapplicable
+temporal-conflict	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+temporal-conflict	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+temporal-conflict	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+temporal-conflict	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+temporal-conflict	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+temporal-conflict	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+temporal-conflict	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	unwaive	inapplicable
+temporal-conflict	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+temporal-conflict	delete-requirement@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+temporal-conflict	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+temporal-conflict	flip-negated@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+temporal-conflict	condition-into-response@first	inapplicable
+temporal-conflict	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+temporal-conflict	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	antonym-over-candidate	inapplicable
+temporal-conflict	add-bound-past-bystander	inapplicable
+temporal-conflict	add-bystander-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	branch-into-cycle	inapplicable
+temporal-conflict	supply-dangling-target	inapplicable
+temporal-conflict	unglossary	inapplicable
+temporal-conflict	unantonym	inapplicable
+temporal-conflict	unterm	inapplicable
+temporal-conflict	declassify-constraint	inapplicable
+temporal-conflict	rebind-effect	inapplicable
+temporal-conflict	vacuous-initial	inapplicable
+temporal-conflict	release-frame	inapplicable
+temporal-conflict	unstate	inapplicable
+temporal-conflict	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[run-weakened]
+temporal-conflict	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[semantic-tier-skipped]
+temporal-conflict	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+temporal-conflict	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+temporal-conflict	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+temporal-conflict	temporal-off	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]

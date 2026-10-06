@@ -1,0 +1,75 @@
+{
+  "RH-001": {
+    "title": "package.json repository.url, homepage and bugs.url name github.com/laithalsaadoon/symspec exactly",
+    "origin": "ruling RH-R1",
+    "class": "release metadata (irreversible publish: npm provenance compares repository.url exactly)",
+    "existing": false
+  },
+  "RH-002": {
+    "title": "No live reference (package.json, README.md, RELEASING.md, AGENTS.md, non-test src/) names theagenticguy; the README install and clone lines and the npm trust command name laithalsaadoon/symspec",
+    "origin": "ruling RH-R1",
+    "class": "published documentation (negative guard)",
+    "existing": false
+  },
+  "RH-003": {
+    "title": "With no config named and no symspec.config.json in the document's directory or any ancestor, a git refusal other than 'not a git repository' and the bare-repository refusal runs exactly as no repository, and data.run.config discloses the refusal's first line beside {path, source}",
+    "origin": "ruling RH-R2 (a)",
+    "class": "gate boundary (config resolution; legacy documents check as before)",
+    "existing": false
+  },
+  "RH-004": {
+    "title": "With a symspec.config.json in the document's directory or any ancestor, a git refusal fails closed as ERR_CONFIG_INVALID naming the refusal, and an ancestor config is never loaded",
+    "origin": "ruling RH-R2 (b)",
+    "class": "gate boundary (fail closed)",
+    "existing": true
+  },
+  "RH-005": {
+    "title": "The bare-repository refusal stays ERR_CONFIG_INVALID, even with no config anywhere",
+    "origin": "ruling RH-R2",
+    "class": "gate boundary (fail closed, F11)",
+    "existing": true
+  },
+  "RH-006": {
+    "title": "--config and SYMSPEC_CONFIG behave as today under a git refusal (ERR_CONFIG_INVALID) and with git answering (read and disclosed as flag)",
+    "origin": "ruling RH-R2",
+    "class": "gate boundary (explicit config)",
+    "existing": true
+  },
+  "RH-007": {
+    "title": "One exported constant (V4_EXPERIMENTAL_STATEMENT) states v4 is experimental and read by no check tier; the vocabulary, intent and policy keys and the intentRef and derived fields interpolate it, and the schema states neither unqualified enforcement claim",
+    "origin": "ruling RH-R3",
+    "class": "published schema descriptions (honest scope)",
+    "existing": false
+  },
+  "RH-008": {
+    "title": "init --split carries the statement in its --help, its manifest flag description and its result data",
+    "origin": "ruling RH-R3",
+    "class": "published CLI surface (honest scope)",
+    "existing": false
+  },
+  "RH-009": {
+    "title": "AGENTS.md and README paragraphs about init --split, intent.json, policy.json or format v4 carry the statement; the unqualified enforcement claims and code-owner review of intent and policy are absent; the config's pins are not labelled experimental",
+    "origin": "ruling RH-R3",
+    "class": "published documentation (honest scope)",
+    "existing": false
+  },
+  "RH-010": {
+    "title": "Under a git refusal with no config named, a symspec.config.json at the document's directory or any ancestor whose existence cannot be determined (a self-symlink, ELOOP) fails closed as ERR_CONFIG_INVALID, and a dangling symspec.config.json symlink there counts as present and fails closed too",
+    "origin": "review R1; ruling RH-R4 (dangling link)",
+    "class": "gate boundary (fail closed)",
+    "existing": false,
+    "existingPart": "the ELOOP half guards code already right at ca83661 (its two tests pass there and kill the reviewer's orElseSucceed(() => false) mutant); the dangling half is new and fails on ca83661"
+  },
+  "RH-011": {
+    "title": "The bare-repository refusal is recognised from git's own message form (its 'fatal: cannot use bare repository' line), never from the quoted path, so an ownership refusal quoting a directory that spells the phrase falls back exactly as RH-003 says",
+    "origin": "review R2",
+    "class": "gate boundary (config resolution; legacy documents check as before)",
+    "existing": false
+  },
+  "RH-012": {
+    "title": "Over every description at every nesting level of the projected document JSON schema, no unqualified enforcement claim appears, and every description the projection attaches to the vocabulary, intent, policy, intentRef and derived keys carries V4_EXPERIMENTAL_STATEMENT",
+    "origin": "review R3 (extends RH-007)",
+    "class": "published schema descriptions (honest scope)",
+    "existing": false
+  }
+}

@@ -1,0 +1,2 @@
+# A wording waiver whose refs+hash name TWO requirements, while each GTWR_R5 finding names one.
+{"op":"waive","code":"GTWR_R5_INDEFINITE_ARTICLE","reason":"both audit sentences were reviewed together","refs":["LOG-R1","LOG-R2"],"contentHash":"sha256:716cbd99ed8163a6c487418cfc3b0b147668af2cb9e4a4c353689723e80cb733"}

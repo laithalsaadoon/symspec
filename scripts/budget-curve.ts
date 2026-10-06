@@ -38,7 +38,7 @@ import {
   type Requirement,
   type RequirementsDocument,
 } from '../src/domain/requirements/document.ts'
-import { DocPath, DocStore, makeDocPath } from '../src/ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../src/ports/doc-store.ts'
 import { embedderLayerOf } from '../src/ports/embedder.ts'
 import { ErrDocNotFound } from '../src/ports/errors.ts'
 
@@ -128,7 +128,7 @@ const syntheticDoc = (n: number): RequirementsDocument => {
 const layerFor = (document: RequirementsDocument) =>
   Layer.mergeAll(
     Layer.succeed(DocStore)(
-      DocStore.of({
+      documentOnlyStore({
         load: (path) =>
           path === 'doc.json'
             ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })

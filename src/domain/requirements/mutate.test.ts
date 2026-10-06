@@ -16,7 +16,9 @@
 
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
+import { shellSafetyProblem, symspecCommandsIn } from '../../testing/cli-argv.ts'
 import { normalize } from '../engine/formal/atomize.ts'
+import { requirementsContentHash } from './content-hash.ts'
 import {
   DOC_VERSION,
   emptyDocument,
@@ -528,6 +530,77 @@ describe('the side tables', () => {
     })
 
     /**
+     * The same rule from the ALIAS's side. Substitution is longest-first and one pass, so it is
+     * a congruence exactly when no alias overlaps another phrase of the table. An alias inside,
+     * equal to, around, or straddling a committed phrase rewrites some of that phrase's
+     * occurrences and not others: with `purchase order ← customer order` committed,
+     * `invoice ← purchase` turns "charge the purchase order" into "charge the invoice order"
+     * while "charge the customer order" still becomes "charge the purchase order". Measured on
+     * the built CLI before this fence: the contradiction between the two was gone, verified true.
+     * Run under both key spaces, because the needle split is where the canonical-side check was
+     * once inert.
+     */
+    describe.each([
+      ['the trim default', {}],
+      ['the production normalizer', { normalizeHead: normalize }],
+    ] as const)('REFUSES an alias that overlaps a committed phrase, under %s', (_, options) => {
+      const base = ok(emptyDocument(), {
+        op: 'term',
+        canonical: 'purchase order',
+        alias: 'customer order',
+      }).document
+      it.each([
+        ['inside a canonical', 'invoice', 'purchase', 'sits inside the committed term canonical'],
+        [
+          'equal to a canonical',
+          'ledger order',
+          'purchase order',
+          'is the committed term canonical',
+        ],
+        ['around a canonical', 'ledger entry', 'charge the purchase order', 'contains'],
+        ['straddling a canonical', 'ledger entry', 'charge the purchase', 'overlaps an edge of'],
+        ['straddling an alias', 'ledger entry', 'charge the customer', 'overlaps an edge of'],
+        [
+          'around an alias',
+          'ledger entry',
+          'big customer order',
+          'contains the committed term alias',
+        ],
+        [
+          'inside its own canonical',
+          'purchase order',
+          'order',
+          'contains the committed term alias',
+        ],
+      ])('%s', (_shape, canonical, alias, wording) => {
+        const result = applyOp(base, term(canonical, alias), TS, options)
+        expect(isOpFailure(result)).toBe(true)
+        if (!isOpFailure(result)) return
+        expect(result.code).toBe('ERR_USAGE')
+        expect(result.error).toContain(wording)
+        expect(result.error).toContain('ambiguous')
+      })
+
+      it('REFUSES a canonical that straddles a committed alias, the canonical-side twin', () => {
+        const result = applyOp(base, term('priority customer', 'vip'), TS, options)
+        expect(isOpFailure(result)).toBe(true)
+        if (!isOpFailure(result)) return
+        expect(result.error).toContain('overlaps an edge of the committed term alias')
+      })
+
+      it('ACCEPTS overlapping canonicals and a disjoint alias: a canonical is never matched', () => {
+        // Inside, and around, the committed canonical: "procurement order" rewrites to the
+        // committed canonical's own text, so the two classes still agree.
+        const inside = applyOp(base, term('purchase', 'procurement'), TS, options)
+        expect(isOpFailure(inside)).toBe(false)
+        const around = applyOp(base, term('purchase order system', 'billing platform'), TS, options)
+        expect(isOpFailure(around)).toBe(false)
+        const sibling = applyOp(base, term('purchase order', 'client order'), TS, options)
+        expect(isOpFailure(sibling)).toBe(false)
+      })
+    })
+
+    /**
      * NEW, and the one that keeps the feature SOUND. Delegated to the injected validator,
      * because `domain/requirements` must not import the engine — so the refusal is only
      * reachable when a validator is supplied, exactly as `validateAntonyms` is.
@@ -776,6 +849,75 @@ describe('the side tables', () => {
 
     const right = ok(scoped.document, { op: 'unwaive', code: 'C', ref: id })
     expect(right.document.waivers).toEqual([])
+  })
+
+  /** Two keyed requirements, for the exact-set (`refs`) scope. */
+  const withTwo = () => {
+    const { doc, id: first } = withOne()
+    const second = ok(doc, {
+      op: 'add',
+      key: 'G2',
+      patternType: 'ubiquitous',
+      systemName: 'auth service',
+      systemResponse: 'lock the account',
+    })
+    return { doc: second.document, first, ids: [first, second.id!].sort() }
+  }
+
+  it('waive `refs` stores the exact UUID set and binds it to the current text', () => {
+    const { doc, ids } = withTwo()
+    const waived = ok(doc, { op: 'waive', code: 'C', reason: 'r', refs: ['G2', 'G1'] })
+    expect(waived.document.waivers).toEqual([
+      {
+        code: 'C',
+        requirementIds: ids,
+        contentHash: requirementsContentHash(doc, ids),
+        reason: 'r',
+      },
+    ])
+    // Idempotent over the same set and text, whatever order or spelling the refs take.
+    const again = ok(waived.document, { op: 'waive', code: 'C', reason: 'r2', refs: ids })
+    expect(again.noop).toBe(true)
+  })
+
+  it('waive accepts the offered hash while the text is unchanged, and refuses it after an edit', () => {
+    const { doc, ids } = withTwo()
+    const contentHash = requirementsContentHash(doc, ids)
+    expect(ok(doc, { op: 'waive', code: 'C', reason: 'r', refs: ids, contentHash }).noop).toBe(
+      false,
+    )
+    const edited = ok(doc, { op: 'update', ref: 'G2', attr: 'systemResponse', value: 'unlock it' })
+    const stale = applyOp(
+      edited.document,
+      op({ op: 'waive', code: 'C', reason: 'r', refs: ids, contentHash }),
+      TS,
+    )
+    expect(isOpFailure(stale) && stale.code).toBe('ERR_USAGE')
+    expect(isOpFailure(stale) && stale.error).toContain('changed since the finding was raised')
+  })
+
+  it('waive refuses `ref` with `refs`, a hash without `refs`, and an empty or unknown `refs`', () => {
+    const { doc, ids } = withTwo()
+    const fails = (raw: Record<string, unknown>) =>
+      applyOp(doc, op({ op: 'waive', code: 'C', reason: 'r', ...raw }), TS)
+    expect(isOpFailure(fails({ ref: 'G1', refs: ids }))).toBe(true)
+    expect(isOpFailure(fails({ contentHash: requirementsContentHash(doc, ids) }))).toBe(true)
+    expect(isOpFailure(fails({ refs: [] }))).toBe(true)
+    const unknown = fails({ refs: ['G1', 'NOPE'] })
+    expect(isOpFailure(unknown) && unknown.code).toBe('ERR_NOT_FOUND')
+  })
+
+  it('unwaive `refs` removes the exact-set waiver and nothing else', () => {
+    const { doc, first, ids } = withTwo()
+    const both = ok(ok(doc, { op: 'waive', code: 'C', reason: 'r', ref: 'G1' }).document, {
+      op: 'waive',
+      code: 'C',
+      reason: 'r',
+      refs: ids,
+    })
+    expect(both.document.waivers).toHaveLength(2)
+    const removed = ok(both.document, { op: 'unwaive', code: 'C', refs: ['G2', 'G1'] })
+    expect(removed.document.waivers).toEqual([{ code: 'C', requirementId: first, reason: 'r' }])
   })
 })
 
@@ -1588,4 +1730,58 @@ describe('the state-model ops (G4)', () => {
       expect(decoded._tag, line).toBe('Success')
     }
   })
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R60): a refusal that names a command over a user's alias is shell-safe
+// ---------------------------------------------------------------------------
+
+describe('[S3-045] a glossary or term refusal names its command over the user’s phrase so a shell hands it over whole (R60)', () => {
+  /** A phrase per hazard R60 names: quotes, `$`, a backtick, `;`, a backslash, a newline, all. */
+  const HAZARDS: readonly (readonly [string, string])[] = [
+    ['double quote', 'the "front" badge'],
+    ['single quote', "the operator's badge"],
+    ['dollar', 'the $HOME badge'],
+    ['backtick', 'the `front` badge'],
+    ['semicolon', 'the badge; the pass'],
+    ['backslash', 'the front\\ badge'],
+    ['newline', 'the front\nbadge'],
+    ['all', 'the "front" $HOME; it\'s `x` \\ badge\nok'],
+  ]
+  const TABLES = [
+    ['glossary', 'issue a token', 'grant a token', 'mint a credential'],
+    ['term', 'session token', 'login credential', 'vault record'],
+  ] as const
+
+  /** Every problem with every command a refusal's suggestions name, `values` whole in each. */
+  const problemsIn = (suggestions: readonly string[], values: readonly string[]) => {
+    const commands = suggestions.flatMap((s) => symspecCommandsIn(s))
+    if (commands.length === 0) return [`no command in ${JSON.stringify(suggestions)}`]
+    return commands.flatMap((c) => {
+      const problem = shellSafetyProblem(c, values)
+      return problem === undefined ? [] : [`${JSON.stringify(c)}  =>  ${problem}`]
+    })
+  }
+
+  for (const [table, canonical, , other] of TABLES) {
+    it.each(
+      HAZARDS,
+    )(`[S3-045] ${table}: an alias owned by another canonical (%s): the "Free it first" command carries the owner and the alias as whole arguments`, (_, hostile) => {
+      const base = ok(emptyDocument(), { op: table, canonical, alias: hostile }).document
+      const result = applyOp(base, op({ op: table, canonical: other, alias: hostile }), TS)
+      expect(isOpFailure(result)).toBe(true)
+      if (!isOpFailure(result)) return
+      expect(problemsIn(result.suggestions, [canonical, hostile])).toEqual([])
+    })
+
+    it.each(
+      HAZARDS,
+    )(`[S3-045] ${table}: a canonical that is already an alias (%s): the "Use ... as the canonical" command carries both phrases as whole arguments`, (_, hostile) => {
+      const base = ok(emptyDocument(), { op: table, canonical, alias: other }).document
+      const result = applyOp(base, op({ op: table, canonical: other, alias: hostile }), TS)
+      expect(isOpFailure(result)).toBe(true)
+      if (!isOpFailure(result)) return
+      expect(problemsIn(result.suggestions, [canonical, hostile])).toEqual([])
+    })
+  }
 })

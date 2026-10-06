@@ -1,0 +1,20 @@
+# A v4 reproduce-op stream (what `symspec import` consumes): the six base requirements as JSONL
+# add records, then side-table waivers in both spellings import reads. Fed to import as is.
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000c1","key":"CAB-R1","patternType":"event-driven","trigger":"the driver selects automatic climate","systemName":"climate controller","systemResponse":"heat the cabin"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000c2","key":"CAB-R2","patternType":"event-driven","trigger":"the driver selects automatic climate","systemName":"climate controller","systemResponse":"cool the cabin"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000a1","key":"LOG-R1","patternType":"event-driven","trigger":"the operator closes the shift","systemName":"audit logger","systemResponse":"store an audit record"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000a2","key":"LOG-R2","patternType":"event-driven","trigger":"the operator closes the shift","systemName":"audit logger","systemResponse":"store a shift summary"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000b1","key":"ORD-R1","patternType":"event-driven","trigger":"the operator submits the order","systemName":"order service","systemResponse":"record the order in a timely manner"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000b2","key":"ORD-R2","patternType":"event-driven","trigger":"the operator submits the order","systemName":"order service","systemResponse":"record the order in a timely manner","negated":true}
+# I1 v4 command line, code-only wording waiver:
+symspec waive add GTWR_R5_INDEFINITE_ARTICLE --reason 'indefinite articles are house style'
+# I2 v4 command line, wording waiver scoped by --ref (a UUID, the only scope v4 emits):
+symspec waive add GTWR_R5_INDEFINITE_ARTICLE --reason 'a shift summary is the one summary per shift' --ref 5a1e0000-0000-4000-8000-0000000000a2
+# I3 v4 command line, triage waiver scoped by --ref to one side of the heat/cool pair:
+symspec waive add FND_OPPOSITION_CANDIDATE --reason 'heating and cooling are separate climate modes' --ref 5a1e0000-0000-4000-8000-0000000000c1
+# I4 v4 command line, blocking wording waiver whose --ref names no imported requirement:
+symspec waive add GTWR_R7_VAGUE --reason 'the service level agreement defines the deadline' --ref 5a1e0000-0000-4000-8000-0000000000ff
+# I5 JSONL waive record (import's own record schema: code, reason, optional ref), verdict code:
+{"op":"waive","code":"FND_CONTRADICTION","reason":"ORD-R2 is the legacy path and is being retired","ref":"ORD-R1"}
+# I6 JSONL waive record, blocking wording code, scoped by key:
+{"op":"waive","code":"GTWR_R7_VAGUE","reason":"the service level agreement defines the deadline","ref":"ORD-R2"}

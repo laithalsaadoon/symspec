@@ -1,0 +1,3128 @@
+{
+ "base": "0fca0433eb82431936c8edd81f7ccf3464d6f52e",
+ "contract_commit": "3f3c33d6fd05d4258ad42e98d9e62090ea5f54f8",
+ "ran_at": "2026-10-05T19:33:30.959Z",
+ "product_src_untouched": "git diff --name-only 0fca043..HEAD touches only *.test.ts, src/testing/** and .erpaval/ (120 files, none else)",
+ "run": {
+  "build": "pnpm build exit 0",
+  "vitest": "node_modules/.bin/vitest run once; Test Files 22 failed | 90 passed (112); Tests 148 failed | 3339 passed (3487)"
+ },
+ "verdict": "passes on base",
+ "verdict_reason": "No S3 test is broken and no earlier test regressed, but 159 of 297 test names carrying an S3 id pass on base (the contract labels them passes on base (regression)); behaviors S3-004, S3-008, S3-031, S3-032 and S3-047 have no red test at all.",
+ "counts": {
+  "new_total": 297,
+  "new_red": 138,
+  "new_green": 159,
+  "new_broken": 0,
+  "red_failing_on_assertion": 148,
+  "red_by_snapshot_mismatch_only_not_carrying_S3_id": 10,
+  "failed_total": 148,
+  "contract_failing_list": 148
+ },
+ "difference_from_contract_list": {
+  "extra_failing_here": [],
+  "missing_from_here": [],
+  "note": "the 148 failing tests equal contract-failing-on-base.txt name for name"
+ },
+ "new": [
+  {
+   "id": [
+    "S3-012"
+   ],
+   "test": "the document lifecycle end to end [S3-012] imports the agent-run-triggers stream from --file, with exact counts, refusing its 8 unscoped waivers (exit 1)",
+   "file": "src/cli.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 to be 1 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-002"
+   ],
+   "test": "S3: waive, apply and import refuse never-class and unscoped waivers through the CLI [S3-002] apply repro-code-only: the refused waive aborts the stream, exit 1, nothing written, the file byte-identical",
+   "file": "src/cli.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 to be 1 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-002"
+   ],
+   "test": "S3: waive, apply and import refuse never-class and unscoped waivers through the CLI [S3-002] apply never-verdict: the refused waive aborts the stream, exit 1, nothing written, the file byte-identical",
+   "file": "src/cli.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 to be 1 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-002"
+   ],
+   "test": "S3: waive, apply and import refuse never-class and unscoped waivers through the CLI [S3-002] apply lint-code-only: the refused waive aborts the stream, exit 1, nothing written, the file byte-identical",
+   "file": "src/cli.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 to be 1 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-002"
+   ],
+   "test": "S3: waive, apply and import refuse never-class and unscoped waivers through the CLI [S3-002] apply structural-cycle-code-only: the refused waive aborts the stream, exit 1, nothing written, the file byte-identical",
+   "file": "src/cli.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 to be 1 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-001",
+    "S3-011"
+   ],
+   "test": "S3: waive, apply and import refuse never-class and unscoped waivers through the CLI [S3-001] [S3-011] symspec waive FND_CONTRADICTION --ref ORD-R1 is refused ERR_WAIVER_REFUSED, naming the code and its class, exit 1, file untouched",
+   "file": "src/cli.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-003"
+   ],
+   "test": "S3: waive, apply and import refuse never-class and unscoped waivers through the CLI [S3-003] symspec waive GTWR_R5_INDEFINITE_ARTICLE with no --ref is refused ERR_WAIVER_REFUSED, file untouched",
+   "file": "src/cli.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-005",
+    "S3-006"
+   ],
+   "test": "S3: waive, apply and import refuse never-class and unscoped waivers through the CLI [S3-005] [S3-006] symspec waive GTWR_R5_INDEFINITE_ARTICLE --ref LOG-R1 keeps working: stored as requirementIds [LOG-R1] plus the hash of its text",
+   "file": "src/cli.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(3) } ] to deeply equal [ { …(4) } ]"
+  },
+  {
+   "id": [
+    "S3-012",
+    "S3-013"
+   ],
+   "test": "S3: waive, apply and import refuse never-class and unscoped waivers through the CLI [S3-012] [S3-013] import v4-waivers.txt writes the six requirements, refuses I1, I3, I4 and I5 into problems[], and exits 1",
+   "file": "src/cli.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 to be 1 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-034"
+   ],
+   "test": "S3: waive, apply and import refuse never-class and unscoped waivers through the CLI [S3-034] check --strict on blocking-lint-both.stored exits 1: the FND_CONTRADICTION error sets the exit before any demotion",
+   "file": "src/cli.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-021"
+   ],
+   "test": "compat — every projected field the tier reads [S3-021] preserves a committed scoped waiver, so a reviewed baseline stays suppressed",
+   "file": "src/domain/compat.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-018",
+    "S3-020"
+   ],
+   "test": "compat — every projected field the tier reads [S3-018] [S3-020] keeps a one-requirement waiver only bound to its text, as the exact set [id]",
+   "file": "src/domain/compat.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-019"
+   ],
+   "test": "compat — every projected field the tier reads [S3-019] carries an exact-set waiver while its reviewed text is unchanged, and drops it after",
+   "file": "src/domain/compat.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-030"
+   ],
+   "test": "S3: toEngineDoc forwards no stored waiver the S3 fold would refuse as an op [S3-016] [S3-030] a stored never-class waiver never reaches the engine, in any stored scope shape, hash or not",
+   "file": "src/domain/compat.test.ts",
+   "status": "red",
+   "failure": "AssertionError: never-class waivers compat forwarded: expected [ …(186) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-017",
+    "S3-030"
+   ],
+   "test": "S3: toEngineDoc forwards no stored waiver the S3 fold would refuse as an op [S3-017] [S3-030] a stored code-only waiver of every code, an unknown code included, never reaches the engine",
+   "file": "src/domain/compat.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'FND_DANGLING_REFERENCE', …(66) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-018",
+    "S3-019",
+    "S3-030"
+   ],
+   "test": "S3: toEngineDoc forwards no stored waiver the S3 fold would refuse as an op [S3-018] [S3-019] [S3-030] a stored single requirementId with no hash, or requirementIds with no hash, never reaches the engine, for every scoped code",
+   "file": "src/domain/compat.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ …(70) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-009",
+    "S3-010",
+    "S3-030"
+   ],
+   "test": "S3: toEngineDoc forwards no stored waiver the S3 fold would refuse as an op [S3-009] [S3-010] [S3-030] a stored waiver of an unclassified code, or a case or whitespace variant of a never code, never reaches the engine, even scoped and hash-bound",
+   "file": "src/domain/compat.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ '\"FND_NOT_A_CODE\"', …(96) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-020",
+    "S3-021"
+   ],
+   "test": "S3: toEngineDoc forwards no stored waiver the S3 fold would refuse as an op [S3-020] [S3-021] a stored scoped-class waiver with refs (or one requirementId) and the matching hash reaches the engine, as an exact set bound to the text",
+   "file": "src/domain/compat.test.ts",
+   "status": "red",
+   "failure": "AssertionError: FND_CYCLE {\"requirementId\":\"5a1e0000-0000-4000-8000-0000000000a1\",\"contentHash\":\"sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0\"}: expected [ { code: 'FND_CYCLE', …(3) } ] to deeply equal [ ObjectContaining{…} ]"
+  },
+  {
+   "id": [
+    "S3-030"
+   ],
+   "test": "S3: toEngineDoc forwards no stored waiver the S3 fold would refuse as an op [S3-030] the check-time twin: every stored waiver compat forwards is one the S3 fold accepts as the same op on the same document",
+   "file": "src/domain/compat.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected 1 to be +0 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-031"
+   ],
+   "test": "S3 engine tier: unchanged waiver logic [S3-031] the engine still declines a code-only (and a one-ref) FND_OPPOSITION_CANDIDATE waiver handed to it directly: the CAB pair keeps demoting",
+   "file": "src/testing/engine-waivers-s3.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-032"
+   ],
+   "test": "S3 engine tier: unchanged waiver logic [S3-032] isWaivedBlocking re-admits a requirement exactly when isWaived suppresses its blocking finding, for every waiver shape over the ORD pair",
+   "file": "src/testing/engine-waivers-s3.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-047"
+   ],
+   "test": "the scoped discharge of a scoped-class finding [S3-047] the derives-cycle FND_CYCLE scoped discharge: a refs+contentHash waive over the cycle ids is accepted and the run is clean",
+   "file": "src/testing/gaming-waivers.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-048",
+    "S3-049",
+    "S3-050"
+   ],
+   "test": "GAMING shard a — feature-interaction, state-invariant [S3-048] [S3-049] [S3-050] no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair",
+   "file": "src/testing/gaming.shard-a.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-048"
+   ],
+   "test": "GAMING shard a — feature-interaction, state-invariant [S3-048] every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)",
+   "file": "src/testing/gaming.shard-a.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-048",
+    "S3-049",
+    "S3-050"
+   ],
+   "test": "GAMING shard b — one-trigger-contradiction, contrary-pair [S3-048] [S3-049] [S3-050] no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair",
+   "file": "src/testing/gaming.shard-b.test.ts",
+   "status": "red",
+   "failure": "AssertionError: new escape: register it with the AC that closes it: expected [ …(6) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-048"
+   ],
+   "test": "GAMING shard b — one-trigger-contradiction, contrary-pair [S3-048] every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)",
+   "file": "src/testing/gaming.shard-b.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-048",
+    "S3-049",
+    "S3-050"
+   ],
+   "test": "GAMING shard c — numeric-conflict, temporal-conflict [S3-048] [S3-049] [S3-050] no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair",
+   "file": "src/testing/gaming.shard-c.test.ts",
+   "status": "red",
+   "failure": "AssertionError: new escape: register it with the AC that closes it: expected [ …(6) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-048"
+   ],
+   "test": "GAMING shard c — numeric-conflict, temporal-conflict [S3-048] every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)",
+   "file": "src/testing/gaming.shard-c.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-048",
+    "S3-049",
+    "S3-050"
+   ],
+   "test": "GAMING shard d — glossary-bridged, term-bridged [S3-048] [S3-049] [S3-050] no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair",
+   "file": "src/testing/gaming.shard-d.test.ts",
+   "status": "red",
+   "failure": "AssertionError: new escape: register it with the AC that closes it: expected [ …(6) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-048"
+   ],
+   "test": "GAMING shard d — glossary-bridged, term-bridged [S3-048] every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)",
+   "file": "src/testing/gaming.shard-d.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-048",
+    "S3-049",
+    "S3-050"
+   ],
+   "test": "GAMING shard e — registered-contrary [S3-048] [S3-049] [S3-050] no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair",
+   "file": "src/testing/gaming.shard-e.test.ts",
+   "status": "red",
+   "failure": "AssertionError: new escape: register it with the AC that closes it: expected [ …(3) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-048"
+   ],
+   "test": "GAMING shard e — registered-contrary [S3-048] every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)",
+   "file": "src/testing/gaming.shard-e.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-048",
+    "S3-049",
+    "S3-050"
+   ],
+   "test": "GAMING shard f — waived-blocking-lint, dangling-target [S3-048] [S3-049] [S3-050] no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair",
+   "file": "src/testing/gaming.shard-f.test.ts",
+   "status": "red",
+   "failure": "AssertionError: new escape: register it with the AC that closes it: expected [ …(6) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-048"
+   ],
+   "test": "GAMING shard f — waived-blocking-lint, dangling-target [S3-048] every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)",
+   "file": "src/testing/gaming.shard-f.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-048",
+    "S3-049",
+    "S3-050"
+   ],
+   "test": "GAMING shard g — overlapping-contrary, opposition-candidate [S3-048] [S3-049] [S3-050] no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair",
+   "file": "src/testing/gaming.shard-g.test.ts",
+   "status": "red",
+   "failure": "AssertionError: new escape: register it with the AC that closes it: expected [ …(5) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-048"
+   ],
+   "test": "GAMING shard g — overlapping-contrary, opposition-candidate [S3-048] every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)",
+   "file": "src/testing/gaming.shard-g.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-048",
+    "S3-049",
+    "S3-050"
+   ],
+   "test": "GAMING shard h — derives-cycle, numeric-bystander [S3-048] [S3-049] [S3-050] no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair",
+   "file": "src/testing/gaming.shard-h.test.ts",
+   "status": "red",
+   "failure": "AssertionError: new escape: register it with the AC that closes it: expected [ 'derives-cycle × waive-by-code' ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-048"
+   ],
+   "test": "GAMING shard h — derives-cycle, numeric-bystander [S3-048] every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)",
+   "file": "src/testing/gaming.shard-h.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-048",
+    "S3-049",
+    "S3-050"
+   ],
+   "test": "GAMING shard i — opposition-negated, opposition-split [S3-048] [S3-049] [S3-050] no move reaches a clean verdict unless KNOWN_ESCAPES lists the pair",
+   "file": "src/testing/gaming.shard-i.test.ts",
+   "status": "red",
+   "failure": "AssertionError: new escape: register it with the AC that closes it: expected [ …(2) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-048"
+   ],
+   "test": "GAMING shard i — opposition-negated, opposition-split [S3-048] every KNOWN_ESCAPES row still escapes — a closed gap deletes its row (I-5)",
+   "file": "src/testing/gaming.shard-i.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-047",
+    "S3-048",
+    "S3-050"
+   ],
+   "test": "the gaming registry [S3-047] [S3-048] [S3-050] no KNOWN_ESCAPES row names a waive move, waive-by-code stays registered, and OP_COVERAGE.waive maps to moves that emit waive",
+   "file": "src/testing/gaming.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-049"
+   ],
+   "test": "the gaming registry [S3-049] waive-scoped-never and waive-raw are registered and inapplicable on derives-cycle",
+   "file": "src/testing/gaming.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-049"
+   ],
+   "test": "the gaming registry [S3-049] waive-scoped-never waives each never-class finding over its exact ids and current hash; waive-raw writes the same plus a code-only one per code, with no op",
+   "file": "src/testing/gaming.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-039",
+    "S3-040",
+    "S3-045"
+   ],
+   "test": "[S3-039][S3-040][S3-045] the advice over every corpus and fixture document [S3-039] runs every corpus document and every S3 fixture document",
+   "file": "src/testing/report-corpus.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-039",
+    "S3-040",
+    "S3-045"
+   ],
+   "test": "[S3-039][S3-040][S3-045] the advice over every corpus and fixture document [S3-039] every repair op decodes and folds under MUTATE_OPTIONS on the checked document",
+   "file": "src/testing/report-corpus.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-039",
+    "S3-040",
+    "S3-045"
+   ],
+   "test": "[S3-039][S3-040][S3-045] the advice over every corpus and fixture document [S3-039] no offered waive op names a never-class code",
+   "file": "src/testing/report-corpus.test.ts",
+   "status": "red",
+   "failure": "AssertionError: 31 offender(s):"
+  },
+  {
+   "id": [
+    "S3-039",
+    "S3-040",
+    "S3-045"
+   ],
+   "test": "[S3-039][S3-040][S3-045] the advice over every corpus and fixture document [S3-040] no finding message or suggestion for a never-class code says \"waive\"",
+   "file": "src/testing/report-corpus.test.ts",
+   "status": "red",
+   "failure": "AssertionError: 3 offender(s):"
+  },
+  {
+   "id": [
+    "S3-039",
+    "S3-040",
+    "S3-045"
+   ],
+   "test": "[S3-039][S3-040][S3-045] the advice over every corpus and fixture document [S3-040] no demotion action for a never-class code says \"waive\"",
+   "file": "src/testing/report-corpus.test.ts",
+   "status": "red",
+   "failure": "AssertionError: 31 offender(s):"
+  },
+  {
+   "id": [
+    "S3-039",
+    "S3-040",
+    "S3-045"
+   ],
+   "test": "[S3-039][S3-040][S3-045] the advice over every corpus and fixture document [S3-045] no string anywhere in a payload names vocab distinct, propose-vocabulary or --rescope-waivers",
+   "file": "src/testing/report-corpus.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-016"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-016] each stored never-class waiver has exactly one waiver-inert diagnostic, and the run equals the document with that waiver deleted",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ …(15) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-016"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-016] never-verdict.stored reports FND_CONTRADICTION (error) on ORD-R1, ORD-R2 again",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to deeply equal [ [ 'error', [ …(2) ] ] ]"
+  },
+  {
+   "id": [
+    "S3-016"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-016] a stale-hash waiver of a never code is disclosed once, as waiver-inert, and not in ignoredWaivers",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to have a length of 1 but got +0"
+  },
+  {
+   "id": [
+    "S3-017"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-017] lint-code-only.stored, structural-cycle-code-only.stored, hand-unknown-code and legacy-mixed W1 are inert, and all four GTWR_R5 findings (or FND_CYCLE [CYC-A, CYC-B]) come back",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: cases/lint-code-only.stored.json#0: expected [] to have a length of 1 but got +0"
+  },
+  {
+   "id": [
+    "S3-009",
+    "S3-017"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-009] [S3-017] a stored waiver of a code with no own FINDING_CLASS row (constructor) is inert and disclosed",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to deeply equal [ 'constructor' ]"
+  },
+  {
+   "id": [
+    "S3-018"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-018] lint-single-ref.stored and legacy-mixed W2 are inert though each names the finding’s one requirement, and the finding comes back",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to have a length of 1 but got +0"
+  },
+  {
+   "id": [
+    "S3-019"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-019] hand-refs-no-hash (requirementIds [LOG-R1], no hash) is inert, and GTWR_R5 on LOG-R1 comes back",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to have a length of 1 but got +0"
+  },
+  {
+   "id": [
+    "S3-020"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-020] hand-ref-with-hash (one requirementId plus the matching hash) qualifies: GTWR_R5 on LOG-R1 stays suppressed, with no diagnostic",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-021"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-021] lint-scoped, lint-refs-no-hash, structural-cycle-scoped and legacy-mixed W4 qualify: each suppresses exactly its finding, with no diagnostic about it",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-007",
+    "S3-022"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-007] [S3-022] lint-wrong-set suppresses neither GTWR_R5 finding and is disclosed as waiver-inert (matches no finding) with its unwaive op only",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected '' to match /matches no finding/"
+  },
+  {
+   "id": [
+    "S3-023"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-023] waiver-inert is an info data.diagnostics entry that demotes nothing",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: no waiver-inert diagnostic on any legacy document: expected 0 to be greater than or equal to 14"
+  },
+  {
+   "id": [
+    "S3-023",
+    "S3-036"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-023] [S3-036] deleting any inert waiver from any fixture document leaves findings, demotions and verified unchanged",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: nothing was inert, so nothing was deleted: expected 0 to be greater than or equal to 14"
+  },
+  {
+   "id": [
+    "S3-024",
+    "S3-026"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-024] [S3-026] lint-code-only.stored: unwaive plus one scoped waive refs + current hash per finding, carrying the legacy reason and the provenance marker",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: compat exports RESCOPED_REASON_MARKER: expected 'undefined' to be 'string' // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-024"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-024] lint-single-ref.stored and hand-refs-no-hash get unwaive plus waive [LOG-R1] sha256:fd8b2c50…; structural-cycle-code-only gets [CYC-A, CYC-B] sha256:b889a619…",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: cases/lint-single-ref.stored.json: expected undefined to deeply equal { op: 'unwaive', …(2) }"
+  },
+  {
+   "id": [
+    "S3-025",
+    "S3-045"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-025] [S3-045] a never-code waiver-inert carries the unwaive op and \"rewrite required\", no waive op, and names no vocab distinct or --rescope-waivers",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: cases/hand-never-code-only.json#0: expected undefined to deeply equal [ { op: 'unwaive', …(1) } ]"
+  },
+  {
+   "id": [
+    "S3-027"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-027] every op on every waiver-inert and ignoredWaivers entry decodes and folds under MUTATE_OPTIONS on the checked document, and every command named parses under this build",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: no entry to check: expected 0 to be greater than or equal to 15"
+  },
+  {
+   "id": [
+    "S3-028"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-028] lint-stale-hash.stored: GTWR_R5 on LOG-R1 is back and data.ignoredWaivers lists the waiver once with its code, ids, stored and current hash, and no waiver-inert",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to deeply equal [ { …(4) } ]"
+  },
+  {
+   "id": [
+    "S3-028"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-028] the stale-hash entry is listed under any output filter",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: {\"minSeverity\":\"error\"}: expected [] to deeply equal [ 'GTWR_R5_INDEFINITE_ARTICLE' ]"
+  },
+  {
+   "id": [
+    "S3-029"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-029] the stale-hash entry carries its unwaive op and a note that the text changed and must be re-reviewed, and no waive at the new hash",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected undefined to deeply equal [ { op: 'unwaive', …(2) } ]"
+  },
+  {
+   "id": [
+    "S3-010",
+    "S3-030"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-010] [S3-030] case and whitespace variants of FND_CONTRADICTION written raw suppress nothing, are inert and disclosed",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to deeply equal [ ' FND_CONTRADICTION', …(3) ]"
+  },
+  {
+   "id": [
+    "S3-030"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-030] a stored never-class waiver over the exact ids and current hash suppresses nothing at check: blocking-lint-both plus a raw FND_CONTRADICTION waiver still reports the contradiction",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ Array(9) ] to include 'FND_CONTRADICTION [ORD-R1, ORD-R2]'"
+  },
+  {
+   "id": [
+    "S3-046"
+   ],
+   "test": "S3 check half: stored waivers that do not qualify go inert and are disclosed [S3-046] every waiver the engine applied is listed in data.appliedWaivers with its code, requirement ids and reason, and no inert one is",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected undefined to deeply equal [ { …(3) } ]"
+  },
+  {
+   "id": [
+    "S3-033"
+   ],
+   "test": "S3: a waived blocking lint still demotes (waived-blocking-lint, G3) [S3-033] blocking-lint-one.stored: waived-blocking-lint [ORD-R1], uncovered-requirement [ORD-R1], excluded-from-formal [ORD-R2], open-opposition-candidate [CAB-R1, CAB-R2]; verified false",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ …(3) ] to deeply equal [ …(4) ]"
+  },
+  {
+   "id": [
+    "S3-034"
+   ],
+   "test": "S3: a waived blocking lint still demotes (waived-blocking-lint, G3) [S3-034] blocking-lint-both.stored --strict: FND_CONTRADICTION (error), ONE waived-blocking-lint demotion naming ORD-R1 and ORD-R2, verified false, exit 1",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to deeply equal [ Array(1) ]"
+  },
+  {
+   "id": [
+    "S3-035"
+   ],
+   "test": "S3: a waived blocking lint still demotes (waived-blocking-lint, G3) [S3-035] the gaming waived-blocking-lint control twin (consistent, verified at base) gives verified false, and --strict exits 3 on the demotion alone",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to deeply equal [ 'waived-blocking-lint' ]"
+  },
+  {
+   "id": [
+    "S3-036"
+   ],
+   "test": "S3: a waived blocking lint still demotes (waived-blocking-lint, G3) [S3-036] the waived-blocking-lint ids are the requirements excluded with no waivers minus those excluded under the waivers compat forwarded",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: legacy-mixed.json: expected [] to deeply equal [ 'ORD-R1' ]"
+  },
+  {
+   "id": [
+    "S3-036"
+   ],
+   "test": "S3: a waived blocking lint still demotes (waived-blocking-lint, G3) [S3-036] adding an inert (code-only) or a stale GTWR_R7_VAGUE waiver to blocking-lint-one leaves the demotions unchanged",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: {\"code\":\"GTWR_R7_VAGUE\",\"reason\":\"code-only, hand-written\"}: expected [ Array(1) ] to deeply equal [ …(3) ]"
+  },
+  {
+   "id": [
+    "S3-037"
+   ],
+   "test": "S3: the AC-5-6 reproducer [S3-037] repro-code-only.stored: the waiver is inert, with one diagnostic; the CAB and TNK pairs demote separately and FND_OPPOSITION_CANDIDATE stands on both",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to have a length of 1 but got +0"
+  },
+  {
+   "id": [
+    "S3-037"
+   ],
+   "test": "S3: the AC-5-6 reproducer [S3-037] repro-scoped.stored and repro-single-ref.stored are inert too, and the CAB finding and demotion come back",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: cases/repro-scoped.stored.json: expected [] to have a length of 1 but got +0"
+  },
+  {
+   "id": [
+    "S3-038"
+   ],
+   "test": "S3: the AC-5-6 reproducer [S3-038] the minimal CAB+TNK reproducer, write half: the code-only FND_OPPOSITION_CANDIDATE waive is refused ERR_WAIVER_REFUSED and nothing is written",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected undefined to be 'ERR_WAIVER_REFUSED' // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-038"
+   ],
+   "test": "S3: the AC-5-6 reproducer [S3-038] the minimal CAB+TNK reproducer, check half: the stored code-only waiver is inert and disclosed, and the CAB and TNK pairs demote; verified false",
+   "file": "src/app/operations/check-waivers.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to have a length of 1 but got +0"
+  },
+  {
+   "id": [
+    "S3-039",
+    "S3-016"
+   ],
+   "test": "[S3-039] [S3-016] the numeric/relational demotions offer no waiver, and a stored pair waiver discharges nothing [S3-039] offers no waive op on either demotion",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(4) }, …(1) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039",
+    "S3-016"
+   ],
+   "test": "[S3-039] [S3-016] the numeric/relational demotions offer no waiver, and a stored pair waiver discharges nothing [S3-016] a pair triaged under the base tool is no longer discharged: both demotions stand and both waivers are inert",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to deeply equal ArrayContaining{…}"
+  },
+  {
+   "id": [
+    "S3-039",
+    "S3-016",
+    "S3-001"
+   ],
+   "test": "[S3-039] [S3-016] the numeric/relational demotions offer no waiver, and a stored pair waiver discharges nothing [S3-001] the fold under MUTATE_OPTIONS refuses the waive the base tool offered",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: FND_RELATIONAL_UNCHECKED: expected undefined to be 'ERR_WAIVER_REFUSED' // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it [S3-039] offers no waive op, only the edits that decide the pair",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(4) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039",
+    "S3-040"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it [S3-040] the demotion action never instructs or offers a waiver",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected 'Triage the opposition candidate over …' not to match /waive/i"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it [S3-016] a pair triaged under the base tool is no longer discharged, and its waiver is disclosed inert",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to deeply equal [ Array(1) ]"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it [S3-016] (1) does not discharge a pair a third requirement forms with the negated side",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ Array(1) ] to deeply equal [ …(2) ]"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it [S3-016] (1) does not discharge a pair a third requirement forms with the asserted side",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ Array(1) ] to deeply equal [ …(2) ]"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it [S3-016] (2) triaging three pairs of a four-cycle leaves all four demoting",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ Array(1) ] to deeply equal [ …(4) ]"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it [S3-016] a one-id ref waiver (the base repair op) leaves the candidate demoting, and is disclosed waiver-inert",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 to be 1 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it [S3-016] a document-wide waiver (the base action) leaves the candidate demoting, and is disclosed waiver-inert",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 to be 1 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it [S3-016] an exact-set waiver with no content hash leaves the candidate demoting, and is disclosed waiver-inert",
+   "file": "src/app/operations/check.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected +0 to be 1 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it U-ref: a ref waiver for one triaged candidate does not reach a pair added after it",
+   "file": "src/app/operations/check.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-016",
+    "S3-039"
+   ],
+   "test": "[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it [S3-016] (4) does not discharge the pair once one side is edited",
+   "file": "src/app/operations/check.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-012",
+    "S3-003"
+   ],
+   "test": "round trip: hex-bonk 'agent-run-triggers' [S3-012] [S3-003] refuses every unscoped v4 waiver the source carried with ERR_WAIVER_REFUSED, on its line, and imports no waiver",
+   "file": "src/app/operations/import.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected 8 to be +0 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-012",
+    "S3-003"
+   ],
+   "test": "round trip: hex-bonk 'schedule-management' [S3-012] [S3-003] refuses every unscoped v4 waiver the source carried with ERR_WAIVER_REFUSED, on its line, and imports no waiver",
+   "file": "src/app/operations/import.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-005"
+   ],
+   "test": "fold semantics [S3-005] resolves a waiver scope written as a KEY into the stored UUID, as refs [id] plus the hash of its text",
+   "file": "src/app/operations/import.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected undefined to deeply equal [ Array(1) ]"
+  },
+  {
+   "id": [
+    "S3-013"
+   ],
+   "test": "fold semantics [S3-013] REFUSES an unresolvable waiver scope and never widens it to a document-wide waiver",
+   "file": "src/app/operations/import.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(2) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-012"
+   ],
+   "test": "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-012] v4-waivers.txt: I1 (code-only), I3 and I5 (never class) are refused ERR_WAIVER_REFUSED into problems[], and the six requirements are written",
+   "file": "src/app/operations/import.test.ts",
+   "status": "red",
+   "failure": "AssertionError: line 10: expected undefined to be 'ERR_WAIVER_REFUSED' // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-012",
+    "S3-005"
+   ],
+   "test": "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-012] [S3-005] v4-waivers.txt: I2 and I6 are accepted as refs [id] plus the computed hash (imported.waivers 2)",
+   "file": "src/app/operations/import.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected 6 to be 2 // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-013"
+   ],
+   "test": "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-013] v4-waivers.txt: I4, whose --ref matches no requirement, is refused and never widened to a document-wide GTWR_R7_VAGUE waiver",
+   "file": "src/app/operations/import.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to include 16"
+  },
+  {
+   "id": [
+    "S3-014"
+   ],
+   "test": "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-014] scoped-record.txt: a JSONL waive record with refs and contentHash is accepted (no unexpected-keys problem) and stored as requirementIds [LOG-R1] plus that hash",
+   "file": "src/app/operations/import.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { line: 4, …(1) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-015"
+   ],
+   "test": "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-015] each refused waiver is named with its line, its finding code, its scope as written and a replacement, and no remedy this build lacks",
+   "file": "src/app/operations/import.test.ts",
+   "status": "red",
+   "failure": "AssertionError: line 10 refused: expected undefined to be defined"
+  },
+  {
+   "id": [
+    "S3-012"
+   ],
+   "test": "S3: import refuses the waivers apply refuses (readings settled examples 14 and 15) [S3-012] import folds waivers exactly as apply does: each record refused or stored the same way under MUTATE_OPTIONS",
+   "file": "src/app/operations/import.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'stored', 'stored', 'stored', …(1) ] to deeply equal [ 'ERR_WAIVER_REFUSED', …(3) ]"
+  },
+  {
+   "id": [
+    "S3-033"
+   ],
+   "test": "AC-A-1 + AC-A-2 — check → apply the repairs → check again [S3-033] discharges every demotion that carried OPS, trading excluded-from-formal for one waived-blocking-lint",
+   "file": "src/app/operations/roundtrip.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to deeply equal [ 'waived-blocking-lint' ]"
+  },
+  {
+   "id": [
+    "S3-035",
+    "S3-033"
+   ],
+   "test": "AC-A-1 + AC-A-2 — check → apply the repairs → check again [S3-035] [S3-033] reaching the FIXED POINT re-admits the blocked requirement but does NOT verify: the waived blocking lint demotes waived-blocking-lint",
+   "file": "src/app/operations/roundtrip.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [] to deeply equal [ Array(1) ]"
+  },
+  {
+   "id": [
+    "S3-044"
+   ],
+   "test": "[S3-044] waivability is enforced, and nothing publishes otherwise [S3-044] WAIVABILITY_ENFORCED is true",
+   "file": "src/app/operations/waivability.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected false to be true // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-044"
+   ],
+   "test": "[S3-044] waivability is enforced, and nothing publishes otherwise [S3-044] the probe covers one never code of every never class a published code has",
+   "file": "src/app/operations/waivability.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-044"
+   ],
+   "test": "[S3-044] waivability is enforced, and nothing publishes otherwise [S3-044] no surface says \"NOT enforced\": the statement, the manifest, AGENTS.md and explain",
+   "file": "src/app/operations/waivability.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected 'Waivability is published policy, NOT …' not to match /NOT enforced/"
+  },
+  {
+   "id": [
+    "S3-044"
+   ],
+   "test": "[S3-044] waivability is enforced, and nothing publishes otherwise [S3-044] the committed AGENTS.md does not say \"NOT enforced by this build\"",
+   "file": "src/app/operations/waivability.test.ts",
+   "status": "red",
+   "failure": "AssertionError: AGENTS.md: expected true to be false // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-044"
+   ],
+   "test": "[S3-044] waivability is enforced, and nothing publishes otherwise [S3-044] write time: the fold refuses a never code of each class, code-only and refs+hash, with ERR_WAIVER_REFUSED",
+   "file": "src/app/operations/waivability.test.ts",
+   "status": "red",
+   "failure": "AssertionError: verdict FND_CONTRADICTION: code-only: expected undefined to be 'ERR_WAIVER_REFUSED' // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-044"
+   ],
+   "test": "[S3-044] waivability is enforced, and nothing publishes otherwise [S3-044] check time: a stored FND_CONTRADICTION waiver, code-only or refs+hash, suppresses nothing",
+   "file": "src/app/operations/waivability.test.ts",
+   "status": "red",
+   "failure": "AssertionError: {\"code\":\"FND_CONTRADICTION\",\"reason\":\"hand-edited\"}: expected [ 'FND_REACHABILITY_NOT_CHECKED' ] to include 'FND_CONTRADICTION'"
+  },
+  {
+   "id": [
+    "S3-001"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-001] measures every never class the catalog publishes: verdict, disclosure, triage, hygiene (and anchor once a code has it)",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-001"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-001] every never-class code is refused ERR_WAIVER_REFUSED in every scope shape, and nothing is written",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: never-class waives the fold did not refuse: expected [ …(186) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-001"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-001] the readings’ never streams are refused on their waive op: repro-scoped, repro-single-ref, never-verdict, never-hygiene",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected { name: 'repro-scoped', …(2) } to deeply equal { name: 'repro-scoped', …(2) }"
+  },
+  {
+   "id": [
+    "S3-002"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-002] a refused waive aborts the whole atomic stream: write false, the document returned is the input, untouched",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: repro-code-only: expected undefined to be 'ERR_WAIVER_REFUSED' // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-003"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-003] a code-only waive is refused for every published code, scoped classes included",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: code-only waives the fold did not refuse: expected [ 'FND_DANGLING_REFERENCE', …(65) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-004"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-004] a refs + matching contentHash waive of every scoped-class code is accepted and stored as requirementIds plus that hash",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-005"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-005] refs with no contentHash, or a single ref, is accepted for every scoped code: ref becomes refs [ref] and the fold computes the hash",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: waives not stored as refs [LOG-R1] + the computed hash: expected [ …(70) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-005"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-005] the readings’ streams: lint-single-ref stores refs [LOG-R1] + sha256:fd8b2c50…, structural-cycle-scoped stores the computed cycle hash",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(2) } ] to deeply equal [ { …(3) } ]"
+  },
+  {
+   "id": [
+    "S3-006"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-006] no accepted waive ever stores requirementId, and every stored waiver carries a contentHash",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ …(198) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-007"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-007] lint-wrong-set (refs [LOG-R1, LOG-R2] + sha256:716cbd99…) is accepted at write and stored as written",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-008"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-008] lint-hash-mismatch: the waive whose contentHash differs from the current text is refused ERR_USAGE, not ERR_WAIVER_REFUSED, and nothing is written",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-009"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-009] a code with no own FINDING_CLASS row is refused ERR_WAIVER_REFUSED, even fully scoped",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: unclassified codes the fold accepted: expected [ 'FND_NOT_A_CODE', …(5) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-009"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-009] every finding code the catalog publishes has its own FINDING_CLASS row (GTWR_* through the GTWR row)",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-010"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-010] every case or whitespace variant of every never code is refused at write",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: variants the fold accepted: expected [ '\" FND_DANGLING_REFERENCE\"', …(154) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-011"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-011] a never-code refusal names the code, its class and that it is never waivable",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: FND_CONTRADICTION: expected undefined to be 'ERR_WAIVER_REFUSED' // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-011"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-011] a code-only refusal says the waive must name the requirement ids (refs)",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected undefined to be 'ERR_WAIVER_REFUSED' // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-011"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-011] a refusal names only commands this build has, never vocab distinct or propose-vocabulary --rescope-waivers",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: no refusal to read: expected 0 to be greater than 31"
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "S3 write half: the fold refuses never-class and unscoped waivers [S3-040] no catalog row (explain, the manifest, AGENTS.md) of a never-class code advises a waiver",
+   "file": "src/app/operations/waive-fold.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ 'FND_OPPOSITION_CANDIDATE', …(2) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-043"
+   ],
+   "test": "[S3-043] the skill body offers no waiver for a never-class code [S3-043] installed skill body: the \"always-safe reviewed waiver\" advice is gone",
+   "file": "src/app/runtime/craft.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected '# symspec — authoring and validating …' not to contain 'the always-safe third option is the r…'"
+  },
+  {
+   "id": [
+    "S3-043"
+   ],
+   "test": "[S3-043] the skill body offers no waiver for a never-class code [S3-043] craft at depth 3 (AGENTS.md): the \"always-safe reviewed waiver\" advice is gone",
+   "file": "src/app/runtime/craft.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected '### Choosing an EARS pattern: a decis…' not to contain 'the always-safe third option is the r…'"
+  },
+  {
+   "id": [
+    "S3-043"
+   ],
+   "test": "[S3-043] the skill body offers no waiver for a never-class code [S3-043] installed skill body: no paragraph naming FND_OPPOSITION_CANDIDATE offers a waiver",
+   "file": "src/app/runtime/craft.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-043"
+   ],
+   "test": "[S3-043] the skill body offers no waiver for a never-class code [S3-043] craft at depth 3 (AGENTS.md): no paragraph naming FND_OPPOSITION_CANDIDATE offers a waiver",
+   "file": "src/app/runtime/craft.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-043"
+   ],
+   "test": "[S3-043] the skill body offers no waiver for a never-class code [S3-043] installed skill body: no sentence pairs a never-class code with \"waive\"",
+   "file": "src/app/runtime/craft.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-043"
+   ],
+   "test": "[S3-043] the skill body offers no waiver for a never-class code [S3-043] craft at depth 3 (AGENTS.md): no sentence pairs a never-class code with \"waive\"",
+   "file": "src/app/runtime/craft.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-042"
+   ],
+   "test": "the scope corpus is pinned, claim by claim [S3-042] matches the frozen corpus VERBATIM, claim by claim",
+   "file": "src/app/runtime/scope.test.ts",
+   "status": "red",
+   "failure": "AssertionError: coverageDemotion was reworded: expected '`data.verified` is a COVERAGE claim a…' to be '`data.verified` is a COVERAGE claim a…' // Object.is equality"
+  },
+  {
+   "id": [
+    "S3-042",
+    "S3-046"
+   ],
+   "test": "[S3-042][S3-046] the scope says what a waiver can and cannot do [S3-042] coverageDemotion no longer counts a waived opposition candidate as triaged",
+   "file": "src/app/runtime/scope.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected '`data.verified` is a COVERAGE claim a…' not to contain 'or waived'"
+  },
+  {
+   "id": [
+    "S3-042",
+    "S3-046"
+   ],
+   "test": "[S3-042][S3-046] the scope says what a waiver can and cannot do [S3-046] the published scope says a content hash binds the text, not the reviewer",
+   "file": "src/app/runtime/scope.test.ts",
+   "status": "red",
+   "failure": "AssertionError: no scope sentence says a content hash binds the text, not the reviewer: expected [] to not deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] opposite-polarity-near-duplicate: the repair offers no waive of its never-class code, so no pair is discharged",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] open-opposition-candidate: the repair offers no waive of its never-class code, so no pair is discharged",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] quantity-alias-candidate: the repair offers no waive of its never-class code, so no pair is discharged",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] relational-reasoning-not-attempted: the repair offers no waive of its never-class code, so no pair is discharged",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] numeric-bounds-uncompared: the repair offers no waive of its never-class code, so no pair is discharged",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] number-spelling-candidate: the repair offers no waive of its never-class code, so no pair is discharged",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] relational-reasoning-not-attempted: no waive op, not even one over the exact set and its content hash",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(4) } ] to not deep equally contain ObjectContaining{…}"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] numeric-bounds-uncompared: no waive op, not even one over the exact set and its content hash",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(4) } ] to not deep equally contain ObjectContaining{…}"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] number-spelling-candidate: no waive op, not even one over the exact set and its content hash",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(4) } ] to not deep equally contain ObjectContaining{…}"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] open-opposition-candidate: no waive op, not even one over the exact set and its content hash",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(4) } ] to not deep equally contain ObjectContaining{…}"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] opposite-polarity-near-duplicate: no waive op, not even one over the exact set and its content hash",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(4) } ] to not deep equally contain ObjectContaining{…}"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] quantity-alias-candidate: no waive op, not even one over the exact set and its content hash",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(4) } ] to not deep equally contain ObjectContaining{…}"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] relational-reasoning-not-attempted: no repair op reaches the pair or a cluster that grew",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] numeric-bounds-uncompared: no repair op reaches the pair or a cluster that grew",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] number-spelling-candidate: no repair op reaches the pair or a cluster that grew",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] open-opposition-candidate: no repair op reaches the pair or a cluster that grew",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] opposite-polarity-near-duplicate: no repair op reaches the pair or a cluster that grew",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] quantity-alias-candidate: no repair op reaches the pair or a cluster that grew",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] relational-reasoning-not-attempted: in a four-cycle, no repair op discharges any pair",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(5) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] numeric-bounds-uncompared: in a four-cycle, no repair op discharges any pair",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(5) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] number-spelling-candidate: in a four-cycle, no repair op discharges any pair",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(5) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] open-opposition-candidate: in a four-cycle, no repair op discharges any pair",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(5) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] opposite-polarity-near-duplicate: in a four-cycle, no repair op discharges any pair",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(5) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] quantity-alias-candidate: in a four-cycle, no repair op discharges any pair",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { …(5) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-039"
+   ],
+   "test": "a pair demotion repair is scoped to its own pair [S3-039] offers no waive that reaches its pair or a SIBLING pair sharing an id",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ { op: 'waive', …(3) } ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-041"
+   ],
+   "test": "[S3-041] the excluded-from-formal remedy for a blocking scoped lint [S3-041] the fixture premise: ORD-R1 is blocked by GTWR_R7_VAGUE, a scoped code",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-041"
+   ],
+   "test": "[S3-041] the excluded-from-formal remedy for a blocking scoped lint [S3-041] the action offers rephrasing first, before any waiver",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-041"
+   ],
+   "test": "[S3-041] the excluded-from-formal remedy for a blocking scoped lint [S3-041] any offered waive is refs plus the current content hash, never a single ref",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected { op: 'waive', …(3) } to deeply equal { op: 'waive', …(4) }"
+  },
+  {
+   "id": [
+    "S3-041"
+   ],
+   "test": "[S3-041] the excluded-from-formal remedy for a blocking scoped lint [S3-041] an offered waiver says it demotes waived-blocking-lint, so the run cannot verify",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected 'Rephrase 5a1e0000-0000-4000-8000-0000…' to contain 'waived-blocking-lint'"
+  },
+  {
+   "id": [
+    "S3-041"
+   ],
+   "test": "[S3-041] the excluded-from-formal remedy for a blocking scoped lint [S3-041] the action spells no single-ref `symspec waive <blocking-code> --ref` syntax",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected 'Rephrase 5a1e0000-0000-4000-8000-0000…' not to contain 'symspec waive <blocking-code> --ref'"
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] the extractor reads string literals and skips comments",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/semantic.ts emits only never-class codes",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/numeric-contradiction.ts emits only never-class codes",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/number-spelling.ts emits only never-class codes",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/quantity-alias.ts emits only never-class codes",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/coverage.ts emits only never-class codes",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/semantic.ts: no string literal says \"waive\"",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ …(2) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/numeric-contradiction.ts: no string literal says \"waive\"",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ …(9) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/number-spelling.ts: no string literal says \"waive\"",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ …(2) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/quantity-alias.ts: no string literal says \"waive\"",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ Array(1) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] src/domain/engine/formal/coverage.ts: no string literal says \"waive\"",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-040"
+   ],
+   "test": "[S3-040] the engine never advises a waiver of a never-class code (static) [S3-040] pipeline/check.ts: no never-code demotion action spells a waiver",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "red",
+   "failure": "AssertionError: expected [ …(8) ] to deeply equal []"
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/adapters/embedding/embedder.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/adapters/embedding/model-cache.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/adapters/embedding/model-download.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/adapters/fs/store.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/adapters/stdin/stream.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/adapters/z3/solver-service.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/install/skill-body.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/install/targets.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/install/write-safety.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/operations/check.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/operations/document.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/operations/import.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/operations/index.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/operations/install.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/operations/model.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/operations/mutate-options.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/operations/mutation.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/operations/parse.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/operations/propose-glossary.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/agents-doc.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/catalog.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/craft.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/envelope.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/errors.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/exit.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/operation.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/output.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/scope.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/signal-classes.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/app/runtime/version.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/cli.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/advice/budget-hint.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/advice/repair.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/anchor/anchor.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/compat.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/config/config.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/core/analyze.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/core/doc.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/core/render.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/core/schema.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/ambiguity.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/antonyms.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/atomize.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/backend.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/budget.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/codes.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/contradiction.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/coverage.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/embed.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/encode.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/finding.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/graph.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/guard-implication.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/incomplete.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/lemma.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/needs-review.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/number-spelling.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/numeric-contradiction.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/numeric.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/quantity-alias.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/relational.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/semantic.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/similar.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/subsumption.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/temporal-patterns.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/temporal.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/formal/vacuity.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/lint/codes.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/lint/gtwr.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/parse/batch.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/parse/negation.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/parse/normalize.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/parse/preprocess.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/parse/result.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/parse/tier1.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/parse/tier2.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/parse/tier3.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/parse/unbound.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/pipeline/check.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/pipeline/gate.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/solvers/free/ambiguity.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/solvers/free/duplicates.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/solvers/free/pairwise-filter.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/solvers/index.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/engine/solvers/types.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/glossary/glossary-plan.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/reachability/explicit-state.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/reachability/reachability-codes.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/reachability/reachability-report.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/reachability/reachability.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/requirements/content-hash.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/requirements/document.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/requirements/mutate.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/requirements/ops.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/requirements/render.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/requirements/resolve.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/requirements/state-expr.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/terminology/terminology-codes.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/domain/terminology/terminology.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/main.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/ports/command-form.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/ports/doc-store.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/ports/embedder.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/ports/errors.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/ports/exit.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/ports/model-download.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/ports/repair.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/ports/solver.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/ports/stream.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/testing/eval-rounds.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/testing/fabrication.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/testing/gaming.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/testing/generate.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/testing/harness.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/testing/report-corpus.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  },
+  {
+   "id": [
+    "S3-045"
+   ],
+   "test": "[S3-045] no source string names a command this build lacks (static) [S3-045] src/testing/waiver-fixture.ts",
+   "file": "src/domain/advice/repair.test.ts",
+   "status": "green",
+   "failure": null
+  }
+ ],
+ "earlier": {
+  "passed": 3180,
+  "failed": 10,
+  "files": 108,
+  "note": "earlier = test names carrying no S3 id. The only earlier tests that fail are the 10 gaming shard and gaming-moves snapshot mismatches (expected red: the contract changed the harness tables).",
+  "expected_red_snapshot_tests": [
+   "src/testing/gaming.shard-a.test.ts > GAMING shard a — feature-interaction, state-invariant the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-b.test.ts > GAMING shard b — one-trigger-contradiction, contrary-pair the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-c.test.ts > GAMING shard c — numeric-conflict, temporal-conflict the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-d.test.ts > GAMING shard d — glossary-bridged, term-bridged the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-e.test.ts > GAMING shard e — registered-contrary the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-f.test.ts > GAMING shard f — waived-blocking-lint, dangling-target the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-g.test.ts > GAMING shard g — overlapping-contrary, opposition-candidate the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-h.test.ts > GAMING shard h — derives-cycle, numeric-bystander the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.shard-i.test.ts > GAMING shard i — opposition-negated, opposition-split the whole matrix is pinned, so a move caught a different way is a visible diff",
+   "src/testing/gaming.test.ts > the gaming registry reports every move with its status, derived from the tables"
+  ]
+ },
+ "regressions": [],
+ "broken": [],
+ "behaviors": {
+  "per_id": {
+   "S3-001": {
+    "tests": 5,
+    "red": 4,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-002": {
+    "tests": 5,
+    "red": 5,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-003": {
+    "tests": 4,
+    "red": 3,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-004": {
+    "tests": 1,
+    "red": 0,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-005": {
+    "tests": 5,
+    "red": 5,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-006": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-007": {
+    "tests": 2,
+    "red": 1,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-008": {
+    "tests": 1,
+    "red": 0,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-009": {
+    "tests": 4,
+    "red": 3,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-010": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-011": {
+    "tests": 4,
+    "red": 4,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-012": {
+    "tests": 7,
+    "red": 6,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-013": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-014": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-015": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-016": {
+    "tests": 18,
+    "red": 16,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-017": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-018": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-019": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-020": {
+    "tests": 3,
+    "red": 2,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-021": {
+    "tests": 3,
+    "red": 1,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-022": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-023": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-024": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-025": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-026": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-027": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-028": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-029": {
+    "tests": 1,
+    "red": 1,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-030": {
+    "tests": 7,
+    "red": 7,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-031": {
+    "tests": 1,
+    "red": 0,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-032": {
+    "tests": 1,
+    "red": 0,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-033": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-034": {
+    "tests": 2,
+    "red": 1,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-035": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-036": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-037": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-038": {
+    "tests": 2,
+    "red": 2,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-039": {
+    "tests": 45,
+    "red": 40,
+    "green": 5,
+    "broken": 0
+   },
+   "S3-040": {
+    "tests": 20,
+    "red": 10,
+    "green": 10,
+    "broken": 0
+   },
+   "S3-041": {
+    "tests": 5,
+    "red": 3,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-042": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-043": {
+    "tests": 6,
+    "red": 4,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-044": {
+    "tests": 6,
+    "red": 5,
+    "green": 1,
+    "broken": 0
+   },
+   "S3-045": {
+    "tests": 123,
+    "red": 4,
+    "green": 119,
+    "broken": 0
+   },
+   "S3-046": {
+    "tests": 3,
+    "red": 3,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-047": {
+    "tests": 2,
+    "red": 0,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-048": {
+    "tests": 19,
+    "red": 8,
+    "green": 11,
+    "broken": 0
+   },
+   "S3-049": {
+    "tests": 11,
+    "red": 8,
+    "green": 3,
+    "broken": 0
+   },
+   "S3-050": {
+    "tests": 10,
+    "red": 8,
+    "green": 2,
+    "broken": 0
+   },
+   "S3-051": {
+    "tests": 0,
+    "red": 0,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-052": {
+    "tests": 0,
+    "red": 0,
+    "green": 0,
+    "broken": 0
+   },
+   "S3-053": {
+    "tests": 0,
+    "red": 0,
+    "green": 0,
+    "broken": 0
+   }
+  },
+  "ids_no_test_name": [
+   "S3-051",
+   "S3-052",
+   "S3-053"
+  ],
+  "ids_no_red_test": [
+   "S3-004",
+   "S3-008",
+   "S3-031",
+   "S3-032",
+   "S3-047"
+  ],
+  "note": "S3-051, S3-052, S3-053 are release/process behaviors (snapshot delta review, feat! commit, version files) with no test name; the rest of the ids have at least one test."
+ }
+}

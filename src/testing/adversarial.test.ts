@@ -18,8 +18,8 @@
  *
  * ## The scoreboard
  *
- * The scoreboard is 15 over the 12 pinned rounds in `../adversarial/eval-rounds.ts`: 9 PROOF
- * cases (a planted contradiction that must fire and localize every culprit), 3 ABSTAIN cases
+ * The scoreboard is 15 over the 12 pinned rounds in `../adversarial/eval-rounds.ts`: 8 PROOF
+ * cases (a planted contradiction that must fire and localize every culprit), 4 ABSTAIN cases
  * (no conflict is reachable by a sound extractor, so the tool must not fabricate one), and 3
  * whole-set claims — the win condition unreachable on every round, every demotion actionable,
  * and the convergence gradient coherent with the report beside it. A 16th case pins the
@@ -59,62 +59,16 @@ import { solverServiceLayer } from '../adapters/z3/solver-service.ts'
 import { type CheckPayload, checkOp } from '../app/operations/check.ts'
 import { runOperation } from '../app/runtime/operation.ts'
 import type { RequirementsDoc as EngineDoc } from '../domain/engine/core/schema.ts'
-import { emptyDocument, type RequirementsDocument } from '../domain/requirements/document.ts'
+import type { RequirementsDocument } from '../domain/requirements/document.ts'
 import { foldOps } from '../domain/requirements/mutate.ts'
-import { DocPath, DocStore, makeDocPath } from '../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../ports/doc-store.ts'
 import { embedderLayerOf } from '../ports/embedder.ts'
 import { ErrDocNotFound } from '../ports/errors.ts'
-import { evalRoundCases } from './eval-rounds.ts'
+import { asRequirementsDocument, evalRoundCases } from './eval-rounds.ts'
 
 // ---------------------------------------------------------------------------
 // Running the greenfield
 // ---------------------------------------------------------------------------
-
-/**
- * Project a v4-era v2 fixture onto the v3 shape.
- *
- * The eval fixtures are authored as engine documents, so the greenfield needs the same
- * CONTENT in v3. Deliberately in the test rather than in production: nothing shipped
- * reads a v2 document (v3 has no read-compat by design — migration is the `import`
- * op-stream replay), so a production converter would be dead code that also weakened
- * the format boundary.
- */
-const asV3 = (doc: EngineDoc): RequirementsDocument => ({
-  ...emptyDocument(),
-  requirements: Object.fromEntries(
-    Object.entries(doc.requirements).map(([id, r]) => [
-      id,
-      {
-        id: r.id,
-        patternType: r.patternType,
-        systemName: r.systemName,
-        systemResponse: r.systemResponse,
-        negated: r.negated,
-        sentence: r.sentence,
-        priority: r.priority,
-        status: r.status,
-        derives: [...r.derives],
-        satisfies: [...r.satisfies],
-        verifies: [...r.verifies],
-        refines: [...r.refines],
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
-        ...(r.key !== undefined ? { key: r.key } : {}),
-        ...(r.preCondition !== undefined ? { preCondition: r.preCondition } : {}),
-        ...(r.trigger !== undefined ? { trigger: r.trigger } : {}),
-        ...(r.verificationMethod !== undefined ? { verificationMethod: r.verificationMethod } : {}),
-        ...(r.verificationNote !== undefined ? { verificationNote: r.verificationNote } : {}),
-      },
-    ]),
-  ),
-  glossary: (doc.glossary ?? []).map((g) => ({ canonical: g.canonical, aliases: [...g.aliases] })),
-  antonyms: (doc.antonyms ?? []).map((a) => ({ a: a.a, b: a.b })),
-  waivers: (doc.waivers ?? []).map((w) => ({
-    code: w.code,
-    reason: w.reason,
-    ...(w.requirementId !== undefined ? { requirementId: w.requirementId } : {}),
-  })),
-})
 
 /**
  * The eval's own configuration: `--strict --temporal` with the semantic tier ON.
@@ -129,7 +83,7 @@ const ARMED = { strict: true, temporalBound: 10, semantic: true } as const
 /** Run the greenfield `check` over one v3 document, fully armed. */
 const check = async (document: RequirementsDocument): Promise<CheckPayload> => {
   const store = Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: (path) =>
         path === 'doc.json'
           ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })
@@ -163,7 +117,7 @@ const cache = new Map<string, Promise<CheckPayload>>()
 const report = (id: string, doc: EngineDoc): Promise<CheckPayload> => {
   const hit = cache.get(id)
   if (hit !== undefined) return hit
-  const run = check(asV3(doc))
+  const run = check(asRequirementsDocument(doc))
   cache.set(id, run)
   return run
 }
@@ -177,16 +131,17 @@ describe('ADVERSARIAL — the greenfield holds the v4 15/15 scoreboard', () => {
   const proofCases = cases.filter((c) => c.expectedCodes.length > 0)
   const abstainCases = cases.filter((c) => c.expectedCodes.length === 0)
 
-  it('has the 12 pinned rounds, split 9 proof / 3 abstain', () => {
+  it('has the 12 pinned rounds, split 8 proof / 4 abstain', () => {
     // Pins the SHAPE of the scoreboard, so a fixture quietly changing category (or
-    // disappearing) is a failure rather than a smaller green run. 9 + 3 + the 3
-    // whole-set claims below is the 15.
+    // disappearing) is a failure rather than a smaller green run. 8 + 4 + the 3
+    // whole-set claims below is the 15. The exclude-from/include-in round moved from proof to
+    // abstain on purpose: no verb governs a locative (spec 007 demote-not-prove C1).
     expect(cases).toHaveLength(12)
-    expect(proofCases).toHaveLength(9)
-    expect(abstainCases).toHaveLength(3)
+    expect(proofCases).toHaveLength(8)
+    expect(abstainCases).toHaveLength(4)
   })
 
-  // ---- The 9 PROOF cases -------------------------------------------------
+  // ---- The 8 PROOF cases -------------------------------------------------
   it.each(
     proofCases.map((c) => [c.id, c] as const),
   )('PROOF %s — the planted conflict fires AND localizes', async (_id, testCase) => {
@@ -209,7 +164,7 @@ describe('ADVERSARIAL — the greenfield holds the v4 15/15 scoreboard', () => {
     expect(payload.counts.error).toBeGreaterThan(0)
   })
 
-  // ---- The 3 ABSTAIN cases ----------------------------------------------
+  // ---- The 4 ABSTAIN cases ----------------------------------------------
   it.each(
     abstainCases.map((c) => [c.id, c] as const),
   )('ABSTAIN %s — does not FABRICATE, whichever way it answers', async (_id, testCase) => {
@@ -226,7 +181,7 @@ describe('ADVERSARIAL — the greenfield holds the v4 15/15 scoreboard', () => {
     // What is genuinely forbidden is a conflict the tool cannot justify — the cardinal
     // sin under sound-modulo-atomization, and worse than the miss it would replace.
     if (contradictions.length === 0) {
-      // Abstained: then it must DISCLOSE, not certify. This is the branch all three
+      // Abstained: then it must DISCLOSE, not certify. This is the branch all four
       // rounds take today.
       expect(payload.verified, testCase.note).toBe(false)
       expect(payload.strictGate).toBe('fail')
@@ -364,14 +319,19 @@ describe('the glossary command the alias candidate prints IS the table the proof
 
   it('commits, byte for byte, the table the proof round has committed', async () => {
     const { canonical, alias } = parseGlossaryCommand(await suggestedCommand())
-    const folded = foldOps(asV3(propose.doc), [{ op: 'glossary', canonical, alias }], TS, {
-      continueOnError: false,
-    })
+    const folded = foldOps(
+      asRequirementsDocument(propose.doc),
+      [{ op: 'glossary', canonical, alias }],
+      TS,
+      {
+        continueOnError: false,
+      },
+    )
     expect(
       folded.results.every((r) => r.ok),
       `the suggested command is not a legal mutation: ${JSON.stringify(folded.results)}`,
     ).toBe(true)
-    expect(folded.document.glossary).toEqual(asV3(decide.doc).glossary)
+    expect(folded.document.glossary).toEqual(asRequirementsDocument(decide.doc).glossary)
   })
 
   it('and running it on the propose round PROVES the conflict it abstained on', async () => {
@@ -379,9 +339,14 @@ describe('the glossary command the alias candidate prints IS the table the proof
     // match a fixture, it discharges. Run over the PROPOSE round's own document, so the
     // requirement ids the proof names are the ones that were abstained on.
     const { canonical, alias } = parseGlossaryCommand(await suggestedCommand())
-    const folded = foldOps(asV3(propose.doc), [{ op: 'glossary', canonical, alias }], TS, {
-      continueOnError: false,
-    })
+    const folded = foldOps(
+      asRequirementsDocument(propose.doc),
+      [{ op: 'glossary', canonical, alias }],
+      TS,
+      {
+        continueOnError: false,
+      },
+    )
     const payload = await check(folded.document)
     const proven = payload.findings.filter((f) => f.code === 'FND_NUMERIC_CONTRADICTION')
     expect(proven.length, 'the discharged alias must turn abstention into a proof').toBeGreaterThan(

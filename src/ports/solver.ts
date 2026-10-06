@@ -58,7 +58,9 @@ export interface CancellableQuery<A> {
  * - the canceler calls `interrupt()` so Z3 actually stops, rather than the fiber
  *   walking away from a query that has bricked the module;
  * - the canceler is an `Effect.promise` that AWAITS the in-flight promise, because
- *   the Asyncify `capability` slot is released on settlement, not on interrupt.
+ *   the Asyncify `capability` slot is released on settlement, not on interrupt;
+ * - and it re-issues the interrupt until that settlement, because an interrupt that
+ *   lands before the query is interruptible is dropped ({@link interruptAndSettle}).
  *
  * `.catch(() => undefined)` twice, for two different reasons: the `pending.then`
  * rejection handler keeps an interrupted query from becoming an unhandled
@@ -86,11 +88,49 @@ export const interruptibleSolve = <A>(
     // what releases Asyncify's one capability slot. Dropping the await leaves the
     // module wedged for the rest of the process (guard test: `solver-service.test.ts`
     // → "the await-after-interrupt discipline").
-    return Effect.promise(async () => {
-      query.interrupt()
-      await pending.catch(() => undefined)
-    })
+    return Effect.promise(() => interruptAndSettle(query, pending))
   })
+
+/**
+ * How often {@link interruptAndSettle} re-issues `Z3_interrupt` while it waits.
+ *
+ * Small against every solver budget in the tool (the smallest default is 2000 ms), so a
+ * re-issue lands within a few ms of the query becoming interruptible; large enough that
+ * the timer is noise next to one solver step.
+ */
+export const INTERRUPT_REISSUE_MS = 20
+
+/**
+ * Interrupt a running query and wait for it to SETTLE — the canceler's whole body,
+ * exported so the discipline's guard test runs exactly this rather than a copy of it.
+ *
+ * ## The interrupt is RE-ISSUED until the query settles
+ *
+ * `Z3_interrupt` reaches only a query that has already registered with its context. An
+ * interrupt that lands before that is DROPPED, and the query then runs as if never
+ * cancelled — for an unbounded one, forever, with the await below blocking on it.
+ * Measured on the probe-20 Spacer query: one interrupt in the same tick as `start()`
+ * left it running 5 s later, while the same interrupt re-issued every
+ * {@link INTERRUPT_REISSUE_MS} settled it in ~140 ms. The window is not only "cancelled
+ * the instant it started": under CPU contention the solver thread can take longer than
+ * a whole guard test's sleep to begin, which is how this first showed up — as a 45 s
+ * timeout in `solver-service.test.ts` under a full `pnpm check`.
+ *
+ * Re-issuing is harmless once the query is interruptible: a second cancel of a query
+ * that is already unwinding changes nothing, and the timer stops at settlement.
+ */
+export const interruptAndSettle = async (
+  query: CancellableQuery<unknown>,
+  pending: Promise<unknown>,
+): Promise<void> => {
+  query.interrupt()
+  const reissue = setInterval(() => query.interrupt(), INTERRUPT_REISSUE_MS)
+  try {
+    await pending.catch(() => undefined)
+  } finally {
+    clearInterval(reissue)
+  }
+}
 
 // ---------------------------------------------------------------------------
 // The service

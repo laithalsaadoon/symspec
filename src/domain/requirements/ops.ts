@@ -228,14 +228,25 @@ export const AntonymOp = Schema.Struct({
 })
 export type AntonymOp = typeof AntonymOp.Type
 
-/** `{"op":"waive", …}` — commit one reviewed finding suppression, optionally
- * scoped to a requirement. `reason` is REQUIRED: a waiver with no audit trail is
- * indistinguishable from neglect to the next reader. */
+/**
+ * `{"op":"waive", …}` — commit one reviewed finding suppression. `reason` is REQUIRED: a
+ * waiver with no audit trail is indistinguishable from neglect to the next reader.
+ *
+ * Three scopes as written: none, `ref`, and `refs` (only the finding over EXACTLY those
+ * requirements, bound to their current text by a content hash). Under the waivability policy
+ * every write channel supplies (spec 007 AC-5-6) a waive with no scope, or of a `never`-class
+ * code, is refused, and a `ref` is stored as `refs: [ref]` with the hash the fold computes.
+ * `refs` is what a pair finding's repair emits, with the
+ * `contentHash` of the text `check` raised it on; `apply` refuses the op if that text has since
+ * changed, so a waiver is never committed over wording nobody reviewed.
+ */
 export const WaiveOp = Schema.Struct({
   op: Schema.Literal('waive'),
   code: Schema.String,
   reason: Schema.String,
   ref: Schema.optionalKey(Schema.String),
+  refs: Schema.optionalKey(Schema.Array(Schema.String)),
+  contentHash: Schema.optionalKey(Schema.String),
 })
 export type WaiveOp = typeof WaiveOp.Type
 
@@ -245,6 +256,7 @@ export const UnwaiveOp = Schema.Struct({
   op: Schema.Literal('unwaive'),
   code: Schema.String,
   ref: Schema.optionalKey(Schema.String),
+  refs: Schema.optionalKey(Schema.Array(Schema.String)),
 })
 export type UnwaiveOp = typeof UnwaiveOp.Type
 
@@ -467,6 +479,140 @@ export const OP_VERBS = [
   'unterm',
 ] as const
 export type OpVerb = (typeof OP_VERBS)[number]
+
+// ---------------------------------------------------------------------------
+// Direction (spec 007 invariant I-1, AC-5-1)
+// ---------------------------------------------------------------------------
+
+/**
+ * The three op directions, in LATTICE order: a batch of ops takes the highest direction any
+ * of its verbs carries ({@link joinDirections}).
+ *
+ * What each one means is stated over D, the verdict-bearing set, which is defined by the
+ * signal classes (`app/runtime/signal-classes.ts`) and published beside this table in the
+ * manifest: `strengthening` only adds constraints, so it can DISPLACE a reported member of D
+ * (a new conflict takes an old one's place in the report, as far as the reporting granularity of
+ * the tier that emits it reaches: `DISPLACEMENT` in the signal classes) but never remove one;
+ * `weakening` can remove one; and `conditional` is decided per instance by symspec. A label is
+ * therefore an UPPER BOUND on what the verb can do, and the gaming gate MEASURES it (G-D) rather
+ * than trusting it.
+ *
+ * `run-weakening` is deliberately absent. A run knob (`--semantic=false`, a low budget) is not
+ * an op, so it has no row here; it is disclosed on the run as `run-weakened`.
+ */
+export const OP_DIRECTIONS = ['strengthening', 'conditional', 'weakening'] as const
+export type OpDirection = (typeof OP_DIRECTIONS)[number]
+
+/**
+ * Every op verb's direction, with the reason in words.
+ *
+ * Bound by `satisfies Record<OpVerb, …>`, so appending a verb to {@link OP_VERBS} without
+ * deciding its direction does not compile. The `why` column is the argument an agent reads in
+ * the manifest; the gaming gate's G-D is the measurement that the argument holds on every
+ * registered move, with its exceptions listed exactly (`KNOWN_NONMONOTONE` in
+ * `testing/gaming.ts`).
+ */
+export const OP_DIRECTION = {
+  add: {
+    direction: 'strengthening',
+    why: 'Adds constraints, and the decide logic is monotone under added constraints: a new requirement cannot make an unsatisfiable set satisfiable (I-1). A new conflict can DISPLACE a reported one, as far as the reporting granularity of the tier that reports it reaches. The propositional contradiction tier enumerates disjoint cores, so an overlapping FND_CONTRADICTION displaces (measured: `overlapping-contrary` × `add-negation`). The numeric tier reports one core per (quantity, base unit, context group) cell, so any FND_NUMERIC_CONTRADICTION in the same cell displaces, sharing a requirement or not (measured: `numeric-bystander` × `add-bound-past-bystander`, a bound that conflicts with a culprit and a bystander). The temporal tier reports one joint core, so any FND_TEMPORAL_CONTRADICTION displaces (measured: `temporal-conflict` × `add-bystander-negation`). An equivalent requirement under a lower id re-keys a verdict onto itself, which the identity map reads as the same member. It can discharge coverage demotions, and with an explicit `id` the FND_DANGLING_REFERENCE of an edge that names that id; both are outside D.',
+  },
+  update: {
+    direction: 'weakening',
+    why: 'Rewriting a slot, `negated`, the pattern, `stateEffect` or `stateConstraint` changes what the requirement MEANS, so it can remove a conflict the old wording carried. Metadata attributes change nothing a tier reads, but the verb is labelled by what it can do.',
+  },
+  delete: {
+    direction: 'weakening',
+    why: 'Removes a requirement, and with it every finding and demotion that named it. Deleting one side of a conflict leaves a consistent document.',
+  },
+  derive: {
+    direction: 'strengthening',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`).',
+  },
+  satisfy: {
+    direction: 'strengthening',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`).',
+  },
+  verify: {
+    direction: 'strengthening',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`).',
+  },
+  refine: {
+    direction: 'strengthening',
+    why: 'Adds a trace edge. Edges feed only the trace graph, where an added edge can create FND_CYCLE and cannot break a cycle. It can DISPLACE a reported one: the cycle search is one depth-first walk, which reports the cycles its back edges close, so an edge from a branch into a cycle can make a longer cycle the reported one while the shorter one is still in the graph (measured: `derives-cycle` × `branch-into-cycle`).',
+  },
+  'remove-edge': {
+    direction: 'weakening',
+    why: 'Removes a trace edge, which can remove an FND_CYCLE (a structural error finding, and so a member of D).',
+  },
+  glossary: {
+    direction: 'weakening',
+    why: 'Identifies two phrases as one atom. An equality cannot make an unsatisfiable set satisfiable, but it can REFUTE a conflict signal: aliasing the two sides of an open opposition candidate says they are one action, so the candidate and its demotion go away and nothing replaces them (measured: `opposition-candidate` × `alias-contraries-glossary`, a clean run over fill and drain). The fold refuses an alias only over committed contraries, and it cannot see an embedding-proposed pair. The table is also a one-pass lookup that runs before term substitution, so an alias over a phrase the term table rewrites removes the verdict the term carried (`term-bridged` × `glossary-over-term`).',
+  },
+  antonym: {
+    direction: 'weakening',
+    why: "Commits a contrary axiom, and it is also the answer to an open opposition candidate: declaring the candidate's own two verbs contraries discharges the candidate, and nothing need replace it. With one side negated (fill the tank, and never drain it) the pair is then provably consistent, the demotion goes and the run can verify (measured: `opposition-negated` × `antonym-over-candidate`, a clean run). Under two different triggers the candidate becomes `conditional-conflict-unchecked`, a different member of D (measured: `opposition-split` × `antonym-over-candidate`). The verb cannot tell a true contrary from two synonyms declared contraries, and a wrong one hides a real conflict. The fold refuses a pair the committed tables make inconsistent.",
+  },
+  waive: {
+    direction: 'weakening',
+    why: 'Suppresses a finding. A waiver removes what the report shows without changing what the document says.',
+  },
+  unwaive: {
+    direction: 'weakening',
+    why: 'Removes a waiver. That can reinstate a finding the waiver hid, but a waived error-severity GtWR lint is what re-admits its requirement to the solver (AC-3-7), so removing that waiver takes the requirement out again and every verdict it was part of disappears.',
+  },
+  unglossary: {
+    direction: 'weakening',
+    why: 'Splits two phrases the glossary made one atom, so a conflict that rested on the alias disappears.',
+  },
+  unantonym: {
+    direction: 'weakening',
+    why: 'Removes a contrary axiom, so a conflict that rested on the two phrases being contraries disappears.',
+  },
+  state: {
+    direction: 'weakening',
+    why: 'Declares or REDECLARES a state variable. A redeclaration can release a frame, widen a range, or change the initial state, and each can remove a reachability violation.',
+  },
+  unstate: {
+    direction: 'weakening',
+    why: 'Undeclares a state variable, which takes the constraints that read it out of the reachability tier.',
+  },
+  'state-initial': {
+    direction: 'weakening',
+    why: 'Sets or clears the model-wide initial predicate. A changed initial state changes which states are reachable, so a violation can disappear.',
+  },
+  classify: {
+    direction: 'weakening',
+    why: "Sets or retracts one requirement's response kind and its expression. That rebinds what the requirement does to the state model, and a retraction takes a constraint out of the reachability tier.",
+  },
+  term: {
+    direction: 'weakening',
+    why: 'Identifies two noun phrases inside every atom body. The table is a one-pass substitution, not an equivalence, so an entry can rewrite two contraries onto one phrase and the conflict the contrary carried is gone (measured: `registered-contrary` × `alias-contraries-term`, where ratify/veto are contraries only through the committed antonym table). The fold refuses a term that contains a verb the seed antonym or state-bridge tables read, and does not read the committed antonyms.',
+  },
+  unterm: {
+    direction: 'weakening',
+    why: 'Splits two noun phrases the term table made one, so a conflict that rested on the term disappears.',
+  },
+} as const satisfies Record<OpVerb, { readonly direction: OpDirection; readonly why: string }>
+
+/** The direction table as rows, in the append-only {@link OP_VERBS} order the manifest publishes. */
+export const opDirectionRows = (): readonly {
+  readonly verb: OpVerb
+  readonly direction: OpDirection
+  readonly why: string
+}[] => OP_VERBS.map((verb) => ({ verb, ...OP_DIRECTION[verb] }))
+
+/**
+ * The direction of a BATCH: the least upper bound of its verbs' directions in
+ * {@link OP_DIRECTIONS} order, so one weakening verb makes the whole batch weakening.
+ * `undefined` for an empty batch, which changes nothing and has nothing to label.
+ */
+export const joinDirections = (directions: readonly OpDirection[]): OpDirection | undefined =>
+  directions.reduce<OpDirection | undefined>(
+    (joined, d) =>
+      joined === undefined || OP_DIRECTIONS.indexOf(d) > OP_DIRECTIONS.indexOf(joined) ? d : joined,
+    undefined,
+  )
 
 /** Decode one raw op record. `{onExcessProperty:'error'}` so a misspelled field is
  * a LOUD per-op failure instead of a silently dropped value — the same guard the

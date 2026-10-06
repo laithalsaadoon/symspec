@@ -1,0 +1,2 @@
+# The same wording waiver with refs but no contentHash in the op (the fold may compute one).
+{"op":"waive","code":"GTWR_R5_INDEFINITE_ARTICLE","reason":"'an audit record' names the one record the shift close writes","refs":["LOG-R1"]}

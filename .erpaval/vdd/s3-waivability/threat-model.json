@@ -1,0 +1,1969 @@
+{
+  "version": 2,
+  "format": "VDD run 2 threat model (plain JSON, not Threat Composer). Version 2, threat-close on the final tree: a threat is \"resolved\" only when every behavior its mitigation names is pinned at or above its registry floor and the threat's own evidence floor is met by the strongest of them, with the test ids and records named under evidence; every other threat is \"open\" with reason, residual risk, a proposed owner and an end date. Nobody has approved this model: there is no approvals entry, and an open threat is not accepted until a person accepts it.",
+  "writtenBy": "threat-modeler (threat-close-3), VDD run 2, job 1256, swarm vdd-2-s3-waivability; v1 by job 833",
+  "base": "0fca0433eb82 (feat/controlled-vocabulary), unchanged from v1",
+  "inputs": [
+    ".erpaval/vdd/s3-waivability/readings.md (## Intake only)",
+    ".erpaval/vdd/s3-waivability/components.json",
+    ".erpaval/vdd/s3-waivability/fixture/",
+    ".erpaval/specs/007-controlled-vocabulary/spec.md AC-5-6, D1, D4",
+    ".erpaval/specs/007-controlled-vocabulary/phase3-plan.md 2.3, 5.3, 6 item 1, S3, 10, R4, R7, G2, G3, G4, G24",
+    "src/testing/gaming.ts (MOVES, Edit channels, KNOWN_ESCAPES, OP_COVERAGE)",
+    "code at base: mutate.ts applyWaive/applyUnwaive, import.ts applyWaive, compat.ts bindsCurrentText/toEngineDoc, engine check.ts isWaived/PAIR_BOUND_CODES, gate.ts isWaivedBlocking, signal-classes.ts findingClassOf/waivabilityOf/WAIVABILITY_ENFORCED, advice/repair.ts, app/runtime/craft.ts, app/runtime/scope.ts, engine formal/*.ts suggestion prose",
+    ".erpaval/vdd/s3-waivability/behaviors.json (floors S3-001..S3-053)",
+    ".erpaval/vdd/s3-waivability/evidence.md (job 1007, commit 64986bb, measured at 7afb20e): sabotage replays, TA3 reach, section 8 floor/achieved matrix",
+    ".erpaval/vdd/s3-waivability/evidence-final.md (cf4f3bc at 2d3e5fe; \"After the final closure\" at 9eae40e, measured at 6f7e957)",
+    ".erpaval/vdd/s3-waivability/attack-ledger.json round 1 (35ac336, 71 valid mutants, 50 killed) and round 2 (19bd46f, 43 valid, 32 killed; round-1 replays 20 killed, 1 equivalent)",
+    ".erpaval/vdd/s3-waivability/review-ledger.json (57948c2, bc9a87d, ea1503a, abccc2c: R1-R9 closed, R10-R13 open; survivor replay of C06, C09, C10, C13, C18, C23, RH10: 7 of 7 killed on 6f7e957; C14, C15 owned)",
+    ".erpaval/vdd/s3-waivability/absence-4.json, absence-6.json, absence-7.json (closure contracts 4, 6, 7)",
+    ".erpaval/vdd/s3-waivability/readings.md ## Rulings R37-R64",
+    ".erpaval/vdd/release-hardening/ (run 3 records: behaviors RH-001..RH-012, rulings RH-R1..RH-R4, evidence, review ledger)",
+    "job 1256 rerun at abccc2c (fresh clone, pnpm install --offline --frozen-lockfile, SYMSPEC_EMBED_STUB=1): 19 test files, 1262 tests, 1262 passed, 0 failed, including every [S3-0xx] id but S3-051..S3-053 and every [RH-0xx] id"
+  ],
+  "scope": {
+    "inScope": "Slice S3 Waivability (AC-5-6): every channel through which a waiver enters a requirements document (apply and `symspec waive`, import, hand-edited JSON, documents older builds wrote), the check-time boundary that decides which stored waivers reach the engine (compat), the certificate those waivers can move (data.verified, exit code, --strict exit 3), the advice and prose that tell an agent to waive, the published waivability statement, and the trusted-base measurements that say whether the waiver escapes are closed (gaming harness, report corpus). Version 2 adds the run 3 release hardening merged into this branch (config discovery under a git refusal, publish provenance after the account rename, the v4 honest-scope statement) and the open defects the final reviews and attacks left on the shipped surface.",
+    "outOfScope": "Engine logic (S3 allows a prose-only engine edit, plan section 10); the vocabulary ops (`vocab distinct`, S5/AC-5-7) and `propose-vocabulary --rescope-waivers`, which this build does not have; the CI invocation and CODEOWNERS (R6, D8; assumption TA1); local .git edits (D8); the embedding model download.",
+    "question": "What can a coding agent that wants `verified: true` (or exit 0 under --strict) do with a waiver instead of making the requirements consistent, and what does an honest author with a legacy document lose?"
+  },
+  "actors": [
+    {
+      "id": "A1",
+      "name": "gaming agent",
+      "description": "A coding agent in a check loop whose stop condition is verified: true with exit 0. It reads the report (codes, repair.ops, actions, suggestions, the installed skill body) and can write the document through apply, `symspec waive`, import, or by editing the JSON by hand. It can run check and copy any hash check prints, and it can compute requirementsContentHash itself. Not malicious by intent: it takes the shortest path to green."
+    },
+    {
+      "id": "A2",
+      "name": "honest legacy author",
+      "description": "A person or agent whose document was written by an older build (v1.2.1 or earlier, or a v4 reproduce stream) and already stores waivers, some reviewed (scoped, hash-bound), some code-only or single-ref. Wants their reviewed decisions kept or replaced, not silently dropped."
+    },
+    {
+      "id": "A3",
+      "name": "builder agent",
+      "description": "The agent implementing S3. It can weaken the measurements that judge it: delete KNOWN_ESCAPES rows, delete a move, edit a snapshot, or move logic so a gate no longer reaches it."
+    },
+    {
+      "id": "A4",
+      "name": "foreign producer",
+      "description": "The v4 CLI's reproduce stream or a hand-written import stream: command lines with only --ref, or JSONL records, some with scopes that do not resolve."
+    },
+    {
+      "id": "A5",
+      "name": "refusing environment",
+      "description": "A sandbox, container or CI runner whose git refuses the document's directory (dubious ownership) while the document and any config stay readable. Not an adversary; the condition under which config discovery must decide alone (T27, T28)."
+    },
+    {
+      "id": "A6",
+      "name": "release pipeline",
+      "description": "release-please plus the npm publish with OIDC provenance; outside the run, it reads package.json and the repository claim (T29)."
+    }
+  ],
+  "assets": [
+    {
+      "id": "AS1",
+      "name": "the certificate",
+      "description": "data.verified, the exit code and the --strict exit 3: what CI and a person read as 'this was checked'."
+    },
+    {
+      "id": "AS2",
+      "name": "finding visibility",
+      "description": "A finding the tool raised stays in findings[] or demotes until it is discharged by changing the document; a waiver can hide it."
+    },
+    {
+      "id": "AS3",
+      "name": "reviewed waivers",
+      "description": "Waivers a person reviewed over named requirements and their text; the audit trail of an accepted wording or structural defect."
+    },
+    {
+      "id": "AS4",
+      "name": "advice integrity",
+      "description": "repair.ops (which agents pipe into apply), demotion actions, finding suggestions, scope prose, the installed skill body and explain: they must offer only remedies this build accepts and never waive for a never code."
+    },
+    {
+      "id": "AS5",
+      "name": "the published waivability statement",
+      "description": "WAIVABILITY, WAIVABILITY_ENFORCED, waivabilityStatement, the catalog's waivable/waivableEnforced columns and AGENTS.md."
+    },
+    {
+      "id": "AS6",
+      "name": "the measurement",
+      "description": "The gaming harness (MOVES, KNOWN_ESCAPES exactness, OP_COVERAGE, shard snapshots) and the report corpus snapshot: the trusted base that says which escapes are closed."
+    },
+    {
+      "id": "AS7",
+      "name": "the pinned run configuration",
+      "description": "symspec.config.json at the repository toplevel: strict and the gate's run settings a CODEOWNED file fixes; an unpinned run is a weaker certificate."
+    },
+    {
+      "id": "AS8",
+      "name": "publish provenance",
+      "description": "The npm package's provenance attestation and the repository it names."
+    }
+  ],
+  "entryPoints": [
+    {
+      "id": "apply fold",
+      "description": "applyOp/foldOps under MUTATE_OPTIONS, reached by `symspec apply` and `symspec waive` (mutation.ts waiveOp, cli.ts waiveCommand). The one place a write-time classifier is injected.",
+      "trustBoundary": "TB1"
+    },
+    {
+      "id": "import",
+      "description": "import.ts: v4 command lines and JSONL waive records; applyWaive resolves --ref first and WIDENS an unresolvable scope to document-wide before handing the record to applyOp.",
+      "trustBoundary": "TB2"
+    },
+    {
+      "id": "hand-edited JSON",
+      "description": "The document on disk, edited by hand or written by an older build; no fence runs (risk R4). compat.toEngineDoc is the only check-time gate, and the engine trusts its textBound.",
+      "trustBoundary": "TB3"
+    },
+    {
+      "id": "advice/suggestion text",
+      "description": "Everything check, explain and install hand an agent: repair.ops and commands, demotion actions, finding messages and suggestions, scope prose, the installed skill body (craft.ts), AGENTS.md.",
+      "trustBoundary": "TB4"
+    },
+    {
+      "id": "harness blind spot",
+      "description": "A channel or move the gaming harness and report corpus do not measure, so an escape there is invisible to the trusted base. At base the harness's Edit kinds are 'ops', 'reparse' and 'run' only: every move goes through the fold, none writes the JSON directly.",
+      "trustBoundary": "TB6"
+    },
+    {
+      "id": "config discovery",
+      "description": "store.ts configPath / configAtOrAbove at check start: git rev-parse --show-toplevel, and under a refusal the walk from the document's directory to / for a symspec.config.json entry (never read on this path).",
+      "trustBoundary": "TB7"
+    },
+    {
+      "id": "release publish",
+      "description": "npm publish with provenance from the release-please workflow.",
+      "trustBoundary": "TB8"
+    },
+    {
+      "id": "process output",
+      "description": "The CLI's stdout envelope as a pipe consumer reads it.",
+      "trustBoundary": "TB4"
+    }
+  ],
+  "baseFacts": [
+    "applyWaive (mutate.ts) accepts any non-empty code after trim(), with no scope, a `ref` (stored as requirementId, no hash) or `refs` (stored requirementIds plus a hash the fold computes; a supplied contentHash that differs is ERR_USAGE).",
+    "compat.bindsCurrentText passes every waiver with no contentHash and silently drops one whose hash no longer matches; the engine trusts textBound and does not rehash.",
+    "The engine declines code-only and one-ref waivers of FND_OPPOSITION_CANDIDATE only (PAIR_BOUND_CODES); every other code, never-class included, is suppressed by a code-only waiver.",
+    "gate.isWaivedBlocking re-admits a requirement whose blocking GTWR finding is waived, with no textBound test; it is kept in sync with isWaived by hand.",
+    "import.ts applyWaive widens an unresolvable --ref to a document-wide waiver and discloses it only in unresolved[]; its record schema cannot carry refs or contentHash.",
+    "findingClassOf: any string starting 'GTWR_' is wording (scoped); otherwise `code in FINDING_CLASS`, which is also true for inherited Object.prototype names; undefined for an unknown code. WAIVABILITY_ENFORCED is false.",
+    "repair.ts offers scoped waive ops for FND_RELATIONAL_UNCHECKED, FND_NUMERIC_UNCOMPARED, FND_NUMBER_SPELLING_CANDIDATE (never codes) and a single-`ref` waive of the blocking code for excluded-from-formal; engine prose in semantic.ts, numeric-contradiction.ts, number-spelling.ts and quantity-alias.ts says 'waive this finding'; craft.ts calls the reviewed waiver 'the always-safe third option' for an opposition candidate.",
+    "gaming.ts: the waive-by-code move emits a code-only waive of every baseline code; its 11 KNOWN_ESCAPES rows (10 formal fixtures plus derives-cycle) are closed by AC-5-6; OP_COVERAGE maps the waive verb to waive-by-code alone.",
+    "Run 3 base facts (0fca043): with no config anywhere, check exits 2 ERR_CONFIG_INVALID under any git refusal but \"not a git repository\" (B3); package.json names theagenticguy/symspec (B1); v4 schema descriptions state enforcement no tier performs (B4)."
+  ],
+  "threats": [
+    {
+      "id": "T1",
+      "title": "Code-only waiver of a never-class code through apply (the AC-5-6 reproducer)",
+      "actor": "A1",
+      "entryPoint": "apply fold",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "high",
+      "stride": "T, E",
+      "components": [
+        "waive-fold"
+      ],
+      "statement": "A gaming agent that reads FND_CONTRADICTION, FND_NUMERIC_CONTRADICTION, FND_SIMILAR_SEMANTIC or another never-class code in the report can `symspec waive <code>` with no scope, which suppresses every finding of that code, present and future, and the run verifies (10 of the 11 waive-by-code KNOWN_ESCAPES rows). For FND_OPPOSITION_CANDIDATE the engine already declines it, but the waiver is still committed.",
+      "mitigation": "The fold refuses every waive op whose code is never-class, whatever its scope, with ERR_WAIVER_REFUSED; in atomic mode the document is byte-identical and `symspec waive` exits non-zero.",
+      "origin": "threat T1",
+      "evidenceFloor": "property over every code",
+      "status": "resolved",
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"property over every code\" = 2, registry floors of S3-001, S3-002, S3-037, S3-048)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-001",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every never-class code x 6 scope shapes; sabotage S22, S33 red"
+          },
+          {
+            "id": "S3-002",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "fold streams + CLI applies, byte-identical file; sabotage S1 red; attack A24/A25 killed (contract-4)"
+          },
+          {
+            "id": "S3-037",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "stored reproducer inert, both pairs demote; dist/cli.mjs reproducer (evidence-final section 3)"
+          },
+          {
+            "id": "S3-048",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "9 shards x exactness + registry; KNOWN_ESCAPES 62 -> 51, exactly the 11 waive-by-code rows, none added (evidence-final sections 5 and D); sabotage S3, S6 red"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "evidence-final section 3: dist/cli.mjs apply of the AC-5-6 code-only waive exits 1, ERR_WAIVER_REFUSED, file byte-identical (sha256 781fff94... unchanged); the 10 never-fixture waive-by-code KNOWN_ESCAPES rows are gone."
+      },
+      "bypass": "A never code reaching the fold under another spelling is T22/T23 (resolved); a never-code waiver written by hand is T8/T11 (resolved); import is T9 (resolved)."
+    },
+    {
+      "id": "T2",
+      "title": "Scoped refs+hash waiver of a never-class code through apply",
+      "actor": "A1",
+      "entryPoint": "apply fold",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "high",
+      "stride": "T, E",
+      "components": [
+        "waive-fold"
+      ],
+      "statement": "The legal-looking form: waive FND_CONTRADICTION refs [ORD-R1, ORD-R2] with the current contentHash (fixture never-verdict), or the scoped waive of FND_NUMERIC_UNCOMPARED / FND_RELATIONAL_UNCHECKED / FND_NUMBER_SPELLING_CANDIDATE that repair.ops offer at base. A fold that tests only the scope shape accepts it, and the engine applies a textBound exact-set waiver to any code.",
+      "mitigation": "The fold refuses a waive of a never-class code with ERR_WAIVER_REFUSED even when it carries refs equal to the finding's ids and the matching contentHash; refusal depends on the code's class alone, not on the scope.",
+      "origin": "threat T2",
+      "evidenceFloor": "property over every code",
+      "status": "resolved",
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"property over every code\" = 2, registry floors of S3-001, S3-039)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-001",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every never-class code x 6 scope shapes; sabotage S22, S33 red"
+          },
+          {
+            "id": "S3-039",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "every repair arm constructed for each demotion reason (exhaustive over the reason union, R56) emits only ops the fold accepts and commands the built CLI parses; sweep of every repair op over the 53-row corpus and 21 fixtures; closes TA3 / evidence gap G2 for repair arms; sabotage S10, S14 red; attack F-REPAIR closed"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "evidence-final section 3: repro-scoped (refs CAB-R1, CAB-R2 and hash) refused ERR_WAIVER_REFUSED, file byte-identical; the stored scoped form is inert (waiver-inert, verified false)."
+      },
+      "bypass": "Refusal depends only on the canonical code's class (R54), so no scope shape reaches a never code; repair ops never offer one (S3-039, exhaustive over demotion reasons)."
+    },
+    {
+      "id": "T3",
+      "title": "Code-only waiver of a scoped (wording or structural) code",
+      "actor": "A1",
+      "entryPoint": "apply fold",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "high",
+      "stride": "T, E",
+      "components": [
+        "waive-fold"
+      ],
+      "statement": "waive FND_CYCLE or GTWR_R7_VAGUE with no scope (structural-cycle-code-only, lint-code-only, the derives-cycle KNOWN_ESCAPES row): one waiver reaches every finding of the code, including ones raised later on requirements nobody read, and a document-wide GTWR waiver re-admits every requirement it blocked.",
+      "mitigation": "The fold refuses a waive with no refs (code-only) with ERR_WAIVER_REFUSED for every code, scoped classes included.",
+      "origin": "threat T3",
+      "evidenceFloor": "property over every code",
+      "status": "resolved",
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"property over every code\" = 2, registry floors of S3-003, S3-017, S3-048)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-003",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every published code, code-only, apply, CLI and import; sabotage S1, S32 red"
+          },
+          {
+            "id": "S3-017",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: code-only stored waiver of every code plus unknown"
+          },
+          {
+            "id": "S3-048",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "9 shards x exactness + registry; KNOWN_ESCAPES 62 -> 51, exactly the 11 waive-by-code rows, none added (evidence-final sections 5 and D); sabotage S3, S6 red"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "derives-cycle x waive-by-code KNOWN_ESCAPES row removed with the move still registered (evidence-final section 5)."
+      },
+      "bypass": "A scoped FND_CYCLE waiver over exact ids and hash still verifies derives-cycle by design (T24, ruling R45)."
+    },
+    {
+      "id": "T4",
+      "title": "Single ref without hash widens to every finding that names the requirement",
+      "actor": "A1",
+      "entryPoint": "apply fold",
+      "asset": "AS2",
+      "impact": "hidden conflict",
+      "likelihood": "high",
+      "stride": "T, E",
+      "components": [
+        "waive-fold",
+        "check-compat"
+      ],
+      "statement": "`symspec waive <code> --ref <id>` (the only scope the CLI offers) or a `ref` op stores requirementId with no hash: it suppresses every finding of the code that names that requirement, pair findings with any partner included, and stays applied after the text changes (lint-single-ref, repro-single-ref, legacy W2, W5).",
+      "mitigation": "No waiver is ever stored with requirementId and no contentHash: a `ref` op is refused with ERR_WAIVER_REFUSED or normalized to refs [ref] plus the fold-computed hash (intake ambiguity 3, for a person to rule); and a stored single-ref waiver is inert at check (T11).",
+      "origin": "threat T4",
+      "evidenceFloor": "property over every code",
+      "status": "resolved",
+      "ambiguities": [
+        3,
+        7
+      ],
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"property over every code\" = 2, registry floors of S3-005, S3-006, S3-018, S3-020)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-005",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every scoped code, refs without hash and single ref; sabotage S23, S32, S33 red"
+          },
+          {
+            "id": "S3-006",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every finding code x 6 scope shapes, nothing stored hash-less; sabotage S1, S23 red"
+          },
+          {
+            "id": "S3-018",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every scoped code, requirementId / requirementIds without hash; sabotage S24, S34 red"
+          },
+          {
+            "id": "S3-020",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "compat sweep over scoped codes + hand-ref-with-hash; sabotage S34 red"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "Ruling R37 normalizes ref to refs [ref] plus the fold-computed hash; review R2 (unwaive of a lone requirementId naming a deleted requirement) closed by R55/R59 with the UUID-equals-key collision pinned."
+      },
+      "bypass": "A hand-written requirementId with a matching hash qualifies only as refs [id] (R39, S3-020), which is the exact-set form."
+    },
+    {
+      "id": "T5",
+      "title": "Refs that are a superset or subset of the finding's ids",
+      "actor": "A1",
+      "entryPoint": "apply fold",
+      "asset": "AS2",
+      "impact": "misleading remedy",
+      "likelihood": "medium",
+      "stride": "T, R",
+      "components": [
+        "waive-fold",
+        "check-compat",
+        "engine-waiver-scope"
+      ],
+      "statement": "refs [LOG-R1, LOG-R2] for the one-requirement GTWR_R5 finding on LOG-R1 (lint-wrong-set), or refs [CAB-R1] for the pair finding. At base the engine's namesExactly applies neither, but the fold stores both silently, so the agent believes a reviewed waiver is in force, and the gate's isWaivedBlocking mirrors isWaived by hand: if the two drift, a wider set re-admits a requirement the report still shows as waived-not.",
+      "mitigation": "A stored waiver whose refs equal no current finding's requirement set suppresses nothing, re-admits nothing, and is named in check's disclosure (waiver-inert or data.ignoredWaivers); for every stored waiver, isWaivedBlocking re-admits a requirement exactly when isWaived suppresses that requirement's blocking finding.",
+      "origin": "threat T5",
+      "evidenceFloor": "property over every code",
+      "status": "resolved",
+      "ambiguities": [
+        1,
+        11
+      ],
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"property over every code\" = 2, registry floors of S3-007, S3-022, S3-032, S3-023, S3-036)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-007",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "lint-wrong-set at write and at check; sabotage S31, S33, S34, S35 red"
+          },
+          {
+            "id": "S3-022",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "lint-wrong-set disclosure; sabotage S31, S34, S35 red"
+          },
+          {
+            "id": "S3-032",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: 8 waiver shapes over the ORD pair, isWaivedBlocking agrees with isWaived, with anti-vacuity (some shapes re-admit, some do not); evidence matrix credits level 2"
+          },
+          {
+            "id": "S3-023",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "metamorphic over all 21 fixture documents: deleting any inert waiver changes nothing"
+          },
+          {
+            "id": "S3-036",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "differential over all 21 fixture documents (ids = bare minus waived) + 3 inert additions; sabotage S5, S34 red"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "Ruled by R8 and R38 (Q2): a wrong-set waiver is accepted at write and is inert and disclosed at check."
+      },
+      "bypass": "S3-032 sweeps 8 waiver shapes over one blocking pair (GTWR_R7_VAGUE, plus one GTWR_R5 shape); isWaivedBlocking and isWaived match on shape, not code, so a second blocking code would add no new branch. The two functions are still kept in sync by hand: a later edit of one is caught only through this sweep."
+    },
+    {
+      "id": "T6",
+      "title": "Stale-hash waiver dropped silently after the text changes",
+      "actor": "A2",
+      "entryPoint": "apply fold",
+      "asset": "AS3",
+      "impact": "lost reviewed waiver",
+      "likelihood": "medium",
+      "stride": "R",
+      "components": [
+        "check-compat"
+      ],
+      "statement": "lint-stale-hash: a reviewed waiver over LOG-R1 at sha256:fd8b2c50... and a later edit of LOG-R1. bindsCurrentText drops it with no word: the finding comes back (the safe direction), but nothing tells the author which reviewed waiver stopped applying or why, and an output filter may hide even the returned finding.",
+      "mitigation": "Every stored waiver whose contentHash no longer matches is listed in data.ignoredWaivers with its code, requirement ids, stored hash and current hash, whatever --min-severity or code filter the run uses, and the finding it covered is back in findings[].",
+      "origin": "threat T6",
+      "evidenceFloor": "example",
+      "status": "resolved",
+      "ambiguities": [
+        10
+      ],
+      "floor": {
+        "level": 1,
+        "from": "max(v1 evidenceFloor \"example\" = 1, registry floors of S3-028, S3-029)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-028",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "stale-hash listed under any output filter; sabotage S25, S34 red"
+          },
+          {
+            "id": "S3-029",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "stale-hash note says re-review; sabotage S17, S35 red"
+          }
+        ],
+        "achievedAtFloor": 1,
+        "notes": "evidence.md section 7 and the stale-hash row: ignoredWaivers lists it with stored and current hash under any filter."
+      },
+      "bypass": "A hash string that is not an anchored sha256 is refused at load (D14), so a malformed hash cannot look stale or current."
+    },
+    {
+      "id": "T7",
+      "title": "Hash taken from the text at write time rather than the text a finding was raised on",
+      "actor": "A1",
+      "entryPoint": "apply fold",
+      "asset": "AS2",
+      "impact": "hidden conflict",
+      "likelihood": "medium",
+      "stride": "T, R",
+      "components": [
+        "waive-fold"
+      ],
+      "statement": "A waive op with refs and no contentHash gets the hash the fold computes from the current text (lint-refs-no-hash, structural-cycle-scoped). An agent that edits a requirement and waives it in one stream binds a waiver to text no check ever raised a finding on; with a supplied hash, a mismatch is refused today only as ERR_USAGE (lint-hash-mismatch).",
+      "mitigation": "A waive op whose contentHash differs from the hash of the text it names is refused and nothing is written; whether a refs op with no contentHash is accepted is ruled by a person (intake ambiguity 2), and the ruled outcome holds for every code.",
+      "origin": "threat T7",
+      "evidenceFloor": "example",
+      "status": "resolved",
+      "ambiguities": [
+        2
+      ],
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"example\" = 1, registry floors of S3-008, S3-005)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-008",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "lint-hash-mismatch ERR_USAGE; prefixed/suffixed sha256 refused at load (attack D14, contract-4); sabotage S27 red"
+          },
+          {
+            "id": "S3-005",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every scoped code, refs without hash and single ref; sabotage S23, S32, S33 red"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "Ruled by R37 (Q1): a refs op with no contentHash is accepted and bound to the current text by the fold; a supplied mismatching hash is refused ERR_USAGE and nothing is written."
+      },
+      "bypass": "Under R37 an agent can still edit a requirement and waive it in one stream: the hash binds the text as written, which is what T24 discloses (appliedWaivers lists every applied waiver). Accepted by ruling, not by this model."
+    },
+    {
+      "id": "T8",
+      "title": "Never-class waivers already stored in legacy documents keep suppressing",
+      "actor": "A2",
+      "entryPoint": "hand-edited JSON",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "high",
+      "stride": "T, E",
+      "components": [
+        "check-compat"
+      ],
+      "statement": "Documents base apply wrote before S3 hold never-class waivers the new fold would refuse: never-verdict (FND_CONTRADICTION refs+hash), never-hygiene (FND_EXCLUDED_FROM_FORMAL ref and refs+hash), legacy-mixed W3 (FND_OPPOSITION_CANDIDATE refs+hash, the pre-S3 designed discharge) and W5. A write-time fence does nothing for them; if compat still passes them, the engine still applies them and the S3 build verifies what it says it refuses.",
+      "mitigation": "compat passes no stored waiver of a never-class code to the engine, whatever its scope and hash: each is dropped and disclosed as waiver-inert, and the run's findings, demotions and verified equal those of the same document with that waiver deleted.",
+      "origin": "threat T8",
+      "evidenceFloor": "check-time twin over the raw channel",
+      "status": "resolved",
+      "ambiguities": [
+        4,
+        9
+      ],
+      "floor": {
+        "level": 4,
+        "from": "max(v1 evidenceFloor \"check-time twin over the raw channel\" = 4, registry floors of S3-016, S3-030, S3-044)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-016",
+            "floor": 4,
+            "achieved": 4,
+            "verdict": "ok",
+            "basis": "compat twin over every never code x 6 stored shapes + check twin on the raw channel; metamorphic run-equals-deleted (evidence-final section 3); sabotage S8, S29, S34 red"
+          },
+          {
+            "id": "S3-030",
+            "floor": 4,
+            "achieved": 4,
+            "verdict": "ok",
+            "basis": "differential twin: every forwarded stored waiver is accepted by the fold as the same op, every code x 6 shapes, plus R54 exhaustive raw-shape loop (both id fields, blank reason, padded, case variant, bare GTWR, empty requirementIds, prefixed/suffixed hash); review R1 closed (derives-cycle strict exit stays 1); sabotage S7, S29, S34 red"
+          },
+          {
+            "id": "S3-044",
+            "floor": 4,
+            "achieved": 4,
+            "verdict": "ok",
+            "basis": "flag-equals-behavior: write half per never class, import, check half; no surface says NOT enforced; sabotage S12 red"
+          }
+        ],
+        "achievedAtFloor": 4,
+        "notes": "evidence-final section 3, check half: never-verdict, repro-code-only, repro-scoped and repro-single-ref stored documents keep FND_CONTRADICTION / FND_OPPOSITION_CANDIDATE, verified false, one waiver-inert each; the run equals the document with the waiver deleted (findings 16 = 16, demotions 4 = 4). waive-raw harness rows equal each fixture's baseline. The review rechecked legacy migration on the two real hex-bonk fixtures (inert 9/1 -> 0/0 after structured ops)."
+      },
+      "bypass": "The only bypass is a stored shape the twin forwards that the fold would refuse; R54's exhaustive raw-shape loop over every published code is the pin (S3-030)."
+    },
+    {
+      "id": "T9",
+      "title": "Import bypasses the fold's classifier or widens a scope into an unscoped waiver",
+      "actor": "A4",
+      "entryPoint": "import",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "high",
+      "stride": "T, E",
+      "components": [
+        "import-waivers",
+        "waive-fold"
+      ],
+      "statement": "import.ts applyWaive strips and resolves --ref BEFORE the fold and widens an unresolvable one to document-wide (fixture v4-waivers.txt line I4); records cannot carry refs or contentHash, so every waiver import reads is code-only or single-ref. If the classifier is checked anywhere but inside the shared applyOp under MUTATE_OPTIONS, or if a refusal is caught and retried unscoped, import commits never-class and unscoped waivers apply would refuse (I1-I6).",
+      "mitigation": "Every import waiver record folds through the same classifier as apply: a record apply would refuse is refused, listed in problems[] with its line and the reason, and import exits non-zero; an unresolvable --ref never yields a stored document-wide waiver.",
+      "origin": "threat T9",
+      "evidenceFloor": "property over every code",
+      "status": "resolved",
+      "ambiguities": [
+        6
+      ],
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"property over every code\" = 2, registry floors of S3-012, S3-013, S3-003, S3-005)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-012",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "differential sweep import.test.ts:907 \"[S3-012] for every waiver record shape x every code class ... import refuses or stores exactly what apply does\" with anti-vacuity (stored > 5, refused > |CODES|), added by contract-4 for evidence gap G3 (absence-4.json row), green at abccc2c in this job's rerun; evidence-final.md still lists G3 as carried, not re-measured"
+          },
+          {
+            "id": "S3-013",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "I4, unresolvable ref, CLI; sabotage S13, S32 red"
+          },
+          {
+            "id": "S3-003",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every published code, code-only, apply, CLI and import; sabotage S1, S32 red"
+          },
+          {
+            "id": "S3-005",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every scoped code, refs without hash and single ref; sabotage S23, S32, S33 red"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "G3 closed: the import/apply differential sweep (import.test.ts:907) covers every record shape (JSONL ops including unresolvable refs, v4 code-only and --ref lines) x every code class including unpublished, padded and case variants. Sabotage S32 (import folds with no policy) turned 7 tests red."
+      },
+      "bypass": "An unresolvable --ref is refused, never widened (S3-013); a refusal is not retried unscoped (the differential would differ)."
+    },
+    {
+      "id": "T10",
+      "title": "Migrating a legacy document through import silently loses its reviewed waivers",
+      "actor": "A2",
+      "entryPoint": "import",
+      "asset": "AS3",
+      "impact": "lost reviewed waiver",
+      "likelihood": "medium",
+      "stride": "R, D",
+      "components": [
+        "import-waivers"
+      ],
+      "statement": "Once import refuses unscoped and single-ref waivers (T9), an honest author re-importing a v4 stream (or migrating for the format bump, D3) loses every waiver the stream carries, scoped-in-intent ones (I2, I6) included, and the scoped form apply accepts is itself rejected as unexpected keys (scoped-record.txt).",
+      "mitigation": "Every waiver import refuses is named in the import envelope with its line, code and scope, together with its replacement: a scoped refs+contentHash waive op the fold accepts for a scoped code, or the rewrite remedy for a never code; a record in the refs+contentHash form apply accepts is not rejected for its keys.",
+      "origin": "threat T10",
+      "evidenceFloor": "example",
+      "status": "resolved",
+      "ambiguities": [
+        6
+      ],
+      "floor": {
+        "level": 1,
+        "from": "max(v1 evidenceFloor \"example\" = 1, registry floors of S3-015, S3-014)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-015",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "each refusal named with line, code, scope, replacement; sabotage S13, S32 red"
+          },
+          {
+            "id": "S3-014",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "scoped-record.txt; sabotage S26 red"
+          }
+        ],
+        "achievedAtFloor": 1,
+        "notes": "Each refused v4 waiver is named with line, code, scope and replacement; the refs+contentHash JSONL record is accepted."
+      },
+      "bypass": "none beyond T19 (replacement provenance)."
+    },
+    {
+      "id": "T11",
+      "title": "Hand-edited JSON waivers skip the fold (risk R4: a fence with no check-time twin)",
+      "actor": "A1",
+      "entryPoint": "hand-edited JSON",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "high",
+      "stride": "T, E",
+      "components": [
+        "check-compat",
+        "engine-waiver-scope"
+      ],
+      "statement": "The agent writes waivers[] directly: code-only (hand-never-code-only), requirementId with a hash (hand-ref-with-hash, which bindsCurrentText accepts today), requirementIds with no hash (hand-refs-no-hash), both requirementId and requirementIds, an empty requirementIds, requirement keys instead of UUIDs, or a never code with a hash it computed itself. None of these passes a fold, and at base compat forwards every one with no hash, and the engine applies it.",
+      "mitigation": "A stored waiver reaches the engine exactly when the S3 fold would accept the same waiver as an op on the same document (refs equal to a finding's ids, contentHash matching the current text, scoped-class code); every other stored shape is inert and disclosed as waiver-inert.",
+      "origin": "threat T11",
+      "evidenceFloor": "check-time twin over the raw channel",
+      "status": "resolved",
+      "ambiguities": [
+        11
+      ],
+      "floor": {
+        "level": 4,
+        "from": "max(v1 evidenceFloor \"check-time twin over the raw channel\" = 4, registry floors of S3-030, S3-016, S3-017, S3-018, S3-019)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-030",
+            "floor": 4,
+            "achieved": 4,
+            "verdict": "ok",
+            "basis": "differential twin: every forwarded stored waiver is accepted by the fold as the same op, every code x 6 shapes, plus R54 exhaustive raw-shape loop (both id fields, blank reason, padded, case variant, bare GTWR, empty requirementIds, prefixed/suffixed hash); review R1 closed (derives-cycle strict exit stays 1); sabotage S7, S29, S34 red"
+          },
+          {
+            "id": "S3-016",
+            "floor": 4,
+            "achieved": 4,
+            "verdict": "ok",
+            "basis": "compat twin over every never code x 6 stored shapes + check twin on the raw channel; metamorphic run-equals-deleted (evidence-final section 3); sabotage S8, S29, S34 red"
+          },
+          {
+            "id": "S3-017",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: code-only stored waiver of every code plus unknown"
+          },
+          {
+            "id": "S3-018",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every scoped code, requirementId / requirementIds without hash; sabotage S24, S34 red"
+          },
+          {
+            "id": "S3-019",
+            "floor": 1,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep as S3-018; requirementIds [] refused at load (attack D15, contract-4)"
+          }
+        ],
+        "achievedAtFloor": 4,
+        "notes": "Review R1 (a waiver carrying both requirementId and requirementIds, or a whitespace-only reason, crossed and suppressed FND_CYCLE on derives-cycle, strict exit 1 -> 0) closed by code under R54, rerun on 2d3e5fe."
+      },
+      "bypass": "The twin is a differential against the fold itself, so a shape the fold adds later is covered automatically; a shape the decoder adds later is covered only if the raw-shape list is extended."
+    },
+    {
+      "id": "T12",
+      "title": "A waived blocking lint re-admits a requirement and lets the run verify",
+      "actor": "A1",
+      "entryPoint": "apply fold",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "high",
+      "stride": "T, E",
+      "components": [
+        "check-demotions",
+        "engine-waiver-scope"
+      ],
+      "statement": "A scoped, hash-bound waiver of GTWR_R7_VAGUE (wording, scoped, so S3 accepts it) re-admits ORD-R1 to the solver (W1c, isWaivedBlocking). The requirement is decided only because of the waiver, and an agent can waive every blocking lint it meets until the run verifies (blocking-lint-one, blocking-lint-both, the gaming fixture waived-blocking-lint).",
+      "mitigation": "Every requirement re-admitted by a waived blocking lint is named in a waived-blocking-lint demotion, verified is false, and --strict exits 3; with no stored waivers the demotions equal base's.",
+      "origin": "threat T12",
+      "evidenceFloor": "example",
+      "status": "resolved",
+      "ambiguities": [
+        8
+      ],
+      "floor": {
+        "level": 1,
+        "from": "max(v1 evidenceFloor \"example\" = 1, registry floors of S3-033, S3-034, S3-035)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-033",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "examples + roundtrip + DEMOTION_CLASS pin; sabotage S5, S14, S34 red"
+          },
+          {
+            "id": "S3-034",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "blocking-lint-both example + CLI; sabotage S5, S34 red"
+          },
+          {
+            "id": "S3-035",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "example + roundtrip fixed point; gaming-f rows verified=false; sabotage S5, S34 red"
+          }
+        ],
+        "achievedAtFloor": 1,
+        "notes": "gaming-f: 18 waived-blocking-lint rows gain the demotion and go verified=false; report-corpus gaming-control row exit 0 -> 3 (evidence.md section 3). R40 (Q4) ruled blocking-lint-both: one demotion naming both, exit 1."
+      },
+      "bypass": "R53: the demotion follows the fewer-than-two-requirements vacuity rule, pinned by sabotage S6."
+    },
+    {
+      "id": "T13",
+      "title": "The waived-blocking-lint set is computed from different waivers than the engine applied",
+      "actor": "A3",
+      "entryPoint": "hand-edited JSON",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "medium",
+      "stride": "T",
+      "components": [
+        "check-demotions",
+        "check-compat"
+      ],
+      "statement": "The plan computes the demotion at the app boundary as excludedIds(gateRequirements(reqs, [])) minus the post-waiver excluded set. If the post-waiver set is computed from a narrower waiver list than the one toEngineDoc handed the engine (or from the raw document while the engine got more, through a twin bug), a requirement the engine re-admitted is missing from the demotion.",
+      "mitigation": "The waived-blocking-lint ids equal the requirements excluded with no waivers minus those excluded under exactly the waiver list the engine received from toEngineDoc; adding or removing an inert or stale waiver leaves the demotion unchanged.",
+      "origin": "threat T13",
+      "evidenceFloor": "property over every code",
+      "status": "resolved",
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"property over every code\" = 2, registry floors of S3-036)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-036",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "differential over all 21 fixture documents (ids = bare minus waived) + 3 inert additions; sabotage S5, S34 red"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "Differential over all 21 fixture documents plus 3 inert additions."
+      },
+      "bypass": "none found."
+    },
+    {
+      "id": "T14",
+      "title": "repair.ops teach a waive for a never code, or a waive shape the S3 fold refuses",
+      "actor": "A1",
+      "entryPoint": "advice/suggestion text",
+      "asset": "AS4",
+      "impact": "misleading remedy",
+      "likelihood": "high",
+      "stride": "S, T",
+      "components": [
+        "repair-advice"
+      ],
+      "statement": "Agents pipe repair.ops into apply. At base repair.ts offers scopedWaive ops for FND_RELATIONAL_UNCHECKED, FND_NUMERIC_UNCOMPARED and FND_NUMBER_SPELLING_CANDIDATE (disclosure and triage, never), the opposition and SIMILAR_SEMANTIC waiver through fromFindingMessage, and a single-`ref` waive of the blocking code for excluded-from-formal, which the S3 fold refuses. The advice either teaches the forbidden move or a dead one.",
+      "mitigation": "Over every report-corpus and fixture document, every op in every repair.ops decodes as a DocumentOp and the S3 fold accepts it on the checked document, and no offered waive op names a never-class code.",
+      "origin": "threat T14",
+      "evidenceFloor": "negative guard",
+      "status": "resolved",
+      "ambiguities": [
+        7,
+        12
+      ],
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"negative guard\" = 1, registry floors of S3-039)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-039",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "every repair arm constructed for each demotion reason (exhaustive over the reason union, R56) emits only ops the fold accepts and commands the built CLI parses; sweep of every repair op over the 53-row corpus and 21 fixtures; closes TA3 / evidence gap G2 for repair arms; sabotage S10, S14 red; attack F-REPAIR closed"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "TA3 for repair arms is discharged by construction: every arm is built for each reason in the demotion union rather than reached by a corpus document (R56). Sabotage 36 (a never-class waive op from an unreached arm) was the survivor this closes."
+      },
+      "bypass": "A new demotion reason added to the union is covered by the exhaustive loop; a repair op built outside repair.ts is not."
+    },
+    {
+      "id": "T15",
+      "title": "Engine demotion actions and finding suggestions say 'waive' for never codes",
+      "actor": "A1",
+      "entryPoint": "advice/suggestion text",
+      "asset": "AS4",
+      "impact": "misleading remedy",
+      "likelihood": "high",
+      "stride": "S",
+      "components": [
+        "engine-prose"
+      ],
+      "statement": "Engine prose tells the agent to waive: check.ts demotion actions (the 'or waive it' site and others), semantic.ts (~:569 'declare them distinct with the repair waiver', ~:954 'waive this finding'), numeric-contradiction.ts (six sites), number-spelling.ts, quantity-alias.ts, and engine codes.ts descriptions. The report corpus omits messages and suggestions, so no committed guard reads them.",
+      "mitigation": "No demotion action, finding message or suggestion emitted for a never-class code contains 'waive', checked over the report corpus and the fixture documents (the guard reads the prose fields the corpus row omits).",
+      "origin": "threat T15",
+      "evidenceFloor": "negative guard",
+      "status": "resolved",
+      "ambiguities": [
+        12,
+        13
+      ],
+      "floor": {
+        "level": 1,
+        "from": "max(v1 evidenceFloor \"negative guard\" = 1, registry floors of S3-040)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-040",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "runtime sweep over corpus and fixtures with every inflection of waive (R56), static literal sweeps of six engine prose files, catalog rows (R61, review R7 closed), constructed P13 and P15 shapes; survivors 19-21 and 36 were /waive/i misses that the inflection set now matches; sabotage S9, S10, S11, S14 red"
+          }
+        ],
+        "achievedAtFloor": 1,
+        "notes": "R56/R61: every inflection (waive, waives, waived, waiving, waiver, waivers) in every emitted action, message and suggestion and in static literal sweeps; survivors 19, 20, 21 (Waiving / waiving / accept with a waiver) were /waive/i misses the inflection set now matches."
+      },
+      "bypass": "Finding messages of the never codes no document reaches are held by the static literal sweeps of six named engine prose files (TA3, narrowed): a message assembled in another file is unguarded."
+    },
+    {
+      "id": "T16",
+      "title": "The installed skill body, scope prose and explain keep teaching the waive move",
+      "actor": "A1",
+      "entryPoint": "advice/suggestion text",
+      "asset": "AS4",
+      "impact": "misleading remedy",
+      "likelihood": "medium",
+      "stride": "S",
+      "components": [
+        "scope-prose",
+        "published-waivability"
+      ],
+      "statement": "craft.ts (the installed skill body) says 'the always-safe third option is the reviewed waiver' for FND_OPPOSITION_CANDIDATE, a never code; scope.ts coverageDemotion says a requirement can be 'covered or waived'; explain and the catalog rows render the same corpus. An agent that installed the skill follows it regardless of what the fold does.",
+      "mitigation": "The skill body, scope prose, explain output and AGENTS.md offer no waive remedy for any never-class code: 'or waived' is absent from scope, and the skill body's opposition-candidate guidance names no waiver; check:agents shows no drift.",
+      "origin": "threat T16",
+      "evidenceFloor": "negative guard",
+      "status": "resolved",
+      "floor": {
+        "level": 4,
+        "from": "max(v1 evidenceFloor \"negative guard\" = 1, registry floors of S3-042, S3-043, S3-044)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-042",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "frozen corpus verbatim + absence; sabotage S4 red"
+          },
+          {
+            "id": "S3-043",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "6 skill-body tests; sabotage S28 red"
+          },
+          {
+            "id": "S3-044",
+            "floor": 4,
+            "achieved": 4,
+            "verdict": "ok",
+            "basis": "flag-equals-behavior: write half per never class, import, check half; no surface says NOT enforced; sabotage S12 red"
+          }
+        ],
+        "achievedAtFloor": 4,
+        "notes": "check:agents green at ae268e3 (build-7 and evidence-final A)."
+      },
+      "bypass": "none found."
+    },
+    {
+      "id": "T17",
+      "title": "The published statement claims enforcement that one channel lacks",
+      "actor": "A3",
+      "entryPoint": "advice/suggestion text",
+      "asset": "AS5",
+      "impact": "false verified",
+      "likelihood": "medium",
+      "stride": "R, I",
+      "components": [
+        "published-waivability",
+        "waive-fold",
+        "import-waivers",
+        "check-compat"
+      ],
+      "statement": "Flipping WAIVABILITY_ENFORCED to true makes every surface say '`waive` refuses a never code, and `check` ignores a stored waiver on one'. If only apply enforces it while import or the stored-document path does not, the published guarantee is false and a reader trusts verified: true over a waived never finding.",
+      "mitigation": "WAIVABILITY_ENFORCED is true only when, for one never code of each never class, apply refuses it, import refuses it, and check ignores it in a stored document; the 'NOT enforced' sentence is absent from every surface.",
+      "origin": "threat T17",
+      "evidenceFloor": "check-time twin over the raw channel",
+      "status": "resolved",
+      "floor": {
+        "level": 4,
+        "from": "max(v1 evidenceFloor \"check-time twin over the raw channel\" = 4, registry floors of S3-044)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-044",
+            "floor": 4,
+            "achieved": 4,
+            "verdict": "ok",
+            "basis": "flag-equals-behavior: write half per never class, import, check half; no surface says NOT enforced; sabotage S12 red"
+          }
+        ],
+        "achievedAtFloor": 4,
+        "notes": "Flag-equals-behavior test against apply, import and check."
+      },
+      "bypass": "none found."
+    },
+    {
+      "id": "T18",
+      "title": "Replacement ops name commands or verbs this build does not have",
+      "actor": "A2",
+      "entryPoint": "advice/suggestion text",
+      "asset": "AS4",
+      "impact": "misleading remedy",
+      "likelihood": "medium",
+      "stride": "D",
+      "components": [
+        "check-compat",
+        "repair-advice",
+        "engine-prose"
+      ],
+      "statement": "The plan's replacement for a never-code waiver is `vocab distinct` or `propose-vocabulary --rescope-waivers`; ops.ts has no vocab verb, the flag is not in the story, and the CLI `waive` has no --refs. A waiver-inert diagnostic that offers them leaves the author with a reviewed waiver gone and a remedy that fails (legacy-mixed W3, repro-scoped).",
+      "mitigation": "Every replacement op on a waiver-inert or ignoredWaivers entry decodes as a DocumentOp and folds under MUTATE_OPTIONS on the checked document, every replacement command parses under this build's CLI, and a never-code entry with no such op says 'rewrite required' and offers no waive.",
+      "origin": "threat T18",
+      "evidenceFloor": "property over every code",
+      "status": "resolved",
+      "ambiguities": [
+        4,
+        7,
+        17
+      ],
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"property over every code\" = 2, registry floors of S3-027, S3-045)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-027",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every op on every waiver-inert and ignoredWaivers entry over all fixture documents decodes and folds; every named command parses with the built binary, full argv (R56), passes bash -n (R60); static shell-site guard (R63, src/shell-sites.test.ts, 302 sites, 0 flagged at ae268e3)"
+          },
+          {
+            "id": "S3-045",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "static sweep of every src file + runtime sweep; R60/R61 parser and bash -n; R63 static shell-site guard (open review findings R10, R13 on the guard itself; R11, R12 on two pre-existing advice commands; attack C14, C15 owned)"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "Review R2, R3, R6, R8, R9 closed by code (R55, R56, R59, R60, R63); the R63 static guard read 121 files and 302 command sites with 0 flagged at ae268e3."
+      },
+      "bypass": "Open: the static guard itself can miss sites assembled through a local array join or inside $'...' / after a backslash (review R10, R13; no current product site affected), carried as T31; two pre-existing advice commands outside the waiver path do not parse (R11, R12), carried as T32. Neither touches a waiver-inert or ignoredWaivers replacement, which is this threat's mitigation."
+    },
+    {
+      "id": "T19",
+      "title": "Replacement waive ops launder an unreviewed legacy waiver into the reviewed form",
+      "actor": "A1",
+      "entryPoint": "advice/suggestion text",
+      "asset": "AS2",
+      "impact": "hidden conflict",
+      "likelihood": "low",
+      "stride": "R, T",
+      "components": [
+        "check-compat",
+        "repair-advice"
+      ],
+      "statement": "For a code-only legacy waiver of a scoped code (legacy-mixed W1), waiver-inert offers one scoped refs+contentHash waive per finding it matches today. Applied mechanically with the legacy reason, these turn a waiver nobody reviewed per finding into the exact-set, hash-bound form that reads as 'reviewed over this text'; the same holds for the '<why this finding does not apply>' placeholder reason repair ops carry, which the fold accepts unedited.",
+      "mitigation": "A replacement waive op carries a placeholder reason, never the legacy waiver's reason, and covers only findings the inert waiver matches on the current text; whether the fold refuses a reason that still holds the placeholder is put to a person.",
+      "origin": "threat T19",
+      "evidenceFloor": "example",
+      "status": "resolved",
+      "floor": {
+        "level": 1,
+        "from": "max(v1 evidenceFloor \"example\" = 1, registry floors of S3-026, S3-024)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-026",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "legacy reason verbatim then the fixed suffix \" (rescoped from a legacy waiver)\" (attack D06 killed, contract-4, closes evidence gap G5 / survivor 18); empty reason refused at load (D16)"
+          },
+          {
+            "id": "S3-024",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "examples over 4 fixture shapes; review R2 (unwaive target) closed by R55/R59; sabotage S15, S35 red"
+          }
+        ],
+        "achievedAtFloor": 1,
+        "notes": "Ruling R41 replaced v1's placeholder-reason proposal: the replacement carries the legacy reason verbatim followed by one fixed exported provenance suffix, now pinned non-empty and exact (D06; closes evidence gap G5, survivor 18)."
+      },
+      "bypass": "A person can still apply the replacement mechanically; the suffix is what tells a later reader the waiver was rescoped, not reviewed afresh."
+    },
+    {
+      "id": "T20",
+      "title": "The gaming harness does not measure the raw channel or a scoped never-code waive",
+      "actor": "A3",
+      "entryPoint": "harness blind spot",
+      "asset": "AS6",
+      "impact": "false verified",
+      "likelihood": "high",
+      "stride": "R",
+      "components": [
+        "gaming-harness"
+      ],
+      "statement": "Every harness move goes through the fold (Edit kinds ops, reparse, run). After S3 the 11 waive-by-code rows close because the fold refuses the code-only stream, and that refusal is the same whether the fold checks the class or only the scope, so the harness cannot tell T1 from T3 closed. Nothing writes a stored waiver into the JSON, so T8 and T11 (R4) are unmeasured, and a missing check-time twin is a live escape the exactness test cannot see.",
+      "mitigation": "The harness measures (a) a scoped waive of each baseline finding over its exact ids and current hash and (b) the same waivers and a code-only one written into the stored document with no fold, and on every fixture whose seeded finding is never-class neither reaches a clean verdict.",
+      "origin": "threat T20",
+      "evidenceFloor": "check-time twin over the raw channel",
+      "status": "resolved",
+      "ambiguities": [
+        14
+      ],
+      "floor": {
+        "level": 4,
+        "from": "max(v1 evidenceFloor \"check-time twin over the raw channel\" = 4, registry floors of S3-049, S3-047, S3-016, S3-030)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-049",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "waive-scoped-never and waive-raw moves on 9 shards; review R5 (idless never codes omitted from waive-raw) closed by code"
+          },
+          {
+            "id": "S3-047",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "registry test + scoped-waive test"
+          },
+          {
+            "id": "S3-016",
+            "floor": 4,
+            "achieved": 4,
+            "verdict": "ok",
+            "basis": "compat twin over every never code x 6 stored shapes + check twin on the raw channel; metamorphic run-equals-deleted (evidence-final section 3); sabotage S8, S29, S34 red"
+          },
+          {
+            "id": "S3-030",
+            "floor": 4,
+            "achieved": 4,
+            "verdict": "ok",
+            "basis": "differential twin: every forwarded stored waiver is accepted by the fold as the same op, every code x 6 shapes, plus R54 exhaustive raw-shape loop (both id fields, blank reason, padded, case variant, bare GTWR, empty requirementIds, prefixed/suffixed hash); review R1 closed (derives-cycle strict exit stays 1); sabotage S7, S29, S34 red"
+          }
+        ],
+        "achievedAtFloor": 4,
+        "notes": "waive-scoped-never (16 rows, all refused) and waive-raw (17 rows equal to baseline) on every shard; review R5 closed. The v1 floor for the raw channel (check-time twin, level 4) is met by S3-016 and S3-030; the harness rows themselves sit at the gaming-harness ceiling of 1 (components.json, proposed)."
+      },
+      "bypass": "none found."
+    },
+    {
+      "id": "T21",
+      "title": "KNOWN_ESCAPES rows or the waive move are deleted to match the change rather than closed by it",
+      "actor": "A3",
+      "entryPoint": "harness blind spot",
+      "asset": "AS6",
+      "impact": "false verified",
+      "likelihood": "medium",
+      "stride": "T, R",
+      "components": [
+        "gaming-harness",
+        "report-corpus"
+      ],
+      "statement": "The builder deletes the 11 waive-by-code rows, or the waive-by-code move itself, or regenerates the shard and report-corpus snapshots, so the exactness test passes whether or not the escapes stopped. With the move gone, OP_COVERAGE maps the waive verb to nothing that measures it.",
+      "mitigation": "The 11 waive-by-code rows are deleted with the move still registered and the exactness test green over every shard; re-adding any one of them turns the test red; OP_COVERAGE maps waive to at least one move that emits a waive op; every changed report-corpus row is a verdict delta attributable to AC-5-6.",
+      "origin": "threat T21",
+      "evidenceFloor": "negative guard",
+      "status": "resolved",
+      "ambiguities": [
+        14
+      ],
+      "floor": {
+        "level": 1,
+        "from": "max(v1 evidenceFloor \"negative guard\" = 1, registry floors of S3-048, S3-050, S3-051)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-048",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "9 shards x exactness + registry; KNOWN_ESCAPES 62 -> 51, exactly the 11 waive-by-code rows, none added (evidence-final sections 5 and D); sabotage S3, S6 red"
+          },
+          {
+            "id": "S3-050",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "clean pairs base 75 -> HEAD 63, the 11 waive-by-code pairs plus the control row, none added (evidence.md section 3)"
+          },
+          {
+            "id": "S3-051",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "snapshot attribution: 0 unexplained rows, 0 rows toward verified=true (evidence.md section 3)"
+          }
+        ],
+        "achievedAtFloor": 1,
+        "notes": "Sabotage 3 (one waive-by-code row re-added) turned the shard and registry tests red; snapshot attribution found 0 unexplained rows."
+      },
+      "bypass": "none found."
+    },
+    {
+      "id": "T22",
+      "title": "A finding code with no FINDING_CLASS row falls into a default class",
+      "actor": "A1",
+      "entryPoint": "apply fold",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "medium",
+      "stride": "E",
+      "components": [
+        "waive-fold",
+        "check-compat",
+        "published-waivability"
+      ],
+      "statement": "findingClassOf returns undefined for a code outside FindingKey; the plan adds vocabulary-codes.ts, intent-codes.ts and delta-codes.ts, unioned by catalog.ts. A classifier that treats undefined as waivable lets a waiver of a new verdict or anchor code through both fences. `code in FINDING_CLASS` is also true for inherited names (constructor, toString), and any 'GTWR_' string is scoped, so an invented code takes a class nobody decided.",
+      "mitigation": "A code findingClassOf does not classify by an own row is refused at write time with ERR_WAIVER_REFUSED and inert at check (hand-unknown-code); every code the catalog publishes has its own FINDING_CLASS row, so adding a code without one fails the gate.",
+      "origin": "threat T22",
+      "evidenceFloor": "property over every code",
+      "status": "resolved",
+      "floor": {
+        "level": 2,
+        "from": "max(v1 evidenceFloor \"property over every code\" = 2, registry floors of S3-009)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-009",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: every published code has its own FINDING_CLASS row, unclassified names refused, compat twin; sabotage S7 red; attack F-GTWR and P04 (bare GTWR key) killed after R54"
+          }
+        ],
+        "achievedAtFloor": 2,
+        "notes": "R54: after trimming the code must be a published code with its own FINDING_CLASS row; the bare GTWR grouping key is not a code (attack P04 killed)."
+      },
+      "bypass": "none found."
+    },
+    {
+      "id": "T23",
+      "title": "Case or whitespace variants of a code string slip between the classifier and the matcher",
+      "actor": "A1",
+      "entryPoint": "hand-edited JSON",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "low",
+      "stride": "T, E",
+      "components": [
+        "waive-fold",
+        "check-compat",
+        "engine-waiver-scope"
+      ],
+      "statement": "The fold trims the code; the engine, the gate and unwaive compare exactly; the classifier looks up the exact string. A hand-edited ' FND_CONTRADICTION' or 'fnd_contradiction' is unknown to the classifier; if the twin normalizes differently from the matcher, or a later edit makes the match case-insensitive, a never code passes as unknown and suppresses. A padded stored code also cannot be removed by the unwaive op a replacement offers.",
+      "mitigation": "The classifier, the check-time twin and the engine match read one normalized code: every case and whitespace variant of every never-class code is refused at write time, is inert at check, and suppresses no finding.",
+      "origin": "threat T23",
+      "evidenceFloor": "property over every code",
+      "status": "resolved",
+      "floor": {
+        "level": 4,
+        "from": "max(v1 evidenceFloor \"property over every code\" = 2, registry floors of S3-010, S3-030)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-010",
+            "floor": 2,
+            "achieved": 2,
+            "verdict": "ok",
+            "basis": "sweep: case and whitespace variants of every never code refused at write, inert at check; attack D05, D12 killed after R54"
+          },
+          {
+            "id": "S3-030",
+            "floor": 4,
+            "achieved": 4,
+            "verdict": "ok",
+            "basis": "differential twin: every forwarded stored waiver is accepted by the fold as the same op, every code x 6 shapes, plus R54 exhaustive raw-shape loop (both id fields, blank reason, padded, case variant, bare GTWR, empty requirementIds, prefixed/suffixed hash); review R1 closed (derives-cycle strict exit stays 1); sabotage S7, S29, S34 red"
+          }
+        ],
+        "achievedAtFloor": 4,
+        "notes": "R54: one canonicalisation (trim, never case-fold) for fold, twin and engine; a padded or case-variant stored code is inert; review R2 padded-code unwaive closed."
+      },
+      "bypass": "none found."
+    },
+    {
+      "id": "T24",
+      "title": "A content hash binds text, not a reviewer: any writer can mint a qualifying scoped waiver",
+      "actor": "A1",
+      "entryPoint": "apply fold",
+      "asset": "AS3",
+      "impact": "hidden conflict",
+      "likelihood": "medium",
+      "stride": "S, R",
+      "components": [
+        "waive-fold",
+        "check-compat",
+        "scope-prose"
+      ],
+      "statement": "requirementsContentHash is public: check prints it in repair.ops and an agent can compute it. So a refs+hash waiver of a scoped code proves only that the waiver names this text, not that anyone reviewed it. After S3 this is the only waiver that applies, and an agent can mint one for every wording and structural finding (FND_CYCLE on derives-cycle verifies by design once scoped).",
+      "mitigation": "Every waiver the engine applied is listed in the check payload with its code, requirement ids and reason, and the published scope says a content hash binds the text and not the reviewer; a person decides whether the scoped FND_CYCLE escape on derives-cycle is listed as a designed escape.",
+      "origin": "threat T24",
+      "evidenceFloor": "example",
+      "status": "resolved",
+      "floor": {
+        "level": 1,
+        "from": "max(v1 evidenceFloor \"example\" = 1, registry floors of S3-046)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-046",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "appliedWaivers + scope sentence; terminology waivers counted (R62); sabotage S4, S16, S34 red"
+          }
+        ],
+        "achievedAtFloor": 1,
+        "notes": "Ruling R45: a scoped, reviewed waiver of a scoped-class finding gets no KNOWN_ESCAPES row (the scoped FND_CYCLE on derives-cycle is a designed escape). The scope sentence says a content hash binds the text, not the reviewer."
+      },
+      "bypass": "Residual by design: any writer can still mint a qualifying scoped waiver; the mitigation is disclosure (every applied waiver listed with code, ids and reason), not prevention."
+    },
+    {
+      "id": "T25",
+      "title": "Closing the waive path displaces the agent onto other clean moves",
+      "actor": "A1",
+      "entryPoint": "harness blind spot",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "low",
+      "stride": "E",
+      "components": [
+        "gaming-harness"
+      ],
+      "statement": "With waivers refused and waived-blocking-lint demoting, the shortest path to green becomes deleting one side of the conflict (delete-requirement@first/@second on waived-blocking-lint, already KNOWN_ESCAPES under AC-5-2) or a run knob. S3 must not open a new clean pair while closing the waive rows.",
+      "mitigation": "After S3 the set of clean (fixture, move) pairs over every shard is base's minus the 11 waive-by-code rows, with no pair added.",
+      "origin": "threat T25",
+      "evidenceFloor": "negative guard",
+      "status": "resolved",
+      "floor": {
+        "level": 1,
+        "from": "max(v1 evidenceFloor \"negative guard\" = 1, registry floors of S3-050)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-050",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "clean pairs base 75 -> HEAD 63, the 11 waive-by-code pairs plus the control row, none added (evidence.md section 3)"
+          }
+        ],
+        "achievedAtFloor": 1,
+        "notes": "Clean pairs base 75 -> 63, none added; KNOWN_ESCAPES 62 -> 51, none added, at 2d3e5fe and 6f7e957."
+      },
+      "bypass": "none found."
+    },
+    {
+      "id": "T26",
+      "title": "An engine logic edit weakens the existing pair-bound decline",
+      "actor": "A3",
+      "entryPoint": "hand-edited JSON",
+      "asset": "AS1",
+      "impact": "false verified",
+      "likelihood": "low",
+      "stride": "T",
+      "components": [
+        "engine-waiver-scope",
+        "engine-prose"
+      ],
+      "statement": "S3 may edit engine prose only. Moving the waiver rules into compat invites deleting PAIR_BOUND_CODES or the textBound test in isWaived as 'now redundant'; if the compat twin then has a gap (T11), the engine no longer catches a code-only FND_OPPOSITION_CANDIDATE waiver in a stored document.",
+      "mitigation": "The engine tier's diff in S3 is prose only: waiver-scope.test.ts, verified.test.ts and package-boundary.test.ts pass unchanged, and a stored code-only FND_OPPOSITION_CANDIDATE waiver is declined even when compat forwards it.",
+      "origin": "threat T26",
+      "evidenceFloor": "negative guard",
+      "status": "resolved",
+      "floor": {
+        "level": 1,
+        "from": "max(v1 evidenceFloor \"negative guard\" = 1, registry floors of S3-031)"
+      },
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "S3-031",
+            "floor": 1,
+            "achieved": 1,
+            "verdict": "ok",
+            "basis": "engine still declines a stored code-only FND_OPPOSITION_CANDIDATE waiver handed to it directly; engine regression cases P19-P24, A21 (attack F-ANTONYM, F-ERROR closed by contract-4)"
+          }
+        ],
+        "achievedAtFloor": 1,
+        "notes": "The engine-tier diff from 0fca043 to ae268e3 is prose plus shell-word quoting of interpolated prose (core/shell-word.ts is a pure string helper; R60, R63); PAIR_BOUND_CODES and isWaived logic unchanged; the engine still declines a code-only FND_OPPOSITION_CANDIDATE waiver handed to it directly."
+      },
+      "bypass": "none found."
+    },
+    {
+      "id": "T27",
+      "title": "A planted dangling or looping symspec.config.json steers config discovery under a git refusal",
+      "actor": "A1",
+      "entryPoint": "config discovery",
+      "asset": "AS7",
+      "impact": "unpinned run",
+      "likelihood": "medium",
+      "stride": "T, E",
+      "components": [
+        "config-discovery"
+      ],
+      "statement": "When git refuses the document's directory (dubious ownership in a sandbox or CI container) and no config is named, check must decide on its own whether a pinned config governs the document. An agent that wants a weaker run can plant a self-symlinked (ELOOP) or dangling symspec.config.json at the document's directory or an ancestor; if discovery reads such an entry as absent, the run proceeds as if no repository and no pins applied (release review R1 on ca83661: the existence-error fallback flipped to absent passed every RH test).",
+      "mitigation": "Under a git refusal with no config named, a symspec.config.json at the document's directory or any ancestor whose existence cannot be determined (ELOOP) or that is a dangling link counts as present and fails closed with ERR_CONFIG_INVALID naming the refusal; an ancestor config is never loaded (RH-004, RH-010, ruling RH-R4).",
+      "origin": "run 3 (release hardening B3, review R1, ruling RH-R4)",
+      "evidenceFloor": "example through the shipped bundle",
+      "status": "resolved",
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "RH-004",
+            "basis": "cli.test.ts x2 (config beside, config in an ANCESTOR never loaded); sabotage #5 red; evidence-final section 4"
+          },
+          {
+            "id": "RH-010",
+            "basis": "cli.test.ts x4 through the bundle: ELOOP beside and in an ancestor, DANGLING beside and in an ancestor; sabotage S4, S5 red; the release reviewer mutant (every entry error reads absent) now 2 red; fixtures loop and dangling exit 2"
+          },
+          {
+            "id": "RH-003",
+            "basis": "cli.test.ts through the built bundle, refusing git shim vs no git, whole findings/demotions/verified/exit; sabotage #3, #4 red; evidence-final section 4 on 2d3e5fe"
+          }
+        ],
+        "records": [
+          ".erpaval/vdd/release-hardening/evidence.md (sections 3, B, C)",
+          ".erpaval/vdd/release-hardening/review-ledger.json R1 closed (contract)",
+          ".erpaval/vdd/s3-waivability/evidence-final.md section 4 (merged tree 2d3e5fe)"
+        ]
+      },
+      "bypass": "store.ts entryPresent counts every PlatformError other than NotFound as present, so an unreadable (mode 000) ancestor also fails closed; that error kind itself is not exercised (only ELOOP is), but the ELOOP tests go red when every entry error reads absent (sabotage S5, the reviewer's mutant). A config named by --config or SYMSPEC_CONFIG behaves as before (RH-006). A refusal that comes only from rev-parse while other git calls work is exercised by RH-011 only.",
+      "floor": {
+        "level": 1,
+        "from": "release-hardening behaviors carry a class but no numeric floor; proposed here: an example through the shipped bundle (the RH evidence's strongest layer)"
+      }
+    },
+    {
+      "id": "T28",
+      "title": "A directory whose path spells git's bare-repository phrase turns an ownership refusal into a bare-repository refusal",
+      "actor": "A1",
+      "entryPoint": "config discovery",
+      "asset": "AS7",
+      "impact": "misclassified refusal",
+      "likelihood": "low",
+      "stride": "T, D",
+      "components": [
+        "config-discovery"
+      ],
+      "statement": "Classifying git's refusal by a substring of stderr lets the quoted path decide the class: a document under a directory named \"cannot use bare repository\" made an ownership refusal exit 2 (release review R2 on c1fe161), and the converse spelling could make a bare-repository refusal read as an ordinary one and fall back to an unpinned run.",
+      "mitigation": "The bare-repository refusal is recognised from git's own message form (the first line's \"fatal: cannot use bare repository\" prefix), never from the quoted path; it stays ERR_CONFIG_INVALID even with no config anywhere (RH-011, RH-005).",
+      "origin": "run 3 (release review R2, ruling RH-R4)",
+      "evidenceFloor": "example through the shipped bundle",
+      "status": "resolved",
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "RH-011",
+            "basis": "cli.test.ts: an ownership refusal quoting a directory named with the bare phrase falls back as RH-003; sabotage S1, S2 red; bare-phrase-repro exit 0 after (release-hardening evidence C)"
+          },
+          {
+            "id": "RH-005",
+            "basis": "cli.test.ts (worktree into a fake bare repository); sabotage #6, S3 red"
+          }
+        ],
+        "records": [
+          ".erpaval/vdd/release-hardening/evidence.md (section B: S1, S2, S3 red; section C: bare-phrase-repro exit 2 -> 0)",
+          ".erpaval/vdd/release-hardening/review-ledger.json R2 closed (code)"
+        ]
+      },
+      "bypass": "The prefix holds no newline, so a whole-string prefix match equals a first-line match (S2b, equivalent). A git release that rewords the refusal would fail closed as an ordinary refusal with a config present, or fall back with none, which is RH-003's safe direction.",
+      "floor": {
+        "level": 1,
+        "from": "release-hardening behaviors carry a class but no numeric floor; proposed here: an example through the shipped bundle (the RH evidence's strongest layer)"
+      }
+    },
+    {
+      "id": "T29",
+      "title": "Publish provenance after the account rename: the package names a repository the OIDC claim does not",
+      "actor": "A6",
+      "entryPoint": "release publish",
+      "asset": "AS8",
+      "impact": "refused or misattributed publish",
+      "likelihood": "high",
+      "stride": "S, D",
+      "components": [
+        "release"
+      ],
+      "statement": "The GitHub account theagenticguy was renamed to laithalsaadoon after v1.2.1 published. npm provenance compares package.json repository.url with the OIDC repository claim exactly (E422), so a package that still names theagenticguy cannot publish with provenance, and live docs that name the old account send installers and the npm trust command to a redirect.",
+      "mitigation": "package.json repository.url, homepage and bugs.url name github.com/laithalsaadoon/symspec exactly, and no live reference (package.json, README.md, RELEASING.md, AGENTS.md, non-test src/) names theagenticguy (RH-001, RH-002, ruling RH-R1). CHANGELOG.md history stays as release-please wrote it.",
+      "origin": "run 3 (release audit B1, ruling RH-R1)",
+      "evidenceFloor": "example",
+      "status": "resolved",
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "RH-001",
+            "basis": "publish.test.ts: repository.url, homepage, bugs.url exact; sabotage #2 red; packed package.json read twice (evidence-final sections 2 and C)"
+          },
+          {
+            "id": "RH-002",
+            "basis": "publish.test.ts negative guard over package.json, README.md, RELEASING.md, AGENTS.md and non-test src/; sabotage #1 red"
+          }
+        ],
+        "records": [
+          ".erpaval/vdd/s3-waivability/evidence-final.md sections 2 and C (npm pack --dry-run: 6 files; packed repository.url git+https://github.com/laithalsaadoon/symspec.git)",
+          ".erpaval/vdd/release-hardening/evidence.md sections 2 and 4"
+        ]
+      },
+      "bypass": "The guards read the working tree; npm packs package.json unchanged, and the packed manifest was inspected twice (2d3e5fe, 6f7e957) but no test reads the tarball (release-hardening G4). The trusted-publisher binding on npmjs.com is outside the tool: assumption TA4.",
+      "floor": {
+        "level": 1,
+        "from": "release-hardening behaviors carry a class but no numeric floor; proposed here: an example through the shipped bundle (the RH evidence's strongest layer)"
+      }
+    },
+    {
+      "id": "T30",
+      "title": "A v4 schema description claims enforcement no check tier performs",
+      "actor": "A2",
+      "entryPoint": "advice/suggestion text",
+      "asset": "AS5",
+      "impact": "misleading scope",
+      "likelihood": "low",
+      "stride": "R, I",
+      "components": [
+        "document-schema"
+      ],
+      "statement": "Document v4 decodes vocabulary, intent and policy and the intentRef / derived fields, and no check tier reads them. A schema description that says what is checked (\"every requirement names one intent item\", \"those two tables are frozen\") makes a reader trust verified: true over a property nobody checked. The release review's R4 found one sentence the ruled claim list does not cover: the system symbol's parent description says \"The part-of chain has no cycles\", while a two-system parent cycle decodes and check returns verified true.",
+      "mitigation": "One exported V4_EXPERIMENTAL_STATEMENT is interpolated into the vocabulary, intent, policy, intentRef and derived descriptions, init --split help and result, AGENTS.md and README; over every description of the projected JSON schema the unqualified enforcement claims are absent (RH-007, RH-008, RH-009, RH-012; R62 for intentRef/derived exclusivity, attack C23).",
+      "origin": "run 3 (release audit B4, review R3 and R4, rulings RH-R3, RH-R4, R62)",
+      "evidenceFloor": "negative guard",
+      "status": "open",
+      "reason": "The release review's R4 is an unruled scope question (mail 332 to the coordinator, \"requested, not yet ruled\"): \"The part-of chain has no cycles\" is still in src/domain/requirements/document.ts:1258 at ae268e3 and RH-012's claim list does not match it. Separately, RH-012 requires the statement only on the five keys' own descriptions, so a nested description can lose it while the test stays green (release-hardening G7).",
+      "residualRisk": "Low: the outer vocabulary description carries the experimental statement and nothing reads v4 vocabulary yet, so no certificate moves; a reader of the raw schema can still believe cycles are rejected.",
+      "owner": "Laith (rule the RH-012 scope of the parent sentence); spec 007 S6 (V-PARENT: parents exist, are systems, are acyclic) makes it true",
+      "endDate": "next minor release",
+      "evidence": {
+        "behaviors": [
+          {
+            "id": "RH-007",
+            "basis": "document.test.ts on the Schema annotations; sabotage #8-#10 red; attack C23 killed after R62"
+          },
+          {
+            "id": "RH-008",
+            "basis": "cli.test.ts + document.test.ts (help, manifest, result; --force reports what it wrote, R62, attack RH10 killed)"
+          },
+          {
+            "id": "RH-009",
+            "basis": "publish/scope/agents-doc tests; sabotage #13-#16 red"
+          },
+          {
+            "id": "RH-012",
+            "basis": "document.test.ts walks every description of the projected JSON schema; sabotage S7-S9 red; nested-description gap G7 (S10 green, inside RH-012's stated scope)"
+          }
+        ],
+        "records": [
+          ".erpaval/vdd/release-hardening/review-ledger.json R4 (open-question)",
+          ".erpaval/vdd/release-hardening/evidence.md section D (G7)"
+        ]
+      },
+      "bypass": "Any new description that states a check in other words than the ruled phrase list passes RH-012; the list is a search, not a proof (release-hardening evidence C).",
+      "floor": {
+        "level": 1,
+        "from": "proposed for the closing work"
+      }
+    },
+    {
+      "id": "T31",
+      "title": "The static shell-safety guard misses commands assembled through an array join, inside $'...', or after a backslash",
+      "actor": "A3",
+      "entryPoint": "harness blind spot",
+      "asset": "AS4",
+      "impact": "misleading remedy",
+      "likelihood": "low",
+      "stride": "T, E",
+      "components": [
+        "shell-site-guard",
+        "repair-advice",
+        "engine-prose"
+      ],
+      "statement": "R63 made shell safety a static guard (src/testing/shell-sites.ts, src/shell-sites.test.ts) because examples cannot reach every site. The review of ae268e3 reproduced two holes: a helper that builds parts = ['symspec', 'show', id] and returns parts.join(' ') is never inspected (R10), and a helper hole or branded ShellArg is accepted inside a dollar-single-quoted word or after a literal backslash, where its quoting no longer holds (R13). A later edit (by a builder agent or a person) can add such a site, print a command whose user text the shell splits or substitutes, and the guard, its site floor and its line anti-vacuity all stay green.",
+      "mitigation": "Proposed: the guard follows array-literal joins and local bindings to their render, tracks quote and escape state so a helper value inside $'...' or after a backslash is flagged, and gains a planted site of each form that turns it red (review R10, R13; behaviors S3-027, S3-045).",
+      "origin": "review ledger abccc2c R10, R13 (loop 3 on ae268e3)",
+      "evidenceFloor": "negative guard with a planted site per syntactic form",
+      "status": "open",
+      "reason": "Blocking review findings R10 and R13 remain open after the three allowed closure loops; the coordinator accepted them as open.",
+      "residualRisk": "No current product site is affected (302 sites inspected, 0 flagged; the review found no shipped command of either form), so today's printed commands are shell-safe; the guard can let a future regression through.",
+      "owner": "Laith",
+      "endDate": "next minor release",
+      "evidence": {
+        "review": [
+          ".erpaval/vdd/s3-waivability/review-ledger.json R10, R13 (status open, severity blocking/major)"
+        ],
+        "build": "build-7 (ae268e3): guard 121 files, 302 sites, 0 flagged"
+      },
+      "bypass": "n/a (open).",
+      "floor": {
+        "level": 1,
+        "from": "proposed for the closing work"
+      }
+    },
+    {
+      "id": "T32",
+      "title": "Two pre-existing advice commands name a CLI form this build rejects",
+      "actor": "A1",
+      "entryPoint": "advice/suggestion text",
+      "asset": "AS4",
+      "impact": "misleading remedy",
+      "likelihood": "medium",
+      "stride": "D",
+      "components": [
+        "reachability-advice",
+        "engine-prose"
+      ],
+      "statement": "Reachability initial-state repair (src/domain/reachability/reachability-report.ts:307-308) prints `symspec state-initial` with a positional document path, but state-initial requires --file: the set-predicate advice is rejected for an unexpected positional and the clear advice parses the path as the predicate (R11). FND_MISSING_TRACE_LINK messages (src/domain/engine/formal/graph.ts:198, 206) name `symspec derive`, which the CLI rejects as an unknown subcommand (R12). An agent following either remedy fails, or (R11 clear) runs a command against the wrong input.",
+      "mitigation": "Proposed: both commands use the forms this CLI parses with the checked document selected, and R56's full-argv parser sweep reaches the reachability repair and the missing-trace-link message (behaviors S3-027, S3-045).",
+      "origin": "review ledger abccc2c R11, R12 (pre-existing on base, confirmed under R56/S3-027)",
+      "evidenceFloor": "example through the built parser",
+      "status": "open",
+      "reason": "Blocking review findings R11 and R12 are pre-existing defects outside the waiver path; the coordinator accepted them as open after the three closure loops.",
+      "residualRisk": "A dead remedy, not a false certificate: neither command can move verified; R11's clear form rejects the stray positional at source, so it writes nothing.",
+      "owner": "Laith",
+      "endDate": "next minor release",
+      "evidence": {
+        "review": [
+          ".erpaval/vdd/s3-waivability/review-ledger.json R11, R12 (status open)"
+        ]
+      },
+      "bypass": "n/a (open).",
+      "floor": {
+        "level": 1,
+        "from": "proposed for the closing work"
+      }
+    },
+    {
+      "id": "T33",
+      "title": "Non-zero-exit JSON larger than the pipe capacity is truncated for a slow reader",
+      "actor": "A1",
+      "entryPoint": "process output",
+      "asset": "AS1",
+      "impact": "unreadable certificate",
+      "likelihood": "medium",
+      "stride": "D, R",
+      "components": [
+        "cli-runtime"
+      ],
+      "statement": "When stdout is a pipe whose reader starts late and the command exits non-zero (check exit 1, import exit 1), the output stops exactly at the pipe capacity (8192 or 65,536 bytes) and is invalid JSON; a file or an exit-0 command arrives whole. An agent or CI step that pipes check output reads a truncated envelope: a parse failure, or a consumer that tolerates partial JSON misreads the result. Measured identical on 0fca043, v1.2.1 and 6f7e957 (evidence-final section E) and on 35ac336 and 2d3e5fe (review O1).",
+      "mitigation": "Proposed: the CLI drains stdout before it sets a non-zero exit code (src/main.ts, NodeRuntime.runMain teardown), pinned by a slow-reader pipe test through the built bundle.",
+      "origin": "evidence-final section E (G7), review O1; ss_bugs man:pipe-truncation",
+      "evidenceFloor": "example through the built bundle",
+      "status": "open",
+      "reason": "Pre-existing on base and v1.2.1, outside S3 waivability's behaviors; no test pins it; the coordinator accepted it as open.",
+      "residualRisk": "Fails visibly (invalid JSON) rather than as a false verified: a consumer that requires valid JSON stops; the exit code is still non-zero.",
+      "owner": "Laith",
+      "endDate": "next minor release",
+      "evidence": {
+        "records": [
+          ".erpaval/vdd/s3-waivability/evidence-final.md section E",
+          ".erpaval/vdd/s3-waivability/review-ledger.json outOfClosureObservations O1"
+        ]
+      },
+      "bypass": "n/a (open).",
+      "floor": {
+        "level": 1,
+        "from": "proposed for the closing work"
+      }
+    },
+    {
+      "id": "T34",
+      "title": "The prose-command normalizer lets two advice commands regress to forms the CLI rejects (attack C14, C15)",
+      "actor": "A3",
+      "entryPoint": "harness blind spot",
+      "asset": "AS4",
+      "impact": "misleading remedy",
+      "likelihood": "low",
+      "stride": "T",
+      "components": [
+        "engine-prose"
+      ],
+      "statement": "Attack round 2 survivors: replacing the quantity-alias glossary command with the obsolete `symspec glossary add ...` (quantity-alias.ts:249, C14) and the semantic antonym command with `symspec antonym add ...` (semantic.ts:523, C15) leaves the whole suite green, because the existing prose normalizer that tests run commands through absorbs the extra verb (C14: an unbalanced label span swallows the command opener; C15: a real head \"add\" collides with nested-verb normalization).",
+      "mitigation": "Proposed: the command-in-prose oracle stops normalizing nested verbs and unbalanced spans, so both mutants turn a test red (behavior S3-045).",
+      "origin": "attack ledger round 2 (19bd46f) C14, C15; review ledger acceptedOpenItems",
+      "evidenceFloor": "negative guard killing C14 and C15",
+      "status": "open",
+      "reason": "Owned risk accepted by the coordinator (\"pre-existing prose-normalizer corners; not reopened\"); the mutants are not killed.",
+      "residualRisk": "Today's shipped commands are the correct forms; only a future regression at these two sites would go unseen.",
+      "owner": "Laith",
+      "endDate": "next minor release",
+      "evidence": {
+        "attack": [
+          ".erpaval/vdd/s3-waivability/attack-ledger.json round2 survivors C14 (real_gap_proposed), C15 (real_gap_existing_normalizer_proposed)"
+        ],
+        "review": [
+          ".erpaval/vdd/s3-waivability/review-ledger.json acceptedOpenItems C14, C15"
+        ]
+      },
+      "bypass": "n/a (open).",
+      "floor": {
+        "level": 1,
+        "from": "proposed for the closing work"
+      }
+    }
+  ],
+  "assumptions": [
+    {
+      "id": "TA1",
+      "text": "CI runs `pnpm check` on a fresh clone (.github/workflows/check.yml: frozen-lockfile install, one pnpm check; evidence-final sections 1 and A), and symspec.config.json and the gate scripts are CODEOWNED with branch protection, so the gate's own invocation is outside the agent's reach (D5, D8, R6).",
+      "owner": "Laith (repository settings: branch protection, CODEOWNERS; spec 007 S18 writes the stanza)",
+      "status": "open",
+      "endDate": "next minor release",
+      "note": "The workflow file was read; branch protection and CODEOWNERS enforcement are GitHub settings no record here measures."
+    },
+    {
+      "id": "TA2",
+      "text": "requirementsContentHash (anchored sha256 over meaningOf(requirement)) is collision-resistant; a waiver cannot be bound to two different texts.",
+      "owner": "Laith",
+      "status": "open",
+      "note": "Standard SHA-256 assumption; the anchored sha256 shape is enforced at load (D14). Proposed for acceptance as is."
+    },
+    {
+      "id": "TA3",
+      "text": "Every advice site that can emit a waive op or an inflection of \"waive\" for a never code is exercised: repair arms by construction over every demotion reason (R56, S3-039), emitted prose by the runtime sweep over the corpus and fixtures, and the rest by static literal sweeps of the advice and engine prose files.",
+      "owner": "Laith",
+      "status": "open (narrowed)",
+      "endDate": "next minor release",
+      "note": "v1 assumed the corpus reaches every site; evidence.md section 4 measured that false (G2). R56 discharged it for repair arms and catalog rows; messages of never codes no document reaches (16 of 31 at 7afb20e) rest on static sweeps of six named files, so a message assembled in another file is unguarded."
+    },
+    {
+      "id": "TA4",
+      "text": "npm's trusted publisher for symspec is bound to laithalsaadoon/symspec and release-please.yml (RELEASING.md: `npm trust github symspec --repo laithalsaadoon/symspec --file release-please.yml --allow-publish`), so the next publish's OIDC claim matches package.json (T29).",
+      "owner": "Laith (npmjs.com package settings)",
+      "status": "open",
+      "endDate": "before the 2.0.0 publish",
+      "note": "Outside the tool and the run; no record measures it."
+    }
+  ],
+  "coverage": {
+    "trustBoundaries": {
+      "TB1": [
+        "T1",
+        "T2",
+        "T3",
+        "T4",
+        "T5",
+        "T7",
+        "T12",
+        "T22",
+        "T24"
+      ],
+      "TB2": [
+        "T9",
+        "T10"
+      ],
+      "TB3": [
+        "T8",
+        "T11",
+        "T13",
+        "T23",
+        "T26"
+      ],
+      "TB4": [
+        "T14",
+        "T15",
+        "T16",
+        "T17",
+        "T18",
+        "T19",
+        "T30",
+        "T32",
+        "T33"
+      ],
+      "TB5": [
+        "T1",
+        "T2",
+        "T8",
+        "T11",
+        "T12",
+        "T13"
+      ],
+      "TB6": [
+        "T20",
+        "T21",
+        "T25",
+        "T31",
+        "T34"
+      ],
+      "TB7": [
+        "T27",
+        "T28"
+      ],
+      "TB8": [
+        "T29"
+      ]
+    },
+    "components": {
+      "waive-fold": [
+        "T1",
+        "T2",
+        "T3",
+        "T4",
+        "T5",
+        "T7",
+        "T9",
+        "T17",
+        "T22",
+        "T23",
+        "T24"
+      ],
+      "import-waivers": [
+        "T9",
+        "T10",
+        "T17"
+      ],
+      "check-compat": [
+        "T4",
+        "T5",
+        "T6",
+        "T8",
+        "T11",
+        "T13",
+        "T17",
+        "T18",
+        "T19",
+        "T22",
+        "T23",
+        "T24"
+      ],
+      "engine-waiver-scope": [
+        "T5",
+        "T11",
+        "T12",
+        "T23",
+        "T26"
+      ],
+      "check-demotions": [
+        "T12",
+        "T13"
+      ],
+      "published-waivability": [
+        "T16",
+        "T17",
+        "T22"
+      ],
+      "repair-advice": [
+        "T14",
+        "T18",
+        "T19",
+        "T31"
+      ],
+      "scope-prose": [
+        "T16",
+        "T24"
+      ],
+      "engine-prose": [
+        "T15",
+        "T18",
+        "T26",
+        "T31",
+        "T32",
+        "T34"
+      ],
+      "gaming-harness": [
+        "T20",
+        "T21",
+        "T25"
+      ],
+      "report-corpus": [
+        "T21"
+      ],
+      "release": [
+        "T29"
+      ],
+      "config-discovery": [
+        "T27",
+        "T28"
+      ],
+      "document-schema": [
+        "T30"
+      ],
+      "shell-site-guard": [
+        "T31"
+      ],
+      "reachability-advice": [
+        "T32"
+      ],
+      "cli-runtime": [
+        "T33"
+      ]
+    },
+    "uncoveredNote": "v1 had no threat for release; v2 adds T29 (provenance). The release behaviors S3-052 (feat! with a BREAKING CHANGE footer) and S3-053 (version files untouched) mitigate no threat here and have inspection evidence only (evidence gap G4: achieved 0 < floor 1; exactly one breaking commit, 7afb20e, makes release-please compute 2.0.0, evidence-final sections 6 and D). config-discovery, document-schema, shell-site-guard, reachability-advice and cli-runtime are component names this model introduces for run 3 and the final reviews; they are not rows of components.json."
+  },
+  "head": "ae268e342693 (fix(cli): every flagged command site carries only shell words (R63, R64)) plus ledger commits to abccc2c34231 on vdd/s3-waivability; run 3 (vdd/release-hardening) merged at 2d3e5fe",
+  "summary": {
+    "version": 2,
+    "threats": 34,
+    "resolved": 29,
+    "openCount": 5,
+    "open": [
+      {
+        "id": "T30",
+        "title": "A v4 schema description claims enforcement no check tier performs",
+        "owner": "Laith (rule the RH-012 scope of the parent sentence); spec 007 S6 (V-PARENT: parents exist, are systems, are acyclic) makes it true",
+        "endDate": "next minor release"
+      },
+      {
+        "id": "T31",
+        "title": "The static shell-safety guard misses commands assembled through an array join, inside $'...', or after a backslash",
+        "owner": "Laith",
+        "endDate": "next minor release"
+      },
+      {
+        "id": "T32",
+        "title": "Two pre-existing advice commands name a CLI form this build rejects",
+        "owner": "Laith",
+        "endDate": "next minor release"
+      },
+      {
+        "id": "T33",
+        "title": "Non-zero-exit JSON larger than the pipe capacity is truncated for a slow reader",
+        "owner": "Laith",
+        "endDate": "next minor release"
+      },
+      {
+        "id": "T34",
+        "title": "The prose-command normalizer lets two advice commands regress to forms the CLI rejects (attack C14, C15)",
+        "owner": "Laith",
+        "endDate": "next minor release"
+      }
+    ],
+    "resolvedBelowFloor": 0,
+    "approval": "none: no approvals entry exists for v1 or v2; a person approves this version and accepts each open threat (owner, reason, until) or the model stays unapproved",
+    "howBypassed": "Each resolved threat carries a bypass note: the answer to \"how could the mitigation be bypassed\" from the attack and review ledgers. The ones that are real gaps are threats T30-T34 or assumption TA3, not notes."
+  },
+  "changesSinceV1": [
+    "T1-T26: every status open -> resolved, each with the behaviors (floor, achieved, basis), the records and a bypass note. No mitigation text was edited; where a ruling changed the mitigation (T4 R37/R39, T5 R8/R38, T7 R37, T19 R41, T24 R45), evidence notes say so.",
+    "Added run 3 threats T27 (dangling or looping config under a git refusal, resolved), T28 (bare-repository phrase in a path, resolved), T29 (publish provenance after the account rename, resolved), T30 (v4 schema enforcement claims, open: release review R4 parent cycle).",
+    "Added threats from the final reviews and attacks, open with owner Laith until the next minor release: T31 (review R10, R13), T32 (review R11, R12), T33 (pipe truncation, ss_bugs man:pipe-truncation), T34 (attack C14, C15).",
+    "Actors A5, A6; assets AS7, AS8; entry points config discovery (TB7), release publish (TB8), process output; assumptions TA1-TA3 given owners, TA3 narrowed, TA4 added."
+  ]
+}

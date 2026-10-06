@@ -56,7 +56,13 @@
 import type { CandidatePair } from '../solvers/types.ts'
 import type { Z3Context } from './backend.ts'
 import type { SolverBounds } from './budget.ts'
-import { type EncodedRequirement, type Formula, materialize, not } from './encode.ts'
+import {
+  contraryAxioms,
+  type EncodedRequirement,
+  type Formula,
+  materialize,
+  not,
+} from './encode.ts'
 
 /** A directional subsumption finding (Appendix B `FND_SUBSUMPTION`, warn). */
 export interface SubsumptionFinding {
@@ -99,9 +105,13 @@ async function implies(
   bodyA: Formula,
   bodyB: Formula,
   timeoutMs?: number,
+  axioms: readonly Formula[] = [],
 ): Promise<boolean> {
   const solver = new ctx.Solver()
   if (timeoutMs !== undefined) solver.set('timeout', timeoutMs)
+  // AC-2-1: validity is relative to the vocabulary's contrary axioms — "accept X" entails
+  // "not reject X" only because `accept` and `reject` cannot both hold.
+  for (const axiom of axioms) solver.add(materialize(ctx, axiom))
   solver.add(materialize(ctx, bodyA))
   solver.add(materialize(ctx, not(bodyB)))
   const res = await solver.check()
@@ -217,11 +227,11 @@ function atomsOf(f: Formula, into: Set<string>): void {
  * uses to establish it. That proxy holds exactly while every leaf of a body is a
  * free, uninterpreted, mutually unconstrained Bool — two distinct names then have
  * two independently assignable truth values, and nothing relates them. Every step
- * below spends that property:
+ * below spends that property. A contrary axiom (AC-2-1) DOES relate two names, so a
+ * pair whose atoms one relates is never pruned, whatever its names:
  *
  *   - Atom names are namespaced `sys__<system>__<kind>__<body>` by
- *     `atomize.ts`, so a `trig` atom, a `pre` atom and a `resp` atom can never
- *     be the same name.
+ *     `atomize.ts`, so a guard atom and a `resp` atom can never be the same name.
  *   - A body is either `resp` (ubiquitous) or `(context) ⇒ resp`, where
  *     `context` is a conjunction of `pre`/`trig` literals. Since context atoms
  *     and the response atom are drawn from disjoint name spaces, no body is a
@@ -265,7 +275,10 @@ function sharesAtom(a: EncodedRequirement, b: EncodedRequirement): boolean {
   const atomsB = new Set<string>()
   atomsOf(b.body, atomsB)
   for (const name of atomsB) if (atomsA.has(name)) return true
-  return false
+  // AC-2-1: two atoms a contrary axiom relates are NOT mutually unconstrained, so the lemma's
+  // proxy does not hold for them — `accept X` and `reject X` share no name and still decide an
+  // implication. Such a pair must reach the solver.
+  return contraryAxioms([a, b]).length > 0
 }
 
 /**
@@ -299,8 +312,9 @@ export async function checkSubsumptionPair(
   if (!(await contingent(ctx, a, bounds.timeoutMs, contingency))) return undefined
   if (!(await contingent(ctx, b, bounds.timeoutMs, contingency))) return undefined
 
-  const aImpliesB = await implies(ctx, a.body, b.body, bounds.timeoutMs)
-  const bImpliesA = await implies(ctx, b.body, a.body, bounds.timeoutMs)
+  const axioms = contraryAxioms([a, b])
+  const aImpliesB = await implies(ctx, a.body, b.body, bounds.timeoutMs, axioms)
+  const bImpliesA = await implies(ctx, b.body, a.body, bounds.timeoutMs, axioms)
 
   if (aImpliesB && bImpliesA) {
     return {

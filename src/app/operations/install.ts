@@ -30,6 +30,7 @@
  */
 
 import { Effect, type FileSystem, type Path, Schema } from 'effect'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import { type ErrIo, ErrUsage } from '../../ports/errors.ts'
 import { buildSkillBody } from '../install/skill-body.ts'
 import {
@@ -284,7 +285,9 @@ export const installOp = defineOperation({
               suggestions: [`Known targets: ${knownTargets()}.`],
               repair: {
                 ops: [],
-                commands: [`symspec install --mode print --target ${TARGETS[0]?.id ?? SKILL_NAME}`],
+                commands: [
+                  `symspec install --mode print --target ${shellWord(TARGETS[0]?.id ?? SKILL_NAME)}`,
+                ],
               },
             }),
           )
@@ -297,7 +300,9 @@ export const installOp = defineOperation({
               suggestions: [`Known targets: ${knownTargets()}.`],
               repair: {
                 ops: [],
-                commands: [`symspec install --mode print --target ${TARGETS[0]?.id ?? SKILL_NAME}`],
+                commands: [
+                  `symspec install --mode print --target ${shellWord(TARGETS[0]?.id ?? SKILL_NAME)}`,
+                ],
               },
             }),
           )

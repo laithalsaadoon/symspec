@@ -232,8 +232,10 @@ describe('PROPOSE-ONLY — the tier suggests ops, it never decides', () => {
     // INFO, not warn and certainly not error — the severity IS the doctrine.
     expect(finding?.severity).toBe('info')
     expect(finding?.cosine).toBeGreaterThanOrEqual(DEFAULT_SEMANTIC_THRESHOLD)
-    // The durable output is a SUGGESTED op, named in the message.
-    expect(finding?.message).toContain('symspec glossary add')
+    // The durable output is a SUGGESTED op, named in the message, in the flat form the built
+    // parser accepts (R56): `symspec glossary "<a>" "<b>"`, never the nested `glossary add`.
+    expect(finding?.message).toContain('`symspec glossary "')
+    expect(finding?.message).not.toContain('symspec glossary add')
     // And it says so explicitly, so an agent cannot read it as a verdict.
     expect(finding?.message).toContain('suggestion, not a verdict')
   })
@@ -278,9 +280,12 @@ describe('PROPOSE-ONLY — the tier suggests ops, it never decides', () => {
     const finding = findings[0]
     expect(finding?.code).toBe('FND_OPPOSITION_CANDIDATE')
     expect(finding?.severity).toBe('info')
-    // BOTH options, and the explicit warning.
-    expect(finding?.message).toContain('symspec antonym add')
-    expect(finding?.message).toContain('symspec glossary add')
+    // BOTH options, and the explicit warning, each in the flat form the built parser accepts
+    // (R56): `symspec antonym <a> <b>` and `symspec glossary "<a>" "<b>"`.
+    expect(finding?.message).toContain('`symspec antonym ')
+    expect(finding?.message).toContain('`symspec glossary "')
+    expect(finding?.message).not.toContain('symspec antonym add')
+    expect(finding?.message).not.toContain('symspec glossary add')
     expect(finding?.message).toContain('manufactures a false contradiction')
     expect(finding?.message).toContain('suggestion, not a verdict')
   })

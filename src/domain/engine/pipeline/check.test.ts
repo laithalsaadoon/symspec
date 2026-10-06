@@ -42,8 +42,10 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { toEncodable } from '../formal/encode.ts'
+import { SolverBudgetExceededError } from '../formal/needs-review.ts'
 import { emitCandidatePairs } from '../solvers/free/pairwise-filter.ts'
-import { asView } from '../solvers/types.ts'
+import { asView, type ReqView } from '../solvers/types.ts'
 import { runCheck } from './check.ts'
 
 const TS = '2026-01-01T00:00:00.000Z'
@@ -365,8 +367,9 @@ describe('a context group the solver could not decide', () => {
  *
  * The point of the fixture is the SLOT ROLE. `numeric-contradiction.ts` receives the slot
  * as data and `numeric.test.ts` pins the extractor, but the three string literals that
- * decide which EARS slot each bound is reported under live in `runCheck` alone
- * (`extractNumericPredicates(r.trigger, …, 'trig', …)` and its `pre`/`resp` siblings), and
+ * decide which EARS slot each bound is reported under live in `requirementBounds`, which
+ * `runCheck` alone hands the decide tier (`readBounds(r.trigger, …, 'trig', …)` and its
+ * `pre`/`resp` siblings), and
  * an author reading the core has to be able to tell the obligation from the precondition
  * without re-reading the sentence. Nothing between the extractor's unit test and here
  * crosses that wiring.
@@ -392,9 +395,9 @@ const guardVsResponseBoundDoc = () => {
   return {
     requirements: {
       [ID_A]: stateReq(ID_A, 'raise the backlog alarm'),
-      [ID_B]: stateReq(ID_B, 'hold the flush latency below 100 ms'),
+      [ID_B]: stateReq(ID_B, 'keep the flush latency below 100 ms'),
     },
-    glossary: [{ canonical: 'flush latency', aliases: ['hold the flush latency'] }],
+    glossary: [{ canonical: 'flush latency', aliases: ['keep the flush latency'] }],
     antonyms: [],
     waivers: [],
     terms: [],
@@ -417,5 +420,158 @@ describe('a numeric conflict spanning a guard and a response', () => {
       ['resp', '<', 100],
       ['pre', '>', 500],
     ])
+  })
+})
+
+describe('toEncodable: the leading-negator fallback for stored response text', () => {
+  const view = (systemResponse: string): ReqView => ({
+    id: ID,
+    patternType: 'ubiquitous',
+    preCondition: undefined,
+    trigger: undefined,
+    systemName: 'gateway',
+    systemResponse,
+    negated: false,
+    sentence: `The gateway shall ${systemResponse}.`,
+    priority: 'medium',
+    status: 'draft',
+  })
+
+  it.each([
+    ['not log requests', 'log requests'],
+    ['never log requests', 'log requests'],
+    ['do not log requests', 'log requests'],
+    ['does not log requests', 'log requests'],
+  ])('a baked-in negator is stripped to a negated positive atom — %s', (response, positive) => {
+    expect(toEncodable(view(response))).toMatchObject({ systemResponse: positive, negated: true })
+  })
+
+  it.each([
+    'not only log requests but also forward them',
+    'Not only log requests but also forward them',
+    'do not only log requests but also forward them',
+    'does not only log requests but also forward them',
+  ])('"not only X but also Y" is a positive obligation, passed through (AC-2-3) — %s', (response) => {
+    // The parse stores this form `negated: false` with "not only" kept in the response. If this
+    // scan re-negated it, `check` would encode the prohibition the parse declined to store.
+    expect(toEncodable(view(response))).toMatchObject({ systemResponse: response, negated: false })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round: the advice two reachable documents really emit (R56), and the error paths in
+// the hunks S3 touched (attack P19-P24), pinned as existing behavior
+// ---------------------------------------------------------------------------
+
+/**
+ * The never-code guard's word set (R56), the same set as `testing/cli-argv.ts`'s
+ * `WAIVE_INFLECTION`. Restated because the engine tier imports nothing greenfield, its tests
+ * included (`package-boundary.test.ts`).
+ */
+const WAIVE_INFLECTION = /\bwaiv(?:e|es|ed|ing|er|ers)\b/i
+
+describe('S3 closure: the emitted advice of two reachable never-code shapes (R56)', () => {
+  it('[S3-040] the forced-unknown inconclusive group: the action names the timeout lever and no inflection of "waive" (P15, FND_NEEDS_REVIEW)', async () => {
+    const report = await runCheck(ubiquitousPairDoc() as never, {
+      needsReviewCheckGroup: async () => 'unknown' as const,
+    })
+    const demotion = report.coverage.demotions.find((d) => d.reason === 'inconclusive-group')
+    expect(demotion?.action).toContain('--timeout-ms')
+    expect(demotion?.action ?? '').not.toMatch(WAIVE_INFLECTION)
+  })
+
+  it('[S3-040] the opposite-polarity near-duplicate (door/doors over a committed open/close pair): the FND_SIMILAR_SEMANTIC message offers the glossary merge or a rewording and no inflection of "waive" (P13)', async () => {
+    const door = (id: string, systemResponse: string) => ({
+      id,
+      patternType: 'event-driven' as const,
+      systemName: 'door controller',
+      systemResponse,
+      trigger: 'the passenger presses the door button',
+      negated: false,
+      sentence: `When the passenger presses the door button, the door controller shall ${systemResponse}.`,
+      priority: 'medium' as const,
+      status: 'draft' as const,
+      createdAt: TS,
+      updatedAt: TS,
+      derives: [],
+      satisfies: [],
+      verifies: [],
+      refines: [],
+    })
+    const doc = {
+      requirements: {
+        R1: door('R1', 'open the door'),
+        R2: door('R2', 'close the doors'),
+        R3: door('R3', 'sound the chime'),
+      },
+      glossary: [],
+      antonyms: [{ a: 'open', b: 'close' }],
+      waivers: [],
+      terms: [],
+      stateModel: { variables: [] },
+    }
+    // Every text but the chime on one axis, so the door pair is a near-duplicate.
+    const embedder = async (texts: readonly string[]) =>
+      texts.map((t) => {
+        const v = new Float32Array(8)
+        v[t === 'sound the chime' ? 1 : 0] = 1
+        return v
+      })
+    const report = await runCheck(doc as never, { semantic: { embedder } })
+    const near = report.findings.filter(
+      (f) => f.code === 'FND_SIMILAR_SEMANTIC' && f.requirementIds.join() === 'R1,R2',
+    )
+    expect(near).toHaveLength(1)
+    const message = near[0]?.message ?? ''
+    expect(message).toMatch(/OPPOSITE sides of a committed antonym pair/)
+    expect(message).toMatch(/reword one/)
+    expect(message).not.toMatch(WAIVE_INFLECTION)
+  })
+})
+
+describe('S3 closure: the engine error paths in the hunks S3 touched (@existing)', () => {
+  it('[S3-031] @existing an unexpected solver error in the needs-review tier propagates out of runCheck unchanged (P19 P21 P22 P23)', async () => {
+    await expect(
+      runCheck(ubiquitousPairDoc() as never, {
+        needsReviewCheckGroup: async () => {
+          throw new Error('injected unexpected solver failure')
+        },
+      }),
+    ).rejects.toThrow('injected unexpected solver failure')
+  })
+
+  it('[S3-031] @existing a SolverBudgetExceededError in the needs-review tier returns the partial report, demoted solver-budget-exhausted (P20)', async () => {
+    const report = await runCheck(ubiquitousPairDoc() as never, {
+      solverBudgetMs: 60_000,
+      needsReviewCheckGroup: async () => {
+        throw new SolverBudgetExceededError('injected budget exhaustion', [
+          'Raise --solver-budget-ms',
+        ])
+      },
+    })
+    expect(report.verified).toBe(false)
+    expect(report.coverage.demotions.map((d) => d.reason)).toContain('solver-budget-exhausted')
+  })
+
+  it('[S3-031] @existing a stored antonym table with an odd polarity cycle falls back to the seed index at the runCheck boundary: the report equals the one with no committed antonyms (P24)', async () => {
+    const seedOnly = await runCheck(ubiquitousPairDoc() as never, {})
+    const cyclic = await runCheck(
+      {
+        ...ubiquitousPairDoc(),
+        antonyms: [
+          { a: 'open', b: 'close' },
+          { a: 'close', b: 'release' },
+          { a: 'release', b: 'open' },
+        ],
+      } as never,
+      {},
+    )
+    expect(cyclic.verified).toBe(seedOnly.verified)
+    expect(cyclic.findings.map((f) => [f.code, f.requirementIds])).toEqual(
+      seedOnly.findings.map((f) => [f.code, f.requirementIds]),
+    )
+    expect(cyclic.coverage.demotions.map((d) => d.reason)).toEqual(
+      seedOnly.coverage.demotions.map((d) => d.reason),
+    )
   })
 })

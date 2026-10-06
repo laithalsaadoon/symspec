@@ -361,8 +361,17 @@ const downloadModelCommand = Command.make('download-model', {}, () =>
 
 const initCommand = Command.make(
   'init',
-  { file: pathArgument(initOp, 'file'), force: booleanFlag(initOp, 'force') },
-  (config) => emit(initOp, { file: Option.getOrNull(config.file), force: config.force }),
+  {
+    file: pathArgument(initOp, 'file'),
+    force: booleanFlag(initOp, 'force'),
+    split: booleanFlag(initOp, 'split'),
+  },
+  (config) =>
+    emit(initOp, {
+      file: Option.getOrNull(config.file),
+      force: config.force,
+      split: config.split,
+    }),
 ).pipe(Command.withDescription(initOp.summary))
 
 const listCommand = Command.make('list', { file: pathArgument(listOp, 'file') }, (config) =>
@@ -474,10 +483,13 @@ const checkCommand = Command.make(
     // OPTIONAL for the same reason `--fail-on-unmatched` is: omitting it means "use
     // the measured default", which is a different statement from any number.
     semanticThreshold: Flag.optional(floatFlag(checkOp, 'semanticThreshold')),
+    // OPTIONAL: omitting it is how the config is found at the repository toplevel.
+    config: Flag.optional(stringFlag(checkOp, 'config')),
   },
   (config) =>
     emit(checkOp, {
       file: Option.getOrNull(config.file),
+      config: Option.getOrNull(config.config),
       timeoutMs: config.timeoutMs,
       reachabilityTimeoutMs: config.reachabilityTimeoutMs,
       solverBudgetMs: config.solverBudgetMs,

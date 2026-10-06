@@ -2,7 +2,7 @@
   "name": "symspec",
   "version": "1.2.1",
   "type": "module",
-  "description": "Prove your software requirements consistent, or get an honest work list. EARS authoring, INCOSE GtWR lint, Z3 SMT conflict proofs with unsat-core evidence, and unbounded state-model reachability — behind an agent-first CLI with typed JSON envelopes and 83 stable codes.",
+  "description": "Prove your software requirements consistent, or get an honest work list. EARS authoring, INCOSE GtWR lint, Z3 SMT conflict proofs with unsat-core evidence, and unbounded state-model reachability — behind an agent-first CLI with typed JSON envelopes and 90 stable codes.",
   "keywords": [
     "requirements",
     "requirements-engineering",
@@ -32,11 +32,11 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/theagenticguy/symspec.git"
+    "url": "git+https://github.com/laithalsaadoon/symspec.git"
   },
-  "homepage": "https://github.com/theagenticguy/symspec#readme",
+  "homepage": "https://github.com/laithalsaadoon/symspec#readme",
   "bugs": {
-    "url": "https://github.com/theagenticguy/symspec/issues"
+    "url": "https://github.com/laithalsaadoon/symspec/issues"
   },
   "bin": {
     "symspec": "./bin/symspec.mjs"

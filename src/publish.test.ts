@@ -25,11 +25,13 @@
  * decision to press the button stays a human one.
  */
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { currentManifest } from './app/operations/index.ts'
+import { SCOPE_KEYS, scopeParagraphs } from './app/runtime/scope.ts'
 import { VERSION } from './app/runtime/version.ts'
+import { DEFAULT_SEMANTIC_THRESHOLD } from './domain/engine/formal/semantic.ts'
 
 const read = (relative: string): string =>
   readFileSync(fileURLToPath(new URL(`../${relative}`, import.meta.url)), 'utf8')
@@ -144,8 +146,22 @@ describe('the package is publishable', () => {
     // path that does not exist breaks npm provenance, which matches the field
     // case-sensitively against the repo it was built from.
     expect(manifest.repository?.directory).toBeUndefined()
-    expect(manifest.homepage).toContain('github.com/theagenticguy/symspec')
+    // Which account owns the repository is pinned exactly by [RH-001] below.
+    expect(manifest.homepage).toContain('github.com/')
     expect(manifest.bugs?.url).toContain('issues')
+  })
+
+  /**
+   * Ruling RH-R1. The GitHub account `theagenticguy` was renamed to `laithalsaadoon` after
+   * v1.2.1 published. GitHub redirects the old URL, but the next publish's OIDC token carries
+   * the repository claim `laithalsaadoon/symspec`, and npm provenance compares
+   * `repository.url` with it EXACTLY: a stale account is an E422 at publish time, the one
+   * moment nothing can be fixed quietly.
+   */
+  it('[RH-001] names the repository the next publish is built from: laithalsaadoon/symspec', () => {
+    expect(manifest.repository?.url).toBe('git+https://github.com/laithalsaadoon/symspec.git')
+    expect(manifest.homepage).toBe('https://github.com/laithalsaadoon/symspec#readme')
+    expect(manifest.bugs?.url).toBe('https://github.com/laithalsaadoon/symspec/issues')
   })
 
   it('declares the node floor the bundle actually needs', () => {
@@ -314,6 +330,32 @@ describe('the README is a PACKAGE readme, greenfield-first and honest', () => {
     expect(prose).toContain('"no conflict was proven"')
   })
 
+  it('quotes EVERY scope claim verbatim, and nothing else, as the section says', () => {
+    // The section says the claims are the tool's own words, verbatim, and that this test
+    // holds it to that. The phrase checks above passed for years over blockquotes that were
+    // abridged paraphrases of the corpus — the numeric claim lost its middle clause, and a
+    // phrase check cannot see a claim that was shortened. So the blockquotes are parsed out of
+    // the section and compared to the corpus as a LIST: a missing claim, a reworded one, and a
+    // stale copy left beside the new one each fail.
+    const section = readme.slice(
+      readme.indexOf('## Honest scope'),
+      readme.indexOf('The practical consequence is that'),
+    )
+    const quotes = section
+      .split(/\n\s*\n/)
+      .filter((block) => block.startsWith('>'))
+      .map((block) =>
+        block
+          .split('\n')
+          .map((line) => line.replace(/^>\s?/, ''))
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      )
+    expect(quotes).toHaveLength(SCOPE_KEYS.length)
+    expect(quotes).toEqual([...scopeParagraphs()])
+  })
+
   it('makes NO certify claim — honesty by absence', () => {
     // `certify` was removed from the spec at Gate 1 and no encoding exists, so the README
     // must not imply one. This is the assertion that keeps a future marketing edit honest:
@@ -370,9 +412,13 @@ describe('the README is a PACKAGE readme, greenfield-first and honest', () => {
       expect(session, step).toContain(step)
     }
     // The measured atom table, which is what makes the proof auditable rather than
-    // asserted: one response atom, present at both polarities.
+    // asserted: one response atom, present at both polarities. It is named after the author's
+    // own verb (`grant`), because the antonym table relates pairs and renames nothing (spec 007
+    // AC-2-1) — and the side-of-class spelling (`allow`) is the stale copy, so it is asserted
+    // ABSENT.
     expect(session).toContain('FND_CONTRADICTION')
-    expect(session).toContain('sys__auth_service__resp__allow_access')
+    expect(session).toContain('sys__auth_service__resp__grant_access')
+    expect(session).not.toContain('resp__allow_access')
     expect(session.indexOf('symspec parse')).toBeLessThan(session.indexOf('FND_CONTRADICTION'))
   })
 
@@ -397,6 +443,31 @@ describe('the README is a PACKAGE readme, greenfield-first and honest', () => {
     expect(study).toMatch(/symspec glossary \\?"[^"\\]+\\?" \\?"[^"\\]+\\?"/)
   })
 
+  it('proves the case study on two bounds of ONE role, and says why the other pair does not', () => {
+    const study = readme.slice(
+      readme.indexOf('## Two requirements that quietly disagree'),
+      readme.indexOf('## The state model'),
+    )
+    // Spec 007 AC-2-6 made a deadline (`within`) and a duration (`for`) two roles the numeric
+    // tier never asserts on one variable. The section's first pair, "complete the infusion
+    // within 30 minutes" against "run ... for at least 60 minutes", therefore stopped proving:
+    // on the built CLI the glossary commit yields FND_NUMERIC_UNCOMPARED, not a contradiction.
+    // The proof is now shown on two durations, measured, and the old pair is kept only as the
+    // explained counter-case. NEGATIVE GUARDS on the stale transcript: its glossary command
+    // and its contradiction message must be gone, not merely joined by the new ones.
+    expect(study).toContain('symspec glossary "administer the infusion" "run the infusion"')
+    expect(study).not.toContain('symspec glossary "complete the infusion" "run the infusion"')
+    expect(study).not.toContain('numeric constraints\n         on "complete the infusion"')
+    expect(study).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(study.indexOf('FND_NUMERIC_CONTRADICTION')).toBeLessThan(
+      study.indexOf('FND_NUMERIC_UNCOMPARED'),
+    )
+    // The measured counts after the commit include the no-state-model disclosure; the count
+    // printed before that disclosure existed is asserted ABSENT.
+    expect(study).toContain('"counts":{"error":1,"warn":4,"info":3}')
+    expect(study).not.toContain('"counts":{"error":1,"warn":4,"info":2}')
+  })
+
   it('shows the WHOLE-DOCUMENT vocabulary pass, including what it refuses', () => {
     expect(readme).toContain('## Designing the vocabulary in one pass')
     const section = readme.slice(
@@ -408,14 +479,25 @@ describe('the README is a PACKAGE readme, greenfield-first and honest', () => {
     // convenience and skip the reason to trust it: the refusal happens ABOVE the similarity
     // threshold, which is the one fact that shows cosine is not deciding.
     expect(section).toContain('opposition-candidate')
-    expect(section).toContain('0.811')
-    expect(section).toContain('above the 0.72')
+    expect(section).toContain('0.806')
+    // The threshold is the constant `check` and `propose-glossary` default to, so a retuned
+    // default fails here rather than leaving a stale number in the prose.
+    expect(section).toContain(`above the ${DEFAULT_SEMANTIC_THRESHOLD}`)
     // And the non-vacuity signal, so "nothing to merge" is distinguishable from "did not look".
     expect(section).toContain('pairsCompared')
     // NEGATIVE GUARD on the re-measurement. The section claims every number is measured on
     // this build; the previous fixture's cosine must be GONE, not merely joined by the new
     // one. A positive-only check passes on prose carrying both.
     expect(section).not.toContain('0.809')
+    // Re-measured again once the section printed the fixture it was measured on: 0.811 came
+    // from a document the README never showed, and the shown one measures 0.806.
+    expect(section).not.toContain('0.811')
+    // The fixture is IN the section now, so "every number below is measured" is checkable by
+    // running it. And the gradient's pipe runs as written: the stale step that wrote an
+    // envelope into plan.jsonl and told the reader to "edit the JSON out" is asserted gone.
+    expect(section).toContain('cat > reqs.jsonl')
+    expect(section).toContain('jq -r .data.opsJsonl > plan.jsonl')
+    expect(section).not.toContain('then edit the JSON out')
   })
 
   it('shows the GUARD half, and that it is never applyable', () => {
@@ -617,6 +699,20 @@ describe('the README agrees with the tool about its own surface', () => {
     expect(readme).not.toContain(`${manifestNow.lintCodes.length + 1} INCOSE rules`)
   })
 
+  it('[S3-001] README and package.json state the post-S3 count, not the pre-S3 "89 stable codes" (R47, R50)', () => {
+    // R47: `ERR_WAIVER_REFUSED` is a real catalog code, so the published count moved by one.
+    // R50: the builder changes README.md's count and package.json's description count, and
+    // nothing else in either file. The positive half is derived; the NEGATIVE half names the
+    // stale literal itself, because a derived `codeCount - 1` only guards the next append.
+    expect(manifestNow.errorCodes.map((row) => row.code)).toContain('ERR_WAIVER_REFUSED')
+    const description = JSON.parse(read('package.json')).description as string
+    expect(readme).toContain(`**${codeCount} stable codes**`)
+    expect(description).toContain(`${codeCount} stable codes`)
+    expect(readme).not.toContain('**89 stable codes**')
+    expect(readme).not.toContain('89 stable codes')
+    expect(description).not.toContain('89 stable codes')
+  })
+
   it('does not ship a stale code count to the npm registry', () => {
     // `package.json`'s `description` is the registry listing — the most-read sentence this
     // package has and the only count with no gate at all. It said `81 stable codes` while
@@ -670,5 +766,76 @@ describe('the README agrees with the tool about its own surface', () => {
       ...new Set(advertised.filter((name) => name !== undefined && !known.has(name))),
     ]
     expect(unknown).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Release hardening (VDD run 3): the renamed account, and the v4 statement in the README
+// ---------------------------------------------------------------------------
+
+describe('[RH-002] no live reference names the renamed GitHub account', () => {
+  /** The account GitHub renamed; CHANGELOG.md is release-please's history and is not read. */
+  const STALE = 'theagenticguy'
+  const NEW = 'laithalsaadoon/symspec'
+
+  /** Every non-test file under src/, relative to the repository root. */
+  const productSources = (): string[] =>
+    readdirSync(fileURLToPath(new URL('.', import.meta.url)), { recursive: true })
+      .map(String)
+      .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+      .map((file) => `src/${file}`)
+
+  it('[RH-002] package.json, README.md, RELEASING.md, AGENTS.md and src/ never say theagenticguy', () => {
+    const sources = productSources()
+    // Anti-vacuity: the walk reached the product code.
+    expect(sources).toContain('src/cli.ts')
+    const stale = ['package.json', 'README.md', 'RELEASING.md', 'AGENTS.md', ...sources].filter(
+      (file) => read(file).includes(STALE),
+    )
+    expect(stale).toEqual([])
+  })
+
+  it('[RH-002] the install, clone and trusted-publisher commands name laithalsaadoon/symspec', () => {
+    const readme = read('README.md')
+    expect(readme).toContain(
+      `pnpm add -g --allow-build='symspec@git+https://github.com/${NEW}.git'`,
+    )
+    expect(readme).toContain(`git+https://github.com/${NEW}.git`)
+    expect(readme).toContain(`git clone https://github.com/${NEW}.git`)
+    expect(read('RELEASING.md').replace(/\s+/g, ' ')).toContain(
+      `npm trust github symspec \\ --repo ${NEW} \\ --file`,
+    )
+  })
+})
+
+describe('[RH-009] the README claims no v4 enforcement this build does not perform', () => {
+  const readme = read('README.md')
+  /** Flattened prose: blockquote markers, emphasis and line breaks removed, so a hard-wrapped
+   * quote cannot hide a phrase behind a `> ` (the first version of this guard passed on base so). */
+  const collapse = (text: string): string =>
+    text.replace(/^>\s?/gm, '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim()
+
+  it('[RH-009] the unqualified enforcement claims are absent', () => {
+    const prose = collapse(readme)
+    for (const claim of [
+      'Every requirement names one intent item, or is marked',
+      'With a vocabulary those two tables are frozen',
+      'the intent and policy files it names under code-owner review',
+    ]) {
+      expect(prose, claim).not.toContain(claim)
+    }
+  })
+
+  it('[RH-009] every README paragraph about v4, intent.json, policy.json or init --split carries the statement', async () => {
+    const documentModule = await import('./domain/requirements/document.ts')
+    const statement: unknown = Reflect.get(documentModule, 'V4_EXPERIMENTAL_STATEMENT')
+    expect(typeof statement, 'V4_EXPERIMENTAL_STATEMENT is exported as a string').toBe('string')
+    const said = collapse(String(statement))
+    const about = /init --split|intent\.json|policy\.json|intentRef|docVersion:? ?4|format v4/
+    const unlabelled = readme
+      .split(/\n\s*\n/)
+      .map(collapse)
+      .filter((paragraph) => about.test(paragraph) && !paragraph.includes(said))
+    expect(unlabelled).toEqual([])
   })
 })

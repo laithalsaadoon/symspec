@@ -22,7 +22,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { getContext } from './backend.ts'
-import type { NumericPredicate, PredicateSlot } from './numeric.ts'
+import { type NumericPredicate, type PredicateSlot, parseRational } from './numeric.ts'
 import {
   findNumericContradictions,
   planComparisonCells,
@@ -46,6 +46,9 @@ const bound = (
   label: 'temperature',
   comparator,
   value,
+  exact: parseRational(String(value)),
+  dimension: '',
+  role: '',
   baseUnit: '',
   slot,
   sourceText: `${comparator} ${value}`,
@@ -220,18 +223,16 @@ describe('the planned cell list', () => {
  * assume away, and the pipeline's certification predicate is written around it.
  */
 describe('a self-inconsistent requirement', () => {
-  it('is blamed alone, once its cell has a second contributor', async () => {
+  it('is not blamed as a conflict once its cell has a second contributor: it never applies', async () => {
+    // Its own guard bounds cannot hold at once, so it is VACUOUS (`FND_VACUITY`'s finding), and
+    // a core it is in names requirements that never apply together (`canCoApply`). Before that
+    // fence this was a one-id FND_NUMERIC_CONTRADICTION reading `Requirements req-bridge place
+    // jointly unsatisfiable numeric constraints on "temperature".`
     const findings = await run('self', [
       req('req-bridge', [WARM, COLD_TRIG], [bound('>', 5, 'pre'), bound('<', 3, 'trig')]),
       req('req-warm', [WARM], [bound('>', 5, 'pre')]),
     ])
-    expect(findings.map((f) => f.requirementIds)).toEqual([['req-bridge']])
-    // The message renders the id list, so a one-id core reads as a plural sentence about a
-    // single requirement. Asserted so the wording is a decision on record rather than an
-    // accident of `join(', ')`.
-    expect(findings[0]?.message).toBe(
-      'Requirements req-bridge place jointly unsatisfiable numeric constraints on "temperature".',
-    )
+    expect(findings).toEqual([])
   })
 
   it('is not reported when it is its cell`s only contributor', async () => {

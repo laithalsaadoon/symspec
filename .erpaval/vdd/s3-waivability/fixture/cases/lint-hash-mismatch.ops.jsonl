@@ -1,0 +1,3 @@
+# A scoped wording waiver carrying the hash of LOG-R1's text BEFORE an edit earlier in the stream.
+{"op":"update","ref":"LOG-R1","attr":"systemResponse","value":"store an audit record with the shift id"}
+{"op":"waive","code":"GTWR_R5_INDEFINITE_ARTICLE","reason":"'an audit record' names the one record the shift close writes","refs":["LOG-R1"],"contentHash":"sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0"}

@@ -23,11 +23,39 @@
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { Effect } from 'effect'
+import ts from 'typescript'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
+import { checkOp } from '../../app/operations/check.ts'
 import { allOperations } from '../../app/operations/index.ts'
+import { MUTATE_OPTIONS } from '../../app/operations/mutate-options.ts'
 import { allCodes, lookupCode } from '../../app/runtime/catalog.ts'
+import { exitCodeForEnvelope } from '../../app/runtime/exit.ts'
+import { runOperation } from '../../app/runtime/operation.ts'
+import { waivabilityOf } from '../../app/runtime/signal-classes.ts'
 import { runnable } from '../../ports/command-form.ts'
-import type { CheckFinding, CoverageDemotion } from '../engine/pipeline/check.ts'
+import {
+  argvRejections,
+  rejectionLines,
+  shellSafetyProblem,
+  symspecCommandsDeep,
+  symspecCommandsIn,
+  WAIVE_INFLECTION,
+} from '../../testing/cli-argv.ts'
+import {
+  type CheckWiring,
+  checkDocument,
+  fixtureDoc,
+  HASH,
+  ID,
+} from '../../testing/waiver-fixture.ts'
+import type { Embedder } from '../engine/formal/embed.ts'
+import { type CheckFinding, type CoverageDemotion, runCheck } from '../engine/pipeline/check.ts'
+import { requirementsContentHash } from '../requirements/content-hash.ts'
+import type { RequirementsDocument } from '../requirements/document.ts'
+import { applyOp, foldOps } from '../requirements/mutate.ts'
+import { decodeOp } from '../requirements/ops.ts'
 import { type RepairContext, repairForDemotion } from './repair.ts'
 
 const REPO_ROOT = new URL('../../..', import.meta.url).pathname
@@ -182,22 +210,33 @@ const QUANTITY_ALIAS_MESSAGE =
 const OPPOSITION_MESSAGE =
   'req-a and req-b share the object phrase but differ on the leading verb ("start" vs ' +
   '"halt"). If they are polar OPPOSITES, run `symspec antonym add start halt` (the formal ' +
-  'tier then collapses them to one atom at opposite polarity); if they are SYNONYMS, run ' +
+  'tier then treats them as contraries); if they are SYNONYMS, run ' +
   '`symspec glossary add "start the pump" "halt the pump"` instead. Committing the wrong ' +
   'one MANUFACTURES a false contradiction.'
 
-/** Every reason in v4 union, so a new one cannot slip past this sweep. */
-const EVERY_REASON: readonly CoverageDemotion['reason'][] = [
-  'uncovered-requirement',
-  'open-opposition-candidate',
-  'no-decide-tier-comparison',
-  'semantic-tier-skipped',
-  'excluded-from-formal',
-  'quantity-alias-candidate',
-  'relational-reasoning-not-attempted',
-  'solver-budget-exhausted',
-  'inconclusive-group',
-]
+/**
+ * Every reason in the union, as a `Record` keyed on it, so `tsc` refuses a reason the sweep
+ * does not list: a hand-maintained array is how `contrary-glossary-alias` slipped past it.
+ */
+const REASONS: Record<CoverageDemotion['reason'], true> = {
+  'uncovered-requirement': true,
+  'open-opposition-candidate': true,
+  'no-decide-tier-comparison': true,
+  'semantic-tier-skipped': true,
+  'excluded-from-formal': true,
+  'quantity-alias-candidate': true,
+  'relational-reasoning-not-attempted': true,
+  'numeric-bounds-uncompared': true,
+  'solver-budget-exhausted': true,
+  'inconclusive-group': true,
+  'solver-unknown': true,
+  'conditional-conflict-unchecked': true,
+  'run-weakened': true,
+  'opposite-polarity-near-duplicate': true,
+  'number-spelling-candidate': true,
+  'contrary-glossary-alias': true,
+}
+const EVERY_REASON = Object.keys(REASONS) as readonly CoverageDemotion['reason'][]
 
 const CONTEXT: RepairContext = {
   exclusionsById: new Map([
@@ -400,4 +439,981 @@ describe('no source string hand-types a count of the tool`s own surface', () => 
     // concatenation so the placeholder is not a template literal in this file.
     expect(HAND_TYPED_COUNT.test(`\`\${'$'}{catalogCounts().total} codes\``)).toBe(false)
   })
+})
+
+// ---------------------------------------------------------------------------
+// A pair demotion's waiver op discharges THAT pair, not every pair of its code
+// ---------------------------------------------------------------------------
+
+/**
+ * `check` suppresses a finding under a waiver when the codes match and every scope the waiver
+ * carries holds: the finding names its `ref`, and names exactly its `refs`. Mirrored here so the
+ * property is asserted against the rule the pipeline applies, not against the op's shape.
+ */
+const suppresses = (
+  op: { code?: string; ref?: string; refs?: readonly string[] },
+  finding: CheckFinding,
+): boolean =>
+  op.code === finding.code &&
+  (op.ref === undefined || finding.requirementIds.includes(op.ref)) &&
+  (op.refs === undefined ||
+    (new Set(op.refs).size === new Set(finding.requirementIds).size &&
+      op.refs.every((id) => finding.requirementIds.includes(id))))
+
+const pairFinding = (code: string, ids: [string, string], message: string): CheckFinding => ({
+  code,
+  severity: 'info',
+  tier: 'formal',
+  requirementIds: ids,
+  message,
+})
+
+describe('a pair demotion repair is scoped to its own pair', () => {
+  const PAIRS: readonly [CoverageDemotion['reason'], string, string][] = [
+    ['opposite-polarity-near-duplicate', 'FND_SIMILAR_SEMANTIC', 'merge'],
+    ['open-opposition-candidate', 'FND_OPPOSITION_CANDIDATE', OPPOSITION_MESSAGE],
+    ['quantity-alias-candidate', 'FND_QUANTITY_ALIAS_CANDIDATE', QUANTITY_ALIAS_MESSAGE],
+    // The two reviewed-waiver discharges. Their op used to carry a ref only for a ONE-id
+    // demotion, and a pair always has two, so the op was a document-wide waiver: one honest
+    // triage of the siren pair then silenced a later, genuinely conflicting infusion pair.
+    ['relational-reasoning-not-attempted', 'FND_RELATIONAL_UNCHECKED', 'relational'],
+    ['numeric-bounds-uncompared', 'FND_NUMERIC_UNCOMPARED', 'uncompared'],
+    ['number-spelling-candidate', 'FND_NUMBER_SPELLING_CANDIDATE', 'spelling'],
+  ]
+
+  // Ruling R29 (S3-039) replaces "applying the op leaves an untriaged pair demoting": every
+  // code here is never-class, so the repair offers no waive of it at all.
+  it.each(
+    PAIRS,
+  )('[S3-039] %s: the repair offers no waive of its never-class code, so no pair is discharged', (reason, code, msg) => {
+    const door = pairFinding(code, ['door-lo', 'door-hi'], msg)
+    const brake = pairFinding(code, ['brake-lo', 'brake-hi'], msg)
+    const context: RepairContext = { ...CONTEXT, findings: [door, brake] }
+    const repair = repairForDemotion(
+      { reason, requirementIds: ['door-lo', 'door-hi'], action: 'x' } as CoverageDemotion,
+      context,
+    )
+    expect((repair.ops as readonly { op?: string }[]).filter((op) => op.op === 'waive')).toEqual([])
+    const waives = repair.ops as readonly { code?: string; ref?: string }[]
+    expect(waives.some((op) => suppresses(op, door) || suppresses(op, brake))).toBe(false)
+  })
+
+  // Every pair discharge binds the FINDING, not one of its ids: a ref-scoped waiver still
+  // discharges every same-code finding naming the ref — the relational cluster a third
+  // requirement joined, the opposition candidate a third requirement forms with one side (a
+  // pair 669c0e9 PROVED), or the same pair after its partner was rewritten.
+  const REVIEWED: readonly [CoverageDemotion['reason'], string][] = [
+    ['relational-reasoning-not-attempted', 'FND_RELATIONAL_UNCHECKED'],
+    ['numeric-bounds-uncompared', 'FND_NUMERIC_UNCOMPARED'],
+    ['number-spelling-candidate', 'FND_NUMBER_SPELLING_CANDIDATE'],
+    ['open-opposition-candidate', 'FND_OPPOSITION_CANDIDATE'],
+    ['opposite-polarity-near-duplicate', 'FND_SIMILAR_SEMANTIC'],
+    ['quantity-alias-candidate', 'FND_QUANTITY_ALIAS_CANDIDATE'],
+  ]
+
+  // Ruling R29 (S3-039) replaces "the op names the exact set and its content hash": a refs+hash
+  // waive of a never-class code is refused by the fold, so the repair offers none, scoped or not.
+  it.each(
+    REVIEWED,
+  )('[S3-039] %s: no waive op, not even one over the exact set and its content hash', (reason, code) => {
+    const pair = pairFinding(code, ['w', 'x'], 'pair')
+    const repair = repairForDemotion(
+      { reason, requirementIds: ['x', 'w'], action: 'x' } as CoverageDemotion,
+      {
+        ...CONTEXT,
+        findings: [pair],
+        contentHash: (ids) => `sha256:${ids.join('+')}`,
+      },
+    )
+    expect(repair.ops).not.toContainEqual(expect.objectContaining({ op: 'waive', code }))
+    expect((repair.ops as readonly { op?: string }[]).filter((op) => op.op === 'waive')).toEqual([])
+  })
+
+  // Ruling R29 (S3-039) replaces "the op does not reach a cluster that grew": with no waive op,
+  // neither the pair nor a grown cluster is discharged by the repair.
+  it.each(
+    REVIEWED,
+  )('[S3-039] %s: no repair op reaches the pair or a cluster that grew', (reason, code) => {
+    const pair = pairFinding(code, ['w', 'x'], 'pair')
+    const repair = repairForDemotion(
+      { reason, requirementIds: ['w', 'x'], action: 'x' } as CoverageDemotion,
+      { ...CONTEXT, findings: [pair] },
+    )
+    const grown: CheckFinding = { ...pair, requirementIds: ['w', 'x', 'y'] }
+    const ops = repair.ops as readonly { code?: string; ref?: string; refs?: readonly string[] }[]
+    expect(ops.filter((op) => suppresses(op, pair) || suppresses(op, grown))).toEqual([])
+  })
+
+  // Ruling R29 (S3-039) replaces "in a four-cycle, each op discharges its own pair only": no
+  // repair op discharges any pair of a never-class code.
+  it.each(
+    REVIEWED,
+  )('[S3-039] %s: in a four-cycle, no repair op discharges any pair', (reason, code) => {
+    // Every id is in two pairs, so no one-requirement scope is exact: the old pick fell back to a
+    // shared id and one triage discharged a second pair.
+    const cycle = [
+      pairFinding(code, ['a', 'b'], 'ab'),
+      pairFinding(code, ['c', 'b'], 'cb'),
+      pairFinding(code, ['c', 'd'], 'cd'),
+      pairFinding(code, ['a', 'd'], 'ad'),
+    ]
+    for (const own of cycle) {
+      const repair = repairForDemotion(
+        { reason, requirementIds: [...own.requirementIds], action: 'x' } as CoverageDemotion,
+        { ...CONTEXT, findings: cycle },
+      )
+      const ops = repair.ops as readonly { code?: string; ref?: string; refs?: readonly string[] }[]
+      expect(cycle.filter((f) => ops.some((op) => suppresses(op, f)))).toEqual([])
+    }
+  })
+
+  it("carries no one-requirement `symspec waive` a finding's message spells", () => {
+    const pair = pairFinding(
+      'FND_SIMILAR_SEMANTIC',
+      ['a', 'b'],
+      'run `symspec glossary add "one" "two"`, or `symspec waive add FND_SIMILAR_SEMANTIC --ref b --reason "…"`',
+    )
+    const repair = repairForDemotion(
+      {
+        reason: 'opposite-polarity-near-duplicate',
+        requirementIds: ['a', 'b'],
+        action: 'x',
+      } as CoverageDemotion,
+      { ...CONTEXT, findings: [pair] },
+    )
+    expect(repair.commands).toContain('symspec glossary "one" "two"')
+    expect(repair.commands.some((c) => c.startsWith('symspec waive'))).toBe(false)
+  })
+
+  // Ruling R29 (S3-039) replaces "avoids an id a SIBLING pair shares, when the pair has one of its
+  // own": FND_SIMILAR_SEMANTIC is triage, so the repair offers no waive that reaches either pair.
+  it('[S3-039] offers no waive that reaches its pair or a SIBLING pair sharing an id', () => {
+    // [a, c] and [b, c]: scoping to c would discharge both, scoping to a only its own.
+    const ac = pairFinding('FND_SIMILAR_SEMANTIC', ['a', 'c'], 'merge a c')
+    const bc = pairFinding('FND_SIMILAR_SEMANTIC', ['b', 'c'], 'merge b c')
+    const repair = repairForDemotion(
+      {
+        reason: 'opposite-polarity-near-duplicate',
+        requirementIds: ['a', 'c'],
+        action: 'x',
+      } as CoverageDemotion,
+      { ...CONTEXT, findings: [bc, ac] },
+    )
+    const ops = repair.ops as readonly { code?: string; ref?: string; refs?: readonly string[] }[]
+    expect(ops.filter((op) => suppresses(op, ac) || suppresses(op, bc))).toEqual([])
+  })
+
+  it("reads its commands from ITS pair's finding, not the first one sharing an id", () => {
+    const ab = pairFinding(
+      'FND_SIMILAR_SEMANTIC',
+      ['a', 'b'],
+      'run `symspec glossary add "one" "two"`',
+    )
+    const ac = pairFinding(
+      'FND_SIMILAR_SEMANTIC',
+      ['a', 'c'],
+      'run `symspec glossary add "one" "three"`',
+    )
+    const repair = repairForDemotion(
+      {
+        reason: 'opposite-polarity-near-duplicate',
+        requirementIds: ['a', 'c'],
+        action: 'x',
+      } as CoverageDemotion,
+      { ...CONTEXT, findings: [ab, ac] },
+    )
+    expect(repair.commands).toContain('symspec glossary "one" "three"')
+    expect(repair.commands).not.toContain('symspec glossary "one" "two"')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AC-3-6: following the near-duplicate repair verbatim surfaces the conflict
+// ---------------------------------------------------------------------------
+
+/**
+ * The verifier's reproducer, driven through the pipeline and this module rather than
+ * asserted on a message string: "open the door" / "close the doors" under one trigger, with
+ * open/close committed as opposites. The two are contrary atoms (spec 007 AC-2-1), both
+ * asserted, over the keys `close_the_door` and `close_the_doors`, so the pair demotes. The claim under test is the one an agent acts on:
+ * running the repair's FIRST command and re-checking must reach the contradiction the
+ * document contains. A raw-text merge ("close the doors" <- "open the door") aliases one
+ * phrase to its own opposite, which the solver then reports as a redundancy and certifies.
+ */
+describe('AC-3-6: the near-duplicate repair, followed verbatim, surfaces the contradiction', () => {
+  const TS = '2026-01-01T00:00:00.000Z'
+  const TRIGGER = 'the passenger presses the door button'
+  const req = (id: string, systemResponse: string) => ({
+    id,
+    patternType: 'event-driven' as const,
+    systemName: 'door controller',
+    systemResponse,
+    trigger: TRIGGER,
+    negated: false,
+    sentence: `When ${TRIGGER}, the door controller shall ${systemResponse}.`,
+    priority: 'medium' as const,
+    status: 'draft' as const,
+    createdAt: TS,
+    updatedAt: TS,
+    derives: [],
+    satisfies: [],
+    verifies: [],
+    refines: [],
+  })
+  const doc = (): RequirementsDocument =>
+    ({
+      requirements: {
+        R1: req('R1', 'open the door'),
+        R2: req('R2', 'close the doors'),
+        R3: req('R3', 'sound the chime'),
+      },
+      glossary: [],
+      antonyms: [{ a: 'open', b: 'close' }],
+      waivers: [],
+      terms: [],
+      stateModel: { variables: [] },
+    }) as never
+  /** The real model scores the pair 0.76; a table states it instead of hoping for it. */
+  const embedder = (): Embedder => async (texts) =>
+    texts.map((t) => {
+      const v = new Float32Array(8)
+      v[t === 'sound the chime' ? 1 : 0] = 1
+      return v
+    })
+
+  it('the first repair command, applied, yields FND_CONTRADICTION rather than verified', async () => {
+    const before = await runCheck(doc() as never, { semantic: { embedder: embedder() } })
+    const demotion = before.coverage.demotions.find(
+      (d) => d.reason === 'opposite-polarity-near-duplicate',
+    )
+    expect(demotion?.requirementIds).toEqual(['R1', 'R2'])
+    // Neither the message nor the action hands out a `symspec waive`: it scopes to one
+    // requirement at most, and that discharges every near-duplicate naming it.
+    const similar = before.findings.filter((f) => f.code === 'FND_SIMILAR_SEMANTIC')
+    expect(similar.length).toBeGreaterThan(0)
+    for (const f of similar) expect(f.message).not.toMatch(/symspec waive/)
+    expect(demotion?.action).not.toMatch(/symspec waive/)
+    const repair = repairForDemotion(demotion as CoverageDemotion, {
+      ...CONTEXT,
+      findings: before.findings,
+    })
+    const first = repair.commands[0] ?? ''
+    const merge = /^symspec glossary "([^"]+)" "([^"]+)"$/.exec(first)
+    expect(merge, `first command is a glossary merge: ${first}`).not.toBeNull()
+    const [, canonical, alias] = merge as RegExpExecArray
+    // Never the raw pair: that aliases "open the door" to its own contrary, one atom at one
+    // polarity, which the solver reads as a redundancy (spec 007 AC-2-1).
+    expect(new Set([canonical, alias])).not.toEqual(new Set(['open the door', 'close the doors']))
+
+    const applied = applyOp(
+      doc(),
+      { op: 'glossary', canonical: canonical as string, alias: alias as string },
+      TS,
+    )
+    if (!('document' in applied)) throw new Error(`glossary op failed: ${JSON.stringify(applied)}`)
+    const after = await runCheck(applied.document as never, { semantic: { embedder: embedder() } })
+    expect(
+      after.findings
+        .filter((f) => f.code === 'FND_CONTRADICTION')
+        .map((f) => [f.severity, [...f.requirementIds].sort()]),
+    ).toEqual([['error', ['R1', 'R2']]])
+    // Not the false equivalence the raw merge produced, and nothing left demoting on the
+    // pair: the run is a complete proof WITH an error finding, which `check` exits 1 on.
+    expect(after.findings.map((f) => f.code)).not.toContain('FND_REDUNDANCY')
+    expect(after.coverage.demotions.map((d) => d.reason)).not.toContain(
+      'opposite-polarity-near-duplicate',
+    )
+  })
+})
+
+/**
+ * Round 2 of the same claim, on the two shapes the first fix missed. Each case drives the
+ * pipeline, takes the demotion's FIRST repair command, applies it with the real `glossary` op,
+ * and re-checks. The assertion is the outcome an agent acts on: the conflicts the document
+ * contains are reported as FND_CONTRADICTION errors afterwards, so `check` exits 1 rather than
+ * certifying.
+ */
+describe('AC-3-6: the first repair command keeps every conflict visible', () => {
+  const TS = '2026-01-01T00:00:00.000Z'
+  const PRESS = 'the passenger presses the door button'
+  const DEPART = 'the train departs'
+  const req = (id: string, trigger: string, systemResponse: string, negated = false) => ({
+    id,
+    patternType: 'event-driven' as const,
+    systemName: 'door controller',
+    systemResponse,
+    trigger,
+    negated,
+    sentence: `When ${trigger}, the door controller shall ${negated ? 'not ' : ''}${systemResponse}.`,
+    priority: 'medium' as const,
+    status: 'draft' as const,
+    createdAt: TS,
+    updatedAt: TS,
+    derives: [],
+    satisfies: [],
+    verifies: [],
+    refines: [],
+  })
+  const docOf = (
+    reqs: readonly ReturnType<typeof req>[],
+    glossary: readonly { canonical: string; aliases: string[] }[] = [],
+  ): RequirementsDocument =>
+    ({
+      requirements: Object.fromEntries(reqs.map((r) => [r.id, r])),
+      glossary,
+      antonyms: [{ a: 'open', b: 'close' }],
+      waivers: [],
+      terms: [],
+      stateModel: { variables: [] },
+    }) as never
+  /** Door phrasings share a vector (the real model scores these pairs 0.76); the rest are apart. */
+  const embedder = (): Embedder => async (texts) =>
+    texts.map((t) => {
+      const v = new Float32Array(8)
+      v[/\bdoors?\b/.test(t) ? 0 : t === 'sound the chime' ? 1 : 2] = 1
+      return v
+    })
+  const check = (doc: RequirementsDocument) =>
+    runCheck(doc as never, { semantic: { embedder: embedder() } })
+  const contradictions = (report: Awaited<ReturnType<typeof runCheck>>) =>
+    report.findings
+      .filter((f) => f.code === 'FND_CONTRADICTION' && f.severity === 'error')
+      .map((f) => [...f.requirementIds].sort())
+      .sort()
+  /** Apply the demotion's first repair command, which must be a glossary merge. */
+  const followFirst = (doc: RequirementsDocument, demotion: CoverageDemotion, findings: never) => {
+    const repair = repairForDemotion(demotion, { ...CONTEXT, findings })
+    const first = repair.commands[0] ?? ''
+    const merge = /^symspec glossary "([^"]+)" "([^"]+)"$/.exec(first)
+    expect(merge, `first command is a glossary merge: ${first}`).not.toBeNull()
+    const [, canonical, alias] = merge as RegExpExecArray
+    const applied = applyOp(
+      doc,
+      { op: 'glossary', canonical: canonical as string, alias: alias as string },
+      TS,
+    )
+    if (!('document' in applied)) throw new Error(`glossary op failed: ${JSON.stringify(applied)}`)
+    return { document: applied.document, canonical: canonical as string, alias: alias as string }
+  }
+
+  it('a response that bakes in "not" gets a merge keyed on the text the solver reads', async () => {
+    // on `open_the_doors` negated and R1 on `open_the_door` (spec 007 AC-2-1: no rename).
+    // on `close_the_doors` at positive polarity and R1 on `close_the_door` negated.
+    const doc = () =>
+      docOf([
+        req('R1', PRESS, 'open the door'),
+        req('R2', PRESS, 'not open the doors'),
+        req('R3', PRESS, 'sound the chime'),
+      ])
+    const before = await check(doc())
+    const demotions = before.coverage.demotions.filter(
+      (d) => d.reason === 'opposite-polarity-near-duplicate',
+    )
+    expect(demotions.map((d) => d.requirementIds)).toEqual([['R1', 'R2']])
+    expect(before.verified).toBe(false)
+
+    const { document, alias } = followFirst(
+      doc(),
+      demotions[0] as CoverageDemotion,
+      before.findings as never,
+    )
+    // The alias is the text the glossary lookup sees, never the stored "not …" prefix.
+    expect(alias).not.toMatch(/^not /)
+    const after = await check(document)
+    expect(contradictions(after)).toEqual([['R1', 'R2']])
+  })
+
+  it('never re-points a phrase the committed glossary already routes another phrase onto', async () => {
+    // The document commits "arm the barrier" -> "close the doors", so R3/R4 contradict. A merge
+    // that aliases "close the doors" away orphans that entry (lookup is one hop): R4 stays on
+    // `close_the_doors`, R3 moves, and the R3/R4 conflict disappears.
+    const doc = (without?: string) =>
+      docOf(
+        [
+          req('R1', PRESS, 'open the door'),
+          req('R2', PRESS, 'close the doors'),
+          req('R5', PRESS, 'sound the chime'),
+          req('R3', DEPART, 'close the doors'),
+          req('R4', DEPART, 'arm the barrier', true),
+        ].filter((r) => r.id !== without),
+        [{ canonical: 'close the doors', aliases: ['arm the barrier'] }],
+      )
+    const before = await check(doc())
+    expect(contradictions(before)).toEqual([['R3', 'R4']])
+    const demotions = before.coverage.demotions.filter(
+      (d) => d.reason === 'opposite-polarity-near-duplicate',
+    )
+    expect(demotions.length).toBeGreaterThan(0)
+
+    for (const demotion of demotions) {
+      const { document, canonical, alias } = followFirst(doc(), demotion, before.findings as never)
+      const after = await check(document)
+      // Both conflicts the document contains, R1/R2 included, and the committed one kept.
+      expect(contradictions(after), `after glossary "${canonical}" "${alias}"`).toEqual([
+        ['R1', 'R2'],
+        ['R3', 'R4'],
+      ])
+      // The verifier's step 3: resolve R1/R2 by deleting R1. R3/R4 must still be caught.
+      const { R1: _dropped, ...rest } = (document as { requirements: Record<string, unknown> })
+        .requirements
+      const resolved = await check({ ...document, requirements: rest } as never)
+      expect(contradictions(resolved)).toEqual([['R3', 'R4']])
+    }
+    // Control: with R1 deleted and no merge, the committed glossary still catches R3/R4.
+    expect(contradictions(await check(doc('R1')))).toEqual([['R3', 'R4']])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 (spec 007 AC-5-6): the excluded-from-formal remedy, and the engine's never-code prose
+// ---------------------------------------------------------------------------
+
+/** The real `check` and solver, as `testing/waiver-fixture.ts` takes them. */
+const WIRING: CheckWiring = {
+  check: (input) =>
+    runOperation(checkOp, input).pipe(
+      Effect.map((envelope) => ({
+        exit: exitCodeForEnvelope(envelope),
+        data: envelope.data as unknown,
+      })),
+    ),
+  solver: solverServiceLayer,
+}
+
+describe('[S3-041] the excluded-from-formal remedy for a blocking scoped lint', () => {
+  // base.json's ORD-R1 is blocked by GTWR_R7_VAGUE, a wording (scoped) code.
+  const doc = fixtureDoc('base.json')
+  const id = ID['ORD-R1']
+  let action = ''
+  let ops: readonly Readonly<Record<string, unknown>>[] = []
+
+  beforeAll(async () => {
+    const run = await checkDocument(WIRING, doc)
+    const demotion = run.data.coverage.demotions.find(
+      (d) => d.reason === 'excluded-from-formal' && d.requirementIds.includes(id),
+    )
+    if (demotion === undefined)
+      throw new Error('base.json: no excluded-from-formal demotion for ORD-R1')
+    action = demotion.action ?? ''
+    ops = demotion.repair?.ops ?? []
+  }, 120_000)
+
+  it('[S3-041] the fixture premise: ORD-R1 is blocked by GTWR_R7_VAGUE, a scoped code', () => {
+    expect(waivabilityOf('GTWR_R7_VAGUE')).toBe('scoped')
+    expect(requirementsContentHash(doc, [id])).toBe(HASH['ORD-R1'])
+  })
+
+  it('[S3-041] the action offers rephrasing first, before any waiver', () => {
+    const rephrase = action.search(/\b(?:rephrase|rewrite|reword)/i)
+    expect(rephrase, action).toBeGreaterThanOrEqual(0)
+    const waive = action.search(/waive/i)
+    if (waive >= 0) expect(rephrase, action).toBeLessThan(waive)
+  })
+
+  it('[S3-041] any offered waive is refs plus the current content hash, never a single ref', () => {
+    const waives = ops.filter((op) => op.op === 'waive')
+    for (const op of waives) {
+      expect(op).toEqual({
+        op: 'waive',
+        code: 'GTWR_R7_VAGUE',
+        refs: [id],
+        contentHash: HASH['ORD-R1'],
+        reason: expect.any(String),
+      })
+      expect(op).not.toHaveProperty('ref')
+    }
+    // An action that mentions a waiver must carry the exact op, so an agent never has to spell
+    // one from the prose.
+    if (/\bwaive\b|waiver/i.test(action)) expect(waives.length, action).toBeGreaterThan(0)
+  })
+
+  it('[S3-041] an offered waiver says it demotes waived-blocking-lint, so the run cannot verify', () => {
+    if (!ops.some((op) => op.op === 'waive') && !/\bwaive\b|waiver/i.test(action)) return
+    expect(action).toContain('waived-blocking-lint')
+    expect(action).toMatch(
+      /cannot (?:verify|certify|be verified)|never (?:yields? |reaches |be )?`?verified|`?verified`?[^.]{0,40}\bfalse\b/i,
+    )
+  })
+
+  it('[S3-041] the action spells no single-ref `symspec waive <blocking-code> --ref` syntax', () => {
+    // NEGATIVE guards on base's sentence: a one-requirement waive is the wider scope S3 removes.
+    expect(action).not.toContain('symspec waive add <blocking-code> --ref')
+    expect(action).not.toContain('symspec waive <blocking-code> --ref')
+    expect(action).not.toMatch(/symspec waive\b[^`]*--ref\b/)
+  })
+})
+
+/**
+ * Every string a TypeScript source file holds — plain, template and template-part literals —
+ * with comments excluded by construction (the compiler's own scanner, not a regex).
+ */
+const stringLiterals = (relative: string): readonly string[] => {
+  const file = ts.createSourceFile(
+    relative,
+    readFileSync(join(REPO_ROOT, relative), 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+  )
+  const out: string[] = []
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isStringLiteral(node) ||
+      ts.isNoSubstitutionTemplateLiteral(node) ||
+      ts.isTemplateHead(node) ||
+      ts.isTemplateMiddle(node) ||
+      ts.isTemplateTail(node)
+    ) {
+      out.push(node.text)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  return out
+}
+
+/**
+ * The engine sites whose findings are all never-class: every code literal each file holds is
+ * asserted never below, so a string in it that says "waive" can only be advice to waive a
+ * never code (S3-040, R29).
+ */
+const NEVER_ONLY_SITES = [
+  'src/domain/engine/formal/semantic.ts',
+  'src/domain/engine/formal/numeric-contradiction.ts',
+  'src/domain/engine/formal/number-spelling.ts',
+  'src/domain/engine/formal/quantity-alias.ts',
+  'src/domain/engine/formal/coverage.ts',
+] as const
+
+/**
+ * `pipeline/check.ts` also builds the excluded-from-formal action, whose blocking code is a
+ * scoped lint (S3-041 may offer its scoped waive there). So its sweep forbids the never-code
+ * spellings base ships rather than every "waive": the pair demotions' "repair waiver"
+ * (open-opposition-candidate, opposite-polarity-near-duplicate, quantity-alias-candidate),
+ * relational's "waive this finding", numeric-bounds-uncompared's "waive this finding", and
+ * number-spelling-candidate's "waive FND_NUMBER_SPELLING_CANDIDATE", and the unapplied-waiver
+ * note's "a candidate is discharged only by a waiver" (open-opposition-candidate).
+ */
+const CHECK_TS = 'src/domain/engine/pipeline/check.ts'
+const NEVER_WAIVE_SPELLINGS =
+  /repair waiver|waive (?:this|it|the pair)\b|waive FND_[A-Z_]+|discharged only by a waiver/i
+
+describe('[S3-040] the engine never advises a waiver of a never-class code (static)', () => {
+  it('[S3-040] the extractor reads string literals and skips comments', () => {
+    const probe = ts.createSourceFile(
+      'probe.ts',
+      `// waive in a comment\nconst a = 'waive one'\nconst b = \`x $\{a} waive two\`\n`,
+      ts.ScriptTarget.Latest,
+      true,
+    )
+    const found: string[] = []
+    const visit = (node: ts.Node): void => {
+      if (ts.isStringLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateTail(node)) {
+        found.push(node.text)
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(probe)
+    expect(found).toEqual(['waive one', 'x ', ' waive two'])
+  })
+
+  it.each(NEVER_ONLY_SITES)('[S3-040] %s emits only never-class codes', (relative) => {
+    const codes = [
+      ...new Set(stringLiterals(relative).filter((s) => /^(?:FND|GTWR)_[A-Z0-9_]+$/.test(s))),
+    ]
+    expect(codes.length, relative).toBeGreaterThan(0)
+    for (const code of codes) expect(waivabilityOf(code), `${relative}: ${code}`).toBe('never')
+  })
+
+  it.each(NEVER_ONLY_SITES)('[S3-040] %s: no string literal says "waive"', (relative) => {
+    expect(stringLiterals(relative).filter((s) => /waive/i.test(s))).toEqual([])
+  })
+
+  it('[S3-040] pipeline/check.ts: no never-code demotion action spells a waiver', () => {
+    expect(stringLiterals(CHECK_TS).filter((s) => NEVER_WAIVE_SPELLINGS.test(s))).toEqual([])
+  })
+})
+
+/** The commands and flags this build does not have (R24, R36). */
+const UNBUILT = ['vocab distinct', 'propose-vocabulary', '--rescope-waivers'] as const
+
+describe('[S3-045] no source string names a command this build lacks (static)', () => {
+  it.each(walk('src').sort())('[S3-045] %s', (relative) => {
+    const named = stringLiterals(relative).filter((s) => UNBUILT.some((u) => s.includes(u)))
+    expect(named).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round (R56): every repair arm, constructed; the never-code guards over every
+// inflection of "waive"
+// ---------------------------------------------------------------------------
+
+/** The demotion reasons a never-class code raises (the report-corpus DEMOTION_CODE map). */
+const NEVER_DEMOTION_CODE: Readonly<Record<string, string>> = {
+  'open-opposition-candidate': 'FND_OPPOSITION_CANDIDATE',
+  'opposite-polarity-near-duplicate': 'FND_SIMILAR_SEMANTIC',
+  'quantity-alias-candidate': 'FND_QUANTITY_ALIAS_CANDIDATE',
+  'relational-reasoning-not-attempted': 'FND_RELATIONAL_UNCHECKED',
+  'numeric-bounds-uncompared': 'FND_NUMERIC_UNCOMPARED',
+  'number-spelling-candidate': 'FND_NUMBER_SPELLING_CANDIDATE',
+  'inconclusive-group': 'FND_NEEDS_REVIEW',
+}
+
+describe('[S3-039] every repair arm, constructed for each demotion reason, emits only ops the S3 fold accepts and commands the built CLI parses', () => {
+  // A real document, so every op can be folded: base.json's LOG pair stands in for the pair.
+  const doc = fixtureDoc('base.json')
+  const pair = [ID['LOG-R1'], ID['LOG-R2']] as const
+  const on = (code: string, message: string): CheckFinding => ({
+    code,
+    severity: 'info',
+    tier: 'formal',
+    requirementIds: [...pair],
+    message,
+  })
+  const context: RepairContext = {
+    exclusionsById: new Map([
+      [pair[0], { reason: 'blocking-finding', findings: [on('GTWR_R7_VAGUE', 'vague')] } as never],
+    ]),
+    findings: [
+      on('FND_QUANTITY_ALIAS_CANDIDATE', QUANTITY_ALIAS_MESSAGE),
+      on('FND_OPPOSITION_CANDIDATE', OPPOSITION_MESSAGE),
+      on('FND_SIMILAR_SEMANTIC', 'merge'),
+      on('FND_RELATIONAL_UNCHECKED', 'relational'),
+      on('FND_NUMERIC_UNCOMPARED', 'uncompared'),
+      on('FND_NUMBER_SPELLING_CANDIDATE', 'spelling'),
+      on('FND_NEEDS_REVIEW', 'unknown'),
+    ],
+    docPath: './requirements.json',
+    solverBudgetMs: 2_000,
+    timeoutMs: 1_000,
+    contentHash: (ids) => requirementsContentHash(doc, ids),
+  }
+  const repairs = EVERY_REASON.map((reason) => ({
+    reason,
+    repair: repairForDemotion(
+      { reason, requirementIds: [...pair], action: 'irrelevant here' } as CoverageDemotion,
+      context,
+    ),
+  }))
+
+  it('[S3-039] reaches every reason the union has (exhaustive over reasons, not corpus documents)', () => {
+    expect(repairs.map((r) => r.reason).sort()).toEqual([...EVERY_REASON].sort())
+    expect(
+      repairs.some((r) => r.repair.ops.length > 0),
+      'no arm emits an op',
+    ).toBe(true)
+  })
+
+  it.each(
+    EVERY_REASON,
+  )('[S3-039] %s: every op decodes and folds under MUTATE_OPTIONS, and none waives a never-class code', (reason) => {
+    const { repair } = repairs.find((r) => r.reason === reason) ?? { repair: { ops: [] } }
+    const wrong: string[] = []
+    for (const raw of repair.ops) {
+      const op = raw as Readonly<Record<string, unknown>>
+      if (op.op === 'waive' && waivabilityOf(String(op.code)) !== 'scoped')
+        wrong.push(
+          `waives ${String(op.code)} (${waivabilityOf(String(op.code)) ?? 'unclassified'})`,
+        )
+      const decoded = Effect.runSync(Effect.result(decodeOp(raw)))
+      if (decoded._tag === 'Failure') {
+        wrong.push(`does not decode: ${JSON.stringify(raw)}`)
+        continue
+      }
+      const folded = foldOps(doc, [decoded.success], '2026-10-05T00:00:00.000Z', MUTATE_OPTIONS)
+      if (folded.abortedAt !== undefined)
+        wrong.push(`${JSON.stringify(raw)} refused ${folded.results[folded.abortedAt]?.code}`)
+    }
+    expect(wrong).toEqual([])
+  })
+
+  it('[S3-039] [S3-045] every command any arm emits parses with the built binary, full argv (R56)', async () => {
+    const commands = new Set(repairs.flatMap((r) => symspecCommandsDeep(r.repair)))
+    expect(commands.size).toBeGreaterThan(EVERY_REASON.length / 2)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 120_000)
+})
+
+describe('[S3-040] the never-code negative guards read every inflection of "waive" (static, R56)', () => {
+  it('[S3-040] the inflection set matches each inflection and spares "waivable"', () => {
+    for (const w of ['waive', 'Waives', 'waived', 'Waiving', 'waiver', 'WAIVERS'])
+      expect(WAIVE_INFLECTION.test(`a ${w} b`), w).toBe(true)
+    expect(WAIVE_INFLECTION.test('it is never waivable')).toBe(false)
+  })
+
+  it.each(
+    NEVER_ONLY_SITES,
+  )('[S3-040] %s: no string literal uses any inflection of "waive"', (relative) => {
+    expect(stringLiterals(relative).filter((s) => WAIVE_INFLECTION.test(s))).toEqual([])
+  })
+
+  it('[S3-040] pipeline/check.ts: no literal of a never-code demotion action (unappliedNote included), and no literal naming a never-class code, uses any inflection of "waive"', () => {
+    const file = ts.createSourceFile(
+      CHECK_TS,
+      readFileSync(join(REPO_ROOT, CHECK_TS), 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+    )
+    const literalsUnder = (node: ts.Node, out: string[] = []): string[] => {
+      if (
+        ts.isStringLiteral(node) ||
+        ts.isNoSubstitutionTemplateLiteral(node) ||
+        ts.isTemplateHead(node) ||
+        ts.isTemplateMiddle(node) ||
+        ts.isTemplateTail(node)
+      )
+        out.push(node.text)
+      ts.forEachChild(node, (c) => {
+        literalsUnder(c, out)
+      })
+      return out
+    }
+    const swept = new Map<string, string[]>()
+    const visit = (node: ts.Node): void => {
+      if (ts.isObjectLiteralExpression(node)) {
+        const reason = node.properties.find(
+          (p): p is ts.PropertyAssignment =>
+            ts.isPropertyAssignment(p) && p.name.getText() === 'reason',
+        )
+        const action = node.properties.find(
+          (p): p is ts.PropertyAssignment =>
+            ts.isPropertyAssignment(p) && p.name.getText() === 'action',
+        )
+        if (
+          reason !== undefined &&
+          action !== undefined &&
+          ts.isStringLiteral(reason.initializer) &&
+          NEVER_DEMOTION_CODE[reason.initializer.text] !== undefined
+        )
+          swept.set(reason.initializer.text, [
+            ...(swept.get(reason.initializer.text) ?? []),
+            ...literalsUnder(action.initializer),
+          ])
+      }
+      if (ts.isFunctionDeclaration(node) && node.name?.text === 'unappliedNote')
+        swept.set('unappliedNote', literalsUnder(node))
+      ts.forEachChild(node, visit)
+    }
+    visit(file)
+    // Non-vacuous: every never-code reason's action and the unapplied note were found.
+    expect([...swept.keys()].sort()).toEqual(
+      [...Object.keys(NEVER_DEMOTION_CODE), 'unappliedNote'].sort(),
+    )
+    const naming = stringLiterals(CHECK_TS).filter((s) =>
+      [...s.matchAll(/\bFND_[A-Z_]+\b/g)].some((m) => waivabilityOf(m[0]) === 'never'),
+    )
+    const offenders = [
+      ...[...swept].flatMap(([where, lits]) =>
+        lits.filter((s) => WAIVE_INFLECTION.test(s)).map((s) => `${where}: ${s}`),
+      ),
+      ...naming.filter((s) => WAIVE_INFLECTION.test(s)).map((s) => `names a never code: ${s}`),
+    ]
+    expect([...new Set(offenders)]).toEqual([])
+  })
+})
+
+describe('[S3-045] the commands a reachable near-duplicate message names parse with the built binary (R56)', () => {
+  it('[S3-045] the opposite-polarity near-duplicate (door/doors over open/close): every command its FND_SIMILAR_SEMANTIC message and its demotion name parses', async () => {
+    const door = (id: string, systemResponse: string) => ({
+      id,
+      patternType: 'event-driven' as const,
+      systemName: 'door controller',
+      systemResponse,
+      trigger: 'the passenger presses the door button',
+      negated: false,
+      sentence: `When the passenger presses the door button, the door controller shall ${systemResponse}.`,
+      priority: 'medium' as const,
+      status: 'draft' as const,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      derives: [],
+      satisfies: [],
+      verifies: [],
+      refines: [],
+    })
+    const doc = {
+      requirements: {
+        R1: door('R1', 'open the door'),
+        R2: door('R2', 'close the doors'),
+        R3: door('R3', 'sound the chime'),
+      },
+      glossary: [],
+      antonyms: [{ a: 'open', b: 'close' }],
+      waivers: [],
+      terms: [],
+      stateModel: { variables: [] },
+    }
+    const embedder: Embedder = async (texts) =>
+      texts.map((t) => {
+        const v = new Float32Array(8)
+        v[t === 'sound the chime' ? 1 : 0] = 1
+        return v
+      })
+    const report = await runCheck(doc as never, { semantic: { embedder } })
+    const near = report.findings.filter((f) => f.code === 'FND_SIMILAR_SEMANTIC')
+    const demotions = report.coverage.demotions.filter(
+      (d) => d.reason === 'opposite-polarity-near-duplicate',
+    )
+    expect(near.length).toBeGreaterThan(0)
+    expect(demotions.length).toBeGreaterThan(0)
+    const commands = symspecCommandsDeep([near, demotions])
+    expect(commands.length).toBeGreaterThan(0)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 120_000)
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R60, R61): commands that carry document text are shell-safe, and the
+// number-spelling arm names a full command
+// ---------------------------------------------------------------------------
+
+/** An engine-shaped requirement, hand-written so a slot may hold any text a raw document can. */
+const engineReq = (
+  id: string,
+  systemResponse: string,
+  extra: Readonly<Record<string, unknown>> = {},
+) => ({
+  id,
+  patternType: 'event-driven' as const,
+  systemName: 'token service',
+  systemResponse,
+  trigger: 'the operator requests access',
+  negated: false,
+  sentence: `When the operator requests access, the token service shall ${systemResponse}.`,
+  priority: 'medium' as const,
+  status: 'draft' as const,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  derives: [],
+  satisfies: [],
+  verifies: [],
+  refines: [],
+  ...extra,
+})
+
+const engineDoc = (
+  requirements: readonly ReturnType<typeof engineReq>[],
+  tables: Readonly<Record<string, unknown>> = {},
+) => ({
+  requirements: Object.fromEntries(requirements.map((r) => [r.id, r])),
+  glossary: [],
+  antonyms: [],
+  waivers: [],
+  terms: [],
+  stateModel: { variables: [] },
+  ...tables,
+})
+
+/**
+ * One response per hazard R60 names, each beside a plain one: a double quote, a single quote,
+ * `$`, a backtick, a semicolon, a backslash, and all of them at once. A newline is not here: a
+ * slot holding one fails GTWR_R1_PATTERN and never reaches the semantic tier (measured), so the
+ * newline hazard is pinned where a newline can reach a command, the document path
+ * (`cli.test.ts`) and a glossary alias in a refusal (`mutate.test.ts`).
+ */
+const HAZARDS: readonly (readonly [string, string])[] = [
+  ['double quote', 'mint a "token"'],
+  ['single quote', "mint the operator's token"],
+  ['dollar', 'mint a token for $USER'],
+  ['backtick', 'mint a `token`'],
+  ['semicolon', 'mint a token; then log it'],
+  ['backslash', 'mint a token\\ now'],
+  ['all', 'mint a "token" for $USER; it\'s `id` \\ now'],
+]
+
+describe('[S3-045] every command a check emits over document text is shell-safe (R60)', () => {
+  const same: Embedder = async (texts) => texts.map(() => Float32Array.from([1, 0, 0, 0]))
+
+  it.each(
+    HAZARDS,
+  )('[S3-045] FND_SIMILAR_SEMANTIC (%s): the glossary command passes bash -n and the shell hands symspec both responses as two whole arguments, and every other command is shell-safe', async (_, hostile) => {
+    const plain = 'issue a token'
+    const doc = engineDoc([
+      engineReq('11111111-1111-4111-8111-111111111111', plain),
+      engineReq('22222222-2222-4222-8222-222222222222', hostile),
+    ])
+    const report = await runCheck(doc as never, { semantic: { embedder: same } })
+    const near = report.findings.filter((f) => f.code === 'FND_SIMILAR_SEMANTIC')
+    expect(near.length, 'the fixture raises FND_SIMILAR_SEMANTIC').toBe(1)
+    const message = near[0]?.message ?? ''
+    // The glossary command, read off the message as an agent copies it.
+    const glossary = symspecCommandsIn(message).filter((c) => /^symspec glossary\b/.test(c))
+    expect(glossary.length, `a glossary command in: ${message}`).toBeGreaterThan(0)
+    const wrong: string[] = []
+    for (const c of glossary) {
+      const problem = shellSafetyProblem(c, [plain, hostile])
+      if (problem !== undefined) wrong.push(`${c}  =>  ${problem}`)
+    }
+    for (const c of new Set(symspecCommandsDeep(report))) {
+      if (glossary.includes(c)) continue
+      const problem = shellSafetyProblem(c)
+      if (problem !== undefined) wrong.push(`${c}  =>  ${problem}`)
+    }
+    expect(wrong).toEqual([])
+  })
+
+  it.each(
+    HAZARDS,
+  )('[S3-045] the opposite-polarity near-duplicate (%s): every command its message and demotion name is shell-safe', async (_, hostile) => {
+    const tail = hostile.replace(/^mint a token|^mint a|^mint the|^mint/, '')
+    const doc = engineDoc(
+      [
+        engineReq('11111111-1111-4111-8111-111111111111', `open the door${tail}`),
+        engineReq('22222222-2222-4222-8222-222222222222', `close the doors${tail}`),
+        engineReq('33333333-3333-4333-8333-333333333333', 'sound the chime'),
+      ],
+      { antonyms: [{ a: 'open', b: 'close' }] },
+    )
+    const embedder: Embedder = async (texts) =>
+      texts.map((t) => {
+        const v = new Float32Array(8)
+        v[t === 'sound the chime' ? 1 : 0] = 1
+        return v
+      })
+    const report = await runCheck(doc as never, { semantic: { embedder } })
+    expect(
+      report.coverage.demotions.some((d) => d.reason === 'opposite-polarity-near-duplicate'),
+      'the fixture raises the opposite-polarity near-duplicate',
+    ).toBe(true)
+    const commands = [...new Set(symspecCommandsDeep(report))]
+    expect(commands.length).toBeGreaterThan(0)
+    const wrong = commands.flatMap((c) => {
+      const problem = shellSafetyProblem(c)
+      return problem === undefined ? [] : [`${c}  =>  ${problem}`]
+    })
+    expect(wrong).toEqual([])
+  })
+})
+
+describe('[S3-045] the number-spelling arm names full commands (R61, attack C13)', () => {
+  it('[S3-045] the committed-alias branch of FND_NUMBER_SPELLING_CANDIDATE: every command its message names parses with the built binary, full argv', async () => {
+    const doc = engineDoc(
+      [
+        engineReq('10000000-0000-4000-8000-000000000001', 'sound the chime within 1.5 s', {
+          systemName: 'controller',
+          trigger: 'the door opens',
+          sentence: 'When the door opens, the controller shall sound the chime within 1.5 s.',
+        }),
+        engineReq('10000000-0000-4000-8000-000000000002', 'start the alarm sequence', {
+          systemName: 'controller',
+          trigger: 'the door opens',
+          negated: true,
+          sentence: 'When the door opens, the controller shall not start the alarm sequence.',
+        }),
+      ],
+      {
+        glossary: [
+          { canonical: 'start the alarm sequence', aliases: ['sound the chime within 1,5 s'] },
+        ],
+      },
+    )
+    const report = await runCheck(doc as never, {})
+    const spelling = report.findings.filter((f) => f.code === 'FND_NUMBER_SPELLING_CANDIDATE')
+    expect(spelling.length, 'the fixture raises FND_NUMBER_SPELLING_CANDIDATE').toBe(1)
+    // The committed-alias branch, not the same-phrase one.
+    expect(spelling[0]?.message).toContain('through a committed glossary or term alias')
+    const commands = symspecCommandsDeep(spelling)
+    expect(commands.some((c) => /^symspec update\b/.test(c))).toBe(true)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 60_000)
 })

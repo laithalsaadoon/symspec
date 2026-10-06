@@ -1,5 +1,5 @@
 /**
- * The ERR_* error catalog: 21 stable operational-error codes, each a
+ * The ERR_* error catalog: the stable operational-error codes, each a
  * {@link Schema.TaggedErrorClass} whose TAG IS THE CODE.
  *
  * ## Why the tag is the code
@@ -70,7 +70,7 @@ const ErrorFields = {
 } as const
 
 // ---------------------------------------------------------------------------
-// The 21 codes, in shipped (append-only) order
+// The codes, in shipped (append-only) order
 //
 // GOTCHA (v4 beta.102 + noImplicitOverride): the Runtime marker properties need
 // an `override` modifier. `Cause.YieldableError` already declares
@@ -113,13 +113,13 @@ export class ErrDocParse extends Schema.TaggedErrorClass<ErrDocParse>()(
   override readonly [Runtime.errorReported] = false
 }
 
-/** The document's schemaVersion does not equal the current SCHEMA_VERSION, though it does satisfy the current document schema. The suggestions therefore carry the exact ops that reproduce it: a `symspec init` step, one `symspec apply` JSONL op record per requirement and per edge in dependency order, the `symspec glossary`/`antonym`/`waive` commands for the tables `apply` has no op for, and an explicit statement of anything the ops do not reproduce. */
+/** The document's schemaVersion does not equal the current SCHEMA_VERSION, though it does satisfy the current document schema. The suggestions therefore carry the exact ops that reproduce it: a `symspec init` step, one `symspec apply` JSONL op record per requirement and per edge in dependency order, the `symspec glossary "<canonical>" "<alias>"`, `symspec antonym <a> <b>` and `symspec waive <code> --ref <id> --reason "<reason>"` commands for the tables `apply` has no op for, and an explicit statement of anything the ops do not reproduce. */
 export class ErrSchemaVersion extends Schema.TaggedErrorClass<ErrSchemaVersion>()(
   'ERR_SCHEMA_VERSION',
   ErrorFields,
   {
     description:
-      "The document's schemaVersion does not equal the current SCHEMA_VERSION, though it does satisfy the current document schema. The suggestions therefore carry the exact ops that reproduce it: a `symspec init` step, one `symspec apply` JSONL op record per requirement and per edge in dependency order, the `symspec glossary`/`antonym`/`waive` commands for the tables `apply` has no op for, and an explicit statement of anything the ops do not reproduce. Suggestion: `symspec init <file>`, then pipe the reported op records through `symspec apply`.",
+      'The document\'s schemaVersion does not equal the current SCHEMA_VERSION, though it does satisfy the current document schema. The suggestions therefore carry the exact ops that reproduce it: a `symspec init` step, one `symspec apply` JSONL op record per requirement and per edge in dependency order, the `symspec glossary "<canonical>" "<alias>"`, `symspec antonym <a> <b>` and `symspec waive <code> --ref <id> --reason "<reason>"` commands for the tables `apply` has no op for, and an explicit statement of anything the ops do not reproduce. Suggestion: `symspec init <file>`, then pipe the reported op records through `symspec apply`.',
   },
 ) {
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
@@ -141,7 +141,7 @@ export class ErrDuplicateId extends Schema.TaggedErrorClass<ErrDuplicateId>()(
   ErrorFields,
   {
     description:
-      'A CreateRequirement supplied a UUID that already exists. Suggestion: use `symspec update`, or omit --id to auto-mint a fresh UUID.',
+      'A CreateRequirement supplied a UUID that already exists. Suggestion: use `symspec update --ref <id> <attr> "<value>"`, or omit --id to auto-mint a fresh UUID.',
   },
 ) {
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
@@ -342,6 +342,43 @@ export class ErrDuplicateKey extends Schema.TaggedErrorClass<ErrDuplicateKey>()(
   override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
   override readonly [Runtime.errorReported] = false
 }
+
+/** A parse left an unbound clause marker out of every slot, so storing it would drop a condition (spec 007 AC-2-2). */
+export class ErrClauseUnbound extends Schema.TaggedErrorClass<ErrClauseUnbound>()(
+  'ERR_CLAUSE_UNBOUND',
+  ErrorFields,
+  {
+    description:
+      'The words before the modal that no stored slot holds include an unbound clause marker (Unless, Provided (that), In case, Except, Before, Until, Only if, Even if), so the requirement is refused rather than stored without its condition. Suggestion: restate the named clause as While/When/If…then, or name the state in which the requirement applies.',
+  },
+) {
+  override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
+  override readonly [Runtime.errorReported] = false
+}
+/** `symspec.config.json`, or a split intent or policy file it names, cannot be read as one, or its location cannot be known (spec 007 AC-5-10). */
+export class ErrConfigInvalid extends Schema.TaggedErrorClass<ErrConfigInvalid>()(
+  'ERR_CONFIG_INVALID',
+  ErrorFields,
+  {
+    description:
+      '`symspec.config.json` is not valid JSON or fails its schema, a split intent or policy file it names is missing or fails its schema, the document carries an inline intent or policy alongside a split one, a config named by --config or SYMSPEC_CONFIG does not exist, or `git rev-parse --show-toplevel` fails in the document directory with anything but the whole "not a git repository" discovery message git itself prints (a refusal that quotes a path spelling that phrase is still a refusal), including git refusing a bare repository the document resolves into (so where the config lives cannot be known). The run fails closed rather than checking without the pins. The one exception: with no config named, a refusal other than the bare-repository one, and no `symspec.config.json` in the document directory or any ancestor, no config could govern the run, so `check` runs as with no repository and discloses the first line of the refusal in `data.run.config.gitRefusal`. Suggestion: fix the file the message names; `symspec init --split` in an empty directory writes a valid skeleton of all three to compare against.',
+  },
+) {
+  override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
+  override readonly [Runtime.errorReported] = false
+}
+/** A `waive` the waivability policy refuses: a `never`-class code, a code no catalog classifies, or a waiver with no requirement scope (spec 007 AC-5-6). */
+export class ErrWaiverRefused extends Schema.TaggedErrorClass<ErrWaiverRefused>()(
+  'ERR_WAIVER_REFUSED',
+  ErrorFields,
+  {
+    description:
+      "A `waive` was refused by the waivability policy (spec 007 AC-5-6): the code is a `never`-class finding (verdict, disclosure, triage, hygiene or anchor), which only a change to the document discharges; or no catalog publishes the code, so it has no class; or the waive names no requirement, and a waiver binds only the requirement ids and text a reviewer read. The op is refused and an atomic batch writes nothing. Suggestion: for a `never` code, rewrite the requirement the finding names (or commit the `antonym` or `glossary` entry it proposes); for a `wording` or `structural` code, name the finding's requirement ids with `refs` (its `repair.ops` carry them, with the content hash).",
+  },
+) {
+  override readonly [Runtime.errorExitCode] = EXIT_OPERATIONAL_ERROR
+  override readonly [Runtime.errorReported] = false
+}
 // ---------------------------------------------------------------------------
 // The closed union and the code list
 // ---------------------------------------------------------------------------
@@ -373,6 +410,9 @@ export type OperationalError =
   | ErrDocExists
   | ErrEmbedModelMissing
   | ErrDuplicateKey
+  | ErrClauseUnbound
+  | ErrConfigInvalid
+  | ErrWaiverRefused
 
 /**
  * Every ERR_* class, in shipped order. The catalog projections
@@ -401,6 +441,9 @@ export const ERR_CLASSES = [
   ErrDocExists,
   ErrEmbedModelMissing,
   ErrDuplicateKey,
+  ErrClauseUnbound,
+  ErrConfigInvalid,
+  ErrWaiverRefused,
 ] as const
 
 /** The union of ERR_* code strings. */

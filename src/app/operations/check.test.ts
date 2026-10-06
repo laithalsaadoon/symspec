@@ -27,6 +27,7 @@ import { describe, expect, it } from 'vitest'
 import { stubEmbedder } from '../../adapters/embedding/embedder.ts'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import type { Embedder } from '../../domain/engine/formal/embed.ts'
+import { requirementsContentHash } from '../../domain/requirements/content-hash.ts'
 import {
   DOC_VERSION,
   emptyDocument,
@@ -34,11 +35,20 @@ import {
   type Requirement,
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
-import { DocPath, DocStore, makeDocPath, type SaveInput } from '../../ports/doc-store.ts'
+import { foldOps } from '../../domain/requirements/mutate.ts'
+import type { DocumentOp } from '../../domain/requirements/ops.ts'
+import {
+  DocPath,
+  DocStore,
+  documentOnlyStore,
+  makeDocPath,
+  type SaveInput,
+} from '../../ports/doc-store.ts'
 import { embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound, type OperationalError } from '../../ports/errors.ts'
 import { EXIT_CLEAN, EXIT_FINDINGS_FAILURE, EXIT_INCONCLUSIVE } from '../../ports/exit.ts'
 import { SolverService } from '../../ports/solver.ts'
+import { buildDoc, orthogonalEmbedder } from '../../testing/gaming.ts'
 import { exitCodeForEnvelope } from '../runtime/exit.ts'
 import { runOperation } from '../runtime/operation.ts'
 import {
@@ -48,6 +58,7 @@ import {
   REACHABILITY_TIMEOUT_IS_CANCELLABILITY,
   resolveReachabilityTimeoutMs,
 } from './check.ts'
+import { MUTATE_OPTIONS } from './mutate-options.ts'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -185,7 +196,7 @@ interface MemoryFs {
 
 const memoryStore = (fs: MemoryFs) =>
   Layer.succeed(DocStore)(
-    DocStore.of({
+    documentOnlyStore({
       load: (path) => {
         const doc = fs.files.get(path)
         if (doc === undefined) {
@@ -742,7 +753,7 @@ describe('check — the solver Layer', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The reachability tier (G4) — wired in, and a PURE ADDITION
+// The reachability tier (G4) — wired in, and opt-in
 // ---------------------------------------------------------------------------
 
 /**
@@ -752,10 +763,10 @@ describe('check — the solver Layer', () => {
  *
  * 1. When a state model IS committed, the tier runs and its verdicts reach `findings[]`,
  *    `coverage.demotions[]`, `counts`, `verified`, and the exit code.
- * 2. When one is NOT committed, NOTHING changes — no key, no finding, no demotion. That
- *    is what makes the tier a pure addition, and it is asserted DIRECTLY rather than left
- *    implicit in the other fixtures: those could all grow a state model one day without
- *    anyone noticing this property had been the reason they were safe.
+ * 2. When one is NOT committed, the tier's absence is DISCLOSED and nothing else changes —
+ *    no key, no demotion, one info `FND_REACHABILITY_NOT_CHECKED`, which is what the
+ *    published scope promises. Asserted DIRECTLY rather than left implicit in the other
+ *    fixtures: those could all grow a state model one day without anyone noticing.
  */
 describe('the reachability tier runs ONLY when a state model is committed (G4)', () => {
   /** A UUID-shaped id, so the document schema accepts it. */
@@ -827,17 +838,49 @@ describe('the reachability tier runs ONLY when a state model is committed (G4)',
   // The tier is OFF without a state model
   // -------------------------------------------------------------------------
 
-  it('emits NO `reachability` key and NO reachability finding without a state model', async () => {
+  it('without a state model: no `reachability` key, one NOT_CHECKED disclosure, no demotion', async () => {
+    // Two requirements co-live under one trigger, so the rest of the run certifies and the
+    // assertion below can see that the disclosure does not demote.
     const payload = await expectOk(
-      docOf(req({ id: rid(1), sentence: 'The system shall operate.' })),
+      docOf(
+        req({
+          id: rid(1),
+          patternType: 'event-driven',
+          trigger: 'the operator presses start',
+          systemResponse: 'start the pump',
+          sentence: 'When the operator presses start, the system shall start the pump.',
+        }),
+        req({
+          id: rid(2),
+          patternType: 'event-driven',
+          trigger: 'the operator presses start',
+          systemResponse: 'sound the chime',
+          sentence: 'When the operator presses start, the system shall sound the chime.',
+        }),
+      ),
     )
-    // ABSENT, not empty — the key must not exist at all, which is what leaves the payload
-    // byte-identical to a run from before this tier existed.
+    // ABSENT, not empty — the tier did not run, so it has no numbers to report.
     expect('reachability' in payload).toBe(false)
-    expect(payload.findings.some((f) => f.code.startsWith('FND_REACHABILITY'))).toBe(false)
+    // The published scope promises the tier's absence is DISCLOSED, not silent.
+    const reach = payload.findings.filter((f) => f.code.startsWith('FND_REACHABILITY'))
+    expect(reach.map((f) => [f.code, f.severity])).toEqual([
+      ['FND_REACHABILITY_NOT_CHECKED', 'info'],
+    ])
+    expect(reach[0]?.message).toMatch(/no state model is committed/)
+    expect(payload.counts.info).toBeGreaterThanOrEqual(1)
+    // The tier is opt-in, like the temporal tier: its absence is disclosed but does not demote.
     expect(
       payload.coverage.demotions.some((d) => String(d.reason).startsWith('reachability')),
     ).toBe(false)
+    expect(payload.verified).toBe(true)
+  })
+
+  it('the no-state-model disclosure honours --min-severity like every other info finding', async () => {
+    const payload = await expectOk(
+      docOf(req({ id: rid(1), sentence: 'The system shall operate.' })),
+      { minSeverity: 'warn' },
+    )
+    expect(payload.findings.some((f) => f.code === 'FND_REACHABILITY_NOT_CHECKED')).toBe(false)
   })
 
   it('is off for an EMPTY state model too, not merely for a missing one', async () => {
@@ -1403,6 +1446,40 @@ describe('a glossary alias hits only when it names the whole quantity label', ()
         req({
           id: 'dddddddd-8888-4888-8888-888888888884',
           systemName: 'auth service',
+          systemResponse: 'keep the user session alive for no less than 60 minutes',
+          sentence:
+            'The auth service shall keep the user session alive for no less than 60 minutes.',
+        }),
+      ),
+      glossary: [
+        {
+          canonical: 'token lifetime',
+          aliases: ['keep the token valid', 'keep the user session alive'],
+        },
+      ],
+    })
+    expect(data.findings.map((f) => f.code)).toContain('FND_NUMERIC_CONTRADICTION')
+    expect(data.counts.error).toBe(1)
+  })
+
+  it('DISCLOSES, and does not merge, a duration and a deadline under one alias', async () => {
+    // The merge above is two DURATIONS (`for`). `expire the user session in no less than 60
+    // minutes` is a deadline, and spec 007 AC-2-6 keeps a deadline and a duration on two
+    // variables even under one key: an alias equates two phrasings, and `sound the siren
+    // within 2 s` + `... for at least 30 s` is consistent on one phrasing. So this pair,
+    // which this test proved before roles existed, is not proved — and it is not certified
+    // either: the pair the roles keep apart is disclosed.
+    const data = await expectOk({
+      ...docOf(
+        req({
+          id: 'cccccccc-8888-4888-8888-888888888883',
+          systemName: 'auth service',
+          systemResponse: 'keep the token valid for at most 30 minutes',
+          sentence: 'The auth service shall keep the token valid for at most 30 minutes.',
+        }),
+        req({
+          id: 'dddddddd-8888-4888-8888-888888888884',
+          systemName: 'auth service',
           systemResponse: 'expire the user session in no less than 60 minutes',
           sentence: 'The auth service shall expire the user session in no less than 60 minutes.',
         }),
@@ -1414,8 +1491,10 @@ describe('a glossary alias hits only when it names the whole quantity label', ()
         },
       ],
     })
-    expect(data.findings.map((f) => f.code)).toContain('FND_NUMERIC_CONTRADICTION')
-    expect(data.counts.error).toBe(1)
+    expect(data.counts.error).toBe(0)
+    expect(data.findings.map((f) => f.code)).toContain('FND_NUMERIC_UNCOMPARED')
+    expect(data.coverage.demotions.map((d) => d.reason)).toContain('numeric-bounds-uncompared')
+    expect(data.verified).toBe(false)
   })
 })
 
@@ -1700,5 +1779,427 @@ describe('check — the terminology tier is spliced in without reaching the verd
     )
     expect(payload.terminology?.keysExamined).toBe(0)
     expect(payload.findings.some((f) => f.code === 'FND_TERM_INCONSISTENT')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A pair waiver followed verbatim covers exactly the pair and text it was raised on
+// ---------------------------------------------------------------------------
+
+describe('[S3-039] [S3-016] the numeric/relational demotions offer no waiver, and a stored pair waiver discharges nothing', () => {
+  // Ruling R2 (decision D1, S3-016, S3-039) replaces this block's old subject, the reviewed
+  // pair waiver these demotions used to offer: FND_NUMERIC_UNCOMPARED and
+  // FND_RELATIONAL_UNCHECKED are disclosures (never class), so no waive is offered and a stored
+  // one, even over the exact pair and its current text, is inert. The discharge is rewording.
+  const W = '00000000-0000-4000-8000-000000000001'
+  const X = 'ffffffff-0000-4000-8000-000000000002'
+  const siren = (id: string, systemResponse: string) =>
+    req({
+      id,
+      patternType: 'event-driven',
+      trigger: 'the smoke detector trips',
+      systemName: 'fire panel',
+      systemResponse,
+      sentence: `When the smoke detector trips, the fire panel shall ${systemResponse}.`,
+    })
+  const PAIR_REASONS = ['relational-reasoning-not-attempted', 'numeric-bounds-uncompared'] as const
+  const PAIR_CODES = ['FND_RELATIONAL_UNCHECKED', 'FND_NUMERIC_UNCOMPARED'] as const
+  const REASON = 'reviewed: siren starts within 2 s and then runs 30 s; consistent'
+  const reasonsOf = (payload: CheckPayload) => payload.coverage.demotions.map((d) => d.reason)
+  const pair = () =>
+    docOf(
+      siren(W, 'sound the siren within 2 seconds'),
+      siren(X, 'sound the siren for at least 30 seconds'),
+    )
+  /** The pair as the base tool's repair left it: both waivers over exactly [W, X] and its text. */
+  const triagedUnderBase = (): RequirementsDocument => {
+    const doc = pair()
+    const contentHash = requirementsContentHash(doc, [W, X].sort()) as string
+    return {
+      ...doc,
+      waivers: PAIR_CODES.map((code) => ({
+        code,
+        requirementIds: [W, X].sort(),
+        contentHash,
+        reason: REASON,
+      })),
+    }
+  }
+
+  it('[S3-039] offers no waive op on either demotion', async () => {
+    const payload = await expectOk(pair())
+    expect(reasonsOf(payload)).toEqual(expect.arrayContaining([...PAIR_REASONS]))
+    const waives = payload.coverage.demotions
+      .filter((d) => (PAIR_REASONS as readonly string[]).includes(d.reason))
+      .flatMap((d) => (d.repair?.ops ?? []) as readonly DocumentOp[])
+      .filter((op) => op.op === 'waive')
+    expect(waives).toEqual([])
+  })
+
+  it('[S3-016] a pair triaged under the base tool is no longer discharged: both demotions stand and both waivers are inert', async () => {
+    const payload = await expectOk(triagedUnderBase())
+    expect(reasonsOf(payload)).toEqual(expect.arrayContaining([...PAIR_REASONS]))
+    expect(payload.waived).toBe(0)
+    expect(payload.verified).toBe(false)
+    const inert = (payload.diagnostics as readonly { kind: string }[]).filter(
+      (d) => (d.kind as string) === 'waiver-inert',
+    )
+    expect(inert).toHaveLength(2)
+  })
+
+  it('[S3-001] the fold under MUTATE_OPTIONS refuses the waive the base tool offered', () => {
+    const doc = pair()
+    const contentHash = requirementsContentHash(doc, [W, X].sort()) as string
+    for (const code of PAIR_CODES) {
+      const result = foldOps(
+        doc,
+        [{ op: 'waive', code, refs: [W, X], contentHash, reason: REASON }],
+        TS,
+        MUTATE_OPTIONS,
+      )
+      expect(result.results[0]?.code, code).toBe('ERR_WAIVER_REFUSED')
+    }
+  })
+})
+
+/**
+ * The opposition-candidate repair waiver binds EXACTLY its pair and that pair's text (spec 007,
+ * demote-not-prove C3). The pairs below were error-severity FND_CONTRADICTION at 669c0e9, which no
+ * candidate waiver can touch; they are now only candidates, so a waiver that reaches further than
+ * the triaged pair turns a base proof into `verified: true` over a pair nobody reviewed. A
+ * one-requirement `ref` does exactly that: `check` suppresses it on every candidate naming the ref.
+ */
+describe('[S3-016] [S3-039] the opposition-candidate demotion offers no waiver, and no stored waiver discharges it', () => {
+  // Ruling R15 (decision D4) and R29 (S3-016, S3-039, S3-040) replace this block's old subject,
+  // the exact-pair repair waiver: FND_OPPOSITION_CANDIDATE is triage (never class), so legacy
+  // documents lose the waiver discharge and rewrite or commit the antonym/glossary edit instead.
+  const idOf = (n: number) => `0e0e0e0e-0000-4000-8000-${String(n).padStart(12, '0')}`
+  const [A, B, C, D] = [1, 2, 3, 4].map(idOf) as [string, string, string, string]
+  const TRIGGER = 'the operator presses the button'
+  const grant = (id: string, place: string, negated: boolean) =>
+    req({
+      id,
+      patternType: 'event-driven',
+      trigger: TRIGGER,
+      systemName: 'controller',
+      systemResponse: `grant access ${place} the server`,
+      negated,
+      sentence: `When ${TRIGGER}, the controller shall${negated ? ' not' : ''} grant access ${place} the server.`,
+    })
+  /** Every text lands on one vector: the rule under test is the deterministic shape, not a cosine. */
+  const parallel: Embedder = async (texts) => texts.map(() => Float32Array.from([1, 0]))
+  const REASON = 'triaged: <why this candidate is not a conflict>'
+  const fold = (document: RequirementsDocument, ops: readonly DocumentOp[]) => {
+    const result = foldOps(document, ops, TS)
+    if (result.abortedAt !== undefined) {
+      throw new Error(`fold aborted: ${JSON.stringify(result.results)}`)
+    }
+    return result.document
+  }
+  const check = (document: RequirementsDocument) => expectOk(document, {}, parallel)
+  const pairsOf = (payload: CheckPayload) =>
+    payload.coverage.demotions
+      .filter((d) => d.reason === 'open-opposition-candidate')
+      .map((d) => [...d.requirementIds].sort().join('|'))
+      .sort()
+  const key = (...ids: string[]) => [...ids].sort().join('|')
+  /** The pair triaged as the base tool's repair op wrote it: the exact pair and its text. */
+  const triage = async (document: RequirementsDocument, ...ids: string[]) => {
+    const payload = await check(document)
+    const demotion = payload.coverage.demotions.find(
+      (d) => d.reason === 'open-opposition-candidate' && key(...d.requirementIds) === key(...ids),
+    )
+    expect(demotion, `no candidate demotion over ${key(...ids)}`).toBeDefined()
+    const refs = [...ids].sort()
+    return {
+      ...document,
+      waivers: [
+        ...document.waivers,
+        {
+          code: 'FND_OPPOSITION_CANDIDATE',
+          requirementIds: refs,
+          contentHash: requirementsContentHash(document, refs) as string,
+          reason: REASON,
+        },
+      ],
+    }
+  }
+  const inertCount = (payload: CheckPayload) =>
+    (payload.diagnostics as readonly { kind: string }[]).filter(
+      (d) => (d.kind as string) === 'waiver-inert',
+    ).length
+
+  it('[S3-039] offers no waive op, only the edits that decide the pair', async () => {
+    const payload = await check(docOf(grant(A, 'on', false), grant(B, 'to', true)))
+    const demotion = payload.coverage.demotions.find(
+      (d) => d.reason === 'open-opposition-candidate',
+    )
+    expect(demotion).toBeDefined()
+    expect(
+      ((demotion?.repair?.ops ?? []) as readonly DocumentOp[]).filter((op) => op.op === 'waive'),
+    ).toEqual([])
+  })
+
+  it('[S3-040] the demotion action never instructs or offers a waiver', async () => {
+    const payload = await check(docOf(grant(A, 'on', false), grant(B, 'to', true)))
+    const action = payload.coverage.demotions.find(
+      (d) => d.reason === 'open-opposition-candidate',
+    )?.action
+    expect(action).toBeDefined()
+    expect(action).not.toMatch(/symspec waive/)
+    expect(action).not.toMatch(/waive/i)
+    expect(action).toContain(A)
+    expect(action).toContain(B)
+  })
+
+  it('[S3-016] a pair triaged under the base tool is no longer discharged, and its waiver is disclosed inert', async () => {
+    const doc = docOf(grant(A, 'on', false), grant(B, 'to', true))
+    expect(pairsOf(await check(doc))).toEqual([key(A, B)])
+    const payload = await check(await triage(doc, A, B))
+    expect(pairsOf(payload)).toEqual([key(A, B)])
+    expect(payload.waived).toBe(0)
+    expect(inertCount(payload)).toBe(1)
+  })
+
+  it.each([
+    ['the negated side', 'at', false, B],
+    ['the asserted side', 'at', true, A],
+  ] as const)('[S3-016] (1) does not discharge a pair a third requirement forms with %s', async (_, place, negated, partner) => {
+    const waived = await triage(docOf(grant(A, 'on', false), grant(B, 'to', true)), A, B)
+    const grown = fold(waived, [
+      {
+        op: 'add',
+        id: C,
+        patternType: 'event-driven',
+        trigger: TRIGGER,
+        systemName: 'controller',
+        systemResponse: `grant access ${place} the server`,
+        negated,
+      },
+    ])
+    const payload = await check(grown)
+    // Ruling R15 (S3-016): the triaged pair is not discharged either.
+    expect(pairsOf(payload)).toEqual([key(A, B), key(partner, C)].sort())
+    expect(payload.verified).toBe(false)
+  })
+
+  it('[S3-016] (2) triaging three pairs of a four-cycle leaves all four demoting', async () => {
+    let doc = docOf(
+      grant(A, 'on', false),
+      grant(B, 'to', true),
+      grant(C, 'at', false),
+      grant(D, 'in', true),
+    )
+    expect(pairsOf(await check(doc))).toEqual([key(A, B), key(A, D), key(C, B), key(C, D)].sort())
+    doc = await triage(doc, A, B)
+    doc = await triage(doc, C, B)
+    doc = await triage(doc, C, D)
+    const payload = await check(doc)
+    // Ruling R15 (S3-016): none of the three triaged pairs is discharged; each waiver is inert.
+    expect(pairsOf(payload)).toEqual([key(A, B), key(A, D), key(C, B), key(C, D)].sort())
+    expect(inertCount(payload)).toBe(3)
+    expect(payload.verified).toBe(false)
+  })
+
+  /**
+   * A waiver the base tool suggested, or one written by hand, never discharges a candidate: the
+   * base build PROVED these pairs, and its own repair for an opposition candidate was a one-id
+   * `ref` waiver (and its action an unscoped `symspec waive`). So a document triaged by following
+   * that advice carries one, and a candidate a later requirement forms with the waived one came
+   * back `verified: true` over a pair nobody read (verifier U-ref, U-docwide).
+   */
+  const stop = (id: string, response: string, negated: boolean) =>
+    req({
+      id,
+      patternType: 'event-driven',
+      trigger: TRIGGER,
+      systemName: 'controller',
+      systemResponse: response,
+      negated,
+      sentence: `When ${TRIGGER}, the controller shall${negated ? ' not' : ''} ${response}.`,
+    })
+  const LEGACY = [
+    ['a one-id ref waiver (the base repair op)', { requirementId: A }],
+    ['a document-wide waiver (the base action)', {}],
+    ['an exact-set waiver with no content hash', { requirementIds: [A, B] }],
+  ] as const
+  it.each(
+    LEGACY,
+  )('[S3-016] %s leaves the candidate demoting, and is disclosed waiver-inert', async (_, scope) => {
+    const doc = {
+      ...docOf(stop(A, 'stop the pump on Monday', false), stop(B, 'stop the pump Monday', true)),
+      waivers: [
+        { code: 'FND_OPPOSITION_CANDIDATE', reason: 'triaged under the base tool', ...scope },
+      ],
+    }
+    const payload = await check(doc)
+    expect(pairsOf(payload)).toEqual([key(A, B)])
+    expect(payload.verified).toBe(false)
+    expect(payload.waived).toBe(0)
+    // Ruling R15 (S3-016) replaces the engine's "was not applied" note: compat no longer hands
+    // the engine a never-class waiver, so the disclosure is the waiver-inert diagnostic.
+    expect(inertCount(payload)).toBe(1)
+  })
+
+  it('U-ref: a ref waiver for one triaged candidate does not reach a pair added after it', async () => {
+    // The base tool's own repair for the A/H candidate was `waive ref A`; B then joins A in a
+    // pair base proved (stop on Monday / NOT stop Monday).
+    const doc = {
+      ...docOf(
+        stop(A, 'stop the pump on Monday', false),
+        stop(C, 'halt the pump on Monday', false),
+        stop(B, 'stop the pump Monday', true),
+      ),
+      waivers: [{ code: 'FND_OPPOSITION_CANDIDATE', reason: 'A/H triaged', requirementId: A }],
+    }
+    const payload = await check(doc)
+    expect(pairsOf(payload)).toContain(key(A, B))
+    expect(payload.verified).toBe(false)
+  })
+
+  it('[S3-016] (4) does not discharge the pair once one side is edited', async () => {
+    const waived = await triage(docOf(grant(A, 'on', false), grant(B, 'to', true)), A, B)
+    const edited = fold(waived, [
+      { op: 'update', ref: B, attr: 'systemResponse', value: 'grant access at the server' },
+    ])
+    const payload = await check(edited)
+    expect(pairsOf(payload)).toEqual([key(A, B)])
+    expect(payload.verified).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round (R57): a qualifying scoped waiver of a terminology finding is applied and
+// disclosed like every other scoped code (S3-021, S3-046)
+// ---------------------------------------------------------------------------
+
+describe('[S3-021] [S3-046] a scoped, hash-bound waiver of a terminology-tier finding suppresses exactly that finding and is listed in data.appliedWaivers (R57)', () => {
+  const acronymDoc = (): RequirementsDocument =>
+    buildDoc(
+      [
+        {
+          op: 'add',
+          id: '10000000-0000-4000-8000-000000000001',
+          key: 'XYZ-R1',
+          patternType: 'event-driven',
+          trigger: 'the operator opens the session',
+          systemName: 'gateway',
+          systemResponse: 'record the XYZ status',
+        },
+        {
+          op: 'add',
+          id: '10000000-0000-4000-8000-000000000002',
+          key: 'XYZ-R2',
+          patternType: 'event-driven',
+          trigger: 'the operator opens the session',
+          systemName: 'gateway',
+          systemResponse: 'store the session token',
+        },
+      ] as never,
+      MUTATE_OPTIONS,
+    )
+  const row = (f: { code: string; requirementIds: readonly string[] }) =>
+    `${f.code} [${[...f.requirementIds].sort().join(', ')}]`
+
+  it.each([
+    ['FND_ACRONYM_UNDEFINED', acronymDoc, orthogonalEmbedder([])],
+    ['FND_TERM_INCONSISTENT', verifiedDriftDoc, VERIFIED_DRIFT_EMBEDDER],
+  ] as const)('[S3-021] [S3-046] %s', async (code, makeDoc, embedder) => {
+    const doc = makeDoc()
+    const before = await expectOk(doc, {}, embedder)
+    const finding = before.findings.find((f) => f.code === code)
+    expect(finding, `the fixture raises ${code}`).toBeDefined()
+    if (finding === undefined) return
+    const reason = 'reviewed: the wording is intended'
+    const folded = foldOps(
+      doc,
+      [{ op: 'waive', code, refs: [...finding.requirementIds], reason }],
+      '2026-10-05T00:00:00.000Z',
+      MUTATE_OPTIONS,
+    )
+    expect(folded.abortedAt, 'the fold accepts the scoped waive').toBeUndefined()
+    const after = await expectOk(folded.document, {}, embedder)
+    // Exactly its finding goes: every other finding stays.
+    expect(after.findings.map(row).sort()).toEqual(
+      before.findings
+        .filter((f) => row(f) !== row(finding))
+        .map(row)
+        .sort(),
+    )
+    expect(after.appliedWaivers).toEqual([
+      { code, requirementIds: [...finding.requirementIds].sort(), reason },
+    ])
+    expect(after.diagnostics.filter((d) => d.kind === 'waiver-inert')).toEqual([])
+    // R62 (attack C09, the S8 open item): the suppressed terminology finding is tallied.
+    expect(after.waived, 'data.waived counts the terminology waiver').toBe(before.waived + 1)
+  })
+
+  it('[S3-021] [S3-046] two FND_ACRONYM_UNDEFINED findings on disjoint requirements: a waiver of one suppresses only it, data.waived rises by one, and exactly one waiver is applied (R62, attack C06)', async () => {
+    const doc = buildDoc(
+      [
+        {
+          op: 'add',
+          id: '10000000-0000-4000-8000-000000000001',
+          key: 'XYZ-R1',
+          patternType: 'event-driven',
+          trigger: 'the operator opens the session',
+          systemName: 'gateway',
+          systemResponse: 'record the XYZ status',
+        },
+        {
+          op: 'add',
+          id: '10000000-0000-4000-8000-000000000002',
+          key: 'ABC-R2',
+          patternType: 'event-driven',
+          trigger: 'the operator opens the session',
+          systemName: 'gateway',
+          systemResponse: 'store the ABC token',
+        },
+      ] as never,
+      MUTATE_OPTIONS,
+    )
+    const embedder = orthogonalEmbedder([])
+    const before = await expectOk(doc, {}, embedder)
+    const acronyms = before.findings.filter((f) => f.code === 'FND_ACRONYM_UNDEFINED')
+    expect(acronyms.map(row).sort()).toEqual([
+      'FND_ACRONYM_UNDEFINED [10000000-0000-4000-8000-000000000001]',
+      'FND_ACRONYM_UNDEFINED [10000000-0000-4000-8000-000000000002]',
+    ])
+    const target = acronyms.find((f) =>
+      f.requirementIds.includes('10000000-0000-4000-8000-000000000002'),
+    )
+    if (target === undefined) throw new Error('no ABC finding')
+    const reason = 'reviewed: ABC is the vendor name'
+    const folded = foldOps(
+      doc,
+      [{ op: 'waive', code: 'FND_ACRONYM_UNDEFINED', refs: [...target.requirementIds], reason }],
+      '2026-10-05T00:00:00.000Z',
+      MUTATE_OPTIONS,
+    )
+    expect(folded.abortedAt).toBeUndefined()
+    const after = await expectOk(folded.document, {}, embedder)
+    expect(after.findings.filter((f) => f.code === 'FND_ACRONYM_UNDEFINED').map(row)).toEqual([
+      'FND_ACRONYM_UNDEFINED [10000000-0000-4000-8000-000000000001]',
+    ])
+    expect(after.waived).toBe(before.waived + 1)
+    expect(after.appliedWaivers).toEqual([
+      {
+        code: 'FND_ACRONYM_UNDEFINED',
+        requirementIds: ['10000000-0000-4000-8000-000000000002'],
+        reason,
+      },
+    ])
+    // Its own ids under another content hash: the finding stands and nothing is tallied.
+    const stale = {
+      ...folded.document,
+      waivers: folded.document.waivers.map((w) => ({
+        ...w,
+        contentHash: `sha256:${'0'.repeat(64)}`,
+      })),
+    }
+    const unbound = await expectOk(stale, {}, embedder)
+    expect(unbound.findings.filter((f) => f.code === 'FND_ACRONYM_UNDEFINED').length).toBe(2)
+    expect(unbound.waived).toBe(before.waived)
+    expect(unbound.appliedWaivers).toEqual([])
   })
 })

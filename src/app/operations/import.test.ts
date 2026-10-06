@@ -33,6 +33,8 @@ import { fileURLToPath } from 'node:url'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { RELATIONS, type Relation, type Requirement } from '../../domain/requirements/document.ts'
+import { foldOps } from '../../domain/requirements/mutate.ts'
+import { type DocumentOp, decodeOp } from '../../domain/requirements/ops.ts'
 import { renderSentence } from '../../domain/requirements/render.ts'
 import { resolveRef } from '../../domain/requirements/resolve.ts'
 import {
@@ -42,6 +44,7 @@ import {
   parseSideTableCommand,
   tokenizeCommand,
 } from './import.ts'
+import { MUTATE_OPTIONS } from './mutate-options.ts'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -183,8 +186,7 @@ describe.each(CASES)('round trip: hex-bonk $name', ({ slug }) => {
     }
   })
 
-  it('imports every side-table row the source carried', () => {
-    expect(result.counts.waivers).toBe(source.waivers?.length ?? 0)
+  it('imports every glossary and antonym row the source carried', () => {
     expect(result.counts.antonyms).toBe(source.antonyms?.length ?? 0)
     // The glossary count compares CANONICAL ENTRIES, not commands: v4 emits
     // one command per ALIAS, so N aliases under one canonical must merge back into
@@ -201,7 +203,21 @@ describe.each(CASES)('round trip: hex-bonk $name', ({ slug }) => {
   it('reports NO unresolved refs, NO duplicates, and NO unreadable lines', () => {
     expect(result.unresolved).toEqual([])
     expect(result.duplicates).toEqual([])
-    expect(result.problems).toEqual([])
+    // Ruling R13 (S3-012): the only problems are the waiver records the write fence refused.
+    expect(result.problems.map((p) => p.line)).toEqual(result.refused.map((r) => r.line))
+  })
+
+  it('[S3-012] [S3-003] refuses every unscoped v4 waiver the source carried with ERR_WAIVER_REFUSED, on its line, and imports no waiver', () => {
+    // Every v2 waiver here is code-only (`waive add <code>` with no `--ref`), and ruling R13
+    // folds import's waivers through apply's classifier, which refuses a code-only waive (R5).
+    const waivers = source.waivers ?? []
+    expect(waivers.every((w) => w.requirementId === undefined)).toBe(true)
+    expect(result.counts.waivers).toBe(0)
+    expect(result.refused.length).toBe(waivers.length)
+    for (const r of result.refused) {
+      expect(r.op).toBe('waive')
+      expect(r.code).toBe('ERR_WAIVER_REFUSED')
+    }
   })
 
   it('stamps fresh timestamps — the one thing the stream provably cannot carry', () => {
@@ -505,22 +521,29 @@ describe('fold semantics', () => {
     expect(result.document.antonyms).toHaveLength(1)
   })
 
-  it('resolves a waiver scope written as a KEY into the stored UUID', () => {
+  it('[S3-005] resolves a waiver scope written as a KEY into the stored UUID, as refs [id] plus the hash of its text', () => {
+    // Ruling R37: `ref` is normalized to `refs: [ref]` and the fold computes the hash, so the
+    // stored waiver is the exact-set form, never a bare `requirementId`.
     const result = fold(
-      [addLine({ id: ID_A, key: 'G1' }), "symspec waive add GTWR_R6 --reason 'ok' --ref G1"].join(
-        '\n',
-      ),
+      [
+        addLine({ id: ID_A, key: 'G1' }),
+        "symspec waive add GTWR_R6_MISSING_UNITS --reason 'ok' --ref G1",
+      ].join('\n'),
     )
-    expect(result.document.waivers[0]?.requirementId).toBe(ID_A)
+    expect(result.document.waivers).toHaveLength(1)
+    expect(result.document.waivers[0]?.requirementIds).toEqual([ID_A])
+    expect(result.document.waivers[0]?.contentHash).toMatch(/^sha256:[0-9a-f]{64}$/)
+    expect(result.document.waivers[0]?.requirementId).toBeUndefined()
   })
 
-  it('WIDENS an unresolvable waiver scope instead of dropping the waiver', () => {
-    // Dropping it would resurrect a finding someone reviewed and accepted; a
-    // broader-than-intended waiver is the lesser harm, and it is disclosed.
-    const result = fold("symspec waive add GTWR_R6 --reason 'ok' --ref NOPE\n")
-    expect(result.document.waivers).toHaveLength(1)
-    expect(result.document.waivers[0]?.requirementId).toBeUndefined()
-    expect(result.unresolved[0]?.detail).toContain('UNSCOPED')
+  it('[S3-013] REFUSES an unresolvable waiver scope and never widens it to a document-wide waiver', () => {
+    // Ruling R13 replaces the widening this test used to pin: a document-wide waiver is the
+    // unscoped waiver the fold refuses (R5), so widening would smuggle it past the fence.
+    const result = fold("symspec waive add GTWR_R6_MISSING_UNITS --reason 'ok' --ref NOPE\n")
+    expect(result.document.waivers).toEqual([])
+    expect(result.refused.map((r) => r.line)).toEqual([1])
+    expect(result.problems.map((p) => p.line)).toEqual([1])
+    expect(JSON.stringify(result)).not.toContain('UNSCOPED')
   })
 
   it('accepts responseKind on an add — the v3 field a v5-generated stream can carry', () => {
@@ -537,5 +560,369 @@ describe('fold semantics', () => {
     const result = fold('')
     expect(result.counts.requirements).toBe(0)
     expect(result.document.docVersion).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The write-time fences — the SAME ones `apply` runs
+// ---------------------------------------------------------------------------
+
+describe('side-table records pass the fences `apply` runs', () => {
+  it('REFUSES the antonym record that closes an odd polarity cycle, and keeps the rest', () => {
+    // A triangle of invented verbs is odd whatever the seed table holds: the third pair demands
+    // zork ≡ ¬frob while the first two already make zork ≡ frob. An antonym is the one record
+    // whose wrong value MANUFACTURES a contradiction, so an import that committed it would write
+    // a document `apply` could never have produced.
+    const result = fold(
+      [
+        'symspec antonym add zork blip',
+        'symspec antonym add blip frob',
+        'symspec antonym add frob zork',
+      ].join('\n'),
+    )
+    expect(result.document.antonyms).toEqual([
+      { a: 'zork', b: 'blip' },
+      { a: 'blip', b: 'frob' },
+    ])
+    expect(result.problems).toHaveLength(1)
+    expect(result.problems[0]?.line).toBe(3)
+    expect(result.problems[0]?.detail).toContain('inconsistent')
+    // The refusal is ALSO a fence refusal the operation turns into an error-severity finding
+    // (exit 1, the contract `apply` has since AC-1-6), with the same line.
+    expect(result.refused).toEqual([
+      expect.objectContaining({ line: 3, op: 'antonym', code: 'ERR_USAGE' }),
+    ])
+  })
+
+  it('REFUSES a glossary alias that is a contrary of its canonical', () => {
+    // The seed pair open/close says the two cannot both happen; an entry naming both says they
+    // are one action. `apply` refuses it (validateGlossary), so `import` must too.
+    const result = fold('{"op":"glossary","canonical":"open the door","alias":"close the door"}\n')
+    expect(result.document.glossary).toEqual([])
+    expect(result.problems).toHaveLength(1)
+    expect(result.problems[0]?.line).toBe(1)
+    expect(result.problems[0]?.detail).toContain('contrary')
+  })
+
+  it('folds records in STREAM order, whichever spelling each line uses', () => {
+    // Command lines and JSON records are two spellings of one stream. Folding every record
+    // before every command would apply this glossary alias before the antonym that makes it a
+    // contrary, so `apply` over the same lines refuses what `import` would commit.
+    const result = fold(
+      [
+        'symspec antonym add heat cool',
+        '{"op":"glossary","canonical":"heat the cabin","alias":"cool the cabin"}',
+      ].join('\n'),
+    )
+    expect(result.document.antonyms).toEqual([{ a: 'heat', b: 'cool' }])
+    expect(result.document.glossary).toEqual([])
+    expect(result.problems.map((p) => p.line)).toEqual([2])
+  })
+
+  it('counts only FENCE refusals as refused: an unreadable line is a problem, not a refusal', () => {
+    // Exit 1 means "a record you wrote was refused by a check `apply` runs". A line the reader
+    // could not parse is disclosed in problems[] too, but it never met a fence, so it is not one.
+    const result = fold(
+      [
+        '{"op":"glossary","canonical":"open the door","alias":"close the door"}',
+        '{not json',
+        'symspec frobnicate add x y',
+      ].join('\n'),
+    )
+    expect(result.problems.map((p) => p.line)).toEqual([1, 2, 3])
+    expect(result.refused.map((r) => r.line)).toEqual([1])
+    expect(fold('{not json\n').refused).toEqual([])
+  })
+
+  it('writes the side tables EXACTLY as `apply` folds the same records', () => {
+    // Parity, not a list of refusals: any fence `apply` gains, and any normalization it
+    // applies, reaches `import` because both fold through one `applyOp` under one options set.
+    // Ruling R10 (S3-009): a code with no own FINDING_CLASS row is refused at write, so the
+    // waivers name a PUBLISHED rule code; the bare prefix `GTWR_R6` this test used before is
+    // not one, and both folds would refuse it rather than show parity.
+    const records: readonly DocumentOp[] = [
+      { op: 'glossary', canonical: 'Issue a Token', alias: 'grant a token' },
+      { op: 'glossary', canonical: 'issue a token', alias: 'mint a token' },
+      { op: 'antonym', a: 'Lock', b: 'Unlatch' },
+      { op: 'antonym', a: 'unlatch', b: 'lock' },
+      { op: 'waive', code: 'GTWR_R6_MISSING_UNITS', reason: 'reviewed', ref: 'G1' },
+      { op: 'waive', code: 'GTWR_R6_MISSING_UNITS', reason: 'reviewed again', ref: 'G1' },
+    ]
+    const imported = fold(
+      [addLine({ id: ID_A, key: 'G1' }), ...records.map((r) => JSON.stringify(r))].join('\n'),
+    )
+    const base = fold(addLine({ id: ID_A, key: 'G1' })).document
+    const applied = foldOps(base, records, TIMESTAMP, MUTATE_OPTIONS)
+    expect(applied.abortedAt).toBeUndefined()
+    expect(imported.problems).toEqual([])
+    // Not vacuous: the second waive is a no-op on the first, so exactly one waiver is folded.
+    expect(applied.document.waivers).toHaveLength(1)
+    expect({
+      glossary: imported.document.glossary,
+      antonyms: imported.document.antonyms,
+      waivers: imported.document.waivers,
+    }).toEqual({
+      glossary: applied.document.glossary,
+      antonyms: applied.document.antonyms,
+      waivers: applied.document.waivers,
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 Waivability (AC-5-6): import folds every waiver through apply's classifier
+// ---------------------------------------------------------------------------
+
+describe('S3: import refuses the waivers apply refuses (readings settled examples 14 and 15)', () => {
+  const s3Text = (name: string): string =>
+    readFileSync(
+      fileURLToPath(
+        new URL(`../../testing/__fixtures__/s3-waivability/import/${name}`, import.meta.url),
+      ),
+      'utf8',
+    )
+  const v4 = s3Text('v4-waivers.txt')
+  const v4Lines = v4.split('\n')
+  /** The 1-based line of the one record that contains every fragment. */
+  const lineOf = (...fragments: readonly string[]): number => {
+    const hits = v4Lines.flatMap((l, i) =>
+      !l.startsWith('#') && fragments.every((f) => l.includes(f)) ? [i + 1] : [],
+    )
+    if (hits.length !== 1)
+      throw new Error(`fixture: ${fragments.join(' ')} on ${hits.length} lines`)
+    return hits[0] as number
+  }
+  const LINE = {
+    I1: lineOf("GTWR_R5_INDEFINITE_ARTICLE --reason 'indefinite articles are house style'"),
+    I2: lineOf('GTWR_R5_INDEFINITE_ARTICLE', '--ref 5a1e0000-0000-4000-8000-0000000000a2'),
+    I3: lineOf('FND_OPPOSITION_CANDIDATE', '--ref 5a1e0000-0000-4000-8000-0000000000c1'),
+    I4: lineOf('GTWR_R7_VAGUE', '--ref 5a1e0000-0000-4000-8000-0000000000ff'),
+    I5: lineOf('"code":"FND_CONTRADICTION"'),
+    I6: lineOf('"code":"GTWR_R7_VAGUE"', '"ref":"ORD-R2"'),
+  }
+  const LOG_R2 = '5a1e0000-0000-4000-8000-0000000000a2'
+  const ORD_R2 = '5a1e0000-0000-4000-8000-0000000000b2'
+
+  it('[S3-012] v4-waivers.txt: I1 (code-only), I3 and I5 (never class) are refused ERR_WAIVER_REFUSED into problems[], and the six requirements are written', () => {
+    const result = fold(v4)
+    expect(result.counts.requirements).toBe(6)
+    const refused = new Map(result.refused.map((r) => [r.line, r]))
+    for (const line of [LINE.I1, LINE.I3, LINE.I5]) {
+      expect(refused.get(line)?.code, `line ${line}`).toBe('ERR_WAIVER_REFUSED')
+    }
+    const problemLines = result.problems.map((p) => p.line)
+    for (const line of [LINE.I1, LINE.I3, LINE.I4, LINE.I5]) expect(problemLines).toContain(line)
+    // No never-class waiver and no code-only waiver reaches the document.
+    for (const w of result.document.waivers) {
+      expect(['FND_OPPOSITION_CANDIDATE', 'FND_CONTRADICTION']).not.toContain(w.code)
+      expect(w.requirementIds, JSON.stringify(w)).toBeDefined()
+      expect(w.contentHash, JSON.stringify(w)).toBeDefined()
+    }
+  })
+
+  it('[S3-012] [S3-005] v4-waivers.txt: I2 and I6 are accepted as refs [id] plus the computed hash (imported.waivers 2)', () => {
+    const result = fold(v4)
+    expect(result.counts.waivers).toBe(2)
+    const stored = result.document.waivers.map((w) => [w.code, w.requirementIds, w.requirementId])
+    expect(stored).toEqual([
+      ['GTWR_R5_INDEFINITE_ARTICLE', [LOG_R2], undefined],
+      ['GTWR_R7_VAGUE', [ORD_R2], undefined],
+    ])
+    expect(result.document.waivers.map((w) => w.contentHash)).toEqual([
+      'sha256:c2bd1271a31955317e36a3ede3361500f1061ac287576762e1e60f4d7227e42a',
+      'sha256:447120f0804d769c9c5e1c0b473058543e1cc9dcbf30776a0d6f16b5956067e3',
+    ])
+  })
+
+  it('[S3-013] v4-waivers.txt: I4, whose --ref matches no requirement, is refused and never widened to a document-wide GTWR_R7_VAGUE waiver', () => {
+    const result = fold(v4)
+    expect(result.refused.map((r) => r.line)).toContain(LINE.I4)
+    const r7 = result.document.waivers.filter((w) => w.code === 'GTWR_R7_VAGUE')
+    expect(r7.map((w) => w.requirementIds)).toEqual([[ORD_R2]])
+    expect(result.unresolved.some((u) => /UNSCOPED|document-wide/i.test(u.detail))).toBe(false)
+  })
+
+  it('[S3-014] scoped-record.txt: a JSONL waive record with refs and contentHash is accepted (no unexpected-keys problem) and stored as requirementIds [LOG-R1] plus that hash', () => {
+    const result = fold(s3Text('scoped-record.txt'))
+    expect(result.problems).toEqual([])
+    expect(result.counts.waivers).toBe(1)
+    expect(result.document.waivers.map(({ reason: _r, ...w }) => w)).toEqual([
+      {
+        code: 'GTWR_R5_INDEFINITE_ARTICLE',
+        requirementIds: ['5a1e0000-0000-4000-8000-0000000000a1'],
+        contentHash: 'sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0',
+      },
+    ])
+  })
+
+  it('[S3-015] each refused waiver is named with its line, its finding code, its scope as written and a replacement, and no remedy this build lacks', () => {
+    const result = fold(v4)
+    const scopes: Record<number, readonly string[]> = {
+      [LINE.I1]: ['GTWR_R5_INDEFINITE_ARTICLE'],
+      [LINE.I3]: ['FND_OPPOSITION_CANDIDATE', '5a1e0000-0000-4000-8000-0000000000c1'],
+      [LINE.I4]: ['GTWR_R7_VAGUE', '5a1e0000-0000-4000-8000-0000000000ff'],
+      [LINE.I5]: ['FND_CONTRADICTION', 'ORD-R1'],
+    }
+    for (const [line, names] of Object.entries(scopes)) {
+      const r = result.refused.find((x) => x.line === Number(line))
+      expect(r, `line ${line} refused`).toBeDefined()
+      for (const name of names) expect(r?.detail, `line ${line}`).toContain(name)
+      expect(r?.suggestions.length ?? 0, `line ${line}: a replacement`).toBeGreaterThan(0)
+      const text = [r?.detail ?? '', ...(r?.suggestions ?? [])].join('\n')
+      expect(text).not.toMatch(/vocab\s+distinct|propose-vocabulary|--rescope-waivers/i)
+    }
+  })
+
+  it('[S3-012] import folds waivers exactly as apply does: each record refused or stored the same way under MUTATE_OPTIONS', () => {
+    // The contract that makes R13 one fence rather than two: for each v4 record, apply's own
+    // fold over the imported requirements gives the same verdict as import.
+    const imported = fold(v4)
+    const requirementsOnly = fold(
+      v4Lines
+        .filter((l) => !l.includes('"op":"waive"') && !l.startsWith('symspec waive'))
+        .join('\n'),
+    ).document
+    const probes: readonly { readonly line: number; readonly op: DocumentOp }[] = [
+      { line: LINE.I1, op: { op: 'waive', code: 'GTWR_R5_INDEFINITE_ARTICLE', reason: 'r' } },
+      {
+        line: LINE.I3,
+        op: { op: 'waive', code: 'FND_OPPOSITION_CANDIDATE', reason: 'r', ref: 'CAB-R1' },
+      },
+      { line: LINE.I5, op: { op: 'waive', code: 'FND_CONTRADICTION', reason: 'r', ref: 'ORD-R1' } },
+      { line: LINE.I6, op: { op: 'waive', code: 'GTWR_R7_VAGUE', reason: 'r', ref: 'ORD-R2' } },
+    ]
+    const viaApply = probes.map(({ op }) => {
+      const r = foldOps(requirementsOnly, [op], TIMESTAMP, MUTATE_OPTIONS).results[0]
+      return r?.ok === true ? 'stored' : (r?.code ?? '?')
+    })
+    const viaImport = probes.map(
+      ({ line }) => imported.refused.find((r) => r.line === line)?.code ?? 'stored',
+    )
+    expect(viaImport).toEqual(viaApply)
+    expect(viaApply).toEqual([
+      'ERR_WAIVER_REFUSED',
+      'ERR_WAIVER_REFUSED',
+      'ERR_WAIVER_REFUSED',
+      'stored',
+    ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round (evidence G3): import equals apply over every waiver record shape
+// ---------------------------------------------------------------------------
+
+describe('S3 closure: import folds every waiver record shape exactly as apply folds the same op (G3)', () => {
+  const s3Fixture = (name: string): string =>
+    readFileSync(
+      fileURLToPath(new URL(`../../testing/__fixtures__/s3-waivability/${name}`, import.meta.url)),
+      'utf8',
+    )
+  /** The six base requirements, as the import stream's add records. */
+  const adds = s3Fixture('import/v4-waivers.txt')
+    .split('\n')
+    .filter((l) => l.startsWith('{"op":"add"'))
+  const requirementsOnly = fold(adds.join('\n')).document
+  const LOG_R1 = '5a1e0000-0000-4000-8000-0000000000a1'
+  const H_LOG_R1 = 'sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0'
+  const H_LOG_R2 = 'sha256:c2bd1271a31955317e36a3ede3361500f1061ac287576762e1e60f4d7227e42a'
+  const CODES = [
+    ...new Set([
+      'GTWR_R5_INDEFINITE_ARTICLE',
+      'GTWR_R7_VAGUE',
+      'FND_CYCLE',
+      'FND_EXACT_DUPLICATE',
+      'FND_ACRONYM_UNDEFINED',
+      'FND_CONTRADICTION',
+      'FND_OPPOSITION_CANDIDATE',
+      'FND_NEEDS_REVIEW',
+      'FND_EXCLUDED_FROM_FORMAL',
+      'FND_REACHABILITY_NOT_CHECKED',
+      'FND_NOT_A_CODE',
+      'GTWR',
+      'GTWR_R99_NOT_A_RULE',
+      ' GTWR_R5_INDEFINITE_ARTICLE ',
+      'gtwr_r5_indefinite_article',
+      ' FND_CONTRADICTION',
+    ]),
+  ]
+  const reason = 'reviewed for this release'
+  /** Every waiver record shape an import stream can carry, with the op apply would fold. */
+  const SHAPES: readonly {
+    readonly name: string
+    readonly line: (code: string) => string
+    readonly op: (code: string) => Readonly<Record<string, unknown>>
+  }[] = [
+    ...(
+      [
+        ['JSONL code-only', {}],
+        ['JSONL ref (key)', { ref: 'LOG-R1' }],
+        ['JSONL ref (uuid)', { ref: LOG_R1 }],
+        ['JSONL refs', { refs: ['LOG-R1'] }],
+        ['JSONL refs + matching hash', { refs: ['LOG-R1'], contentHash: H_LOG_R1 }],
+        ['JSONL refs + stale hash', { refs: ['LOG-R1'], contentHash: H_LOG_R2 }],
+        ['JSONL refs pair', { refs: ['LOG-R1', 'LOG-R2'] }],
+        ['JSONL ref and refs', { ref: 'LOG-R1', refs: ['LOG-R1'] }],
+        ['JSONL unresolvable ref', { ref: '5a1e0000-0000-4000-8000-0000000000ff' }],
+        ['JSONL unresolvable refs', { refs: ['NO-SUCH-KEY'] }],
+      ] as const
+    ).map(([name, scope]) => ({
+      name,
+      line: (code: string) => JSON.stringify({ op: 'waive', code, reason, ...scope }),
+      op: (code: string) => ({ op: 'waive', code, reason, ...scope }),
+    })),
+    {
+      name: 'v4 line code-only',
+      line: (code) => `symspec waive add ${code.trim()} --reason '${reason}'`,
+      op: (code) => ({ op: 'waive', code: code.trim(), reason }),
+    },
+    {
+      name: 'v4 line --ref uuid',
+      line: (code) => `symspec waive add ${code.trim()} --reason '${reason}' --ref ${LOG_R1}`,
+      op: (code) => ({ op: 'waive', code: code.trim(), reason, ref: LOG_R1 }),
+    },
+  ]
+
+  /** What one channel did with the record: refused with a code, or the waivers it stored. */
+  const viaImport = (code: string, shape: (typeof SHAPES)[number]): string => {
+    const text = [...adds, shape.line(code)].join('\n')
+    const line = adds.length + 1
+    const result = fold(text)
+    const refused = result.refused.find((r) => r.line === line)
+    if (refused !== undefined) return `refused ${refused.code}`
+    const problem = result.problems.find((p) => p.line === line)
+    if (problem !== undefined) return `unread: ${problem.detail.slice(0, 60)}`
+    return `stored ${JSON.stringify(result.document.waivers)}`
+  }
+  const viaApply = (code: string, shape: (typeof SHAPES)[number]): string => {
+    const decoded = Effect.runSync(Effect.result(decodeOp(shape.op(code))))
+    if (decoded._tag === 'Failure') return 'undecodable'
+    const r = foldOps(requirementsOnly, [decoded.success], TIMESTAMP, MUTATE_OPTIONS)
+    const failed = r.results.find((x) => !x.ok)
+    return failed !== undefined
+      ? `refused ${failed.code}`
+      : `stored ${JSON.stringify(r.document.waivers)}`
+  }
+
+  it('[S3-012] for every waiver record shape x every code class (scoped, never, unpublished, padded, case variant), import refuses or stores exactly what apply does', () => {
+    const differ: string[] = []
+    let stored = 0
+    let refused = 0
+    for (const code of CODES) {
+      for (const shape of SHAPES) {
+        const a = viaApply(code, shape)
+        const i = viaImport(code, shape)
+        if (a.startsWith('stored')) stored += 1
+        if (a.startsWith('refused')) refused += 1
+        if (a !== i)
+          differ.push(
+            `${JSON.stringify(code)} ${shape.name}: apply ${a.slice(0, 80)} | import ${i.slice(0, 80)}`,
+          )
+      }
+    }
+    expect(differ).toEqual([])
+    // Not vacuous: both verdicts occur, on more than one shape each.
+    expect(stored).toBeGreaterThan(5)
+    expect(refused).toBeGreaterThan(CODES.length)
   })
 })

@@ -20,16 +20,21 @@
 
 import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
+import { DIMENSIONS, RAW_UNIT_DIMENSION } from '../engine/formal/numeric.ts'
 import {
+  ACCEPTED_DOC_VERSIONS,
   DIAGNOSTIC_KINDS,
   DOC_VERSION,
+  DOC_VERSION_VOCAB,
   decodeDocument,
   EARS_PATTERNS,
   emptyDocument,
   emptyStateModel,
   KNOWN_TOP_LEVEL_KEYS,
+  NUMBER_TYPES,
   PRIORITIES,
   partitionTopLevelKeys,
+  QUANTITY_DIMENSIONS,
   RELATIONS,
   RESPONSE_KINDS,
   Requirement,
@@ -39,8 +44,15 @@ import {
   STATUSES,
   StateModel,
   StateVariable,
+  SYMBOL_ID_PATTERN,
+  SYMBOL_KINDS,
   Uuid,
+  V4_ONLY_DOCUMENT_KEYS,
+  V4_ONLY_REQUIREMENT_KEYS,
   VERIFICATION_METHODS,
+  VocabSymbol,
+  Vocabulary,
+  vocabularyOf,
   withUnknownKeys,
 } from './document.ts'
 import { renderSentence } from './render.ts'
@@ -122,16 +134,22 @@ const annotationOf = <K extends 'description' | 'default'>(
 // ---------------------------------------------------------------------------
 
 describe('docVersion', () => {
-  it('is 3', () => {
+  it('writes 3 for a legacy document and 4 for a vocabulary document, and reads both', () => {
     expect(DOC_VERSION).toBe(3)
+    expect(DOC_VERSION_VOCAB).toBe(4)
+    expect(ACCEPTED_DOC_VERSIONS).toEqual([DOC_VERSION, DOC_VERSION_VOCAB])
   })
 
   it('accepts a document declaring exactly 3', () => {
     expect(decode(rawDocument()).document.docVersion).toBe(3)
   })
 
+  it('accepts a document declaring exactly 4', () => {
+    expect(decode(rawDocument({ docVersion: 4 })).document.docVersion).toBe(4)
+  })
+
   it('rejects any other version, including v2', () => {
-    for (const v of [2, 4, 0, -1, '3', null]) {
+    for (const v of [2, 5, 0, -1, '3', '4', null]) {
       expect(attempt({ ...rawDocument(), docVersion: v })._tag, `docVersion ${String(v)}`).toBe(
         'Failure',
       )
@@ -747,8 +765,8 @@ describe('closed vocabularies are frozen — append-only, never renamed or reord
   it('STATE_VAR_TYPES', () => {
     expect(STATE_VAR_TYPES).toEqual(['bool', 'int', 'enum'])
   })
-  it('DIAGNOSTIC_KINDS', () => {
-    expect(DIAGNOSTIC_KINDS).toEqual(['unknown-top-level-key', 'sentence-drift'])
+  it('[S3-023] DIAGNOSTIC_KINDS, waiver-inert appended (R49)', () => {
+    expect(DIAGNOSTIC_KINDS).toEqual(['unknown-top-level-key', 'sentence-drift', 'waiver-inert'])
   })
   it('every RELATION is an edge array on the requirement schema', () => {
     for (const relation of RELATIONS) {
@@ -810,5 +828,623 @@ describe('every field carries a description — the manifest has no second corpu
   it('the description guard FIRES on a field with no annotation', () => {
     const Unannotated = Schema.Struct({ naked: Schema.String })
     expect(blankFields(Unannotated, 'x')).toEqual(['x.naked'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Document format v4: the vocabulary and the anchors
+// ---------------------------------------------------------------------------
+
+/** One symbol of every kind, each carrying its kind-specific fields. */
+const allKinds = (): Record<string, unknown>[] => [
+  { id: 'sys_door_controller', kind: 'system', canonical: 'door controller', parent: 'sys_train' },
+  { id: 'sys_train', kind: 'system', canonical: 'train', aliases: ['rolling stock'] },
+  { id: 'feat_night_mode', kind: 'feature', canonical: 'night mode is enabled' },
+  { id: 'evt_door_button', kind: 'event', canonical: 'the door button is pressed' },
+  {
+    id: 'st_moving',
+    kind: 'state',
+    canonical: 'the train is moving',
+    variable: 'motion',
+    value: 'MOVING',
+    note: 'one condition class',
+  },
+  { id: 'act_open_door', kind: 'action', canonical: 'open the door', effects: 'door := OPEN' },
+  {
+    id: 'qty_dwell',
+    kind: 'quantity',
+    canonical: 'dwell time',
+    dimension: 'time',
+    unit: 's',
+    numberType: 'real',
+  },
+]
+
+/** A full v4 vocabulary. */
+const rawVocabulary = (extra: Record<string, unknown> = {}) => ({
+  symbols: allKinds(),
+  merges: [{ a: 'act_open_door', b: 'sys_train' }],
+  distinct: [{ a: 'evt_door_button', b: 'st_moving', reason: 'an event is not a state' }],
+  frozenTables: { sha256: 'b'.repeat(64) },
+  ...extra,
+})
+
+const rawIntent = () => ({
+  intentVersion: 1,
+  items: [{ id: 'I1', text: 'The door stays closed while the train moves.' }],
+})
+
+const rawPolicy = () => ({
+  policyVersion: 1,
+  levels: [{ id: 'safety' }],
+  assign: { I1: 'safety' },
+})
+
+/** A v4 document carrying every v4-only key, top-level and per requirement. */
+const rawV4Document = (): Record<string, unknown> => ({
+  docVersion: DOC_VERSION_VOCAB,
+  requirements: {
+    [ID_A]: rawRequirement(ID_A, { intentRef: 'I1' }),
+    [ID_B]: rawRequirement(ID_B, { derived: true }),
+  },
+  vocabulary: rawVocabulary(),
+  intent: rawIntent(),
+  policy: rawPolicy(),
+})
+
+/** A docVersion-3 document carrying exactly one v4-only key. */
+const v3With = (key: string): Record<string, unknown> => {
+  if (key === 'intentRef') {
+    return rawDocument({ requirements: { [ID_A]: rawRequirement(ID_A, { intentRef: 'I1' }) } })
+  }
+  if (key === 'derived') {
+    return rawDocument({ requirements: { [ID_A]: rawRequirement(ID_A, { derived: true }) } })
+  }
+  return rawDocument({ [key]: rawV4Document()[key] })
+}
+
+describe('v3 stays v3 — a v4-only key under docVersion 3 is a decode error naming the upgrade', () => {
+  it('names every v4-only key, and each is a real schema field', () => {
+    expect(V4_ONLY_DOCUMENT_KEYS).toEqual(['vocabulary', 'intent', 'policy'])
+    expect(V4_ONLY_REQUIREMENT_KEYS).toEqual(['intentRef', 'derived'])
+    for (const k of V4_ONLY_DOCUMENT_KEYS) expect(KNOWN_TOP_LEVEL_KEYS.has(k), k).toBe(true)
+    for (const k of V4_ONLY_REQUIREMENT_KEYS) expect(Object.keys(Requirement.fields)).toContain(k)
+  })
+
+  for (const key of ['vocabulary', 'intent', 'policy', 'intentRef', 'derived']) {
+    it(`REFUSES \`${key}\` under docVersion 3, and the message says to declare docVersion 4`, () => {
+      const r = attempt(v3With(key))
+      expect(r._tag).toBe('Failure')
+      if (r._tag === 'Failure') {
+        const message = String(r.failure)
+        expect(message).toContain(`\`${key}\``)
+        expect(message).toContain('docVersion 4')
+      }
+    })
+  }
+
+  it('ACCEPTS the same keys under docVersion 4', () => {
+    expect(attempt(rawV4Document())._tag).toBe('Success')
+  })
+
+  it('does not materialize a v4 key on a v3 document — nothing is written that was not read', () => {
+    const doc = decode(rawDocument()).document
+    for (const k of V4_ONLY_DOCUMENT_KEYS) expect(Object.hasOwn(doc, k), k).toBe(false)
+    for (const k of V4_ONLY_REQUIREMENT_KEYS) {
+      expect(Object.hasOwn(doc.requirements[ID_A] as object, k), k).toBe(false)
+    }
+  })
+
+  it('does not materialize a v4 key on a v4 document that omits it either', () => {
+    const doc = decode(rawDocument({ docVersion: 4 })).document
+    for (const k of V4_ONLY_DOCUMENT_KEYS) expect(Object.hasOwn(doc, k), k).toBe(false)
+    // A reader that wants the empty vocabulary asks for it.
+    expect(vocabularyOf(doc)).toEqual({ symbols: [], merges: [], distinct: [] })
+  })
+})
+
+describe('v4 decodes every key it declares, verbatim', () => {
+  it('round-trips a full v4 document value for value', () => {
+    const first = decode(rawV4Document())
+    const second = decode(withUnknownKeys(first.document, first.unknownKeys))
+    expect(second.document).toEqual(first.document)
+    expect(first.document.vocabulary?.symbols.map((s) => s.kind)).toEqual([
+      'system',
+      'system',
+      'feature',
+      'event',
+      'state',
+      'action',
+      'quantity',
+    ])
+    expect(first.document.intent).toEqual(rawIntent())
+    expect(first.document.policy).toEqual(rawPolicy())
+    expect(first.document.requirements[ID_A]?.intentRef).toBe('I1')
+    expect(first.document.requirements[ID_B]?.derived).toBe(true)
+  })
+
+  it('defaults a symbol`s aliases, and the vocabulary`s three lists, to []', () => {
+    const doc = decode({
+      ...rawV4Document(),
+      vocabulary: { symbols: [{ id: 'sys_train', kind: 'system', canonical: 'train' }] },
+    }).document
+    expect(doc.vocabulary).toEqual({
+      symbols: [{ id: 'sys_train', kind: 'system', canonical: 'train', aliases: [] }],
+      merges: [],
+      distinct: [],
+    })
+  })
+
+  it('reads `derived` as the literal true only', () => {
+    const r = attempt({
+      ...rawV4Document(),
+      requirements: { [ID_A]: rawRequirement(ID_A, { derived: false }) },
+    })
+    expect(r._tag).toBe('Failure')
+  })
+
+  it('keys `intentRef` on the requirement key format', () => {
+    const r = attempt({
+      ...rawV4Document(),
+      requirements: { [ID_A]: rawRequirement(ID_A, { intentRef: '42' }) },
+    })
+    expect(r._tag).toBe('Failure')
+  })
+})
+
+describe('the vocabulary schema', () => {
+  const decodeSymbol = (raw: unknown) =>
+    Effect.runSync(
+      Effect.result(Schema.decodeUnknownEffect(VocabSymbol, { onExcessProperty: 'error' })(raw)),
+    )
+  const decodeVocabulary = (raw: unknown) =>
+    Effect.runSync(
+      Effect.result(Schema.decodeUnknownEffect(Vocabulary, { onExcessProperty: 'error' })(raw)),
+    )
+
+  it('accepts one symbol of each of the six kinds', () => {
+    const symbols = allKinds()
+    expect(new Set(symbols.map((s) => s.kind))).toEqual(new Set(SYMBOL_KINDS))
+    for (const s of symbols) expect(decodeSymbol(s)._tag, String(s.id)).toBe('Success')
+  })
+
+  it('SymbolId is lowercase snake case, at most 64 characters', () => {
+    for (const ok of ['a', 'sys_door', 'qty_h0123456789', 'a1_b2_c3', 'x'.repeat(64)]) {
+      expect(SYMBOL_ID_PATTERN.test(ok), ok).toBe(true)
+      expect(decodeSymbol({ id: ok, kind: 'feature', canonical: 'f' })._tag, ok).toBe('Success')
+    }
+    for (const bad of ['Sys', '1abc', '_a', 'a_', 'a__b', 'a-b', 'a b', '', 'x'.repeat(65)]) {
+      expect(decodeSymbol({ id: bad, kind: 'feature', canonical: 'f' })._tag, bad).toBe('Failure')
+    }
+  })
+
+  it('REJECTS a field that belongs to another kind — each kind`s fields are structural', () => {
+    for (const s of [
+      { id: 'sys_a', kind: 'system', canonical: 'a', unit: 's' },
+      { id: 'feat_a', kind: 'feature', canonical: 'a', parent: 'sys_a' },
+      { id: 'evt_a', kind: 'event', canonical: 'a', value: 'X' },
+      { id: 'act_a', kind: 'action', canonical: 'a', variable: 'v' },
+      { id: 'st_a', kind: 'state', canonical: 'a', effects: 'x := 1' },
+    ]) {
+      expect(decodeSymbol(s)._tag, JSON.stringify(s)).toBe('Failure')
+    }
+  })
+
+  it('REJECTS an unknown kind, an empty canonical, and an empty alias', () => {
+    expect(decodeSymbol({ id: 'a', kind: 'mode', canonical: 'a' })._tag).toBe('Failure')
+    expect(decodeSymbol({ id: 'a', kind: 'feature', canonical: '' })._tag).toBe('Failure')
+    expect(decodeSymbol({ id: 'a', kind: 'feature', canonical: 'a', aliases: [''] })._tag).toBe(
+      'Failure',
+    )
+  })
+
+  it('REQUIRES a quantity`s dimension, unit and numberType', () => {
+    const full = allKinds().find((s) => s.kind === 'quantity') ?? {}
+    for (const field of ['dimension', 'unit', 'numberType']) {
+      const rest = Object.fromEntries(Object.entries(full).filter(([k]) => k !== field))
+      expect(decodeSymbol(rest)._tag, field).toBe('Failure')
+    }
+  })
+
+  it('a quantity has a unit exactly when it has a dimension', () => {
+    const q = (dimension: string, unit: string) => ({
+      id: 'qty_a',
+      kind: 'quantity',
+      canonical: 'a',
+      dimension,
+      unit,
+      numberType: 'int',
+    })
+    expect(decodeSymbol(q('none', ''))._tag).toBe('Success')
+    expect(decodeSymbol(q('unrecognized', 'widgets'))._tag).toBe('Success')
+    expect(decodeSymbol(q('none', 'ms'))._tag).toBe('Failure')
+    expect(decodeSymbol(q('time', ''))._tag).toBe('Failure')
+    expect(decodeSymbol(q('lumens', 'lm'))._tag).toBe('Failure')
+  })
+
+  it('the quantity dimensions are the numeric tier`s, plus its unrecognized and unitless readings', () => {
+    // One list, owned by the engine. `none` is the engine's `''`: a number with no unit.
+    expect(new Set(QUANTITY_DIMENSIONS)).toEqual(
+      new Set([...DIMENSIONS.map((d) => d.name), RAW_UNIT_DIMENSION, 'none']),
+    )
+    expect(QUANTITY_DIMENSIONS.length).toBe(DIMENSIONS.length + 2)
+  })
+
+  it('REJECTS a duplicate symbol id, naming it', () => {
+    const r = decodeVocabulary(
+      rawVocabulary({
+        symbols: [
+          { id: 'sys_a', kind: 'system', canonical: 'a' },
+          { id: 'sys_a', kind: 'system', canonical: 'b' },
+        ],
+        merges: [],
+        distinct: [],
+      }),
+    )
+    expect(r._tag).toBe('Failure')
+    if (r._tag === 'Failure') expect(String(r.failure)).toContain('sys_a')
+  })
+
+  it('REJECTS a merge or a distinct record from a symbol to itself', () => {
+    expect(decodeVocabulary(rawVocabulary({ merges: [{ a: 'sys_a', b: 'sys_a' }] }))._tag).toBe(
+      'Failure',
+    )
+    expect(
+      decodeVocabulary(rawVocabulary({ distinct: [{ a: 'sys_a', b: 'sys_a', reason: 'r' }] }))._tag,
+    ).toBe('Failure')
+  })
+
+  it('REQUIRES a reason on a distinct record', () => {
+    expect(
+      decodeVocabulary(rawVocabulary({ distinct: [{ a: 'sys_a', b: 'sys_b', reason: '' }] }))._tag,
+    ).toBe('Failure')
+  })
+
+  it('REJECTS a frozen-table hash that is not 64 hex digits', () => {
+    expect(decodeVocabulary(rawVocabulary({ frozenTables: { sha256: 'x' } }))._tag).toBe('Failure')
+  })
+
+  it('SYMBOL_KINDS and NUMBER_TYPES are frozen', () => {
+    expect(SYMBOL_KINDS).toEqual(['system', 'feature', 'event', 'state', 'action', 'quantity'])
+    expect(NUMBER_TYPES).toEqual(['int', 'real'])
+  })
+})
+
+describe('every v4 field carries a description — the manifest has no second corpus', () => {
+  /** Every property of every object node reachable from a schema that has no description. */
+  const blankDeep = (schema: Schema.Top, label: string): string[] => {
+    const out: string[] = []
+    const walk = (node: Node | undefined, at: string): void => {
+      if (node === undefined) return
+      for (const [name, child] of Object.entries(node.properties ?? {})) {
+        const d = annotationOf(child, 'description')
+        if (typeof d !== 'string' || d.trim() === '') out.push(`${at}.${name}`)
+        walk(child, `${at}.${name}`)
+      }
+      walk(node.items, `${at}[]`)
+      for (const branch of [node.allOf, node.anyOf, node.oneOf]) {
+        for (const [i, child] of (branch ?? []).entries()) walk(child, `${at}|${i}`)
+      }
+    }
+    const root = Schema.toJsonSchemaDocument(schema as never) as {
+      schema: Node
+      definitions?: Record<string, Node>
+    }
+    walk(root.schema, label)
+    for (const [name, def] of Object.entries(root.definitions ?? {})) walk(def, `${label}#${name}`)
+    return out
+  }
+
+  it('on the vocabulary, every symbol branch, the anchors, and the whole document', () => {
+    expect(blankDeep(Vocabulary, 'vocabulary')).toEqual([])
+    expect(blankDeep(RequirementsDocument, 'document')).toEqual([])
+  })
+
+  /** NEGATIVE CONTROL: the deep walk reaches a field inside an array of structs. */
+  it('the deep walk FIRES on a nested field with no annotation', () => {
+    const Nested = Schema.Struct({
+      outer: Schema.Array(Schema.Struct({ naked: Schema.String })).annotate({ description: 'o' }),
+    })
+    expect(blankDeep(Nested, 'x')).toEqual(['x.outer[].naked'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// S3 closure round (attack D14, D15, D16): the stored-waiver schema refuses at load what the
+// fold never writes
+// ---------------------------------------------------------------------------
+
+describe('S3 closure: a stored waiver the fold could never have written is refused at load', () => {
+  const LOG_R1 = '5a1e0000-0000-4000-8000-0000000000a1'
+  const HASH = 'sha256:fd8b2c50a779708a19c161d83262563c7d8826c3f749072ab3eaf58b2c286ae0'
+  const requirement = {
+    id: LOG_R1,
+    patternType: 'event-driven',
+    trigger: 'the operator closes the shift',
+    systemName: 'audit logger',
+    systemResponse: 'store an audit record',
+    sentence: 'When the operator closes the shift, the audit logger shall store an audit record.',
+    priority: 'medium',
+    status: 'draft',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }
+  const withWaiver = (waiver: Record<string, unknown>) => ({
+    docVersion: 3,
+    requirements: { [LOG_R1]: requirement },
+    waivers: [waiver],
+  })
+  const loads = (waiver: Record<string, unknown>): boolean =>
+    Effect.runSync(Effect.result(decodeDocument(withWaiver(waiver))))._tag === 'Success'
+  const valid = {
+    code: 'GTWR_R5_INDEFINITE_ARTICLE',
+    requirementIds: [LOG_R1],
+    contentHash: HASH,
+    reason: 'reviewed',
+  }
+
+  it('[S3-021] the control: the shape the fold stores loads', () => {
+    expect(loads(valid)).toBe(true)
+  })
+
+  it.each([
+    ['prefixed', `x${HASH}`],
+    ['suffixed', `${HASH}0`],
+    ['leading space', ` ${HASH}`],
+    ['trailing newline', `${HASH}\n`],
+  ])('[S3-008] [S3-028] a %s content hash is refused at load (D14)', (_name, contentHash) => {
+    expect(loads({ ...valid, contentHash })).toBe(false)
+  })
+
+  it('[S3-019] an empty requirementIds array is refused at load (D15)', () => {
+    expect(loads({ ...valid, requirementIds: [] })).toBe(false)
+  })
+
+  it('[S3-026] an empty reason is refused at load (D16)', () => {
+    expect(loads({ ...valid, reason: '' })).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Release hardening (VDD run 3, ruling RH-R3): format v4 is labelled experimental
+// ---------------------------------------------------------------------------
+
+/**
+ * On this build a docVersion 4 document with intent items and `vocabulary.frozenTables` loads,
+ * `add` accepts a requirement with neither `intentRef` nor `derived`, `glossary` writes into the
+ * "frozen" tables, and `check` reads none of it. So the schema's own descriptions, which the
+ * published surfaces derive from, must not say otherwise: each v4 key carries ONE exported
+ * statement, interpolated rather than retyped, and the two unqualified enforcement claims are
+ * gone (or rephrased as what a later release will do).
+ *
+ * The statement is read through the module namespace, so this file loads on a build that does
+ * not export it yet and fails there on an assertion rather than on an import.
+ */
+describe('[RH-007] the v4 schema says what this build does with the v4 keys', () => {
+  const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim()
+  const statementOf = async (): Promise<string> => {
+    const documentModule = await import('./document.ts')
+    const statement: unknown = Reflect.get(documentModule, 'V4_EXPERIMENTAL_STATEMENT')
+    expect(typeof statement, 'V4_EXPERIMENTAL_STATEMENT is exported as a string').toBe('string')
+    return String(statement)
+  }
+  const jsonSchema = () =>
+    Schema.toJsonSchemaDocument(RequirementsDocument) as unknown as {
+      schema: Node & { properties: Record<string, Node & { additionalProperties?: Node }> }
+    }
+
+  it('[RH-007] one exported constant states that v4 is experimental and read by no check tier', async () => {
+    const statement = await statementOf()
+    expect(statement).toMatch(/experimental/i)
+    expect(statement).toMatch(/no check tier/i)
+    expect(statement).toMatch(/preserved on save/i)
+  })
+
+  it('[RH-007] the vocabulary, intent and policy keys and the intentRef and derived fields interpolate it', async () => {
+    const said = collapse(await statementOf())
+    const { properties } = jsonSchema().schema
+    const requirement = properties.requirements?.additionalProperties?.properties ?? {}
+    const described = {
+      vocabulary: annotationOf(properties.vocabulary, 'description'),
+      intent: annotationOf(properties.intent, 'description'),
+      policy: annotationOf(properties.policy, 'description'),
+      intentRef: annotationOf(requirement.intentRef, 'description'),
+      derived: annotationOf(requirement.derived, 'description'),
+    }
+    const unlabelled = Object.entries(described)
+      .filter(([, text]) => typeof text !== 'string' || !collapse(text).includes(said))
+      .map(([key]) => key)
+    expect(unlabelled).toEqual([])
+  })
+
+  it('[RH-007] states neither unqualified enforcement claim anywhere in the document schema', () => {
+    const everything = collapse(JSON.stringify(jsonSchema()).replace(/\\n/g, ' '))
+    for (const claim of [
+      'Every requirement names one intent item, or is marked',
+      'With a vocabulary those two tables are frozen',
+    ]) {
+      expect(everything, claim).not.toContain(claim)
+    }
+  })
+})
+
+/**
+ * Review finding R3 (review ledger, commit fc203db): `[RH-007]` read the five keys' own
+ * descriptions and two exact phrases, but the projection carries nested descriptions too, and
+ * four nested source descriptions still claimed what no tier does (symbols are checked through
+ * their id, intent text is what the specification is checked against, distinct pairs are decided
+ * when the document is checked, every requirement names an intent item), projecting into nine
+ * schema descriptions while the decoder accepts a requirement with neither `intentRef` nor
+ * `derived`. RH-012 walks EVERY description at every nesting level of the projected schema.
+ */
+describe('[RH-012] no description anywhere in the projected document schema claims what no tier does', () => {
+  const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim()
+  /** A JSON-Schema value, loosely: anything an object node can hold. */
+  type Json = { readonly [key: string]: unknown }
+  const isObject = (value: unknown): value is Json =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+
+  /** Every `description` string at any depth, with its JSON path. */
+  const descriptionsIn = (value: unknown, at = '$'): { path: string; text: string }[] => {
+    if (Array.isArray(value))
+      return value.flatMap((child, i) => descriptionsIn(child, `${at}.${i}`))
+    if (!isObject(value)) return []
+    return Object.entries(value).flatMap(([key, child]) =>
+      key === 'description' && typeof child === 'string'
+        ? [{ path: `${at}.description`, text: collapse(child) }]
+        : descriptionsIn(child, `${at}.${key}`),
+    )
+  }
+
+  /**
+   * The descriptions the projection attaches to one property's OWN node: the node, its
+   * `allOf`/`anyOf`/`oneOf` branches at any depth, and a `$ref` target, but not its nested
+   * properties or items (those are other fields, held to the claim list instead).
+   */
+  const ownDescriptions = (
+    node: unknown,
+    definitions: Json,
+    at: string,
+    seen = new Set<unknown>(),
+  ): { path: string; text: string }[] => {
+    if (!isObject(node) || seen.has(node)) return []
+    seen.add(node)
+    const own =
+      typeof node.description === 'string' ? [{ path: at, text: collapse(node.description) }] : []
+    const ref =
+      typeof node.$ref === 'string'
+        ? definitions[node.$ref.replace(/^#\/(?:\$defs|definitions)\//, '')]
+        : undefined
+    const branches = (['allOf', 'anyOf', 'oneOf'] as const).flatMap((k) => {
+      const list = node[k]
+      return Array.isArray(list)
+        ? list.map((child, i) => ownDescriptions(child, definitions, `${at}.${k}.${i}`, seen))
+        : []
+    })
+    return [...own, ...branches.flat(), ...ownDescriptions(ref, definitions, `${at}.$ref`, seen)]
+  }
+
+  /** Every place a property named `name` occurs anywhere in the projection, with its path. */
+  const propertiesNamed = (
+    value: unknown,
+    name: string,
+    at = '$',
+  ): { path: string; node: unknown }[] => {
+    if (Array.isArray(value))
+      return value.flatMap((child, i) => propertiesNamed(child, name, `${at}.${i}`))
+    if (!isObject(value)) return []
+    const props = value.properties
+    const here =
+      isObject(props) && name in props
+        ? [{ path: `${at}.properties.${name}`, node: props[name] }]
+        : []
+    return [
+      ...here,
+      ...Object.entries(value).flatMap(([key, child]) =>
+        propertiesNamed(child, name, `${at}.${key}`),
+      ),
+    ]
+  }
+
+  /**
+   * The unqualified enforcement claims: ruling RH-R3's two sentences and the four the review
+   * found, each as the claim rather than its exact wording, so a synonym-free rewording that
+   * keeps the claim still matches. A later release's plan ("A later release will check ...")
+   * matches none of them.
+   */
+  const CLAIMS: readonly RegExp[] = [
+    /every requirement names one intent item, or is marked/i,
+    /with a vocabulary those two tables are frozen/i,
+    /\btables are frozen\b/i,
+    /\bevery requirement names\b/i,
+    /\b(?:is|are) checked against\b/i,
+    /\bwhen the document is checked\b/i,
+  ]
+  const V4_KEYS = ['vocabulary', 'intent', 'policy', 'intentRef', 'derived'] as const
+
+  it('[RH-012] every description, at every nesting level, states no unqualified enforcement claim, and every description of the five v4 keys carries the statement', async () => {
+    const documentModule = await import('./document.ts')
+    const statement: unknown = Reflect.get(documentModule, 'V4_EXPERIMENTAL_STATEMENT')
+    expect(typeof statement, 'V4_EXPERIMENTAL_STATEMENT is exported as a string').toBe('string')
+    const said = collapse(String(statement))
+    const projected = Schema.toJsonSchemaDocument(RequirementsDocument) as unknown as Json
+    const definitions = isObject(projected.definitions) ? projected.definitions : {}
+
+    const all = descriptionsIn(projected)
+    // Anti-vacuity: the walk reaches nested union and refinement branches inside the v4 keys.
+    expect(
+      all.some(
+        (d) =>
+          d.path.includes('.vocabulary.') &&
+          d.path.includes('.anyOf.') &&
+          d.path.includes('.allOf.'),
+      ),
+      'the walk must reach descriptions nested inside the vocabulary symbol union',
+    ).toBe(true)
+    expect(all.some((d) => d.path.includes('.intent.properties.items.items.'))).toBe(true)
+
+    const claimed = all.flatMap((d) =>
+      CLAIMS.filter((claim) => claim.test(d.text)).map((claim) => `${d.path}: ${String(claim)}`),
+    )
+    const unlabelled = V4_KEYS.flatMap((key) => {
+      const places = propertiesNamed(projected, key)
+      if (places.length === 0) return [`${key}: not in the projected schema`]
+      return places.flatMap(({ path, node }) => {
+        const own = ownDescriptions(node, definitions, path)
+        if (own.length === 0) return [`${path}: no description`]
+        return own
+          .filter((d) => !d.text.includes(said))
+          .map((d) => `${d.path}: lacks the statement`)
+      })
+    })
+    expect([...claimed, ...unlabelled]).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R62, attack C23, run 3's B4 statement): the intentRef and derived
+// descriptions say what the decoder does with the pair
+// ---------------------------------------------------------------------------
+
+describe('[RH-007] [RH-012] while the decoder accepts both intentRef and derived, or neither, no description of either claims it checks the pair (R62, attack C23)', () => {
+  const collapse = (text: string): string => text.replace(/\s+/g, ' ').trim()
+  const described = () => {
+    const projected = Schema.toJsonSchemaDocument(RequirementsDocument) as unknown as {
+      schema: Node & { properties: Record<string, Node & { additionalProperties?: Node }> }
+    }
+    const requirement =
+      projected.schema.properties.requirements?.additionalProperties?.properties ?? {}
+    return {
+      intentRef: collapse(String(annotationOf(requirement.intentRef, 'description'))),
+      derived: collapse(String(annotationOf(requirement.derived, 'description'))),
+    }
+  }
+
+  it('[RH-007] [RH-012] a v4 requirement with both fields and one with neither decode, and each description states, in words written here, that this release checks neither', () => {
+    const both = attempt({
+      ...rawV4Document(),
+      requirements: {
+        [ID_A]: rawRequirement(ID_A, { intentRef: 'I1', derived: true }),
+        [ID_B]: rawRequirement(ID_B),
+      },
+    })
+    // The premise the wording depends on: today the pair is not enforced either way.
+    expect(both._tag).toBe('Success')
+    const NOT_CHECKED = 'and never both; this one checks neither.'
+    const wrong: string[] = []
+    for (const [field, text] of Object.entries(described())) {
+      if (!text.includes(NOT_CHECKED)) wrong.push(`${field}: does not say "${NOT_CHECKED}"`)
+      // Any present-tense claim that this release checks, enforces, rejects or requires the
+      // pair, in either direction (both, either, one, exactly one).
+      if (
+        /\bthis (?:one|release|build|version) (?:checks|enforces|rejects|requires|refuses) (?!neither\b)/i.test(
+          text,
+        )
+      )
+        wrong.push(`${field}: claims this release checks the pair: ${text}`)
+      if (/\b(?:is|are) (?:checked|enforced|rejected|refused)\b/i.test(text))
+        wrong.push(`${field}: claims enforcement: ${text}`)
+    }
+    expect(wrong).toEqual([])
   })
 })

@@ -1,0 +1,2 @@
+# Only ORD-R1's blocking wording finding waived; ORD-R2's stays.
+{"op":"waive","code":"GTWR_R7_VAGUE","reason":"the service level agreement defines the deadline","refs":["ORD-R1"],"contentHash":"sha256:e376ee5c3ca6dfa2b6aab589e457c1a3c818dcbaffa9401002cc761478ba15b1"}

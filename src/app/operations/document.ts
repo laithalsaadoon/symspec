@@ -22,16 +22,22 @@
  * disclosure an agent never sees is not a disclosure.
  */
 
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { Effect, Schema } from 'effect'
+import { INTENT_VERSION, POLICY_VERSION } from '../../domain/anchor/anchor.ts'
+import { CONFIG_FILE_NAME, skeletonConfig } from '../../domain/config/config.ts'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import {
   DOC_VERSION,
   type DocumentDiagnostic,
+  type DocVersion,
   emptyDocument,
   type Requirement,
+  V4_EXPERIMENTAL_STATEMENT,
 } from '../../domain/requirements/document.ts'
 import { requireRequirement } from '../../domain/requirements/resolve.ts'
 import { DOC_PATH_CONVENTION, DocPath, DocStore } from '../../ports/doc-store.ts'
-import { ErrDocExists, type ErrNotFound } from '../../ports/errors.ts'
+import { ErrConfigInvalid, ErrDocExists, type ErrNotFound } from '../../ports/errors.ts'
 import { ok } from '../runtime/envelope.ts'
 import { defineOperation } from '../runtime/operation.ts'
 
@@ -74,6 +80,119 @@ const docPathField = (verb: string) =>
 // init
 // ---------------------------------------------------------------------------
 
+/** What `init` reports. `split` is present exactly when `--split` wrote the anchors. */
+interface InitPayload {
+  readonly path: string
+  readonly docVersion: DocVersion
+  /** Whether the document was written (a kept document under --split is not). */
+  readonly created: boolean
+  readonly overwritten: boolean
+  readonly requirements: number
+  readonly split?: { readonly config: string; readonly intent: string; readonly policy: string }
+  /**
+   * Present exactly when `split` is: what this release does with the intent and policy it just
+   * wrote ({@link V4_EXPERIMENTAL_STATEMENT}). The config's pins are enforced, so it is not
+   * covered by the note.
+   */
+  readonly anchorsNote?: string
+}
+
+/** The split intent file's name, beside the document. */
+const SPLIT_INTENT_FILE = 'intent.json'
+
+/** The split policy file's name, beside the document. */
+const SPLIT_POLICY_FILE = 'policy.json'
+
+/** Pretty JSON with a trailing newline, the store's on-disk shape for a document too. */
+const jsonText = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`
+
+/** `to` relative to `fromDir`, with `/` separators, as a config names a file. */
+const relativeTo = (fromDir: string, to: string): string =>
+  relative(resolve(fromDir), resolve(to)).split(sep).join('/')
+
+/**
+ * `init --split`: the document (kept when it exists), plus skeleton intent and policy files and
+ * the pinned config that names them.
+ *
+ * ## Write-safety
+ *
+ * The three anchor files are owner-authored and CODEOWNED, so none is ever overwritten. Every
+ * target is checked BEFORE anything is written, so a refusal writes nothing at all, and each
+ * is then written with an exclusive create, so a file that appears between the check and the
+ * write is refused rather than clobbered.
+ */
+const initSplit = (path: string, force: boolean) =>
+  Effect.gen(function* () {
+    const store = yield* DocStore
+    const docExists = yield* store.exists(path)
+    const writeDocument = !docExists || force
+
+    // A kept document must not already carry the anchors inline: a split copy would make two.
+    const kept = writeDocument ? undefined : (yield* store.load(path)).document
+    const inline = (['intent', 'policy'] as const).filter((key) => kept?.[key] !== undefined)
+    if (inline.length > 0) {
+      return yield* Effect.fail(
+        new ErrConfigInvalid({
+          error: `${path} already carries an inline ${inline.join(' and ')}; init --split would write a second copy.`,
+          suggestions: [
+            `Keep the inline ${inline.join(' and ')}, and run \`symspec init\` without --split.`,
+            'Nothing was written.',
+          ],
+        }),
+      )
+    }
+
+    // Real paths throughout, so the names the config records resolve from where it is written.
+    const location = yield* store.configPath(path)
+    const configFile = location.path
+    const intentFile = join(dirname(location.document), SPLIT_INTENT_FILE)
+    const policyFile = join(dirname(location.document), SPLIT_POLICY_FILE)
+    const targets = [intentFile, policyFile, configFile]
+    const existing: string[] = []
+    for (const target of targets) if (yield* store.exists(target)) existing.push(target)
+    if (existing.length > 0) {
+      return yield* Effect.fail(
+        new ErrDocExists({
+          error: `init --split refused: ${existing.join(', ')} already ${existing.length === 1 ? 'exists' : 'exist'}. It never overwrites an intent, a policy or a config, even with --force.`,
+          suggestions: [
+            'Nothing was written, and every existing file was left intact.',
+            'Edit the existing files by hand, or move them aside and re-run.',
+          ],
+          repair: { ops: [], commands: existing.map((f) => `cat ${f}`) },
+        }),
+      )
+    }
+
+    const configDir = dirname(configFile)
+    yield* store.create(intentFile, jsonText({ intentVersion: INTENT_VERSION, items: [] }))
+    yield* store.create(
+      policyFile,
+      jsonText({ policyVersion: POLICY_VERSION, levels: [], assign: {} }),
+    )
+    yield* store.create(
+      configFile,
+      jsonText(
+        skeletonConfig({
+          document: relativeTo(configDir, location.document),
+          intent: relativeTo(configDir, intentFile),
+          policy: relativeTo(configDir, policyFile),
+        }),
+      ),
+    )
+    const document = writeDocument ? emptyDocument() : (kept ?? emptyDocument())
+    if (writeDocument) yield* store.save(path, { document })
+
+    return ok<'init', InitPayload>('init', {
+      path,
+      docVersion: document.docVersion,
+      created: writeDocument,
+      overwritten: docExists && force,
+      requirements: Object.keys(document.requirements).length,
+      split: { config: configFile, intent: intentFile, policy: policyFile },
+      anchorsNote: `${SPLIT_INTENT_FILE} and ${SPLIT_POLICY_FILE}: ${V4_EXPERIMENTAL_STATEMENT}`,
+    })
+  })
+
 /**
  * `init` — create an empty v3 document.
  *
@@ -105,6 +224,25 @@ export const initOp = defineOperation({
           'Overwrite an existing document at the resolved path.',
           'Without this, an existing file is an ERR_DOC_EXISTS failure and is left completely intact —',
           'so `init` is safe to call speculatively against a document you were about to read.',
+          'It never applies to the files --split writes.',
+        ].join('\n'),
+      }),
+    ),
+    split: Schema.withDecodingDefaultKey<Schema.Boolean>(Effect.succeed(false))(
+      Schema.Boolean.annotate({
+        default: false,
+        description: [
+          `Also write the anchors as separate files: skeleton \`${SPLIT_INTENT_FILE}\` and \`${SPLIT_POLICY_FILE}\` beside the`,
+          `document, and a \`${CONFIG_FILE_NAME}\` that names them and pins every run knob at its default.`,
+          'The config goes to its default location: the toplevel `git rev-parse --show-toplevel` prints',
+          'for the document`s real directory, or that directory when git names no repository there.',
+          '`check` reads it from there unless --config or SYMSPEC_CONFIG names another, and a run below',
+          'any pin is demoted `run-weakened`.',
+          `The intent and policy files: ${V4_EXPERIMENTAL_STATEMENT}`,
+          'An existing document is kept, not recreated (unless --force). The three new files are NEVER',
+          'overwritten, --force or not: if any exists the command writes nothing and fails with',
+          'ERR_DOC_EXISTS, because an owner writes these, not the tool. A document that already carries',
+          'an inline intent or policy is refused with ERR_CONFIG_INVALID, since a split copy would make two.',
         ].join('\n'),
       }),
     ),
@@ -115,6 +253,8 @@ export const initOp = defineOperation({
       const store = yield* DocStore
       const path = docPath.resolve(input.file)
 
+      if (input.split) return yield* initSplit(path, input.force)
+
       if (!input.force && (yield* store.exists(path))) {
         return yield* Effect.fail(
           new ErrDocExists({
@@ -122,16 +262,16 @@ export const initOp = defineOperation({
             suggestions: [
               'Pass --force to recreate it, or choose a different path.',
               'The existing file was NOT modified.',
-              `Run \`symspec list ${path}\` to see what is in it.`,
+              `Run \`symspec list ${shellWord(path)}\` to see what is in it.`,
             ],
-            repair: { ops: [], commands: [`symspec list ${path}`] },
+            repair: { ops: [], commands: [`symspec list ${shellWord(path)}`] },
           }),
         )
       }
 
       const document = emptyDocument()
       yield* store.save(path, { document })
-      return ok('init', {
+      return ok<'init', InitPayload>('init', {
         path,
         docVersion: DOC_VERSION,
         created: true,

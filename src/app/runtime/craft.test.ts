@@ -33,16 +33,18 @@ import {
   type Requirement,
   type RequirementsDocument,
 } from '../../domain/requirements/document.ts'
-import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
-import { embedderLayerOf } from '../../ports/embedder.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/doc-store.ts'
+import { type Embedder, embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
+import { buildSkillBody } from '../install/skill-body.ts'
 import { type CheckPayload, checkOp } from '../operations/check.ts'
 import { applyOpDefinition } from '../operations/mutation.ts'
 import { parseOp } from '../operations/parse.ts'
 import { lookupCode } from './catalog.ts'
 import { ANTI_PATTERNS, CRAFT_SECTIONS, craftCodes, craftContents, renderCraft } from './craft.ts'
 import { runOperation } from './operation.ts'
+import { waivabilityOf } from './signal-classes.ts'
 
 // ---------------------------------------------------------------------------
 // Running a sentence through the real lint tier
@@ -380,6 +382,30 @@ describe('the compound section`s routing advice is real', () => {
  * half stopped being true, the section would be teaching a fiction — and it is the
  * section an author is most likely to trust, because it comes with numbers.
  */
+/**
+ * The two responses' cosine, MEASURED with the pinned model on the built CLI: 0.813.
+ *
+ * The suite never loads the model, and the hash stub scores these two phrases far below the
+ * 0.72 threshold — so under the stub the propose tier is silent and step 1 reports
+ * `verified: true`, which is not what a user with the model sees. This embedder returns the
+ * measured cosine for exactly the two response phrases and defers to the stub for every other
+ * text, so the test asserts the section's real-model outcome rather than the stub's.
+ */
+const MEASURED_COSINE = 0.813
+const measuredEmbedder = (): Embedder => {
+  const stub = stubEmbedder()
+  const dim = 16
+  const axis = (v: readonly number[]) => Float32Array.from({ length: dim }, (_, i) => v[i] ?? 0)
+  const table: Record<string, Float32Array> = {
+    'start the nightly run': axis([1]),
+    'halt the nightly run': axis([MEASURED_COSINE, Math.sqrt(1 - MEASURED_COSINE ** 2)]),
+  }
+  return async (texts) => {
+    const fallback = await stub(texts)
+    return texts.map((t, i) => table[t] ?? (fallback[i] as Float32Array))
+  }
+}
+
 describe('the worked example produces the outcomes it claims', () => {
   const run = async () => {
     let document: RequirementsDocument = emptyDocument()
@@ -387,7 +413,7 @@ describe('the worked example produces the outcomes it claims', () => {
 
     const layer = Layer.mergeAll(
       Layer.succeed(DocStore)(
-        DocStore.of({
+        documentOnlyStore({
           load: (path) =>
             path === 'doc.json'
               ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })
@@ -403,7 +429,7 @@ describe('the worked example produces the outcomes it claims', () => {
       ),
       Layer.succeed(DocPath)(makeDocPath({})),
       solverServiceLayer,
-      embedderLayerOf(stubEmbedder()),
+      embedderLayerOf(measuredEmbedder()),
       Layer.succeed(StreamSource)(StreamSource.of({ read: () => Effect.succeed(pending) })),
     )
 
@@ -449,12 +475,35 @@ describe('the worked example produces the outcomes it claims', () => {
     return { before, after }
   }
 
-  it('step 1 checks CLEAN over a flat contradiction — the silence trap', async () => {
+  it('step 1 exits 0 over a flat contradiction, and only the propose tier says so', async () => {
     const { before } = await run()
     expect(before.counts.error, 'the section claims zero errors before the antonym').toBe(0)
-    expect(before.findings).toEqual([])
-    expect(before.verified).toBe(true)
-    // The ONLY visible tell, and the number the section points at.
+    expect(before.counts.warn, 'the section claims zero warnings before the antonym').toBe(0)
+    // The section names all three info findings: the opposition candidate and the similarity
+    // suggestion the real model raises, and the no-state-model reachability disclosure.
+    expect(before.findings.map((f) => [f.code, f.severity])).toEqual([
+      ['FND_OPPOSITION_CANDIDATE', 'info'],
+      ['FND_SIMILAR_SEMANTIC', 'info'],
+      ['FND_REACHABILITY_NOT_CHECKED', 'info'],
+    ])
+    const body = CRAFT_SECTIONS.find((s) => s.id === 'worked-example')?.body ?? ''
+    for (const code of [
+      'FND_OPPOSITION_CANDIDATE',
+      'FND_SIMILAR_SEMANTIC',
+      'FND_REACHABILITY_NOT_CHECKED',
+    ]) {
+      expect(body, code).toContain(code)
+    }
+    expect(body).toContain(`cosine ${MEASURED_COSINE}`)
+    expect(body).not.toMatch(/findings: \d/)
+    // The open candidate demotes, so step 1 is NOT verified. NEGATIVE GUARD on the stub-era
+    // claim that step 1 "looks perfect" with `verified: true`: it was measured under the hash
+    // stub, which never raises the candidate, and no user with the model ever saw it.
+    expect(before.verified).toBe(false)
+    expect(before.progress.demotions).toBe(1)
+    expect(before.coverage.demotions.map((d) => d.reason)).toEqual(['open-opposition-candidate'])
+    expect(body).not.toContain('It is `true` in BOTH runs')
+    expect(body).not.toContain('step 1 looks\nperfect')
     expect(before.progress.atomsUncompared).toBe(2)
     expect(before.pairsChecked).toBe(1)
   }, 60_000)
@@ -470,10 +519,30 @@ describe('the worked example produces the outcomes it claims', () => {
     // The atoms unified, which is the mechanism the section explains.
     expect(after.progress.atomsUncompared).toBe(0)
     expect(after.progress.openFindings).toBe(1)
-    // `verified` stays TRUE, and the section explains why: it answers "was consistency
-    // CHECKED", not "is the document clean".
+    expect(after.progress.demotions).toBe(0)
+    // `verified` turns TRUE over a proven contradiction, and the section explains why: it
+    // answers "was consistency CHECKED", not "is the document clean".
     expect(after.verified).toBe(true)
+    expect(after.findings.map((f) => f.code)).toEqual([
+      'FND_CONTRADICTION',
+      'FND_REACHABILITY_NOT_CHECKED',
+    ])
   }, 60_000)
+})
+
+describe('the craft corpus names only commands the flat CLI accepts', () => {
+  it('never spells `glossary` or `antonym` with a nested verb', () => {
+    // The surface is FLAT: `symspec antonym start halt`, two positionals. `antonym add start
+    // halt` binds `add` to the first positional and fails with "Unexpected positional
+    // argument" (measured on the built CLI). The corpus taught that form in three places,
+    // and `publish.test.ts`'s equivalent sweep reads only the README.
+    const nested = CRAFT_SECTIONS.flatMap((s) =>
+      [
+        ...s.body.matchAll(/`(?:symspec )?(glossary|antonym|term|waive) (add|remove|list|set)\b/g),
+      ].map((m) => `${s.id}: ${m[1]} ${m[2]}`),
+    )
+    expect(nested).toEqual([])
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -586,11 +655,13 @@ describe('the state-model section`s transcript is REAL', () => {
         {
           name: 'held',
           type: 'int',
-          frame: 'volatile',
+          // `stable`, exactly as the section's plan declares them — the hypothesis the TX-C1
+          // proof is reported under (spec 007 AC-1-6).
+          frame: 'stable',
           initial: 'held = 0',
           domain: { min: 0, max: 3 },
         },
-        { name: 'queued', type: 'bool', frame: 'volatile', initial: 'queued = false' },
+        { name: 'queued', type: 'bool', frame: 'stable', initial: 'queued = false' },
       ],
     },
   })
@@ -632,7 +703,7 @@ describe('the state-model section`s transcript is REAL', () => {
         Effect.provide(
           Layer.mergeAll(
             Layer.succeed(DocStore)(
-              DocStore.of({
+              documentOnlyStore({
                 load: (path) =>
                   path === 'doc.json'
                     ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })
@@ -727,9 +798,33 @@ describe('the state-model section`s transcript is REAL', () => {
     // And the finding NAMES the hypothesis with its writers, which is the sentence the
     // section quotes verbatim.
     const proof = payload.findings.find((f) => f.code === 'FND_REACHABILITY_UNDER_HYPOTHESES')
-    expect(proof?.message).toContain('THE DOCUMENT DOES NOT STATE THAT')
-    expect(proof?.message).toContain('held')
-    expect(proof?.message).toContain('TX-A1')
+    expect(proof?.message).toContain('declares `frame: stable`')
+    expect(proof?.message).toContain('held (written by TX-A1, TX-A2)')
+    expect(proof?.message).toContain('queued (written by TX-A1, TX-A3)')
+    // VERBATIM, whole: the section's quote had stopped at "no requirement establishes it."
+    // while the finding went on to say the frame-released constraint IS violable — the half
+    // that tells a reader the proof is about the model, not the system. A prefix match
+    // cannot catch a truncated quote, so the whole message is asserted inside the body.
+    const flowed = (s: string) => s.replace(/\\`/g, '`').replace(/\s+/g, ' ')
+    const body = CRAFT_SECTIONS.find((s) => s.id === 'state-model')?.body ?? ''
+    expect(flowed(body)).toContain(flowed(proof?.message ?? '<no finding>'))
+  }, 60_000)
+
+  it('the SAME model with the frames left volatile is UNKNOWN (frame-undeclared), as the section says', async () => {
+    const base = lockDoc()
+    const volatile: RequirementsDocument = {
+      ...base,
+      stateModel: {
+        variables: base.stateModel.variables.map((v) => ({ ...v, frame: 'volatile' as const })),
+      },
+    }
+    const payload = await runCheck(volatile)
+    expect(payload.reachability?.provedUnderHypotheses).toBe(0)
+    expect(payload.reachability?.unknown).toBe(1)
+    const open = payload.findings.find(
+      (f) => f.code === 'FND_REACHABILITY_UNKNOWN' && f.message.startsWith('TX-C1:'),
+    )
+    expect(open?.message).toContain('THE DOCUMENT DOES NOT STATE THAT')
   }, 60_000)
 
   it('STEP 2: TX-C2 is VIOLATED, with the trace the section prints', async () => {
@@ -828,4 +923,63 @@ describe('the state-model section`s transcript is REAL', () => {
       ),
     ).toBe(false)
   }, 60_000)
+})
+
+// ---------------------------------------------------------------------------
+// S3 (spec 007 AC-5-6): the installed skill teaches no waiver the fold refuses
+// ---------------------------------------------------------------------------
+
+/** The published never-class codes a text names, by token. */
+const neverCodesIn = (text: string): readonly string[] =>
+  [...new Set(text.match(/\b(?:FND|GTWR)_[A-Z0-9_]+\b/g) ?? [])].filter(
+    (code) => waivabilityOf(code) === 'never',
+  )
+
+/**
+ * Every surface the craft corpus reaches: the installed skill body (craft at `##`) and the
+ * AGENTS.md rendering (craft at `###`).
+ */
+const SKILL_SURFACES: readonly (readonly [string, string])[] = [
+  ['installed skill body', buildSkillBody()],
+  ['craft at depth 3 (AGENTS.md)', renderCraft(3)],
+]
+
+describe('[S3-043] the skill body offers no waiver for a never-class code', () => {
+  it.each(
+    SKILL_SURFACES,
+  )('[S3-043] %s: the "always-safe reviewed waiver" advice is gone', (_, body) => {
+    // NEGATIVE guards on the stale sentences (craft.ts VOCABULARY_FIRST, "The one thing never to
+    // do mechanically"): an opposition candidate is triage, never waivable, so the fold refuses
+    // the very op this advice tells an agent to apply.
+    expect(body).not.toContain('The always-safe third option is the reviewed waiver')
+    expect(body).not.toContain('the always-safe third option is the reviewed waiver')
+    expect(body).not.toMatch(/always-safe[^.]*waiver/i)
+    expect(body).not.toContain('only waiver that discharges an opposition candidate')
+  })
+
+  it.each(
+    SKILL_SURFACES,
+  )('[S3-043] %s: no paragraph naming FND_OPPOSITION_CANDIDATE offers a waiver', (_, body) => {
+    const paragraphs = body.split(/\n\s*\n/).filter((p) => p.includes('FND_OPPOSITION_CANDIDATE'))
+    expect(
+      paragraphs.length,
+      'the skill body still teaches the opposition candidate',
+    ).toBeGreaterThan(0)
+    const offers = paragraphs.filter((p) =>
+      /\b(?:reviewed|repair|pair|scoped|triage) waiver\b|waiver in the demotion|\bwaive (?:it|this|the pair)\b/i.test(
+        p,
+      ),
+    )
+    expect(offers).toEqual([])
+  })
+
+  it.each(
+    SKILL_SURFACES,
+  )('[S3-043] %s: no sentence pairs a never-class code with "waive"', (_, body) => {
+    const sentences = body
+      .split(/\n\s*\n/)
+      .flatMap((p) => p.replace(/\s*\n\s*/g, ' ').split(/(?<=[.!?])\s+/))
+    const paired = sentences.filter((s) => /waive/i.test(s) && neverCodesIn(s).length > 0)
+    expect(paired).toEqual([])
+  })
 })

@@ -1,53 +1,53 @@
-accept	+	accept
-accept	+	approve
-accept	-	decline
-accept	-	reject
-activate	+	activate
-activate	-	deactivate
-add	+	add
-add	-	remove
-allow	+	allow
-allow	+	authorize
-allow	+	grant
-allow	+	permit
-allow	-	deny
-allow	-	forbid
-allow	-	revoke
-close	+	close
-close	-	open
-commit	+	commit
-commit	-	roll_back
-commit	-	rollback
-conceal	+	conceal
-conceal	+	seal
-conceal	-	expose
-conceal	-	unseal
-connect	+	connect
-connect	-	disconnect
-de_energize	+	de_energize
-de_energize	-	energize
-disable	+	disable
-disable	-	enable
-disengage	+	disengage
-disengage	-	engage
-drain	+	drain
-drain	-	flood
-exclude	+	exclude
-exclude	-	include
-extend	+	extend
-extend	+	publish
-extend	-	retract
-hide	+	hide
-hide	-	show
-insert	+	insert
-insert	-	withdraw
-lock	+	lock
-lock	-	unlock
-lower	+	lower
-lower	-	raise
-quarantine	+	quarantine
-quarantine	-	release
-resume	+	resume
-resume	-	suspend
-start	+	start
-start	-	stop
+accept	+	accept	decline,reject		
+accept	+	approve	decline,reject		
+accept	-	decline	accept,approve		
+accept	-	reject	accept,approve		
+activate	+	activate	deactivate		
+activate	-	deactivate	activate		
+add	+	add	remove	into,onto,to	
+add	-	remove	add	from	
+allow	+	allow	deny,forbid,revoke	into,onto,to	
+allow	+	authorize	deny,forbid,revoke	into,onto,to	
+allow	+	grant	deny,forbid,revoke	into,onto,to	
+allow	+	permit	deny,forbid,revoke	into,onto,to	
+allow	-	deny	allow,authorize,grant,permit	into,onto,to	
+allow	-	forbid	allow,authorize,grant,permit	into,onto,to	
+allow	-	revoke	allow,authorize,grant,permit	from,to	
+close	+	close	open		
+close	-	open	close		
+commit	+	commit	roll_back,rollback	into,onto,to	
+commit	-	roll_back	commit	from	
+commit	-	rollback	commit	from	
+conceal	+	conceal	expose	from	
+conceal	+	seal	expose,unseal	from	
+conceal	-	expose	conceal,seal	into,onto,to	
+conceal	-	unseal	seal		
+connect	+	connect	disconnect	into,onto,to,with	
+connect	-	disconnect	connect	from	
+de_energize	+	de_energize	energize		
+de_energize	-	energize	de_energize		
+disable	+	disable	enable		
+disable	-	enable	disable		
+disengage	+	disengage	engage	from	
+disengage	-	engage	disengage	into,onto,to,with	
+drain	+	drain	flood		
+drain	-	flood	drain		
+exclude	+	exclude	include	from	
+exclude	-	include	exclude	into,onto,to	
+extend	+	extend	retract	into,onto,to	
+extend	+	publish	retract	into,onto,to	
+extend	-	retract	extend,publish	from	
+hide	+	hide	show	from	
+hide	-	show	hide	into,onto,to	
+insert	+	insert	withdraw	into,onto,to	
+insert	-	withdraw	insert	from	
+lock	+	lock	unlock		
+lock	-	unlock	lock		
+lower	+	lower	raise		
+lower	-	raise	lower		
+quarantine	+	quarantine	release	from,into,onto,to	from
+quarantine	-	release	quarantine	from,into,onto,to	into,onto,to
+resume	+	resume	suspend		
+resume	-	suspend	resume		
+start	+	start	stop		
+start	-	stop	start		

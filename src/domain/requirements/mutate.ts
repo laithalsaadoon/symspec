@@ -44,6 +44,8 @@
  * already worked this way.
  */
 
+import { shellQuoted, shellWord } from '../engine/core/shell-word.ts'
+import { requirementsContentHash } from './content-hash.ts'
 import {
   type AntonymPair,
   type GlossaryEntry,
@@ -51,6 +53,7 @@ import {
   type Relation,
   type Requirement,
   type RequirementsDocument,
+  STATE_VAR_NAME_PATTERN,
   type StateModel,
   type StateVariable,
   type TermEntry,
@@ -100,6 +103,7 @@ export const FOLD_ERROR_CODES = [
   'ERR_DUPLICATE_ID',
   'ERR_DUPLICATE_KEY',
   'ERR_NULL_REQUIRED',
+  'ERR_WAIVER_REFUSED',
 ] as const
 
 /** One op's success: the new document plus what the op touched. */
@@ -351,7 +355,7 @@ const applyUpdate = (
       return usage(
         `${target.key ?? target.id} is classified ${target.responseKind}, so setting \`${op.attr}\` would store an expression nothing reads.`,
         [
-          `Reclassify and set the expression in one step: \`symspec classify ${target.key ?? target.id} --kind ${wanted} --expression "${op.value}"\`.`,
+          `Reclassify and set the expression in one step: \`symspec classify ${shellWord(target.key ?? target.id)} --kind ${wanted} --expression ${shellQuoted(op.value)}\`.`,
         ],
       )
     }
@@ -542,7 +546,7 @@ const applyGlossary = (
       'ERR_USAGE',
       `"${alias}" is already an alias of "${otherOwner.canonical}", so it cannot also be an alias of "${canonical}".`,
       [
-        `Free it first: \`symspec glossary "${otherOwner.canonical}" "${alias}" --remove\`.`,
+        `Free it first: \`symspec glossary ${shellQuoted(otherOwner.canonical)} ${shellQuoted(alias)} --remove\`.`,
         `Or point this entry at "${otherOwner.canonical}" instead, if that is the reading you meant.`,
       ],
     )
@@ -559,7 +563,7 @@ const applyGlossary = (
       `"${canonical}" is already an alias of "${canonicalIsAlias.canonical}", so it cannot also be a canonical.`,
       [
         'Alias resolution is one hop, so this chain would never resolve.',
-        `Use "${canonicalIsAlias.canonical}" as the canonical: \`symspec glossary "${canonicalIsAlias.canonical}" "${alias}"\`.`,
+        `Use "${canonicalIsAlias.canonical}" as the canonical: \`symspec glossary ${shellQuoted(canonicalIsAlias.canonical)} ${shellQuoted(alias)}\`.`,
       ],
     )
   }
@@ -573,6 +577,13 @@ const applyGlossary = (
             ? { canonical: e.canonical, aliases: [...e.aliases, alias] }
             : e,
         )
+  const refused = options.validateGlossary?.({ ...document, glossary }, canonicalKey, aliasKey)
+  if (refused !== undefined) {
+    return fail('ERR_USAGE', `"${alias}" cannot be an alias of "${canonical}": ${refused}.`, [
+      'A glossary entry says its phrases are ONE action; an antonym pair says two actions cannot both happen.',
+      'If the two are opposites, keep them apart — the antonym table already relates them. If they are one action, rewrite one requirement in the other`s words.',
+    ])
+  }
   return { document: { ...document, glossary }, noop: false }
 }
 
@@ -660,6 +671,45 @@ export interface MutateOptions {
    * which is the one outcome the propose/decide split exists to prevent.
    */
   readonly validateTerms?: (canonical: string, alias: string) => string | undefined
+  /**
+   * Validate a candidate GLOSSARY entry: `document` is the fold's result with the alias added,
+   * and `canonical` / `alias` are the entry's two keys, normalized. Return an error MESSAGE to
+   * refuse the write, or `undefined` to accept.
+   *
+   * Injected for the same reason as {@link validateAntonyms}. What it refuses: an alias that is
+   * a CONTRARY of another phrase its entry names under the antonym table ("close the door" as an
+   * alias of "open the door"). The entry says the two are one action and the table says they
+   * cannot both happen, so together they say neither ever does. Defense in depth — an antonym
+   * or term committed afterwards can form the same entry with no glossary write to refuse, so
+   * the soundness guarantee is the atomizer keeping each contrary on its own atom linked to the
+   * entry's action, and `check` demoting over what that leaves undecided.
+   */
+  readonly validateGlossary?: (
+    document: RequirementsDocument,
+    canonical: string,
+    alias: string,
+  ) => string | undefined
+  /**
+   * The WAIVABILITY policy (spec 007 AC-5-6): the class of a finding code and whether a waiver
+   * may suppress it, or `undefined` for a code no catalog publishes.
+   *
+   * Injected for the same reason as {@link validateAntonyms}: the class table is the published
+   * catalog's, which this module does not load. Supplied, it makes `waive` refuse with
+   * `ERR_WAIVER_REFUSED` a `never`-class code in every scope, a code with no class, and a
+   * waiver that names no requirement; and it stores every accepted waiver in the one scoped
+   * form, `requirementIds` plus the content hash of their current text (a `ref` becomes
+   * `refs: [ref]`). Omitted ⇒ the fold stores what the op says, which is correct for a caller
+   * with no catalog and unsound for the CLI — so the operation layer always supplies it.
+   */
+  readonly waiverPolicy?: (code: string) => WaiverPolicyRow | undefined
+}
+
+/** One code's row under {@link MutateOptions.waiverPolicy}. */
+export interface WaiverPolicyRow {
+  /** The finding class the code belongs to (`verdict`, `wording`, …), named in a refusal. */
+  readonly class: string
+  /** `scoped`: waivable over named requirements and their current text. `never`: not at all. */
+  readonly waivable: 'scoped' | 'never'
 }
 
 const applyAntonym = (
@@ -768,7 +818,7 @@ const applyTerm = (
         'A term is substituted inside EVERY slot body, so a verb in one moves the polarity the',
         'solver computes while leaving the raw-text bridge parse unchanged — which can prove a',
         'conflict the document does not contain.',
-        'Use `symspec glossary` to align a whole phrasing that contains a verb.',
+        'Use `symspec glossary "<canonical phrasing>" "<alias phrasing>"` to align a whole phrasing that contains a verb.',
       ],
     )
   }
@@ -787,7 +837,7 @@ const applyTerm = (
       'ERR_USAGE',
       `"${alias}" is already a term alias of "${otherOwner.canonical}", so it cannot also be an alias of "${canonical}".`,
       [
-        `Free it first: \`symspec term "${otherOwner.canonical}" "${alias}" --remove\`.`,
+        `Free it first: \`symspec term ${shellQuoted(otherOwner.canonical)} ${shellQuoted(alias)} --remove\`.`,
         `Or point this entry at "${otherOwner.canonical}" instead, if that is the reading you meant.`,
       ],
     )
@@ -802,19 +852,26 @@ const applyTerm = (
       `"${canonical}" is already a term alias of "${canonicalIsAlias.canonical}", so it cannot also be a canonical.`,
       [
         'Term substitution is one pass, so this chain would never resolve.',
-        `Use "${canonicalIsAlias.canonical}" as the canonical: \`symspec term "${canonicalIsAlias.canonical}" "${alias}"\`.`,
+        `Use "${canonicalIsAlias.canonical}" as the canonical: \`symspec term ${shellQuoted(canonicalIsAlias.canonical)} ${shellQuoted(alias)}\`.`,
       ],
     )
   }
 
-  // One-hop in TOKEN space: the substitution never re-reads what it wrote, so a canonical
-  // containing a committed alias would leave the table's meaning ambiguous.
+  // One-hop in TOKEN space. The substitution scans left to right, takes the LONGEST alias at each
+  // position, writes its canonical and continues after it (`substituteTerms` in the atomizer).
+  // That is a congruence, so two phrases the table calls one noun come out as one atom in every
+  // body, exactly when NO alias overlaps another phrase of the table: not inside it, not equal
+  // to it, not around it, and not straddling one of its edges. An alias that overlaps a
+  // canonical rewrites the canonical's own occurrences while the canonical's aliases still
+  // rewrite TO it; an alias that overlaps another alias wins or loses the longest-first race
+  // depending on the words around it. Either way two phrases the table merged come out
+  // different, and a conflict resting on them is gone. Two canonicals may overlap freely,
+  // because a canonical is never matched.
   // Split on EITHER separator. `normalizeHead` is the atomizer's `normalize` in production
   // (underscore-joined), and a bare trim in a caller that has no engine — so a check that split
   // only on `_` would be silently inert for the second, which is the shape a test would then
   // fail to reach.
   const tokensOf = (key: string) => key.split(/[\s_]+/).filter((t) => t.length > 0)
-  const canonicalTokens = tokensOf(canonicalKey)
   const contains = (haystack: readonly string[], needle: readonly string[]): boolean => {
     if (needle.length === 0 || needle.length > haystack.length) return false
     for (let i = 0; i + needle.length <= haystack.length; i++) {
@@ -822,27 +879,63 @@ const applyTerm = (
     }
     return false
   }
+  // A proper suffix of `x` is a proper prefix of `y`: the two would straddle in a body.
+  const straddles = (x: readonly string[], y: readonly string[]): boolean => {
+    for (let k = 1; k < Math.min(x.length, y.length); k++) {
+      if (y.slice(0, k).every((t, i) => x[x.length - k + i] === t)) return true
+    }
+    return false
+  }
+  // How `x` sits against `y`, worded for the refusal; `undefined` when they share no span.
+  const overlap = (x: string, y: string): string | undefined => {
+    const [xs, ys] = [tokensOf(x), tokensOf(y)]
+    if (xs.length === ys.length && contains(xs, ys)) return 'is'
+    if (contains(xs, ys)) return 'contains'
+    if (contains(ys, xs)) return 'sits inside'
+    if (straddles(xs, ys) || straddles(ys, xs)) return 'overlaps an edge of'
+    return undefined
+  }
+  const ambiguity = [
+    'Term substitution is a single pass that takes the longest alias at each position and',
+    'continues after the tokens it wrote, so an alias overlapping another phrase of the table',
+    "rewrites some of that phrase's occurrences and not others — two phrases the table calls one",
+    'noun would reach the solver as two.',
+  ]
+
   const committedAliases = [
     ...document.terms.flatMap((e) => e.aliases.map((a) => norm(a))),
     aliasKey,
   ]
-  const swallowed = committedAliases.find(
-    (a) =>
-      a !== canonicalKey &&
-      contains(
-        canonicalTokens,
-        a.split('_').filter((t) => t.length > 0),
-      ),
-  )
-  if (swallowed !== undefined) {
+  for (const a of committedAliases) {
+    const relation = a === canonicalKey ? undefined : overlap(canonicalKey, a)
+    if (relation === undefined) continue
     return fail(
       'ERR_USAGE',
-      `The canonical "${canonical}" contains the committed term alias "${swallowed.replace(/_/g, ' ')}", so the table would be ambiguous.`,
+      `The canonical "${canonical}" ${relation} the committed term alias "${a.replace(/_/g, ' ')}", so the table would be ambiguous.`,
+      [...ambiguity, 'Reword the canonical so it does not overlap an alias.'],
+    )
+  }
+
+  // The same rule from the alias's side: the new alias against every canonical (its own
+  // included) and every other alias. Refusing only a canonical that swallows an alias left this
+  // half open — `term invoice purchase` split "purchase order" from its committed alias.
+  const phrases = [
+    ...document.terms.map((e) => ['canonical', norm(e.canonical)] as const),
+    ['canonical', canonicalKey] as const,
+    ...document.terms.flatMap((e) =>
+      e.aliases.map((a) => ['alias', norm(a)] as const).filter(([, a]) => a !== aliasKey),
+    ),
+  ]
+  for (const [role, p] of phrases) {
+    const relation = overlap(aliasKey, p)
+    if (relation === undefined) continue
+    const shown = p.replace(/_/g, ' ')
+    return fail(
+      'ERR_USAGE',
+      `The alias "${alias}" ${relation} the committed term ${role} "${shown}", so the table would be ambiguous.`,
       [
-        'Term substitution is a single pass that continues after the tokens it wrote, so the alias',
-        'inside this canonical would not be rewritten again — and a reader expecting it to be would',
-        'predict a different atom.',
-        'Reword the canonical so it does not contain another alias.',
+        ...ambiguity,
+        `Name the whole noun instead: an alias of "${shown}" itself, or a phrase that shares no word with it at an edge.`,
       ],
     )
   }
@@ -884,19 +977,120 @@ const applyUnterm = (
   return { document: { ...document, terms }, noop: false }
 }
 
-/** Two waivers match iff they suppress the same code at the same scope. */
+/** The exact-set scope as a comparable key: sorted, deduplicated, `undefined` when absent. */
+const idSetKey = (ids: readonly string[] | undefined): string | undefined =>
+  ids === undefined ? undefined : [...new Set(ids)].sort().join(',')
+
+/**
+ * Two waivers match iff they suppress the same code at the same scope. For an exact-set waiver
+ * the scope includes the bound text: re-reviewing an EDITED pair is a new waiver, not a no-op
+ * against the stale one.
+ */
 const sameWaiver = (a: Waiver, b: Waiver): boolean =>
-  a.code === b.code && a.requirementId === b.requirementId
+  a.code === b.code &&
+  a.requirementId === b.requirementId &&
+  idSetKey(a.requirementIds) === idSetKey(b.requirementIds) &&
+  a.contentHash === b.contentHash
+
+/** Resolve every ref of a `refs` scope to its UUID, sorted and deduplicated. */
+const resolveRefs = (
+  document: RequirementsDocument,
+  refs: readonly string[],
+  verb: string,
+): string[] | OpFailure => {
+  if (refs.length === 0) {
+    return fail('ERR_USAGE', `The \`${verb}\` op's "refs" must name at least one requirement.`, [
+      'Omit "refs" for an unscoped waiver, or list the requirement ids of the finding you reviewed.',
+    ])
+  }
+  const ids = new Set<string>()
+  for (const ref of refs) {
+    const scoped = requireTarget(document, ref, 'refs', verb)
+    if (isOpFailure(scoped)) return scoped
+    ids.add(scoped.id)
+  }
+  return [...ids].sort()
+}
+
+/**
+ * The waivability refusal (spec 007 AC-5-6), or `undefined` when the policy lets `code` be
+ * waived at all. A `never` class is refused whatever the scope, so it is decided before the
+ * scope is read: no `refs` or hash would make a verdict, a disclosure or a triage candidate a
+ * thing a reviewer can accept.
+ */
+const waiverClassRefusal = (
+  code: string,
+  row: WaiverPolicyRow | undefined,
+): OpFailure | undefined => {
+  if (row === undefined) {
+    return fail(
+      'ERR_WAIVER_REFUSED',
+      `No catalog publishes the code \`${code}\`, so it has no waivability class and cannot be waived.`,
+      [
+        `Run \`symspec explain --code ${shellWord(code)}\` for the nearest published codes, and waive the exact code a \`symspec check\` finding carries.`,
+      ],
+    )
+  }
+  if (row.waivable === 'scoped') return undefined
+  return fail(
+    'ERR_WAIVER_REFUSED',
+    `\`${code}\` is a ${row.class}-class finding, and a ${row.class} finding is never waivable, in any scope: only a change to what the document says discharges it.`,
+    [
+      `Read the finding's message and demotion action (\`symspec check\`), then rewrite the requirement it names (\`symspec update --ref <id> <attr> "<wording>"\`), or commit the \`symspec antonym <verbA> <verbB>\` or \`symspec glossary "<canonical>" "<alias>"\` entry it proposes where the two phrasings really are contraries or one action.`,
+      `\`symspec explain --code ${shellWord(code)}\` states what the code means and how it is discharged.`,
+    ],
+  )
+}
 
 const applyWaive = (
   document: RequirementsDocument,
   op: Extract<DocumentOp, { op: 'waive' }>,
+  options: MutateOptions,
 ): OpSuccess | OpFailure => {
   const code = op.code.trim()
   const reason = op.reason.trim()
   if (code.length === 0 || reason.length === 0) {
     return fail('ERR_USAGE', 'A `waive` op requires a non-empty code and reason.', [
       'The reason is the audit trail that distinguishes a reviewed waiver from neglect — write the actual justification.',
+    ])
+  }
+
+  const policy = options.waiverPolicy
+  if (policy !== undefined) {
+    const refused = waiverClassRefusal(code, policy(code))
+    if (refused !== undefined) return refused
+  }
+
+  if (op.ref !== undefined && op.refs !== undefined) {
+    return fail('ERR_USAGE', 'A `waive` op takes "ref" or "refs", not both.', [
+      '"ref" waives every finding of the code that names one requirement; "refs" waives only the finding over exactly those requirements, as they are written now.',
+    ])
+  }
+
+  // Under the policy a waiver is ALWAYS scoped and bound to the text it was reviewed on: a
+  // waiver by code alone reaches every finding of the code, including ones raised after the
+  // review over requirements nobody read, so it is refused; a single `ref` is the exact set of
+  // that one requirement, normalized here so it is stored, hashed, in the one scoped form.
+  if (policy !== undefined) {
+    if (op.ref === undefined && op.refs === undefined) {
+      return fail(
+        'ERR_WAIVER_REFUSED',
+        `A \`waive\` of \`${code}\` must name the requirement ids of the finding it accepts ("refs"): a waiver by code alone would reach every finding of the code, including ones nobody reviewed.`,
+        [
+          `Copy the waive op from the finding's \`repair.ops\` (\`symspec check\`): it carries "refs" and the content hash of the text the finding was raised on.`,
+          `Or pass the finding's requirement with \`symspec waive ${shellWord(code)} --ref <id> --reason "…"\`.`,
+        ],
+      )
+    }
+    if (op.ref !== undefined) {
+      const { ref, ...rest } = op
+      return applyWaive(document, { ...rest, refs: [ref] }, options)
+    }
+  }
+
+  if (op.contentHash !== undefined && op.refs === undefined) {
+    return fail('ERR_USAGE', 'A `waive` op\'s "contentHash" binds a "refs" scope; add "refs".', [
+      "Copy the op from the finding's `repair.ops` as-is: it carries both.",
     ])
   }
 
@@ -909,8 +1103,32 @@ const applyWaive = (
     requirementId = scoped.id
   }
 
-  const waiver: Waiver =
-    requirementId !== undefined ? { code, requirementId, reason } : { code, reason }
+  // An exact-set scope is bound to the text it names NOW. The op's own hash, when it carries
+  // one, is the text `check` raised the finding on; a mismatch means the requirements were
+  // edited since, so the reviewer read something other than what would be waived.
+  let exact: Pick<Waiver, 'requirementIds' | 'contentHash'> = {}
+  if (op.refs !== undefined) {
+    const ids = resolveRefs(document, op.refs, 'waive')
+    if (isOpFailure(ids)) return ids
+    const contentHash = requirementsContentHash(document, ids)!
+    if (op.contentHash !== undefined && op.contentHash !== contentHash) {
+      return fail(
+        'ERR_USAGE',
+        `The requirements this \`waive\` names have changed since the finding was raised (content hash ${op.contentHash}, now ${contentHash}).`,
+        [
+          `Re-run \`symspec check\`, re-read ${ids.map((id) => `\`symspec show ${shellWord(id)}\``).join(' and ')}, and waive from the new finding's repair only if the new text is consistent too.`,
+        ],
+      )
+    }
+    exact = { requirementIds: ids, contentHash }
+  }
+
+  const waiver: Waiver = {
+    code,
+    ...(requirementId !== undefined ? { requirementId } : {}),
+    ...exact,
+    reason,
+  }
   // IDEMPOTENT, and the STORED reason wins: the first review is authoritative, so
   // re-waiving with different prose does not quietly overwrite the original
   // justification.
@@ -924,14 +1142,33 @@ const applyUnwaive = (
   document: RequirementsDocument,
   op: Extract<DocumentOp, { op: 'unwaive' }>,
 ): OpSuccess | OpFailure => {
-  const code = op.code.trim()
-  // A ref that resolves to nothing simply matches nothing — there can be no waiver
-  // scoped to a requirement that does not exist — so this is a no-op rather than an
-  // error, symmetric with removing an absent edge.
-  const requirementId = op.ref !== undefined ? resolveId(document, op.ref) : undefined
-  const target: Waiver =
-    requirementId !== undefined ? { code, requirementId, reason: '' } : { code, reason: '' }
-  const waivers = document.waivers.filter((w) => !sameWaiver(w, target))
+  // The code is matched EXACTLY as stored (ruling R55): a hand-written ` FND_X` is its own row,
+  // and trimming it here would also delete the canonical `FND_X` waiver beside it.
+  const code = op.code
+  // A ref that equals an id a stored waiver of this code names is that id, BEFORE any key lookup
+  // (R59): a waiver can name a requirement the document has since deleted, and that deleted UUID
+  // may be another requirement's key, so resolving it first would retarget the op onto the live
+  // requirement's waivers. Every other ref resolves as a key or UUID, and one that resolves to
+  // nothing is matched as written: an unresolved ref must not widen into the unscoped key and
+  // delete the code-only or another scoped waiver of the code (R55).
+  const stored = new Set(
+    document.waivers
+      .filter((w) => w.code === code)
+      .flatMap((w) => [
+        ...(w.requirementId !== undefined ? [w.requirementId] : []),
+        ...(w.requirementIds ?? []),
+      ]),
+  )
+  const idOf = (ref: string): string => (stored.has(ref) ? ref : (resolveId(document, ref) ?? ref))
+  const requirementId = op.ref !== undefined ? idOf(op.ref) : undefined
+  // `refs` removes every exact-set waiver over that set, whatever text it was bound to — the
+  // stale ones are exactly what an author clearing a pair wants gone.
+  const ids = op.refs?.map(idOf)
+  const matches = (w: Waiver): boolean =>
+    w.code === code &&
+    w.requirementId === requirementId &&
+    idSetKey(w.requirementIds) === idSetKey(ids)
+  const waivers = document.waivers.filter((w) => !matches(w))
   if (waivers.length === document.waivers.length) return { document, noop: true }
   return { document: { ...document, waivers }, noop: false }
 }
@@ -1094,7 +1331,7 @@ const modelKeepsExpressionsValid = (
       kind === 'effect' ? validateEffect(source, model) : validateExpression(source, model, kind)
     if (isExprError(checked)) {
       return usage(`${what} would invalidate ${label}'s ${kind} "${source}": ${checked.error}`, [
-        `Edit or clear ${label} first: \`symspec classify ${label} --retract\`, or \`symspec update state${kind === 'effect' ? 'Effect' : 'Constraint'} "<new expression>" --ref ${label}\`.`,
+        `Edit or clear ${label} first: \`symspec classify ${shellWord(label)} --retract\`, or \`symspec update state${kind === 'effect' ? 'Effect' : 'Constraint'} "<new expression>" --ref ${shellWord(label)}\`.`,
         ...checked.suggestions,
       ])
     }
@@ -1111,6 +1348,24 @@ const applyState = (
     return usage('A `state` op requires a variable name.', [
       'Name the variable: `symspec state --name lock_held --type bool`.',
     ])
+  }
+
+  // THE NAME RULE, at the fold rather than only at the schema backstop on save, so the
+  // refusal names the offending word (spec 007 AC-1-4). A variable or enum member spelled
+  // like an expression keyword under case folding (`True`, `NOT`, `And`) lexes as that
+  // keyword everywhere it is written, so it could be declared and never referenced.
+  for (const candidate of [name, ...(op.type === 'enum' ? (op.domain ?? []) : [])]) {
+    const trimmed = candidate.trim()
+    if (trimmed.length > 0 && !STATE_VAR_NAME_PATTERN.test(trimmed)) {
+      return usage(
+        `${JSON.stringify(trimmed)} is not a usable state ${trimmed === name ? 'variable name' : `member of ${JSON.stringify(name)}`}.`,
+        [
+          'Names are identifier-shaped (letters, digits, `_`, `.`; not starting with a digit) and must not equal an expression keyword — `and`, `or`, `not`, `true`, `false`, `when` — in ANY letter case.',
+          'The expression lexer folds case, so `True` reads as the literal `true` and `NOT` as the connective: a variable so named could be declared but never referenced.',
+          `Rename it, e.g. ${JSON.stringify(`${trimmed}_state`)}.`,
+        ],
+      )
+    }
   }
 
   const variable = stateVariableOf({ ...op, name })
@@ -1364,10 +1619,10 @@ const applyClassify = (
       `Classifying ${target.key ?? target.id} as ${op.kind} requires the expression that says WHAT it ${op.kind === 'effect' ? 'changes' : 'asserts'}.`,
       [
         op.kind === 'effect'
-          ? `Supply it: \`symspec classify ${target.key ?? target.id} --kind effect --expression "lock_held := true"\`.`
-          : `Supply it: \`symspec classify ${target.key ?? target.id} --kind constraint --expression "not (lock_held and pending)"\`.`,
+          ? `Supply it: \`symspec classify ${shellWord(target.key ?? target.id)} --kind effect --expression "lock_held := true"\`.`
+          : `Supply it: \`symspec classify ${shellWord(target.key ?? target.id)} --kind constraint --expression "not (lock_held and pending)"\`.`,
         'A responseKind with no expression contributes nothing to the reachability encoding, so it would read as classified while the solver saw no state model at all.',
-        `Retract instead with \`symspec classify ${target.key ?? target.id} --retract\` if the response does not touch state.`,
+        `Retract instead with \`symspec classify ${shellWord(target.key ?? target.id)} --retract\` if the response does not touch state.`,
       ],
     )
   }
@@ -1458,7 +1713,7 @@ export const applyOp = (
     case 'unantonym':
       return applyUnantonym(document, op, options)
     case 'waive':
-      return applyWaive(document, op)
+      return applyWaive(document, op, options)
     case 'unwaive':
       return applyUnwaive(document, op)
     case 'state':

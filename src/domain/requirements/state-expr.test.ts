@@ -357,7 +357,9 @@ describe('multi-character operators are lexed BEFORE their single-character pref
     const single = parseExpression('retry_count = 1')
     const double = parseExpression('retry_count == 1')
     if (isExprError(single) || isExprError(double)) throw new Error('both should parse')
-    expect(JSON.stringify(double)).toBe(JSON.stringify(single))
+    // Structural equality rather than JSON text: integer literals are `bigint` (AC-1-4),
+    // which `JSON.stringify` refuses to serialize.
+    expect(double).toEqual(single)
   })
 
   it('exposes exactly six comparison operators', () => {

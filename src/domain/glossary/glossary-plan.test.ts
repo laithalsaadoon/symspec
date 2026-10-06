@@ -22,13 +22,15 @@
  * vectors, so a case can sit deliberately just above or just below the cut.
  */
 
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
+import { argvRejections, rejectionLines, symspecCommandsDeep } from '../../testing/cli-argv.ts'
 import { toEngineDoc } from '../compat.ts'
 import { glossaryIndex, normalize } from '../engine/formal/atomize.ts'
 import type { Embedder } from '../engine/formal/embed.ts'
 import { findOppositionCandidates } from '../engine/formal/semantic.ts'
 import { encodeIncluded } from '../engine/pipeline/check.ts'
-import { DOC_VERSION, type RequirementsDocument } from '../requirements/document.ts'
+import { DOC_VERSION, decodeDocument, type RequirementsDocument } from '../requirements/document.ts'
 import { foldOps } from '../requirements/mutate.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
 import { buildGlossaryPlan, isNegatingPrefixPair, oppositionShape } from './glossary-plan.ts'
@@ -240,12 +242,12 @@ describe('applying the plan leaves a SOUND glossary index', () => {
   /**
    * The canonical names the AUTHOR'S wording, not the internal atom spelling.
    *
-   * `atomize` merges verb classes, so "grant access" arrives on the atom
-   * `..._resp__allow_access` — a spelling the document never contains. That makes atom order
-   * and phrase order disagree here: by atom, `allow_access` sorts first; by phrase,
-   * `bestow_permissions` does. Picking by atom position would put a canonical in the glossary
+   * An atom spelling is not an author's phrase — `atomize` folds case and de-inflects the
+   * head, so "Grants access" arrives on `..._resp__grant_access`, a spelling the
+   * document never contains. Picking by atom position would put a canonical in the glossary
    * that the author cannot find in their own spec, which is the same defect class as reading
-   * an antonym-class canonical out as a verb head.
+   * an antonym-class canonical out as a verb head. The pin stays on the phrase so no future
+   * atom spelling can reintroduce that.
    */
   it('picks the canonical by the author`s phrase, not by the atom spelling', async () => {
     const doc = docOf([
@@ -1231,4 +1233,94 @@ describe('the re-derived shape check agrees with the engine original', () => {
     expect(oppositionShape(normalize('energizes the coil'))).toEqual(['energize', 'the_coil'])
     expect(isNegatingPrefixPair('de_energize', 'energize')).toBe(true)
   })
+})
+
+describe('a class spans exactly the spellings of one system the atoms read as one scope', () => {
+  // `nodesOf` keyed a node's system by `normalize(systemName)`, which strips a leading article, so
+  // "The Gateway" and "Gateway" were one system to the plan while their atoms are two scopes
+  // (`sys__the_gateway__…`, `sys__gateway__…`: in a system NAME the article is part of the
+  // identifier). The plan proposed a class across two systems the solver never compares.
+  const table = {
+    'issue a session token': [1, 0.05],
+    'issue a login credential': [1, 0.08],
+  } as const
+  const opsAcross = async (a: string, b: string) =>
+    (
+      await buildGlossaryPlan(
+        toEngineDoc(
+          docOf([
+            req(a, 'issue a session token', 'the user signs in'),
+            req(b, 'issue a login credential', 'the user signs in'),
+          ]),
+        ),
+        tableEmbedder(table),
+      )
+    ).ops.length
+
+  it('proposes one class across two spellings of one scope', async () => {
+    expect(await opsAcross('Gateway', 'gateway')).toBe(1)
+    expect(await opsAcross('access controller', 'Access-Controller')).toBe(1)
+  })
+
+  it('and none across two scopes, however `normalize` reads them', async () => {
+    expect(await opsAcross('The Gateway', 'Gateway')).toBe(0)
+    expect(await opsAcross('pump controller', 'valve controller')).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R61, attack C18): every held class's message names full commands
+// ---------------------------------------------------------------------------
+
+describe('[S3-045] an unresolved glossary-plan class names only commands the parser accepts (R61, attack C18)', () => {
+  it('[S3-045] existing-canonical-conflict (two already committed canonicals): every command its message and commands name parses with the built binary, full argv', async () => {
+    const row = (i: number, response: string) => {
+      const id = `10000000-0000-4000-8000-${String(i).padStart(12, '0')}`
+      return [
+        id,
+        {
+          id,
+          key: `PLAN-R${i}`,
+          patternType: 'event-driven',
+          trigger: 'the day closes',
+          systemName: 'ledger service',
+          systemResponse: response,
+          negated: false,
+          sentence: `When the day closes, the ledger service shall ${response}.`,
+          priority: 'medium',
+          status: 'draft',
+          createdAt: TS,
+          updatedAt: TS,
+          derives: [],
+          satisfies: [],
+          verifies: [],
+          refines: [],
+        },
+      ] as const
+    }
+    const raw = {
+      docVersion: DOC_VERSION,
+      requirements: Object.fromEntries([
+        row(1, 'reconcile the ledger'),
+        row(2, 'settle the accounts'),
+      ]),
+      glossary: [
+        { canonical: 'reconcile the ledger', aliases: ['reconcile the books'] },
+        { canonical: 'settle the accounts', aliases: ['settle the balances'] },
+      ],
+      antonyms: [],
+      waivers: [],
+      terms: [],
+      stateModel: { variables: [] },
+    }
+    const doc = Effect.runSync(decodeDocument(raw)).document
+    const plan = await buildGlossaryPlan(toEngineDoc(doc), async (texts) =>
+      texts.map(() => Float32Array.from([1, 0])),
+    )
+    const held = plan.unresolved.filter((u) => u.reason === 'existing-canonical-conflict')
+    expect(held.length, 'the fixture holds an existing-canonical-conflict class').toBe(1)
+    const commands = symspecCommandsDeep(plan.unresolved)
+    expect(commands.some((c) => c.includes('--remove'))).toBe(true)
+    expect(rejectionLines(await argvRejections(commands))).toEqual([])
+  }, 60_000)
 })

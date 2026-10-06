@@ -61,6 +61,13 @@ import {
 } from '../../domain/terminology/terminology-codes.ts'
 import { runnable } from '../../ports/command-form.ts'
 import { descriptionOf, ERR_CLASSES, tagOf } from '../../ports/errors.ts'
+import {
+  type FindingClass,
+  findingClassOf,
+  WAIVABILITY_ENFORCED,
+  type Waivability,
+  waivabilityOf,
+} from './signal-classes.ts'
 
 // ---------------------------------------------------------------------------
 // The row
@@ -93,6 +100,23 @@ export interface CodeEntry {
   readonly severity: string | null
   /** Which pipeline stage emits it, or `null` when the code is not a finding. */
   readonly tier: string | null
+  /**
+   * What the finding MEANS (`./signal-classes.ts`): a verdict, a disclosure, a triage
+   * candidate, and so on. `null` for an `ERR_*`, which is not a finding. Distinct from `tier`
+   * because one tier emits proofs and "I could not decide" alike.
+   */
+  readonly class: FindingClass | null
+  /**
+   * Whether a `waive` may suppress it, derived from {@link class}: `scoped` (over named
+   * requirements and their current text) or `never`. `null` for an `ERR_*`.
+   */
+  readonly waivable: Waivability | null
+  /**
+   * Whether this build ENFORCES {@link waivable} (`WAIVABILITY_ENFORCED` in
+   * `./signal-classes.ts`). `false` means the column is policy only: `waive` still accepts a
+   * `never` code. `null` for an `ERR_*`.
+   */
+  readonly waivableEnforced: boolean | null
   /** The full single-sourced catalog text, verbatim. The manifest's own bytes. */
   readonly description: string
   /** `description` minus the severity prefix and the `Suggestion:` tail. */
@@ -293,6 +317,8 @@ const FND_TIER = {
   FND_EXCLUDED_FROM_FORMAL: 'structural',
   FND_QUANTITY_ALIAS_CANDIDATE: 'formal',
   FND_RELATIONAL_UNCHECKED: 'formal',
+  FND_NUMERIC_UNCOMPARED: 'formal',
+  FND_NUMBER_SPELLING_CANDIDATE: 'formal',
 } as const satisfies Record<(typeof FND_CODES)[number], 'structural' | 'lint' | 'formal'>
 
 /**
@@ -311,6 +337,8 @@ const REACHABILITY_TIER = {
   FND_REACHABILITY_UNKNOWN: 'formal',
   FND_REACHABILITY_NOT_CHECKED: 'formal',
   FND_REACHABILITY_VACUOUS_INITIAL: 'formal',
+  FND_RANGE_VIOLATION: 'formal',
+  FND_CERTIFICATE_DISAGREES: 'formal',
 } as const satisfies Record<(typeof REACHABILITY_FND_CODES)[number], 'formal'>
 
 /**
@@ -348,7 +376,22 @@ export const GTWR_SEVERITY_NOTE =
 // Building the three families
 // ---------------------------------------------------------------------------
 
-/** The 21 `ERR_*` rows. Severity is `null`: an operational failure has an EXIT
+/**
+ * A finding row's `class` and `waivable`, read from `./signal-classes.ts`. The tables there
+ * are exhaustive over every published code by `satisfies`, so a `null` here would mean a
+ * code the catalog publishes and the class table does not know — which `signal-classes.test.ts`
+ * rules out.
+ */
+const classColumns = (code: string): Pick<CodeEntry, 'class' | 'waivable' | 'waivableEnforced'> => {
+  const waivable = waivabilityOf(code) ?? null
+  return {
+    class: findingClassOf(code) ?? null,
+    waivable,
+    waivableEnforced: waivable === null ? null : WAIVABILITY_ENFORCED,
+  }
+}
+
+/** The `ERR_*` rows. Severity is `null`: an operational failure has an EXIT
  * CODE (always 2), not a finding severity. */
 const errRows = (): readonly CodeEntry[] =>
   ERR_CLASSES.map((cls) => {
@@ -358,6 +401,9 @@ const errRows = (): readonly CodeEntry[] =>
       family: 'ERR' as const,
       severity: null,
       tier: null,
+      class: null,
+      waivable: null,
+      waivableEnforced: null,
       description,
       ...projectionsOf(description),
     }
@@ -382,6 +428,7 @@ const fndRows = (): readonly CodeEntry[] =>
       family: 'FND' as const,
       severity,
       tier: FND_TIER[code],
+      ...classColumns(code),
       // The FULL text, prefix included — this is the manifest's own bytes and must
       // stay verbatim.
       description,
@@ -399,6 +446,7 @@ const gtwrRows = (): readonly CodeEntry[] =>
       severity: null,
       severityNote: GTWR_SEVERITY_NOTE,
       tier: 'lint',
+      ...classColumns(code),
       description,
       ...projectionsOf(description),
     }
@@ -433,6 +481,7 @@ const greenfieldFndRows = <Code extends string>(
       family: 'FND' as const,
       severity,
       tier: tier[code],
+      ...classColumns(code),
       description,
       ...projectionsOf(description.replace(FND_SEVERITY_PREFIX, '')),
     }

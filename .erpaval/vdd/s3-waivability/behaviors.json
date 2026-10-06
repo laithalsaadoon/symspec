@@ -1,0 +1,670 @@
+{
+  "_about": "S3 waivability behavior registry, VDD run 2 (reconciler job 849). class and floor are PROPOSED (floor = minimum evidence level: 1 example, 2 property, 3 type or domain rule, 4 boundary contract); a person approves them through the intent hash. Origin 'question N (open)' ids wait on a ruling in readings.md ## Questions.",
+  "S3-001": {
+    "title": "The fold refuses a waive of any never-class code (verdict, disclosure, triage, hygiene, anchor), whatever its scope and hash, with ERR_WAIVER_REFUSED",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "waive-fold"
+    ],
+    "rulings": [
+      "R1",
+      "R2",
+      "R3"
+    ]
+  },
+  "S3-002": {
+    "title": "A refused waive aborts the whole atomic stream: nothing is written, the document is byte-identical, exit 1",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "waive-fold"
+    ],
+    "rulings": [
+      "R4"
+    ]
+  },
+  "S3-003": {
+    "title": "The fold refuses a code-only waive of every code, scoped classes included, through apply and symspec waive",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "waive-fold"
+    ],
+    "rulings": [
+      "R5"
+    ]
+  },
+  "S3-004": {
+    "title": "A refs plus matching contentHash waive of a scoped-class code is accepted and stored as requirementIds plus that hash",
+    "origin": "reading",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "waive-fold"
+    ],
+    "rulings": [
+      "R6"
+    ]
+  },
+  "S3-005": {
+    "title": "A waive op with refs but no contentHash, or a single ref, is accepted through apply, symspec waive and import: ref is normalized to refs [ref], the fold computes the contentHash from the current text, and the stored waiver always has refs and a contentHash",
+    "origin": "ruling R37 (question 1)",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "waive-fold",
+      "import-waivers"
+    ],
+    "rulings": [
+      "R37"
+    ]
+  },
+  "S3-006": {
+    "title": "No waiver is ever stored as requirementId without a contentHash",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "waive-fold"
+    ],
+    "rulings": [
+      "R7"
+    ]
+  },
+  "S3-007": {
+    "title": "A waive whose refs equal no finding's set is accepted at write and suppresses no finding at check",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "waive-fold",
+      "check-compat"
+    ],
+    "rulings": [
+      "R8"
+    ]
+  },
+  "S3-008": {
+    "title": "A supplied contentHash that differs from the current text is refused with ERR_USAGE, as at base, and nothing is written",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "waive-fold"
+    ],
+    "rulings": [
+      "R9",
+      "R37"
+    ]
+  },
+  "S3-009": {
+    "title": "A code with no own FINDING_CLASS row is refused at write and inert at check, and every published code has its own row",
+    "origin": "threat T22",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "waive-fold",
+      "check-compat",
+      "published-waivability"
+    ],
+    "rulings": [
+      "R10"
+    ]
+  },
+  "S3-010": {
+    "title": "Every case or whitespace variant of a never code is refused at write, inert at check and suppresses nothing",
+    "origin": "threat T23",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "waive-fold",
+      "check-compat",
+      "engine-waiver-scope"
+    ],
+    "rulings": [
+      "R11"
+    ]
+  },
+  "S3-011": {
+    "title": "A refusal names the code and its never class, or the missing refs and hash, and names only commands this build has",
+    "origin": "reading",
+    "class": "instruction drift",
+    "floor": 1,
+    "components": [
+      "waive-fold"
+    ],
+    "rulings": [
+      "R12",
+      "R24"
+    ]
+  },
+  "S3-012": {
+    "title": "Import folds every waiver record through apply's classifier: refused records go to problems[] with ERR_WAIVER_REFUSED, the requirements are written, and import exits 1",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "import-waivers"
+    ],
+    "rulings": [
+      "R13"
+    ]
+  },
+  "S3-013": {
+    "title": "An unresolvable import --ref is refused and never widened to a document-wide waiver",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "import-waivers"
+    ],
+    "rulings": [
+      "R13"
+    ]
+  },
+  "S3-014": {
+    "title": "Import accepts a JSONL waive record in the refs plus contentHash form apply accepts",
+    "origin": "reading",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "import-waivers"
+    ],
+    "rulings": [
+      "R13"
+    ]
+  },
+  "S3-015": {
+    "title": "Each waiver import refuses is named with its line, code, scope and replacement",
+    "origin": "threat T10",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "import-waivers"
+    ],
+    "rulings": [
+      "R14"
+    ]
+  },
+  "S3-016": {
+    "title": "A stored never-class waiver is inert whatever its scope and hash, disclosed once as waiver-inert, and the run equals the document with it deleted",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 4,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R2",
+      "R3",
+      "R15"
+    ]
+  },
+  "S3-017": {
+    "title": "A stored code-only waiver of any code, an unknown code included, is inert and disclosed",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R16"
+    ]
+  },
+  "S3-018": {
+    "title": "A stored single requirementId waiver with no hash is inert, even when it names the finding's one requirement",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R16"
+    ]
+  },
+  "S3-019": {
+    "title": "A stored requirementIds waiver with no contentHash is inert",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R16"
+    ]
+  },
+  "S3-020": {
+    "title": "A stored single requirementId with a matching contentHash qualifies as refs [id] plus that hash: it suppresses exactly its finding, with no diagnostic",
+    "origin": "ruling R39 (question 3)",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R39"
+    ]
+  },
+  "S3-021": {
+    "title": "A stored refs plus matching hash waiver of a scoped code qualifies and suppresses exactly its finding, with no diagnostic",
+    "origin": "reading",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R16"
+    ]
+  },
+  "S3-022": {
+    "title": "A stored waiver whose refs match no finding's id set suppresses nothing and is disclosed as waiver-inert (matches no finding) with its unwaive op, plus one scoped waive refs+current hash per finding it suppressed at base (unwaive only when it suppressed nothing at base)",
+    "origin": "ruling R38 (question 2)",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R38"
+    ]
+  },
+  "S3-023": {
+    "title": "waiver-inert is an info data.diagnostics entry that demotes nothing; deleting an inert waiver changes no finding, demotion or verified",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R17"
+    ]
+  },
+  "S3-024": {
+    "title": "For a scoped code, waiver-inert carries the exact unwaive op plus one scoped waive refs plus current contentHash per finding it matches today",
+    "origin": "reading",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R18"
+    ]
+  },
+  "S3-025": {
+    "title": "For a never code, waiver-inert carries the unwaive op and rewrite required, and no waive op",
+    "origin": "reading",
+    "class": "instruction drift",
+    "floor": 1,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R15",
+      "R19",
+      "R24"
+    ]
+  },
+  "S3-026": {
+    "title": "A replacement scoped waive op carries the legacy reason verbatim followed by one exported fixed provenance marker",
+    "origin": "ruling R41 (question 5)",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "check-compat",
+      "repair-advice"
+    ],
+    "rulings": [
+      "R41"
+    ]
+  },
+  "S3-027": {
+    "title": "Every replacement op decodes and folds under MUTATE_OPTIONS on the checked document, and every named command parses under this build's CLI",
+    "origin": "threat T18",
+    "class": "instruction drift",
+    "floor": 2,
+    "components": [
+      "check-compat",
+      "repair-advice"
+    ],
+    "rulings": [
+      "R20",
+      "R24",
+      "R41"
+    ]
+  },
+  "S3-028": {
+    "title": "A stale-hash waiver brings its finding back and is listed once in data.ignoredWaivers with code, ids, stored and current hash under any output filter",
+    "origin": "reading",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R21"
+    ]
+  },
+  "S3-029": {
+    "title": "A data.ignoredWaivers (stale hash) entry carries its unwaive op and a note that the requirement's text changed since review and must be re-reviewed, and no waive op at the new hash",
+    "origin": "ruling R42 (question 6)",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R42"
+    ]
+  },
+  "S3-030": {
+    "title": "No stored waiver the S3 fold would refuse as an op reaches the engine",
+    "origin": "threat T11",
+    "class": "false certificate",
+    "floor": 4,
+    "components": [
+      "check-compat"
+    ],
+    "rulings": [
+      "R22"
+    ]
+  },
+  "S3-031": {
+    "title": "The engine-tier diff is prose only, and the engine still declines a stored code-only FND_OPPOSITION_CANDIDATE waiver",
+    "origin": "threat T26",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "engine-waiver-scope",
+      "engine-prose"
+    ],
+    "rulings": [
+      "R23"
+    ]
+  },
+  "S3-032": {
+    "title": "isWaivedBlocking re-admits a requirement exactly when isWaived suppresses its blocking finding",
+    "origin": "threat T5",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "engine-waiver-scope"
+    ],
+    "rulings": [
+      "R25"
+    ]
+  },
+  "S3-033": {
+    "title": "A waived blocking lint re-admits its requirement and demotes waived-blocking-lint naming it",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "check-demotions"
+    ],
+    "rulings": [
+      "R26"
+    ]
+  },
+  "S3-034": {
+    "title": "blocking-lint-both keeps its FND_CONTRADICTION error and verified false, gives one waived-blocking-lint demotion naming ORD-R1 and ORD-R2, and exits 1, because the error sets the exit before any demotion",
+    "origin": "ruling R40 (question 4)",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "check-demotions"
+    ],
+    "rulings": [
+      "R40"
+    ]
+  },
+  "S3-035": {
+    "title": "A waived blocking lint never yields verified true, even on a consistent pair, and --strict exits 3 when it is the only failure",
+    "origin": "ruling (G3)",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "check-demotions"
+    ],
+    "rulings": [
+      "R26",
+      "R40"
+    ]
+  },
+  "S3-036": {
+    "title": "The waived-blocking-lint set is the no-waiver excluded set minus the set under exactly toEngineDoc's waivers; no waivers equals base",
+    "origin": "threat T13",
+    "class": "false certificate",
+    "floor": 2,
+    "components": [
+      "check-demotions",
+      "check-compat"
+    ],
+    "rulings": [
+      "R27"
+    ]
+  },
+  "S3-037": {
+    "title": "The AC-5-6 reproducer: the opposition waive is refused, the un-waived CAB and TNK pairs demote separately, and the stored reproducer's waiver is inert",
+    "origin": "reading",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "waive-fold",
+      "check-compat"
+    ],
+    "rulings": [
+      "R28"
+    ]
+  },
+  "S3-038": {
+    "title": "The reproducer is red on base on a minimal CAB+TNK document with the fixture embedder: at base the code-only FND_OPPOSITION_CANDIDATE waive is accepted and check returns verified: true; with S3 the waive is refused, the stored waiver is inert and the CAB and TNK pairs demote; the write-half assertion stays and AC-5-6 is not amended",
+    "origin": "ruling R43 (question 7)",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "waive-fold",
+      "check-compat"
+    ],
+    "rulings": [
+      "R43"
+    ]
+  },
+  "S3-039": {
+    "title": "Every repair.ops op decodes and the S3 fold accepts it, and no offered waive names a never code",
+    "origin": "reading",
+    "class": "instruction drift",
+    "floor": 2,
+    "components": [
+      "repair-advice"
+    ],
+    "rulings": [
+      "R2",
+      "R29"
+    ]
+  },
+  "S3-040": {
+    "title": "No demotion action, finding message or suggestion for a never code contains waive, at every engine site",
+    "origin": "reading",
+    "class": "instruction drift",
+    "floor": 1,
+    "components": [
+      "engine-prose"
+    ],
+    "rulings": [
+      "R24",
+      "R29"
+    ]
+  },
+  "S3-041": {
+    "title": "For a requirement excluded from the formal tier by a blocking scoped-class lint, the remedy offers rephrasing first and may offer the scoped waive refs+hash second, then saying the waiver re-admits it to the solver but demotes waived-blocking-lint, so the run cannot verify",
+    "origin": "ruling R44 (question 8)",
+    "class": "instruction drift",
+    "floor": 1,
+    "components": [
+      "repair-advice",
+      "engine-prose"
+    ],
+    "rulings": [
+      "R44"
+    ]
+  },
+  "S3-042": {
+    "title": "scope.ts coverageDemotion does not say or waived, and check:agents shows no drift",
+    "origin": "reading",
+    "class": "instruction drift",
+    "floor": 1,
+    "components": [
+      "scope-prose"
+    ],
+    "rulings": [
+      "R30"
+    ]
+  },
+  "S3-043": {
+    "title": "The installed skill body offers no waiver for FND_OPPOSITION_CANDIDATE or any other never code",
+    "origin": "ruling (coordinator input b)",
+    "class": "instruction drift",
+    "floor": 1,
+    "components": [
+      "published-waivability"
+    ],
+    "rulings": [
+      "R31"
+    ]
+  },
+  "S3-044": {
+    "title": "WAIVABILITY_ENFORCED is true, held to apply, import and check, and no surface says NOT enforced by this build",
+    "origin": "ruling (coordinator input a)",
+    "class": "instruction drift",
+    "floor": 4,
+    "components": [
+      "published-waivability"
+    ],
+    "rulings": [
+      "R32"
+    ]
+  },
+  "S3-045": {
+    "title": "No advice, replacement, message or prose names vocab distinct or propose-vocabulary --rescope-waivers",
+    "origin": "ruling (coordinator input c)",
+    "class": "instruction drift",
+    "floor": 1,
+    "components": [
+      "engine-prose",
+      "repair-advice",
+      "check-compat"
+    ],
+    "rulings": [
+      "R24",
+      "R36"
+    ]
+  },
+  "S3-046": {
+    "title": "Every waiver the engine applied is listed with code, ids and reason, and the scope says a content hash binds text, not the reviewer",
+    "origin": "threat T24",
+    "class": "false certificate",
+    "floor": 1,
+    "components": [
+      "check-compat",
+      "scope-prose"
+    ],
+    "rulings": [
+      "R33"
+    ]
+  },
+  "S3-047": {
+    "title": "A scoped, reviewed waiver of a scoped-class finding gets no KNOWN_ESCAPES row: the scoped-waive harness move runs on never-class fixtures only (refused at write, inert raw), and the derives-cycle FND_CYCLE scoped discharge is pinned by its own positive test",
+    "origin": "ruling R45 (question 9)",
+    "class": "gate drift",
+    "floor": 1,
+    "components": [
+      "gaming-harness"
+    ],
+    "rulings": [
+      "R45"
+    ]
+  },
+  "S3-048": {
+    "title": "The 11 waive-by-code KNOWN_ESCAPES rows are deleted with the move still registered and exactness green on every shard",
+    "origin": "threat T21",
+    "class": "gate drift",
+    "floor": 1,
+    "components": [
+      "gaming-harness"
+    ],
+    "rulings": [
+      "R34"
+    ]
+  },
+  "S3-049": {
+    "title": "The harness measures a scoped never-code waive per baseline finding and the same waivers written into the stored JSON with no fold",
+    "origin": "threat T20",
+    "class": "gate drift",
+    "floor": 1,
+    "components": [
+      "gaming-harness"
+    ],
+    "rulings": [
+      "R34"
+    ]
+  },
+  "S3-050": {
+    "title": "The clean (fixture, move) pairs after S3 are base's minus the 11 waive-by-code rows, none added",
+    "origin": "threat T25",
+    "class": "gate drift",
+    "floor": 1,
+    "components": [
+      "gaming-harness"
+    ],
+    "rulings": [
+      "R34"
+    ]
+  },
+  "S3-051": {
+    "title": "Every changed report-corpus row is a verdict delta attributable to AC-5-6",
+    "origin": "threat T21",
+    "class": "gate drift",
+    "floor": 1,
+    "components": [
+      "report-corpus"
+    ],
+    "rulings": [
+      "R34"
+    ]
+  },
+  "S3-052": {
+    "title": "The S3 build commit is feat! with a BREAKING CHANGE: footer in its own body",
+    "origin": "ruling (coordinator input d)",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "release"
+    ],
+    "rulings": [
+      "R35",
+      "R46"
+    ]
+  },
+  "S3-053": {
+    "title": "S3 does not touch the version files; release-please bumps the four version files in the release PR",
+    "origin": "ruling R46 (question 10)",
+    "class": "reviewed-waiver loss",
+    "floor": 1,
+    "components": [
+      "release"
+    ],
+    "rulings": [
+      "R46"
+    ]
+  }
+}

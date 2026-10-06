@@ -87,9 +87,19 @@
  * satisfaction. `sat` at `k` is NOT a consistency certificate: a conflict may
  * first appear past the horizon. The envelope therefore reports
  * `{ bound: k, complete: false }`, mirroring the SMT tier's "silence is not a
- * consistency certificate" discipline, and a finding is emitted only on `unsat`.
- * A verdict is still relative to `k`, so the finding message says so rather than
- * claiming (as it wrongly did pre-AC-2-6) that it is "not bound-dependent".
+ * consistency certificate" discipline, and a contradiction is emitted only on
+ * `unsat`.
+ *
+ * ## Which `unsat`s rest on the bound (spec 007 AC-2-8)
+ *
+ * The premise "every guarded trigger occurs within `k` steps" is free for one
+ * trigger — every formula is a `G`, so the set is suffix-closed and a trigger at
+ * step 1000 shifts to step 0 — and a pigeonhole for several: three modes that
+ * cannot share a step cannot all occur in the two steps `k = 1` has. So after
+ * minimizing, the tier re-checks the core with the premise reduced to each single
+ * antecedent ({@link premiseIndependent}). An `unsat` that survives is `error`; one
+ * that needs the joint premise is `warn`, states the bound, and says it may be an
+ * artifact of it. The `warn` message must never claim otherwise.
  *
  * ## Determinism
  *
@@ -115,16 +125,45 @@ import type { Z3Bool } from './encode.ts'
 import type { Evidence } from './finding.ts'
 import type { TemporalFormula } from './temporal-patterns.ts'
 
-/** A temporal-contradiction finding (Appendix B `FND_TEMPORAL_CONTRADICTION`, error). */
+/**
+ * A temporal-contradiction finding (Appendix B `FND_TEMPORAL_CONTRADICTION`).
+ *
+ * `error` when the `unsat` survives with the reachability premise reduced to at most
+ * one guarded antecedent — a premise that costs nothing, see
+ * {@link premiseIndependent} — and `warn` when it needs two or more antecedents to
+ * all occur within `k` steps, which can be the bound talking rather than the
+ * document (spec 007 AC-2-8).
+ */
 export interface TemporalContradictionFinding {
   readonly code: 'FND_TEMPORAL_CONTRADICTION'
-  readonly severity: 'error'
+  readonly severity: 'error' | 'warn'
   /** The culprit requirement ids, from the minimized+dequoted unsat core. */
   readonly requirementIds: string[]
   readonly message: string
   /** AC-4-6 evidence: the bounded-check parameters (empty atom table). */
   readonly evidence: Evidence
 }
+
+/**
+ * The tier's "I don't know" (`FND_NEEDS_REVIEW`, info): the bounded check itself
+ * returned `unknown` — `--timeout-ms` cut it off, or Z3 gave up. Never a "no
+ * conflict". It names every requirement the check covered, and it is the signal the
+ * pipeline demotes `verified` on (`inconclusive-group`, the same demotion a
+ * propositional group's `unknown` gets), so an undecided temporal tier cannot
+ * certify: an `unknown` must never read like `sat`.
+ */
+export interface TemporalNeedsReviewFinding {
+  readonly code: 'FND_NEEDS_REVIEW'
+  readonly severity: 'info'
+  /** Every requirement id the undecided check covered, sorted. */
+  readonly requirementIds: string[]
+  readonly message: string
+  /** The bound the undecided check ran at (empty atom table). */
+  readonly evidence: Evidence
+}
+
+/** Everything {@link findTemporalContradictions} can report. */
+export type TemporalFinding = TemporalContradictionFinding | TemporalNeedsReviewFinding
 
 /** One requirement's temporal formula, tagged with its id (the guard literal). */
 export interface RequirementTemporal {
@@ -331,17 +370,20 @@ function lowerInitial(ctx: Z3Context, f: TemporalFormula, k: number): Z3Bool {
  * Find temporal contradictions across a set of requirement temporal formulas at
  * bound `k`. Asserts each requirement's bounded encoding under a guard literal
  * (= requirement id) and checks joint satisfiability. On `unsat`, emits
- * `FND_TEMPORAL_CONTRADICTION` naming the minimized unsat core.
+ * `FND_TEMPORAL_CONTRADICTION` naming the minimized unsat core, at `error` or
+ * `warn` per {@link premiseIndependent} (spec 007 AC-2-8).
  *
- * Sound-for-UNSAT: a finding is emitted ONLY on `unsat` (a real contradiction);
- * `sat`/`unknown` yield no finding and are NOT read as "consistent".
+ * Sound-for-UNSAT: a contradiction is emitted ONLY on `unsat`; `sat` yields no
+ * finding and is NOT read as "consistent". `unknown` yields `FND_NEEDS_REVIEW` over
+ * every id checked — an "I don't know" is neither a conflict nor silence.
  */
 export async function findTemporalContradictions(
   ctx: Z3Context,
   reqTemporals: readonly RequirementTemporal[],
   k = 10,
   bounds: SolverBounds = {},
-): Promise<TemporalContradictionFinding[]> {
+  axioms: readonly TemporalFormula[] = [],
+): Promise<TemporalFinding[]> {
   if (reqTemporals.length < 2) return []
 
   // AC-1-7 check-before-work: this tier is ONE whole-spec unit of work (a single
@@ -366,30 +408,125 @@ export async function findTemporalContradictions(
   // is a MISS, the honest direction. Which one it is must not be a line number.
   const ordered = [...reqTemporals].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   const ids = ordered.map((r) => r.id)
-  const solver = buildBoundedSolver(ctx, ordered, k, bounds)
+  const solver = buildBoundedSolver(ctx, ordered, k, bounds, axioms)
   const guards = ids.map((id) => ctx.Bool.const(id))
   const res = await solver.check(...guards)
+  const evidence: Evidence = { atomTable: [], temporal: { bound: k, complete: false } }
+  // AC-3-4: an `unknown` decided nothing, so it is disclosed (and demotes) rather than read as
+  // consistent; the finding below says so in the findings list too.
+  if (res === 'unknown') {
+    bounds.onUnknown?.('temporal', ids)
+    return [
+      {
+        code: 'FND_NEEDS_REVIEW',
+        severity: 'info',
+        requirementIds: [...ids].sort(),
+        message:
+          `The bounded temporal check (k=${k}) over ${ids.join(', ')} returned unknown or ` +
+          'exceeded the per-solver timeout; never interpreted as "no temporal conflict". Raise ' +
+          '--timeout-ms (or lower --temporal-bound) and re-run.',
+        evidence,
+      },
+    ]
+  }
   if (res !== 'unsat') return []
 
   const coreIds = dequoteCore(solver.unsatCore(), new Set(ids))
-  const minimal = await minimizeTemporalCore(ctx, ordered, coreIds, k, bounds)
+  const minimal = await minimizeTemporalCore(ctx, ordered, coreIds, k, bounds, axioms)
   const culprits = (minimal.length > 0 ? minimal : ids).slice().sort()
+  const core = ordered.filter((r) => culprits.includes(r.id))
+  const premise = await premiseIndependent(ctx, core, k, bounds, axioms)
 
+  if (premise.independent) {
+    return [
+      {
+        code: 'FND_TEMPORAL_CONTRADICTION',
+        severity: 'error',
+        requirementIds: culprits,
+        message:
+          `Requirements ${culprits.join(', ')} are temporally inconsistent: no trace satisfies them ` +
+          `jointly (bounded LTL→SMT, bound k=${k}). Eventualities are allowed to complete past the ` +
+          'horizon, and the conflict needs at most one guarded trigger to occur — at any step, since ' +
+          'every obligation is a G formula and so holds again from the step that trigger occurs — so ' +
+          'it does not rest on the bound.',
+        evidence,
+      },
+    ]
+  }
   return [
     {
       code: 'FND_TEMPORAL_CONTRADICTION',
-      severity: 'error',
+      severity: 'warn',
       requirementIds: culprits,
       message:
-        `Requirements ${culprits.join(', ')} are temporally inconsistent: no trace satisfies them ` +
-        `jointly with every guarded trigger occurring within ${k} steps (bounded LTL→SMT, bound ` +
-        `k=${k}). Eventualities are allowed to complete past the horizon, so this is not a ` +
-        'truncation artifact — but the verdict is relative to that reachability premise: a ' +
-        `counterexample needing a trigger later than step ${k} would refute it. Re-check at a ` +
-        'larger --temporal-bound to widen the premise.',
-      evidence: { atomTable: [], temporal: { bound: k, complete: false } },
+        `Requirements ${culprits.join(', ')} are temporally inconsistent only under the bounded ` +
+        `premise that all ${premise.antecedents} of their guarded triggers occur within ${k} ` +
+        `step${k === 1 ? '' : 's'} (bounded LTL→SMT, bound k=${k}); with the premise reduced to any ` +
+        'single trigger they are satisfiable. This can be an artifact of the bound — triggers that ' +
+        `cannot share a step need more than ${k + 1} steps to all occur — so it is a warning, not a ` +
+        'proven conflict. Re-check at a larger --temporal-bound: if the warning disappears it was ' +
+        'the bound; if it persists, the triggers cannot all occur in one run.',
+      evidence,
     },
   ]
+}
+
+/**
+ * Does a bounded `unsat` over `core` survive with the reachability premise reduced
+ * to at most ONE guarded antecedent? (spec 007 AC-2-8.)
+ *
+ * The full premise — every antecedent true at some step in `[0, k]` — is what
+ * keeps `G(a → …)` from being vacuously satisfiable, and for a single antecedent it
+ * is free: when every formula is a top-level `G`, the set is SUFFIX-CLOSED, so an
+ * infinite trace satisfying it with `a` first true at step 1000 has a suffix that
+ * satisfies it with `a` true at step 0, inside any `k`. An `unsat` that survives
+ * with only `a` asserted reachable therefore holds for every trace in which `a` ever
+ * happens — the same standing assumption the propositional tier makes when it
+ * asserts a context group true. With no guarded antecedent at all, the `unsat` had
+ * no premise to rest on.
+ *
+ * For two or more antecedents the premise is a pigeonhole: three triggers that
+ * cannot share a step cannot all occur in the two steps `k = 1` provides, which is
+ * `unsat` about `k`, not about the document. That is the case this returns
+ * `independent: false` for.
+ *
+ * Conservative in both failure directions: a non-`G` formula (not suffix-closed,
+ * so the shift argument does not hold) or an `unknown` from a reduced-premise
+ * re-check both count as NOT independent, so they can only lower a finding to
+ * `warn`, never raise one to `error`. Like minimization, it runs only after
+ * `unsat` is proved and does not consult the whole-run budget.
+ */
+async function premiseIndependent(
+  ctx: Z3Context,
+  core: readonly RequirementTemporal[],
+  k: number,
+  bounds: SolverBounds,
+  axioms: readonly TemporalFormula[],
+): Promise<{ readonly independent: boolean; readonly antecedents: number }> {
+  const antecedents = distinctAntecedents(core)
+  const count = antecedents.length
+  if (core.some(({ formula }) => formula.op !== 'G')) {
+    return { independent: false, antecedents: count }
+  }
+  if (count <= 1) return { independent: true, antecedents: count }
+  const guards = core.map(({ id }) => ctx.Bool.const(id))
+  for (const ante of antecedents) {
+    const solver = buildBoundedSolver(ctx, core, k, bounds, axioms, [ante])
+    if ((await solver.check(...guards)) === 'unsat') {
+      return { independent: true, antecedents: count }
+    }
+  }
+  return { independent: false, antecedents: count }
+}
+
+/** The distinct guarded antecedents of a set, deduplicated by content, in set order. */
+function distinctAntecedents(reqTemporals: readonly RequirementTemporal[]): TemporalFormula[] {
+  const antecedents = new Map<string, TemporalFormula>()
+  for (const { formula } of reqTemporals) {
+    const ante = guardedAntecedent(formula)
+    if (ante !== null) antecedents.set(formulaKey(ante), ante)
+  }
+  return [...antecedents.values()]
 }
 
 /**
@@ -429,6 +566,9 @@ function dequoteCore(core: Iterable<{ toString(): string }>, known: Set<string>)
  * asserting mutually-exclusive triggers. This window is load-bearing and must not
  * be narrowed — see
  * `.erpaval/solutions/architecture/temporal-bounded-ltl-reachability-subtlety.md`.
+ * `reachable` defaults to every distinct antecedent in the set; only
+ * {@link premiseIndependent} narrows it, to one antecedent at a time, to ask
+ * whether an `unsat` needed the rest (AC-2-8).
  *
  * **Tail state (AC-2-6).** `lowerAt` lets an eventuality escape the horizon via a
  * `pend_ε` disjunct. Choosing `pend_ε` is paid for here: for each distinct
@@ -446,32 +586,34 @@ function dequoteCore(core: Iterable<{ toString(): string }>, known: Set<string>)
  * makes all of it vacuous and recovers the pre-AC-2-6 model set exactly.
  *
  * This is the ONLY `new ctx.Solver()` site in this module, so applying
- * `bounds.timeoutMs` here bounds both the main check and every minimization
- * re-check (AC-1-7). A timeout surfaces as `unknown`, which the sound-for-UNSAT
- * discipline already discards (a finding is emitted only on `unsat`).
+ * `bounds.timeoutMs` here bounds the main check, every minimization re-check, and
+ * every reduced-premise re-check (AC-1-7). A timeout surfaces as `unknown`: on the
+ * main check that is `FND_NEEDS_REVIEW`; on a re-check it takes the conservative
+ * branch (keep the candidate; do not claim premise independence).
  */
 function buildBoundedSolver(
   ctx: Z3Context,
   reqTemporals: readonly RequirementTemporal[],
   k: number,
   bounds: SolverBounds = {},
+  axioms: readonly TemporalFormula[] = [],
+  reachable: readonly TemporalFormula[] = distinctAntecedents(reqTemporals),
 ): InstanceType<Z3Context['Solver']> {
   const solver = new ctx.Solver()
   if (bounds.timeoutMs !== undefined) solver.set('timeout', bounds.timeoutMs)
   for (const { id, formula } of reqTemporals) {
     solver.add(ctx.Implies(ctx.Bool.const(id), lowerInitial(ctx, formula, k)))
   }
-  const antecedents = new Map<string, TemporalFormula>()
-  for (const { formula } of reqTemporals) {
-    const ante = guardedAntecedent(formula)
-    if (ante !== null) antecedents.set(formulaKey(ante), ante)
-  }
-  for (const ante of antecedents.values()) {
+  // Spec 007 AC-2-1: the vocabulary's contrary axioms, `G ¬(A ∧ B)`, UNGUARDED — they belong to
+  // no requirement, so they never enter a core. They also join the tail-state `G` bodies below,
+  // or a pending eventuality could discharge past the horizon into a state the axiom forbids.
+  for (const axiom of axioms) solver.add(lowerInitial(ctx, axiom, k))
+  for (const ante of reachable) {
     const disj: Z3Bool[] = []
     for (let i = 0; i <= k; i++) disj.push(lowerAt(ctx, ante, i, k))
     if (disj.length > 0) solver.add(ctx.Or(...disj))
   }
-  addPendingTailStates(ctx, solver, reqTemporals)
+  addPendingTailStates(ctx, solver, reqTemporals, axioms)
   return solver
 }
 
@@ -494,12 +636,13 @@ function addPendingTailStates(
   ctx: Z3Context,
   solver: InstanceType<Z3Context['Solver']>,
   reqTemporals: readonly RequirementTemporal[],
+  axioms: readonly TemporalFormula[] = [],
 ): void {
   // Every top-level `G` body in the surviving subset — legitimate at any step,
-  // therefore legitimate at any tail step.
-  const globalBodies = reqTemporals
-    .filter(({ formula }) => formula.op === 'G')
-    .map(({ formula }) => (formula as TemporalFormula & { op: 'G' }).arg)
+  // therefore legitimate at any tail step. The contrary axioms (AC-2-1) hold at every step too.
+  const globalBodies = [...reqTemporals.map(({ formula }) => formula), ...axioms]
+    .filter((formula) => formula.op === 'G')
+    .map((formula) => (formula as TemporalFormula & { op: 'G' }).arg)
   const bodySymbols = globalBodies.map((body) => {
     const syms = new Set<string>()
     collectTailSymbols(body, syms)
@@ -634,13 +777,14 @@ async function minimizeTemporalCore(
   core: string[],
   k: number,
   bounds: SolverBounds = {},
+  axioms: readonly TemporalFormula[] = [],
 ): Promise<string[]> {
   let current = [...new Set(core)].sort()
   for (const candidate of [...current]) {
     const trial = current.filter((id) => id !== candidate)
     if (trial.length < 2) continue
     const subset = reqTemporals.filter((r) => trial.includes(r.id))
-    const solver = buildBoundedSolver(ctx, subset, k, bounds)
+    const solver = buildBoundedSolver(ctx, subset, k, bounds, axioms)
     if ((await solver.check(...trial.map((id) => ctx.Bool.const(id)))) === 'unsat') current = trial
   }
   return current

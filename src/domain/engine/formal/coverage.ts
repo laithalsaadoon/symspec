@@ -25,21 +25,44 @@ export interface CoverageFinding {
   readonly message: string
 }
 
+/** Why no pair was evaluated, as far as the pipeline can tell, so the message names the cause. */
+export interface NoPairsCause {
+  /** Some atom is owned by two or more requirements: vocabulary is not the gap. */
+  readonly atomsShared: boolean
+  /** An `FND_EXACT_DUPLICATE` fired: that pair is reported, not compared. */
+  readonly exactDuplicates: boolean
+}
+
 /**
  * Build the `FND_NO_PAIRS_CHECKED` info finding. Names every requirement id so a
  * reader can see the whole set that went uncompared. Info severity, so it never
  * moves the exit gate — it is a disclosure, not a defect.
+ *
+ * The cause clause follows `cause`: "no two requirements shared an atom" and the vocabulary
+ * advice are said only when that is the case. Two copies of one requirement share every atom,
+ * and telling their author to align vocabulary contradicts `coverage.requirements`.
  */
-export function noPairsCheckedFinding(requirementIds: readonly string[]): CoverageFinding {
+export function noPairsCheckedFinding(
+  requirementIds: readonly string[],
+  cause: NoPairsCause = { atomsShared: false, exactDuplicates: false },
+): CoverageFinding {
+  const because = !cause.atomsShared
+    ? 'no two requirements shared an atom, so no cross-requirement contradiction/subsumption ' +
+      'analysis ran. This is NOT a consistency certificate — consider adding glossary entries ' +
+      'to align vocabulary so related requirements share atoms and can be compared.'
+    : 'the requirements do share atoms, so vocabulary is not the gap, but no pair of them was ' +
+      'compared: ' +
+      (cause.exactDuplicates
+        ? 'an exact-duplicate pair is reported as FND_EXACT_DUPLICATE rather than compared. '
+        : 'requirements whose guards no decided context group asserts together are never ' +
+          'paired. ') +
+      'This is NOT a consistency certificate — `coverage.requirements` says which requirements ' +
+      'were asserted together with a peer.'
   return {
     code: 'FND_NO_PAIRS_CHECKED',
     severity: 'info',
     requirementIds: [...requirementIds],
-    message:
-      'The formal tier evaluated 0 candidate pairs: no two requirements shared an atom, so no ' +
-      'cross-requirement contradiction/subsumption analysis ran. This is NOT a consistency ' +
-      'certificate — consider adding glossary entries to align vocabulary so related ' +
-      'requirements share atoms and can be compared.',
+    message: `The formal tier evaluated 0 candidate pairs: ${because}`,
   }
 }
 
@@ -52,9 +75,9 @@ export function noPairsCheckedFinding(requirementIds: readonly string[]): Covera
  * `reason` is the gate's exclusion reason (`'parse-failure'` |
  * `'blocking-surface-check'`); `blockingCodes` names the finding codes that
  * blocked the surface, so the discharge instruction is concrete. The fix is to
- * REPHRASE (clear the blocking finding) — waiving the finding suppresses the
- * report line but leaves the requirement formally excluded, which is why the
- * message says so explicitly.
+ * REPHRASE (clear the blocking finding). The message names no waiver: the code is
+ * never waivable (spec 007 AC-5-6), and the scoped alternative for the blocking lint,
+ * with why it cannot verify, is the `excluded-from-formal` demotion's to state.
  */
 export function excludedFromFormalFinding(
   requirementId: string,
@@ -73,9 +96,9 @@ export function excludedFromFormalFinding(
     message:
       `${requirementId} was excluded from the formal (SMT) tier because ${how}, so no ` +
       'cross-requirement analysis covered it and `verified` does not account for it. Fix the ' +
-      'blocking finding (rephrase the requirement) to re-admit it to the solver. NOTE: waiving ' +
-      'the blocking finding suppresses the report line but does NOT restore formal coverage — ' +
-      'the requirement stays excluded until the surface itself is clean.',
+      'blocking finding (rephrase the requirement) to re-admit it to the solver: a clean surface ' +
+      'is the only discharge that can reach `verified: true`, and the `excluded-from-formal` ' +
+      'demotion says what else its repair offers and why that cannot verify.',
   }
 }
 

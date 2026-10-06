@@ -61,7 +61,21 @@
 import { Effect, Schema } from 'effect'
 import { type BudgetHint, budgetHintFor } from '../../domain/advice/budget-hint.ts'
 import { repairForDemotion } from '../../domain/advice/repair.ts'
-import { toEngineDoc } from '../../domain/compat.ts'
+import { type IgnoredWaiver, toEngineDoc } from '../../domain/compat.ts'
+import {
+  belowPinned,
+  type EffectivePins,
+  effectivePins,
+  type GatePins,
+  KNOB_DEFAULTS,
+  type Knob,
+  MAX_TEMPORAL_BOUND,
+  pinDemotionAction,
+  pinnedInvocation,
+  type RunSettings,
+  resolveReachabilityTimeoutMs,
+} from '../../domain/config/config.ts'
+import { asShellArg, type ShellArg, shellWord } from '../../domain/engine/core/shell-word.ts'
 import type { Embedder } from '../../domain/engine/formal/embed.ts'
 import { DEFAULT_SEMANTIC_THRESHOLD } from '../../domain/engine/formal/semantic.ts'
 import type {
@@ -71,32 +85,53 @@ import type {
   CheckSeverity,
   CheckTier,
   CoverageDemotion,
+  RunDisclosure,
 } from '../../domain/engine/pipeline/check.ts'
 import { filterReport, runCheck } from '../../domain/engine/pipeline/check.ts'
 import type { Exclusion } from '../../domain/engine/pipeline/gate.ts'
 import { type ReachabilityReport, runReachability } from '../../domain/reachability/reachability.ts'
-import { projectReachability } from '../../domain/reachability/reachability-report.ts'
-import type { DocumentDiagnostic } from '../../domain/requirements/document.ts'
+import {
+  projectReachability,
+  type ReachabilityFinding,
+} from '../../domain/reachability/reachability-report.ts'
+import { requirementsContentHash } from '../../domain/requirements/content-hash.ts'
+import type {
+  DocumentDiagnostic,
+  RequirementsDocument,
+} from '../../domain/requirements/document.ts'
 import { runTerminology } from '../../domain/terminology/terminology.ts'
+import {
+  type AppliedWaiver,
+  accountWaivers,
+  isLintCode,
+  lintFindingScopes,
+  suppressedByCrossed,
+  waivedBlockingIds,
+} from '../../domain/waiver-accounting.ts'
 import { runnableInProse } from '../../ports/command-form.ts'
-import { DocPath, DocStore } from '../../ports/doc-store.ts'
+import {
+  CONFIG_PATH_CONVENTION,
+  type ConfigLocation,
+  DocPath,
+  DocStore,
+  type UnresolvedConfigLocation,
+} from '../../ports/doc-store.ts'
 import { EmbedderService } from '../../ports/embedder.ts'
 import { ErrSolverInconclusive, ErrUsage } from '../../ports/errors.ts'
 import { SolverService } from '../../ports/solver.ts'
 import { ok, type Repair } from '../runtime/envelope.ts'
 import { defineOperation } from '../runtime/operation.ts'
+import type { AppDemotionReason } from '../runtime/signal-classes.ts'
 
 // ---------------------------------------------------------------------------
 // The two bounds that are policy, stated as values
 // ---------------------------------------------------------------------------
 
-/**
- * The maximum legal `--temporal-bound`. See the module header for the measurements
- * this number comes from; the short version is that k=300 hits Node's heap limit
- * and aborts with no envelope, and no knob can interrupt the encode phase that
- * gets there.
- */
-export const MAX_TEMPORAL_BOUND = 200
+// `MAX_TEMPORAL_BOUND` (see the module header for its measurements) and
+// `resolveReachabilityTimeoutMs` (see `REACHABILITY_TIMEOUT_IS_CANCELLABILITY` below) live in
+// `domain/config/config.ts`, beside the pinned-config table that compares on them, and are
+// re-exported here where the flags they govern are defined.
+export { MAX_TEMPORAL_BOUND, resolveReachabilityTimeoutMs }
 
 /**
  * `check` is the TERMINAL operation of a CLI process, and that is what makes
@@ -140,24 +175,6 @@ export const CHECK_IS_TERMINAL = true
  */
 export const REACHABILITY_TIMEOUT_IS_CANCELLABILITY = true
 
-/**
- * Resolve the reachability tier's per-query bound.
- *
- * 0 is the INHERIT sentinel, not an "unbounded" one, and inheriting `--timeout-ms` is what
- * makes the flag a pure addition: every existing fixture passes `--reachability-timeout-ms`
- * absent, so each one keeps the output it was pinned against instead of needing a re-pin.
- *
- * Zero-is-inherit rather than a nullable field for the reason `check --fail-on-unmatched`
- * documents at length: a negative sentinel is UNREACHABLE from a shell (the CLI reads a
- * leading `-` as the next flag), and unlike that gate, 0 carries no useful meaning here —
- * a 0ms per-query timeout would time out every query before Z3 parsed the model, so
- * spending it as the sentinel costs nothing. The validator rejects negatives outright.
- */
-export const resolveReachabilityTimeoutMs = (
-  reachabilityTimeoutMs: number,
-  timeoutMs: number,
-): number => (reachabilityTimeoutMs > 0 ? reachabilityTimeoutMs : timeoutMs)
-
 // ---------------------------------------------------------------------------
 // The v5 report additions
 // ---------------------------------------------------------------------------
@@ -171,7 +188,12 @@ export const resolveReachabilityTimeoutMs = (
  * tell an agent "there is a repair, it is nothing"; omitting the key says "no
  * mechanical fix exists, read `action`". See `../formal/repair.ts`.
  */
-export interface RepairableDemotion extends CoverageDemotion {
+export interface RepairableDemotion extends Omit<CoverageDemotion, 'reason'> {
+  /**
+   * The engine's reasons, each greenfield tier's, and `waived-blocking-lint`, which `check`
+   * raises at the boundary (spec 007 AC-5-6, G3): every reason `DEMOTION_CLASS` classifies.
+   */
+  readonly reason: AppDemotionReason
   readonly repair?: Repair
 }
 
@@ -258,7 +280,30 @@ export interface TerminologySummary {
   readonly acronymsExamined: number
 }
 
-export interface CheckPayload extends Omit<CheckReport, 'coverage'> {
+/**
+ * `data.run`: the engine's disclosure of what the run was made of, plus the pins it was
+ * compared against when a `symspec.config.json` exists (spec 007 AC-5-10).
+ *
+ * The three pin keys are ABSENT with no config, so a document with no config reports exactly
+ * the engine's `run`, byte for byte.
+ */
+export interface PinnedRunDisclosure extends RunDisclosure {
+  /**
+   * The config the pins were read from, and the rule that chose it: `toplevel` (the
+   * repository's), `directory` (no repository), or `flag`/`env` (named explicitly). A CI job
+   * asserts `source` and `path` to know the committed config governed the run. With no config
+   * at all it is present only to disclose a git refusal no config could be governed by:
+   * `{path, source: 'directory', gitRefusal}`, and the pin keys stay absent.
+   */
+  readonly config?: ConfigLocation | UnresolvedConfigLocation
+  /** The effective pins, per knob. */
+  readonly pinned?: EffectivePins
+  /** The knobs this run ran below their pin, each also a `run-weakened` demotion. */
+  readonly belowPinned?: readonly Knob[]
+}
+
+export interface CheckPayload extends Omit<CheckReport, 'coverage' | 'run'> {
+  readonly run: PinnedRunDisclosure
   readonly coverage: Omit<CheckReport['coverage'], 'demotions'> & {
     readonly demotions: readonly RepairableDemotion[]
   }
@@ -268,11 +313,9 @@ export interface CheckPayload extends Omit<CheckReport, 'coverage'> {
    * The unbounded reachability tier's own summary (G4) — present ONLY when a state model
    * is committed.
    *
-   * ABSENT, not empty, on a document with no state model. That absence is what makes the
-   * tier a pure addition: such a document produces a payload with no `reachability` key at
-   * all, so an envelope pinned before this tier existed still matches byte-for-byte
-   * instead of needing the field excluded. The tier's own "I did not run" disclosure travels as a
-   * FINDING (`FND_REACHABILITY_NOT_CHECKED`) rather than as this field, because a
+   * ABSENT, not empty, on a document with no state model: the tier did not run, so it has
+   * no numbers to report. The tier's own "I did not run" disclosure travels as a FINDING
+   * (`FND_REACHABILITY_NOT_CHECKED`, info, no demotion) rather than as this field, because a
    * disclosure an agent has to know to look for is not a disclosure.
    *
    * See `../formal/reachability.ts` for what the numbers mean and
@@ -294,8 +337,24 @@ export interface CheckPayload extends Omit<CheckReport, 'coverage'> {
   readonly terminology?: TerminologySummary
   /** The resolved document path, so an agent can quote it in a follow-up. */
   readonly path: string
-  /** The load's info-grade disclosures (V27 channel), surfaced on every read. */
+  /**
+   * The load's info-grade disclosures (V27 channel), surfaced on every read, then one
+   * `waiver-inert` entry per stored waiver the waivability policy keeps from the engine (spec
+   * 007 AC-5-6) and per applied-scope waiver that matches no finding.
+   */
   readonly diagnostics: readonly DocumentDiagnostic[]
+  /**
+   * Every stale-hash waiver of a `scoped` code: the text it was reviewed on changed, so the
+   * finding it covered is back (spec 007 AC-5-6, R21). ALWAYS present, `[]` when none, and never
+   * filtered by `--min-severity` or `--findings-only`: a waiver that silently stopped applying is
+   * exactly what an output filter must not hide.
+   */
+  readonly ignoredWaivers: readonly IgnoredWaiver[]
+  /**
+   * Every waiver the engine applied, with its code, requirement ids and reason (R33), so each
+   * suppressed finding is accounted for by name rather than by the `waived` count alone.
+   */
+  readonly appliedWaivers: readonly AppliedWaiver[]
   /**
    * The measured budget recommendation (AC-A-8) — present ONLY when the run has
    * something measured to say about its own `--solver-budget-ms`.
@@ -356,8 +415,18 @@ const CheckInput = Schema.Struct({
       }),
     ),
   ),
+  config: Schema.withDecodingDefaultKey<Schema.NullOr<Schema.String>>(Effect.succeed(null))(
+    Schema.NullOr(Schema.String).annotate({
+      default: null,
+      description: lines(
+        'Path to the symspec.config.json whose pins this run is compared against.',
+        CONFIG_PATH_CONVENTION,
+        'A named config that cannot be read is ERR_CONFIG_INVALID, never "no config".',
+      ),
+    }),
+  ),
   timeoutMs: intFlag(
-    2000,
+    KNOB_DEFAULTS.timeoutMs,
     lines(
       'Per-solver timeout in milliseconds, applied to EVERY solver every tier constructs',
       '(contradiction, subsumption, vacuity, incomplete, numeric, temporal, needs-review).',
@@ -370,7 +439,7 @@ const CheckInput = Schema.Struct({
   // rather than tidiness. See {@link resolveReachabilityTimeoutMs} for the sentinel and
   // {@link REACHABILITY_TIMEOUT_IS_CANCELLABILITY} for why the bound is not merely a budget.
   reachabilityTimeoutMs: intFlag(
-    0,
+    KNOB_DEFAULTS.reachabilityTimeoutMs,
     lines(
       'Per-query timeout in milliseconds for the UNBOUNDED reachability tier (Z3 Spacer), applied to',
       'each Horn query the tier issues. 0 (the default) INHERITS --timeout-ms, so omitting this flag',
@@ -389,7 +458,7 @@ const CheckInput = Schema.Struct({
     ),
   ),
   solverBudgetMs: intFlag(
-    0,
+    KNOB_DEFAULTS.solverBudgetMs,
     lines(
       'Whole-run wall-clock solver budget in milliseconds, spanning every solver tier. 0 means',
       'unbounded (the default), which is the engine behavior when the flag is absent.',
@@ -399,7 +468,7 @@ const CheckInput = Schema.Struct({
     ),
   ),
   temporalBound: intFlag(
-    0,
+    KNOB_DEFAULTS.temporalBound,
     lines(
       'Trace bound k for the OPT-IN bounded LTL→SMT temporal tier. 0 (the default) means the tier',
       'does not run; any value from 1 to 200 enables it — supplying a bound IS opting in.',
@@ -495,7 +564,7 @@ const CheckInput = Schema.Struct({
         '(FND_SIMILAR_SEMANTIC) and opposition candidates (FND_OPPOSITION_CANDIDATE) for pairs that',
         'did not already unify. ON by default.',
         'PROPOSE-ONLY, and that is doctrine rather than caution: a cosine never decides a conflict.',
-        'The only durable output is a SUGGESTED `symspec glossary` / `symspec antonym` op you commit after',
+        'The only durable output is a SUGGESTED `symspec glossary "<canonical>" "<alias>"` / `symspec antonym <a> <b>` op you commit after',
         'review, and the deterministic solver then reads the COMMITTED table — which is what keeps',
         '`check` byte-reproducible given (document + tables + pinned model).',
         'These findings are info severity and can DEMOTE `data.verified` toward abstention (an',
@@ -520,6 +589,9 @@ const CheckInput = Schema.Struct({
         'so every same-intent/different-wording pair was silently missed.',
         'FAVOR RECALL when tuning: this tier is propose-only, so a false suggestion costs one ignored',
         'op while a MISS hides a real paraphrased conflict behind two distinct atoms.',
+        'A value ABOVE the default is a run-weakening move: it can drop proposals and near-duplicate',
+        'demotions the default run raises, so it demotes `data.verified` with `run-weakened`. The value',
+        'the tier ran at is always disclosed as `data.run.semanticThreshold`.',
       ),
     }),
   ),
@@ -538,7 +610,7 @@ const CheckInput = Schema.Struct({
  * on each: the corrected invocation is a command an agent can run verbatim, which
  * is the AC-A-9 discipline applied to usage errors too.
  */
-const validate = (input: typeof CheckInput.Type, path: string): Effect.Effect<void, ErrUsage> => {
+const validate = (input: typeof CheckInput.Type, path: ShellArg): Effect.Effect<void, ErrUsage> => {
   const usage = (error: string, corrected: string) =>
     Effect.fail(
       new ErrUsage({
@@ -616,6 +688,8 @@ const toCheckOptions = (
    * rather than treating as a clean run.
    */
   embedder: Embedder | undefined,
+  /** Whether `embedder` is the TEST stub — `EmbedderService.isStub`, never re-derived. */
+  embedderIsStub: boolean,
 ): CheckOptions => ({
   timeoutMs: input.timeoutMs,
   // 0 is the "unbounded" sentinel; v4 expresses unbounded as an absent key.
@@ -633,6 +707,9 @@ const toCheckOptions = (
     ? {
         semantic: {
           embedder,
+          // AC-3-5: the stub DEMOTES. Forwarded from the service's own disclosure so the
+          // engine never guesses which embedder ran.
+          ...(embedderIsStub ? { stub: true } : {}),
           ...(input.semanticThreshold !== null && Number.isFinite(input.semanticThreshold)
             ? { threshold: input.semanticThreshold }
             : {}),
@@ -676,6 +753,33 @@ const SEVERITY_ORDER: readonly CheckSeverity[] = ['error', 'warn', 'info']
 const severityAtLeast = (severity: CheckSeverity, minimum: CheckSeverity): boolean =>
   SEVERITY_ORDER.indexOf(severity) <= SEVERITY_ORDER.indexOf(minimum)
 
+/**
+ * The reachability tier's "I did not run" disclosure for a document with NO state model.
+ *
+ * The published scope (`reachabilityModelScoped`) says the tier runs only when a state model is
+ * committed, "otherwise FND_REACHABILITY_NOT_CHECKED discloses that it did not run", and the
+ * craft guide says such a document gets the code "rather than silence". The tier itself never
+ * runs here, so this boundary emits the disclosure on its behalf.
+ *
+ * Info, and NOT a demotion. The tier is opt-in, exactly like the bounded temporal tier, whose
+ * absence does not demote either: `verified` speaks for the tiers that ran, and demoting every
+ * document that has not authored a state model would make the certificate unreachable for the
+ * input→output specifications the propositional tiers fully cover. A committed-but-incomplete
+ * model is different — the author asked the question — and the tier's own projection demotes it.
+ */
+const noStateModelDisclosure = (docPath: ShellArg): ReachabilityFinding => ({
+  code: 'FND_REACHABILITY_NOT_CHECKED',
+  severity: 'info',
+  requirementIds: [],
+  message:
+    'The unbounded reachability tier did not run: no state model is committed, so no ' +
+    'reachability question was asked. This is a coverage DISCLOSURE, not a defect, and it does ' +
+    'not demote `verified` (the tier is opt-in). To have `check` prove invariants over every ' +
+    'reachable state, declare the state variables (`symspec state <name> --type <bool|int|enum> ' +
+    `--file ${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> ` +
+    `--kind constraint --expression "<predicate>" --file ${docPath}\`).`,
+})
+
 /** Roll a finished reachability run up into the payload's summary. */
 const summarizeReachability = (run: ReachabilityReport): ReachabilitySummary => {
   const count = (verdict: string) => run.results.filter((r) => r.verdict === verdict).length
@@ -718,13 +822,20 @@ const withRepairs = (
    * adjacent fields.
    */
   recommendedBudgetMs: number | undefined,
+  /** `data.run`, so a `run-weakened` repair undoes the weakening this run actually had. */
+  run: RunDisclosure,
+  /** The checked document, so a pair waiver op carries the hash of the text it was raised on. */
+  document: RequirementsDocument,
 ): readonly RepairableDemotion[] => {
   const exclusionsById = new Map(excluded.map((e) => [e.id, e]))
+  const contentHash = (ids: readonly string[]) => requirementsContentHash(document, ids)
   return demotions.map((demotion) => {
     const repair = repairForDemotion(demotion, {
       exclusionsById,
       findings,
       docPath: path,
+      run,
+      contentHash,
       timeoutMs: input.timeoutMs,
       ...(input.solverBudgetMs > 0 ? { solverBudgetMs: input.solverBudgetMs } : {}),
       ...(recommendedBudgetMs !== undefined ? { recommendedBudgetMs } : {}),
@@ -735,6 +846,70 @@ const withRepairs = (
     const hasRepair = repair.ops.length > 0 || repair.commands.length > 0
     return hasRepair ? { ...demotion, repair } : demotion
   })
+}
+
+// ---------------------------------------------------------------------------
+// The pinned run (spec 007 AC-5-10)
+// ---------------------------------------------------------------------------
+
+/**
+ * What this run was made of, as the knob table reads it: the flags, plus the embedder the
+ * engine reports it actually ran (`data.run.embedder`) and the threshold it ran at.
+ */
+const runSettingsOf = (input: typeof CheckInput.Type, run: RunDisclosure): RunSettings => ({
+  semantic: input.semantic,
+  embedder: run.embedder,
+  semanticThreshold:
+    run.semanticThreshold ??
+    (input.semanticThreshold !== null && Number.isFinite(input.semanticThreshold)
+      ? input.semanticThreshold
+      : KNOB_DEFAULTS.semanticThreshold),
+  timeoutMs: input.timeoutMs,
+  reachabilityTimeoutMs: input.reachabilityTimeoutMs,
+  solverBudgetMs: input.solverBudgetMs,
+  temporalBound: input.temporalBound,
+  strict: input.strict,
+})
+
+/**
+ * Compare one run against the pins of one config: the `data.run` disclosure and one
+ * `run-weakened` demotion per knob below its pin.
+ *
+ * Every such demotion carries the SAME repair — one command at every pin — because running it
+ * discharges all of them, where a per-knob command would discharge one and re-weaken the rest.
+ * A demotion can only push `verified` toward false, so a config can never make a run verify
+ * that would not verify without it.
+ */
+const pinnedRunOf = (
+  config: ConfigLocation,
+  gate: GatePins,
+  run: RunSettings,
+  docPath: ShellArg,
+): {
+  readonly disclosure: Required<Pick<PinnedRunDisclosure, 'config' | 'pinned' | 'belowPinned'>>
+  readonly demotions: readonly RepairableDemotion[]
+} => {
+  const pinned = effectivePins(gate)
+  const below = belowPinned(run, pinned)
+  const command = pinnedInvocation(
+    docPath,
+    run,
+    pinned,
+    config.source === 'flag' ? shellWord(config.path) : undefined,
+  )
+  return {
+    disclosure: {
+      config: { path: config.path, source: config.source },
+      pinned,
+      belowPinned: below,
+    },
+    demotions: below.map((knob) => ({
+      reason: 'run-weakened' as const,
+      requirementIds: [],
+      action: pinDemotionAction(knob, run, pinned, config.path, command),
+      repair: { ops: [], commands: [command] },
+    })),
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -761,10 +936,18 @@ export const checkOp = defineOperation({
       const docPath = yield* DocPath
       const store = yield* DocStore
       const path = docPath.resolve(input.file)
+      // The path as one shell word (R60): every command this run names carries it, so a path
+      // with a space, a quote, `$` or a newline is handed to the shell whole. Marked as quoted
+      // once (R64), so the commands that carry it never quote it again.
+      const shellPath = asShellArg(shellWord(path))
 
-      yield* validate(input, path)
+      yield* validate(input, shellPath)
 
-      const loaded = yield* store.load(path)
+      // The document, plus the pinned config (named explicitly, or at its default location) and
+      // the split anchors (spec 007 AC-5-10). A config that cannot be read fails closed with
+      // ERR_CONFIG_INVALID rather than checking as though there were none.
+      const bundle = yield* store.loadBundle(path, docPath.resolveConfig(input.config))
+      const loaded = bundle.loaded
 
       // Yielding `boot` is what actually starts the WASM module, and it happens
       // HERE — after validation and after the document loaded — so a usage error or
@@ -783,7 +966,8 @@ export const checkOp = defineOperation({
       // the fail-closed rule: a missing model must produce ERR_EMBED_MODEL_MISSING
       // (exit 2) instead of a report whose opposition detector silently did not run.
       // A detector that can be skipped is a gate that can be gamed by omission.
-      const embedder = input.semantic ? yield* (yield* EmbedderService).load : undefined
+      const embedderService = yield* EmbedderService
+      const embedder = input.semantic ? yield* embedderService.load : undefined
       const engineDoc = toEngineDoc(loaded.document)
 
       // The AC-A-8 ANCHOR. Measured around the pipeline call and nowhere else, so it
@@ -796,7 +980,7 @@ export const checkOp = defineOperation({
       const startedAt = Date.now()
 
       const full = yield* Effect.tryPromise({
-        try: () => runCheck(engineDoc, toCheckOptions(input, embedder)),
+        try: () => runCheck(engineDoc, toCheckOptions(input, embedder, embedderService.isStub)),
         catch: (cause) =>
           // The tier's own typed failures (a `SolverBudgetExceededError` escaping
           // `findNeedsReview` to a direct caller) and any genuine defect both land
@@ -809,11 +993,11 @@ export const checkOp = defineOperation({
             suggestions: [
               'Raise --solver-budget-ms, or lower --timeout-ms so individual solvers give up sooner.',
               'If --temporal-bound is set, lower it — the temporal encoding is superlinear in the bound.',
-              `Run \`symspec list ${path}\` to see how large the document is.`,
+              `Run \`symspec list ${shellPath}\` to see how large the document is.`,
             ],
             repair: {
               ops: [],
-              commands: [`symspec check ${path} --solver-budget-ms 30000`],
+              commands: [`symspec check ${shellPath} --solver-budget-ms 30000`],
             },
           }),
       })
@@ -824,11 +1008,12 @@ export const checkOp = defineOperation({
       // THE REACHABILITY TIER (G4) — runs only when a state model is committed
       // ---------------------------------------------------------------------
       //
-      // The gate is `stateModel.variables.length > 0`, and it is what keeps this a PURE
-      // ADDITION: a document with no state model takes the `undefined` branch, so its
-      // payload has no `reachability` key, no reachability findings, and no reachability
-      // demotions — byte-identical to a run from before this tier existed, so no
-      // state-model-free fixture had to be re-pinned.
+      // The gate is `stateModel.variables.length > 0`. A document with no state model takes
+      // the `undefined` branch: its payload has no `reachability` key and no reachability
+      // demotion — the tier is opt-in, like the temporal tier, so its absence does not demote
+      // `verified`. It DOES get one info `FND_REACHABILITY_NOT_CHECKED`
+      // ({@link noStateModelDisclosure}), because the published scope promises the tier's
+      // absence is disclosed, and a question never asked must not read like a pass.
       //
       // Deliberately AFTER `runCheck` and outside the `--solver-budget-ms` measurement:
       // the budget bounds the transplanted tiers, and folding a new tier into the number
@@ -846,7 +1031,7 @@ export const checkOp = defineOperation({
           : undefined
 
       const reachabilityProjection =
-        reachabilityRun !== undefined ? projectReachability(reachabilityRun, path) : undefined
+        reachabilityRun !== undefined ? projectReachability(reachabilityRun, shellPath) : undefined
 
       // The TERMINOLOGY tier — set-level vocabulary consistency, propose-only.
       //
@@ -892,6 +1077,69 @@ export const checkOp = defineOperation({
             })
           : undefined
 
+      // THE WAIVER ACCOUNT (spec 007 AC-5-6). Whether a crossed waiver applied needs the
+      // findings from before it applied, and the engine reports only a count. Lint findings do
+      // not depend on any waiver, so they are recomputed; every other crossed code is read off a
+      // second run that keeps only the lint waivers — the only ones the AC-3-7 gate reads, so the
+      // second run's formal tier saw exactly the requirements this one did. It runs only when a
+      // non-lint waiver crossed, which a document with no such waiver never pays for.
+      const crossedOther = (engineDoc.waivers ?? []).some((w) => !isLintCode(w.code))
+      const preWaiverOther = crossedOther
+        ? (yield* Effect.tryPromise({
+            try: () =>
+              runCheck(
+                {
+                  ...engineDoc,
+                  waivers: (engineDoc.waivers ?? []).filter((w) => isLintCode(w.code)),
+                },
+                toCheckOptions(input, embedder, embedderService.isStub),
+              ),
+            catch: (cause) =>
+              new ErrSolverInconclusive({
+                error: `The check did not complete: ${cause instanceof Error ? cause.message : String(cause)}`,
+                suggestions: [
+                  'Raise --solver-budget-ms, or lower --timeout-ms so individual solvers give up sooner.',
+                ],
+              }),
+          })).findings.filter((f) => !isLintCode(f.code))
+        : []
+      // The terminology tier runs here, outside the engine, so the engine never applied a waiver
+      // to its findings: the boundary does, by the engine's exact-set rule (ruling R57). Its
+      // findings never depend on a waiver, so the whole set is pre-waiver.
+      const terminologyAll = terminology?.findings ?? []
+      const terminologyKept = terminologyAll.filter((f) => !suppressedByCrossed(engineDoc, f))
+      const waiverAccount = accountWaivers(
+        loaded.document,
+        [...lintFindingScopes(engineDoc), ...preWaiverOther, ...terminologyAll],
+        [...full.findings, ...(reachabilityProjection?.findings ?? []), ...terminologyAll],
+        reachabilityProjection?.findings ?? [],
+      )
+
+      // A waived blocking lint re-admits its requirement to the solver (the waiver-aware gate),
+      // and a comparison over wording a reviewer accepted rather than fixed certifies nothing
+      // (G3, R26): ONE demotion naming every re-admitted requirement (R40), in place of the
+      // `excluded-from-formal` the waiver lifted. No repair ops: the discharge is the rephrase,
+      // which no op performs, and an op here would keep the round-trip from a fixed point.
+      const readmitted = waivedBlockingIds(engineDoc)
+      const waivedBlockingDemotions: readonly RepairableDemotion[] =
+        readmitted.length > 0
+          ? [
+              {
+                reason: 'waived-blocking-lint',
+                requirementIds: [...readmitted],
+                action:
+                  `${readmitted.join(', ')} ${readmitted.length === 1 ? 'reaches' : 'reach'} the ` +
+                  'formal tier only through a waiver of the error-severity lint that blocked ' +
+                  `${readmitted.length === 1 ? 'it' : 'them'}: the waiver-aware gate re-admits a ` +
+                  'requirement whose blocking wording a reviewer accepted, and a comparison over ' +
+                  'wording accepted rather than fixed certifies nothing, so this run cannot ' +
+                  'verify while the waiver stands. Rephrase each to clear the blocking finding ' +
+                  "(the finding's message names it), remove its waiver, then re-run `symspec " +
+                  'check`.',
+              },
+            ]
+          : []
+
       // Output shaping is applied AFTER the repairs are computed from the full
       // report, so a filter cannot strip a remedy. Presentation only: it never
       // touches `counts`, so the exit code is identical filtered or not.
@@ -912,49 +1160,50 @@ export const checkOp = defineOperation({
       // The reachability findings are SPLICED into the same `findings[]` every other
       // tier writes to, and filtered by the SAME `--min-severity` rule — a second
       // findings array would make an agent read two places to learn what `check` found,
-      // and would leave the exit contract reading only one of them.
-      const reachabilityFindings: readonly CheckFinding[] = (reachabilityProjection?.findings ?? [])
-        .filter((f) => severityAtLeast(f.severity, input.minSeverity))
-        .map(
-          (f): CheckFinding => ({
-            code: f.code,
-            severity: f.severity,
-            // `'formal'` because the reachability tier IS the formal tier's unbounded half
-            // — it runs Z3 over the document's own semantics. Not `'structural'`, which
-            // the catalog reserves for facts about the graph the solver never saw.
-            tier: 'formal' satisfies CheckTier,
-            requirementIds: [...f.requirementIds],
-            message: f.message,
-            ...(f.evidence !== undefined
-              ? // The tier's `Evidence` shape is an atom table plus an unsat core, which a
-                // reachability invariant is not. Cast at this ONE boundary rather than
-                // widening a type every engine solver then has to satisfy.
-                { evidence: f.evidence as unknown as NonNullable<CheckFinding['evidence']> }
-              : {}),
-          }),
-        )
+      // and would leave the exit contract reading only one of them. Filtered only where
+      // they join `findings[]` below: `counts` is the FULL post-waiver tally, filter or not.
+      const reachabilityFindings: readonly CheckFinding[] = (
+        reachabilityProjection?.findings ?? [noStateModelDisclosure(shellPath)]
+      ).map(
+        (f): CheckFinding => ({
+          code: f.code,
+          severity: f.severity,
+          // `'formal'` because the reachability tier IS the formal tier's unbounded half
+          // — it runs Z3 over the document's own semantics. Not `'structural'`, which
+          // the catalog reserves for facts about the graph the solver never saw.
+          tier: 'formal' satisfies CheckTier,
+          requirementIds: [...f.requirementIds],
+          message: f.message,
+          ...(f.evidence !== undefined
+            ? // The tier's `Evidence` shape is an atom table plus an unsat core, which a
+              // reachability invariant is not. Cast at this ONE boundary rather than
+              // widening a type every engine solver then has to satisfy.
+              { evidence: f.evidence as unknown as NonNullable<CheckFinding['evidence']> }
+            : {}),
+        }),
+      )
 
       // Filtered by the SAME `--min-severity` rule as every other tier, so
       // `--min-severity error` drops these exactly as it drops any other info finding.
       // Tier `'formal'` because that is what `FND_SIMILAR_SEMANTIC` reports and this is the
       // dual of it — one kind of claim, one tier.
-      const terminologyFindings: readonly CheckFinding[] = (terminology?.findings ?? [])
-        .filter((f) => severityAtLeast(f.severity, input.minSeverity))
-        .map(
-          (f): CheckFinding => ({
-            code: f.code,
-            severity: f.severity,
-            tier: 'formal' satisfies CheckTier,
-            requirementIds: [...f.requirementIds],
-            message: f.message,
-            suggestion: f.suggestion,
-          }),
-        )
+      const terminologyFindings: readonly CheckFinding[] = terminologyKept.map(
+        (f): CheckFinding => ({
+          code: f.code,
+          severity: f.severity,
+          tier: 'formal' satisfies CheckTier,
+          requirementIds: [...f.requirementIds],
+          message: f.message,
+          suggestion: f.suggestion,
+        }),
+      )
 
       const reachabilityDemotions: readonly RepairableDemotion[] = (
         reachabilityProjection?.demotions ?? []
       ).map((d) => ({
-        reason: d.reason as CoverageDemotion['reason'],
+        // The reachability tier types its reason as a string on its wire shape; every value it
+        // emits is a `ReachabilityDemotionReason`, which `AppDemotionReason` includes.
+        reason: d.reason as AppDemotionReason,
         requirementIds: [...d.requirementIds],
         action: d.action,
         ...(d.repair !== undefined ? { repair: d.repair } : {}),
@@ -965,23 +1214,44 @@ export const checkOp = defineOperation({
       // `kernel/command-form.ts`), and a human reading `--pretty` copies the command out
       // of the message, not out of `repair.commands`. Normalizing one and not the other
       // would print two spellings of one command in adjacent fields of one envelope.
-      const allFindings = [...shaped.findings, ...reachabilityFindings, ...terminologyFindings].map(
-        (f) => ({
-          ...f,
-          message: runnableInProse(f.message),
-          ...(f.suggestion !== undefined ? { suggestion: runnableInProse(f.suggestion) } : {}),
-        }),
-      )
+      const allFindings = [
+        ...shaped.findings,
+        ...[...reachabilityFindings, ...terminologyFindings].filter((f) =>
+          severityAtLeast(f.severity, input.minSeverity),
+        ),
+      ].map((f) => ({
+        ...f,
+        message: runnableInProse(f.message),
+        ...(f.suggestion !== undefined ? { suggestion: runnableInProse(f.suggestion) } : {}),
+      }))
+      // THE PINNED RUN (spec 007 AC-5-10) — only when a config exists. Compared AFTER the run,
+      // on what it was actually made of (`full.run` says which embedder ran), so a pin reads
+      // the effective settings and never the flags alone.
+      const pinning =
+        bundle.config !== undefined
+          ? pinnedRunOf(
+              bundle.config,
+              bundle.config.config.gate,
+              runSettingsOf(input, full.run),
+              shellPath,
+            )
+          : undefined
+
       const allDemotions = [
         ...withRepairs(
           full.coverage.demotions,
           full.findings,
           full.excluded,
           input,
-          path,
+          shellPath,
           budgetHint?.recommendedBudgetMs,
+          full.run,
+          loaded.document,
         ),
+        ...waivedBlockingDemotions,
         ...reachabilityDemotions,
+        // AC-5-10: one `run-weakened` per knob this run ran below its pin.
+        ...(pinning?.demotions ?? []),
       ]
 
       // Counts are RECOMPUTED over the merged set rather than incremented, so the exit
@@ -1003,8 +1273,17 @@ export const checkOp = defineOperation({
 
       const payload: CheckPayload = {
         ...shaped,
+        // With no config this IS the engine's `run`; with one, the pins ride beside it.
+        run:
+          pinning !== undefined
+            ? { ...shaped.run, ...pinning.disclosure }
+            : bundle.unresolvedConfig !== undefined
+              ? { ...shaped.run, config: bundle.unresolvedConfig }
+              : shaped.run,
         findings: allFindings,
         counts,
+        // A terminology finding a crossed waiver suppressed is tallied like any other (R57).
+        waived: shaped.waived + (terminologyAll.length - terminologyKept.length),
         coverage: {
           ...shaped.coverage,
           requirements: shaped.coverage.requirements.map((row) => ({
@@ -1047,7 +1326,9 @@ export const checkOp = defineOperation({
           openFindings: counts.error,
         },
         path,
-        diagnostics: loaded.diagnostics,
+        diagnostics: [...loaded.diagnostics, ...waiverAccount.diagnostics],
+        ignoredWaivers: waiverAccount.ignoredWaivers,
+        appliedWaivers: waiverAccount.appliedWaivers,
         // ABSENT, not `undefined`. A run with nothing measured to say about its budget
         // emits no key at all — the same convention `repair` and `partial` follow, and
         // the reason `budgetHint?:` is optional rather than nullable.

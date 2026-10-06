@@ -83,7 +83,7 @@ export const TerminologyFndCodeMeta: Record<
       'finding is info-severity and pushes no coverage demotion, so it cannot move `verified`, ' +
       'the strict gate, or the exit code. Suggestion: read the two requirements the message names, ' +
       'then either split the entry into two narrower ones — drop the broad one with ' +
-      '`symspec term --remove` (or `symspec glossary --remove`) and commit two specific ones — ' +
+      '`symspec term --remove "<canonical>" "<alias>"` (or `symspec glossary --remove "<canonical>" "<alias>"`) and commit two specific ones — ' +
       'or leave it, because reusing one word across two unrelated concerns is legitimate and ' +
       'this tier cannot tell the difference, which is why it suggests rather than decides.',
   },

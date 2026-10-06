@@ -34,10 +34,7 @@
  */
 
 import { Effect, Schema } from 'effect'
-import { ANTONYM_INDEX, buildAntonymIndexWithDoc } from '../../domain/engine/formal/antonyms.ts'
-import { normalize } from '../../domain/engine/formal/atomize.ts'
-import { ESTABLISH_VERBS } from '../../domain/engine/formal/guard-implication.ts'
-import { deInflectHead } from '../../domain/engine/formal/lemma.ts'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 // STATIC. A dynamic import here bought nothing: `operations/parse.ts` imports
 // `engine/parse/batch.ts` statically and that imports `result.ts` statically, so the parse
 // ladder is in the main chunk on every run regardless. The lazy form only added an await
@@ -54,7 +51,7 @@ import {
   UPDATABLE_ATTRS,
   VERIFICATION_METHODS,
 } from '../../domain/requirements/document.ts'
-import { type FoldResult, foldOps, type MutateOptions } from '../../domain/requirements/mutate.ts'
+import { type FoldResult, foldOps } from '../../domain/requirements/mutate.ts'
 import { type DocumentOp, decodeOp, RELATION_EDGE_OP } from '../../domain/requirements/ops.ts'
 import { DOC_PATH_CONVENTION, DocPath, DocStore } from '../../ports/doc-store.ts'
 import {
@@ -63,12 +60,14 @@ import {
   ErrNotFound,
   ErrNullRequired,
   ErrUsage,
+  ErrWaiverRefused,
   type OperationalError,
 } from '../../ports/errors.ts'
 import { StreamSource } from '../../ports/stream.ts'
 import { catalogCounts } from '../runtime/catalog.ts'
 import { ok } from '../runtime/envelope.ts'
 import { defineOperation } from '../runtime/operation.ts'
+import { MUTATE_OPTIONS } from './mutate-options.ts'
 
 const lines = (...xs: readonly string[]): string => xs.join('\n')
 
@@ -135,86 +134,20 @@ const refDescription = (what: string): string =>
 export interface MutationPayload extends Omit<FoldResult, 'document'> {
   /** The resolved document path. */
   readonly path: string
+  /**
+   * One ERROR-severity entry per op the fold REFUSED, present only when one was (spec 007
+   * AC-1-6). This is what makes a batch with a refused op exit non-zero through the
+   * ordinary exit contract (`1`: an error-severity finding is present), the same contract
+   * `check` and `parse` use — before it, an aborted atomic `apply` exited 0 and an agent
+   * reading only the exit code saw a success that wrote nothing.
+   */
+  readonly findings?: readonly RefusedOpFinding[]
   /** Whether the document was actually WRITTEN. False on a dry run, on an atomic
    * abort, and on an all-no-op run — three different reasons, each visible in the
    * fields beside it rather than conflated into one flag. */
   readonly written: boolean
   /** Requirement count after the fold, so an agent sees the effect without a re-read. */
   readonly requirements: number
-}
-
-/**
- * The mutation-fold options the operation layer supplies.
- *
- * `core/mutate.ts` cannot import the transplanted formal tier — the dependency runs
- * the other way, and a cycle would put the atomizer in the load graph of every
- * document read. So the two functions that need it are injected HERE, which is the
- * lowest layer that legitimately knows about both.
- */
-const MUTATE_OPTIONS: MutateOptions = {
-  // The atomizer's own normalizer, so a committed antonym head is EXACTLY the key the
-  // atomizer looks up. Storing "Open" where the atomizer looks up "open" would make
-  // the committed pair silently inert — a decision recorded and not applied.
-  normalizeHead: normalize,
-  /**
-   * The false-contradiction guard, and the reason it belongs at WRITE time.
-   *
-   * An antonym is the one committed record whose wrong value MANUFACTURES a conflict
-   * rather than merely masking one. `buildAntonymIndexWithDoc` THROWS on an odd
-   * polarity cycle (asserting a↔b when a and b already resolve to the same polarity
-   * through the seed classes), and catching it here turns that into a clean
-   * `ERR_USAGE` — which is what keeps the CHECK path throw-free. A hand-edited bad
-   * document falls back to seed-only rather than crashing a verdict.
-   */
-  validateAntonyms: (pairs) => {
-    try {
-      buildAntonymIndexWithDoc(pairs.map((p) => [normalize(p.a), normalize(p.b)] as const))
-      return undefined
-    } catch (cause) {
-      return cause instanceof Error ? cause.message : String(cause)
-    }
-  },
-  /**
-   * The OTHER false-contradiction guard: terms are for nouns, enforced rather than documented.
-   *
-   * A term is substituted inside every slot body, so one containing a verb reaches the response
-   * head — and that desyncs two pipelines which must agree. `guard-implication` decides whether
-   * a response ESTABLISHES a state by parsing the raw text against `ESTABLISH_VERBS`; the
-   * bridge's polarity comes from the full `atomize`, which sees the substitution. Rewrite a head
-   * into an antonym class and the bridge is still recognised while its polarity flips, so it
-   * asserts the negation of what the document says. The inert-drop downstream compares atom
-   * NAMES, not polarity, so it does not catch it: the inverted implication joins the whole-spec
-   * conjunction and can make a group UNSAT that the document never entailed. Error severity,
-   * and the tool's own doing.
-   *
-   * Both lexicons are consulted per TOKEN, because the substitution is per token — a term
-   * `close the vault` would reach the head just as `close` does. Refusing at write time is what
-   * keeps the check path free of "this table was incoherent" branches, exactly as above.
-   */
-  validateTerms: (canonical, alias) => {
-    // De-inflected, because `atomize` de-inflects the head before probing: a raw-token check
-    // accepts `revokes` while the atomizer reads `revoke`, and that gap was a verified
-    // fabrication. Defense in depth only — the SOUNDNESS guarantee is the check-time drop in
-    // `guard-implication.ts`, because no write-time fence can see a doc antonym committed
-    // afterwards, nor a two-token head formed by joining a canonical to the tokens beside it.
-    const offending = [...canonical.split(/[\s_]+/), ...alias.split(/[\s_]+/)]
-      .filter((token) => token.length > 0)
-      .find((token) => {
-        const head = deInflectHead(token)
-        return (
-          ANTONYM_INDEX.has(token) ||
-          ANTONYM_INDEX.has(head) ||
-          ESTABLISH_VERBS.has(token) ||
-          ESTABLISH_VERBS.has(head)
-        )
-      })
-    if (offending === undefined) return undefined
-    return (
-      `"${offending}" is a verb the formal tier reads — the antonym table or the ` +
-      'state-bridge lexicon — and substituting one inside a body moves the polarity the solver ' +
-      'computes without moving the parse that recognises the bridge'
-    )
-  },
 }
 
 /**
@@ -240,6 +173,8 @@ const toCatalogError = (
       return new ErrDuplicateKey(fields)
     case 'ERR_NULL_REQUIRED':
       return new ErrNullRequired(fields)
+    case 'ERR_WAIVER_REFUSED':
+      return new ErrWaiverRefused(fields)
     default:
       // ERR_USAGE, and anything a future fold code forgets to map. Defaulting to a
       // USAGE error rather than an internal one is the honest fallback: the fold only
@@ -262,9 +197,9 @@ const toCatalogError = (
  *
  * A batch is different: 40 ops of which one failed is a partially-successful run whose
  * per-op results ARE the payload, and failing the whole invocation would throw away
- * the report an agent needs to fix line 12. So `apply` reports failures as data and
- * lets the ERROR-severity count drive the exit code, exactly as `check` and `parse`
- * do.
+ * the report an agent needs to fix line 12. So `apply` reports failures as data — each
+ * refused op is ALSO an error-severity entry in `findings`, which is what drives the exit
+ * code to `1`, exactly as `check` and `parse` do (spec 007 AC-1-6).
  *
  * `single` selects which contract applies. It is not a style choice — it is the
  * difference between "your command was wrong" and "here is what happened to each of
@@ -318,6 +253,24 @@ const runFold = (args: {
       })
     }
 
+    // EVERY refused op becomes an error-severity finding, in atomic mode (where it aborted
+    // the batch) and in continue-on-error mode (where the rest was applied) alike: either
+    // way something the caller asked for did not happen, and the exit code must say so.
+    const refused: readonly RefusedOpFinding[] = result.results
+      .filter((r) => !r.ok)
+      .map((r) => ({
+        code: r.code ?? 'ERR_USAGE',
+        severity: 'error',
+        index: r.index,
+        op: r.op,
+        message:
+          `op ${r.index} (${r.op}) was refused: ${r.error ?? 'the operation failed'}` +
+          (result.abortedAt !== undefined
+            ? ' — the batch was aborted and nothing was written.'
+            : ''),
+        suggestions: r.suggestions ?? [],
+      }))
+
     return {
       path,
       written,
@@ -326,8 +279,21 @@ const runFold = (args: {
       summary: result.summary,
       write: result.write,
       ...(result.abortedAt !== undefined ? { abortedAt: result.abortedAt } : {}),
+      ...(refused.length > 0 ? { findings: refused } : {}),
     }
   })
+
+/** A refused op, projected as an error-severity finding (see {@link MutationPayload}). */
+export interface RefusedOpFinding {
+  /** The op's own failure code (`ERR_NOT_FOUND`, `ERR_USAGE`, …). */
+  readonly code: string
+  readonly severity: 'error'
+  /** The 0-based index of the refused op in the batch. */
+  readonly index: number
+  readonly op: string
+  readonly message: string
+  readonly suggestions: readonly string[]
+}
 
 /** Emit a mutation payload under the operation's own envelope type. */
 const emitMutation = <T extends string>(type: T, payload: MutationPayload) => ok(type, payload)
@@ -798,7 +764,7 @@ export const linkOp = defineOperation({
 
 export const waiveOp = defineOperation({
   name: 'waive',
-  summary: 'Commit or remove a reviewed finding waiver, optionally scoped to one requirement',
+  summary: 'Commit or remove a reviewed finding waiver, scoped to the requirement it names',
   type: 'waive',
   input: Schema.Struct({
     code: requiredString(
@@ -823,17 +789,19 @@ export const waiveOp = defineOperation({
     ),
     ref: optionalString(
       lines(
-        'Optional requirement scope (key or UUID). When set, only findings of `--code` naming that',
-        'requirement are waived; when omitted, every finding of `--code` is waived document-wide.',
-        'Resolved to the stable UUID before storing, so the waiver survives any relabeling.',
+        'The requirement scope (key or UUID), REQUIRED when adding: a waiver with no scope is refused',
+        'ERR_WAIVER_REFUSED, as is any waiver of a `never`-class code. Stored as the exact set of that',
+        'one requirement plus the hash of its current text, so it waives only the finding over that',
+        'requirement as written. A finding over two or more requirements is waived through `apply`',
+        'with the waive op its `repair.ops` carry.',
       ),
     ),
     remove: Schema.withDecodingDefaultKey<Schema.Boolean>(Effect.succeed(false))(
       Schema.Boolean.annotate({
         default: false,
         description: lines(
-          'Remove the waiver instead of adding it. Matches on code AND scope, so removing an',
-          'unscoped waiver does NOT remove a requirement-scoped one of the same code.',
+          'Remove the waiver instead of adding it. Matches on code AND scope: with `--ref`, the waiver',
+          'over exactly that requirement; without it, only a legacy waiver that has no scope.',
         ),
       }),
     ),
@@ -855,7 +823,10 @@ export const waiveOp = defineOperation({
         )
       }
       const op: DocumentOp = input.remove
-        ? { op: 'unwaive', code: input.code, ...(input.ref !== null ? { ref: input.ref } : {}) }
+        ? // The scope `waive --ref` stores (spec 007 AC-5-6): the exact set of that one
+          // requirement, so `--remove --ref` removes what `--ref` added. A legacy `requirementId`
+          // waiver is removed by the unwaive op its `waiver-inert` diagnostic carries.
+          { op: 'unwaive', code: input.code, ...(input.ref !== null ? { refs: [input.ref] } : {}) }
         : {
             op: 'waive',
             code: input.code,
@@ -970,7 +941,10 @@ export const termOp = defineOperation({
         'Terms are for NOUNS. A term containing a verb the antonym table or the state-bridge lexicon',
         'reads is REFUSED, because substituting one moves the polarity the solver computes for a',
         'state-establishing response without moving the parse that recognises it — which would prove',
-        'a conflict the document does not contain. Use `symspec glossary` for a phrasing with a verb.',
+        'a conflict the document does not contain. Use `symspec glossary "<canonical>" "<alias>"` for a phrasing with a verb.',
+        'An alias that overlaps another phrase of the table (inside it, equal to it, around it, or',
+        'straddling one of its edges) is REFUSED too: the substitution is one longest-first pass, so',
+        'it would rewrite some of that phrase`s occurrences and not others.',
         'Example: "login credential"',
       ),
     ),
@@ -1076,9 +1050,11 @@ export const stateOp = defineOperation({
         '  - volatile: the variable may change freely in any step. Nothing is assumed.',
         '  - stable:   it changes ONLY when some requirement`s effect changes it — a HYPOTHESIS the',
         '    document does not otherwise state.',
-        'Declaring `stable` makes `check` prove the question TWICE (once with no frame, once with the',
-        'declared frames) and report the strongest honest verdict: a property that needs the frame is',
-        'reported as PROVED_UNDER_HYPOTHESES naming the variables relied on, and DEMOTES `verified`.',
+        'A property that holds only with the DECLARED `stable` variables held fixed is reported as',
+        'PROVED_UNDER_HYPOTHESES naming them, and DEMOTES `verified`. One that needs variables held',
+        'that the document leaves volatile is UNKNOWN (reason frame-undeclared), also demoted — so',
+        'declaring or releasing a frame moves the verdict. The full lattice is on the `frame` field',
+        'of the document schema.',
         'Why volatile by default: measured on this solver, a model whose variable is written by no',
         'requirement returns UNREACHABLE *with an inductive invariant* under a frame and REACHABLE',
         'without one — so a frame-by-default would make the tool prove a false answer and certify it.',
@@ -1123,7 +1099,7 @@ export const stateOp = defineOperation({
             error: 'state requires --type when declaring a variable.',
             suggestions: [
               `Legal values: ${STATE_VAR_TYPES.join(', ')}.`,
-              `Example: \`symspec state --name ${input.name} --type bool\`.`,
+              `Example: \`symspec state ${shellWord(input.name)} --type bool\`.`,
               'Pass --remove to undeclare an existing variable instead.',
             ],
           }),
@@ -1316,9 +1292,9 @@ export const classifyOp = defineOperation({
         'No multiplication (it makes the transition relation nonlinear, where an unbounded solver',
         'hang was measured), no quantifiers, no chained comparisons (write `a < b and b < c`).',
         '< <= > >= are INTEGER-ONLY: an enum has a declared DOMAIN, not an ORDER.',
-        'EVERY referenced name must be declared with `symspec state` first. An undeclared reference',
-        'is refused HERE, at authoring time, because reaching the Horn encoder it would hang the',
-        'solver unkillably rather than produce an error.',
+        'EVERY referenced name must be declared first, with `symspec state <name> --type <type>`.',
+        'An undeclared reference is refused HERE, at authoring time, because reaching the Horn',
+        'encoder it would hang the solver unkillably rather than produce an error.',
         'Examples: "when pending: lock_held := true"; "when granted = 0: granted := granted + 1";',
         '"run_state := RUNNING, retry_count := 0"; "not (lock_held and pending)"; "retry_count <= 3".',
       ),
@@ -1366,7 +1342,7 @@ export const classifyOp = defineOperation({
             error: 'classify requires --kind, or --retract to remove an existing classification.',
             suggestions: [
               `Legal values: ${RESPONSE_KINDS.join(', ')}.`,
-              `Example: \`symspec classify ${input.ref} --kind constraint --expression "not (lock_held and pending)"\`.`,
+              `Example: \`symspec classify ${shellWord(input.ref)} --kind constraint --expression "not (lock_held and pending)"\`.`,
             ],
           }),
         )

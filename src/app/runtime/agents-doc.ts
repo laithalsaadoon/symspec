@@ -26,7 +26,9 @@
  * - the envelope contract → `./envelope.ts`'s `API_VERSION`;
  * - the honest-scope disclosure → `./scope.ts`, all seven claims (unlike the installed
  *   skill, which quotes two — this surface can afford them);
- * - the authoring craft → `./craft.ts`.
+ * - the authoring craft → `./craft.ts`;
+ * - op directions and signal classes → `requirements/ops.ts` and `./signal-classes.ts`,
+ *   read through the manifest.
  *
  * The consequence is the property the spec asks for: appending an operation or a code makes
  * it appear here with no edit to this file, and a description edit propagates on the next
@@ -41,6 +43,10 @@
  * promise, then the reference tables it will come back to.
  */
 
+import { CONFIG_FILE_NAME } from '../../domain/config/config.ts'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
+import { V4_EXPERIMENTAL_STATEMENT } from '../../domain/requirements/document.ts'
+import { CONFIG_PATH_CONVENTION } from '../../ports/doc-store.ts'
 import { allCodes, type CodeEntry } from './catalog.ts'
 import { renderCraft } from './craft.ts'
 import { API_VERSION } from './envelope.ts'
@@ -61,7 +67,9 @@ const operationsTable = (manifest: Manifest): string =>
   [
     '| Operation | What it does |',
     '|---|---|',
-    ...manifest.operations.map((op) => `| \`symspec ${op.name}\` | ${cell(op.summary)} |`),
+    ...manifest.operations.map(
+      (op) => `| \`symspec ${shellWord(op.name)}\` | ${cell(op.summary)} |`,
+    ),
   ].join('\n')
 
 /** The exit-code table, projected from the manifest. */
@@ -70,6 +78,16 @@ const exitTable = (manifest: Manifest): string =>
     '| Code | Meaning |',
     '|---|---|',
     ...manifest.exitCodes.map((row) => `| **${row.code}** | ${cell(row.meaning)} |`),
+  ].join('\n')
+
+/** The pinned-run knob table, projected from the manifest's \`runWeakening\`. */
+const runWeakeningTable = (manifest: Manifest): string =>
+  [
+    '| Knob | Set by | Order |',
+    '|---|---|---|',
+    ...manifest.runWeakening.map(
+      (row) => `| \`${row.knob}\` | \`${row.flag}\` | ${cell(row.order)} |`,
+    ),
   ].join('\n')
 
 /**
@@ -82,13 +100,18 @@ const exitTable = (manifest: Manifest): string =>
  * three, with severity replaced by a footnote, because GtWR severity is decided PER FINDING
  * and a column of `—` would be read as "no severity" rather than "contextual".
  */
-const codeTable = (rows: readonly CodeEntry[], family: 'ERR' | 'FND' | 'GTWR'): string => {
+const codeTable = (
+  rows: readonly CodeEntry[],
+  family: 'ERR' | 'FND' | 'GTWR',
+  waivableHeader = 'Waivable',
+): string => {
   if (family === 'FND') {
     return [
-      '| Code | Severity | Tier | Meaning |',
-      '|---|---|---|---|',
+      `| Code | Severity | Tier | Class | ${waivableHeader} | Meaning |`,
+      '|---|---|---|---|---|---|',
       ...rows.map(
-        (r) => `| \`${r.code}\` | ${r.severity ?? '—'} | ${r.tier ?? '—'} | ${cell(r.meaning)} |`,
+        (r) =>
+          `| \`${r.code}\` | ${r.severity ?? '—'} | ${r.tier ?? '—'} | ${r.class ?? '—'} | ${r.waivable ?? '—'} | ${cell(r.meaning)} |`,
       ),
     ].join('\n')
   }
@@ -96,6 +119,56 @@ const codeTable = (rows: readonly CodeEntry[], family: 'ERR' | 'FND' | 'GTWR'): 
     '| Code | Meaning |',
     '|---|---|',
     ...rows.map((r) => `| \`${r.code}\` | ${cell(r.meaning)} |`),
+  ].join('\n')
+}
+
+/** The op-direction table, projected from the manifest: D's rule, each direction, each verb. */
+const directionsSection = (manifest: Manifest): string =>
+  [
+    manifest.opDirections.rule,
+    '',
+    manifest.opDirections.identity,
+    '',
+    ...manifest.opDirections.directions.map((d) => `- **\`${d.direction}\`** — ${d.meaning}`),
+    '',
+    '| Verb | Direction | Why |',
+    '|---|---|---|',
+    ...manifest.opDirections.verbs.map(
+      (v) => `| \`${v.verb}\` | ${v.direction} | ${cell(v.why)} |`,
+    ),
+  ].join('\n')
+
+/**
+ * The `waivable` column's header. While the build does not enforce the column, the header says
+ * so in every table that carries it, so no row reads `never` as a present-tense refusal.
+ */
+const waivableHeader = (manifest: Manifest): string =>
+  manifest.signalClasses.waivability.enforced ? 'Waivable' : 'Waivable (not enforced)'
+
+/** The finding classes and the demotion reasons, projected from the manifest. */
+const classesSection = (manifest: Manifest): string => {
+  const { findingClasses, demotionClasses, demotions, waivability } = manifest.signalClasses
+  return [
+    waivability.statement,
+    '',
+    `| Finding class | ${waivableHeader(manifest)} | In D | Meaning |`,
+    '|---|---|---|---|',
+    ...findingClasses.map(
+      (c) =>
+        `| \`${c.class}\` | ${c.waivable} | ${c.verdictBearing ? 'yes' : 'no'} | ${cell(c.meaning)} |`,
+    ),
+    '',
+    '| Demotion class | In D | Meaning |',
+    '|---|---|---|',
+    ...demotionClasses.map(
+      (c) => `| \`${c.class}\` | ${c.verdictBearing ? 'yes' : 'no'} | ${cell(c.meaning)} |`,
+    ),
+    '',
+    '| Demotion reason | Class | Drift | Why |',
+    '|---|---|---|---|',
+    ...demotions.map(
+      (d) => `| \`${d.reason}\` | ${d.class} | ${d.drift ? 'yes' : 'no'} | ${cell(d.why)} |`,
+    ),
   ].join('\n')
 }
 
@@ -180,6 +253,36 @@ ${exitTable(manifest)}
   from the work THIS run completed and the time it took. Absent on an unbounded run and on a
   run with comfortable headroom — the absence is the all-clear.
 
+### Pinned runs
+
+A committed \`${CONFIG_FILE_NAME}\` pins the run settings the gate uses.
+
+${CONFIG_PATH_CONVENTION}
+
+A config dropped beside the document inside a repository is not read, and git is asked with
+\`safe.bareRepository=explicit\`, so a document that resolves into a committed directory laid out
+as a bare repository fails closed as \`ERR_CONFIG_INVALID\`. Any other git refusal (unsafe
+ownership, an unreadable \`.git\`) fails closed too, unless no config is named and no
+\`${CONFIG_FILE_NAME}\` exists in the document's directory or any ancestor: then no config could
+govern the run, so it runs as with no repository and \`data.run.config\` adds \`gitRefusal\`, the
+first line of git's refusal. \`data.run.config\` is
+\`{path, source}\`, where \`source\` is \`toplevel\`, \`directory\`, \`flag\` or \`env\`. The pins are
+authoritative in a CI job on a fresh clone that asserts \`source\` is \`toplevel\` and \`path\` is its
+checkout's config. A local agent that can write \`.git/\`, pass \`--config\` or set
+\`SYMSPEC_CONFIG\` can change what a local run reads, and that run discloses it there.
+
+\`symspec init --split\` writes one pinning every knob at its default, beside skeleton intent
+and policy files, and never overwrites any of the three. The intent and policy files:
+${V4_EXPERIMENTAL_STATEMENT}
+
+A \`check\` below a pin is demoted
+\`run-weakened\` once per knob and listed in \`data.run.belowPinned\` next to
+\`data.run.pinned\`; every such demotion carries the one command that runs at all the pins,
+built from the pins rather than the run's flags, so running it leaves \`belowPinned\` empty. The
+comparison reads the value each tier actually ran at:
+
+${runWeakeningTable(manifest)}
+
 ## Operations
 
 ${operationsTable(manifest)}
@@ -194,6 +297,20 @@ ${scopeParagraphs()
   .map((claim) => `> ${claim}`)
   .join('\n>\n')}
 
+## Op directions — what each op can do to the verdict
+
+Every op verb carries a direction, as data. A direction is an UPPER BOUND on what the verb can
+do to D, and the gaming gate measures it on every registered move rather than trusting it.
+
+${directionsSection(manifest)}
+
+## Signal classes — what a finding or a demotion MEANS
+
+A class is decided per code, by meaning, not by tier or severity. Waivability is derived from
+the class.
+
+${classesSection(manifest)}
+
 ## Error codes (\`ERR_*\`)
 
 An operational failure. The envelope's \`type\` is \`"error"\` and the process exits 2.
@@ -207,7 +324,9 @@ ${codeTable(err, 'ERR')}
 A finding inside a **successful** \`check\`. Only \`error\` severity gates the exit code, and
 an error-severity finding also excludes its requirement from the formal tier.
 
-${codeTable(fnd, 'FND')}
+${manifest.signalClasses.waivability.statement}
+
+${codeTable(fnd, 'FND', waivableHeader(manifest))}
 
 ## Lint rule codes (\`GTWR_*\`)
 

@@ -1,0 +1,249 @@
+/**
+ * RECORDED GAPS: consistent documents the tool still gets wrong, and residuals a verification
+ * round found and a bounded close-out round did not fix, each pinned at its CURRENT wrong outcome
+ * (spec 007 invariant I-5, "a deletion is a finding"; the pattern of `fabrication.test.ts`'s "the
+ * recorded gap is still open").
+ *
+ * Each test builds the residual's document, runs `check`, and asserts the wrong outcome, with a
+ * comment that names why it is wrong, who owns the fix, and what the right outcome is. Most rest
+ * on an ambiguity English does not mark: which phrase a prepositional phrase attaches to, whether
+ * a preposition names a time or a place, which sense a verb has. No closed rule over the words
+ * tells the readings apart, so under the demote-not-prove contract another heuristic would buy
+ * each case with many honest proofs. The owner is the controlled vocabulary (spec 007 Phase 3,
+ * Story 4: the author binds each phrase to a declared symbol) or the typed quantities and IR
+ * (Phase 4, typed-atom slices 10-14).
+ *
+ * These are not endorsements of the wrong outcome. A fix turns this file red, and whoever lands
+ * it retires the gap on purpose, by deleting its case and adding a guard for the right outcome,
+ * not by a later change that silently moves it.
+ *
+ * One `describe('recorded gaps: <group>')` block per owning group, each with its own helpers, so
+ * groups append without touching each other's block.
+ */
+
+import { describe, expect, it } from 'vitest'
+import { runCheck } from '../domain/engine/pipeline/check.ts'
+
+const TS = '2026-01-01T00:00:00.000Z'
+
+describe('recorded gaps: num', () => {
+  const idAt = (i: number) => `aaaaaaaa-6666-4666-8666-${String(i).padStart(12, '0')}`
+
+  const reqOf = (id: string, systemName: string, systemResponse: string, trigger?: string) => ({
+    id,
+    patternType: trigger !== undefined ? ('event-driven' as const) : ('ubiquitous' as const),
+    systemName,
+    ...(trigger !== undefined ? { trigger } : {}),
+    systemResponse,
+    negated: false,
+    sentence: `${trigger !== undefined ? `When ${trigger}, the` : 'The'} ${systemName} shall ${systemResponse}.`,
+    priority: 'medium' as const,
+    status: 'draft' as const,
+    createdAt: TS,
+    updatedAt: TS,
+    derives: [],
+    satisfies: [],
+    verifies: [],
+    refines: [],
+  })
+
+  /** Check the pair `a`/`b` of `system`; the numeric verdict on it. */
+  const checkPair = async (system: string, a: string, b: string, trigger?: string) => {
+    const reqs = [reqOf(idAt(0), system, a, trigger), reqOf(idAt(1), system, b, trigger)]
+    const report = await runCheck(
+      {
+        requirements: Object.fromEntries(reqs.map((r) => [r.id, r])),
+        glossary: [],
+        antonyms: [],
+        waivers: [],
+        terms: [],
+        stateModel: { variables: [] },
+      } as never,
+      {},
+    )
+    const pair = reqs.map((r) => r.id).sort()
+    const of = (code: string) =>
+      report.findings.filter((f) => f.code === code).map((f) => [...f.requirementIds].sort())
+    return {
+      pair,
+      proved: of('FND_NUMERIC_CONTRADICTION'),
+      disclosed: of('FND_NUMERIC_UNCOMPARED'),
+      verified: report.verified,
+    }
+  }
+
+  it('the recorded gap is still open: a time phrase after one noun is read as the action’s', async () => {
+    // AMBIGUITY: prepositional-phrase attachment. In `discount rentals for over 7 days` the
+    // `for` phrase may be the action's duration (discount for a week) or a postmodifier of the
+    // noun (rentals that last over 7 days). Here it is the noun's: a weekly-rental discount and
+    // an hourly promo hold together, as do flagging long calls and very short ones. The tier
+    // reads the verb attachment after ONE object noun, and the two bounds become one proved
+    // obligation at error severity. The same ambiguity one word later (`close the session idle
+    // for at least 30 minutes`) is already disclosed; demoting this shape too would also demote
+    // `run the pump for at least 10 minutes` and `retain the logs for at least 90 days`.
+    // OWNER: spec 007 Phase 3, AC-4-1 `quantity` symbols (with AC-4-3 refusing an unresolved
+    // quantity phrase): the author binds `for over 7 days` either to the discount's duration or
+    // to the rental's length, and Phase 4's typed quantities key the bound on that symbol.
+    // CORRECT OUTCOME: no FND_NUMERIC_CONTRADICTION. Bound to the rental's length, each bound
+    // is a condition picking out rentals, and the pair is consistent; until the binding exists,
+    // the pair is disclosed (FND_NUMERIC_UNCOMPARED) and `verified` is false.
+    for (const [system, a, b, trigger] of [
+      ['rental system', 'discount rentals for over 7 days', 'discount rentals for under 1 day'],
+      [
+        'rental system',
+        'discount the rental for over 7 days',
+        'discount the rental for under 1 day',
+      ],
+      ['billing system', 'bill stays for over 30 days', 'bill stays for under 1 day'],
+      ['call monitor', 'flag calls for over 60 minutes', 'flag calls for under 5 seconds'],
+      ['parking system', 'charge stays for over 24 hours', 'charge stays for under 15 minutes'],
+      ['fleet monitor', 'flag trips for over 12 hours', 'flag trips for under 1 minute'],
+      ['auditor', 'audit sessions for over 8 hours', 'audit sessions for under 1 second'],
+      [
+        'call monitor',
+        'flag the call for over 60 minutes',
+        'flag the call for under 5 seconds',
+        'a call ends',
+      ],
+    ] as const) {
+      const out = await checkPair(system, a, b, trigger)
+      expect(out.proved, `${a}: the recorded gap is still open`).toEqual([out.pair])
+      expect(out.verified, a).toBe(false)
+    }
+  })
+
+  it('the recorded gap is still open: `keep` meaning retain is read as holding a quantity', async () => {
+    // AMBIGUITY: a verb sense. `keep the record above 1000 dollars` is either keep=maintain (hold
+    // the record's value above 1000 dollars) or keep=retain (keep the records worth over 1000
+    // dollars). Here it is retain: the archive retains high-value and low-value records, which
+    // is consistent. `keep` is a holding verb, one noun is its object, and the pair is proved at
+    // error severity. `hold` and `limit` were removed from the holding verbs for this second
+    // sense; removing `keep` would demote every `keep the latency below 200 milliseconds`.
+    // OWNER: spec 007 Phase 3, AC-4-1 `quantity` symbols (the author declares `record value` as
+    // a quantity, or does not), with Phase 4's typed quantities keying the bound on the
+    // declared symbol rather than on the verb phrase.
+    // CORRECT OUTCOME: no FND_NUMERIC_CONTRADICTION. With no quantity symbol bound to the
+    // phrase, the pair is disclosed (FND_NUMERIC_UNCOMPARED) and `verified` is false.
+    for (const [system, a, b] of [
+      ['archive', 'keep the record above 1000 dollars', 'keep the record below 10 dollars'],
+      ['cache', 'keep the file below 1 MB', 'keep the file above 100 MB'],
+    ] as const) {
+      const out = await checkPair(system, a, b)
+      expect(out.proved, `${a}: the recorded gap is still open`).toEqual([out.pair])
+      expect(out.disclosed, a).toEqual([])
+      expect(out.verified, a).toBe(false)
+    }
+  })
+})
+
+describe('recorded gaps: one reported core per numeric cell and per temporal run', () => {
+  type Slots = {
+    readonly patternType?: 'ubiquitous' | 'unwanted-behavior'
+    readonly trigger?: string
+    readonly negated?: boolean
+  }
+  const reqOf = (id: string, systemName: string, systemResponse: string, slots: Slots = {}) => {
+    const patternType = slots.patternType ?? 'ubiquitous'
+    const negated = slots.negated ?? false
+    const modal = negated ? 'shall not' : 'shall'
+    return {
+      id,
+      patternType,
+      systemName,
+      ...(slots.trigger !== undefined ? { trigger: slots.trigger } : {}),
+      systemResponse,
+      negated,
+      sentence:
+        slots.trigger !== undefined
+          ? `If ${slots.trigger}, then the ${systemName} ${modal} ${systemResponse}.`
+          : `The ${systemName} ${modal} ${systemResponse}.`,
+      priority: 'medium' as const,
+      status: 'draft' as const,
+      createdAt: TS,
+      updatedAt: TS,
+      derives: [],
+      satisfies: [],
+      verifies: [],
+      refines: [],
+    }
+  }
+  const check = async (reqs: readonly ReturnType<typeof reqOf>[], temporalBound?: number) =>
+    runCheck(
+      {
+        requirements: Object.fromEntries(reqs.map((r) => [r.id, r])),
+        glossary: [],
+        antonyms: [],
+        waivers: [],
+        terms: [],
+        stateModel: { variables: [] },
+      } as never,
+      temporalBound !== undefined ? { temporal: { bound: temporalBound } } : {},
+    )
+  const cores = (report: Awaited<ReturnType<typeof check>>, code: string) =>
+    report.findings.filter((f) => f.code === code).map((f) => [...f.requirementIds].sort())
+
+  // The ids sort the added requirement FIRST, which is what hands it the one reported core.
+  const A = 'aaaaaaaa-0000-4000-8000-000000000001'
+  const B = 'aaaaaaaa-0000-4000-8000-000000000002'
+  const C = 'aaaaaaaa-0000-4000-8000-000000000003'
+  const N = '00000000-0000-4000-8000-000000000009'
+
+  it('the recorded gap is still open: a numeric cell with two disjoint conflicts reports one', async () => {
+    // ENGINE GRANULARITY: `analyzeNumericBounds` proves each (quantity, base unit, context group)
+    // cell once and minimizes once, so it reports ONE core per cell. A (at most 30) conflicts
+    // with B (at least 45), and N (at least 90) conflicts with C (at most 60): two conflicts that
+    // share no requirement, and the report names only (N, C). This is why an `add` can displace
+    // a numeric verdict onto a disjoint pair, and why `DISPLACEMENT` records the numeric tier as
+    // `cell` (measured by the gaming gate: `numeric-bystander` × `add-bound-past-bystander`).
+    // OWNER: spec 007 Story 7, AC-7-1: `data.obligations` lists every obligation, so a conflict
+    // one core stands in for is listed rather than dropped from the report. Enumerating every
+    // core inside the numeric tier is an engine edit, out of Phase 3.
+    // CORRECT OUTCOME: both (A, B) and (C, N) are reported.
+    const system = 'session service'
+    const seeded = [
+      reqOf(A, system, 'expire the session after at most 30 minutes'),
+      reqOf(B, system, 'expire the session after at least 45 minutes'),
+      reqOf(C, system, 'expire the session after at most 60 minutes'),
+    ]
+    // The seeded conflict alone is reported: the gap is not that (A, B) is missed.
+    expect(cores(await check(seeded), 'FND_NUMERIC_CONTRADICTION')).toEqual([[A, B]])
+    const moved = await check([
+      ...seeded,
+      reqOf(N, system, 'expire the session after at least 90 minutes'),
+    ])
+    expect(
+      cores(moved, 'FND_NUMERIC_CONTRADICTION'),
+      'the recorded gap is still open: one core per cell',
+    ).toEqual([[N, C].sort()])
+  })
+
+  it('the recorded gap is still open: the temporal tier reports one joint core for the run', async () => {
+    // ENGINE GRANULARITY: `findTemporalContradictions` makes ONE bounded check over every
+    // requirement at once and reports ONE minimized core. A never records the event and B must
+    // record it after a disk write failure; C raises the alarm after the failure and N never
+    // raises it. Two temporal conflicts that share no requirement, and the report names only
+    // (N, C). The propositional tier enumerates disjoint cores, so it reports both. This is why
+    // `DISPLACEMENT` records the temporal tier as `code` (measured by the gaming gate:
+    // `temporal-conflict` × `add-bystander-negation`).
+    // OWNER: spec 007 Story 7, AC-7-1: `data.obligations` lists every obligation. Enumerating
+    // every temporal core is an engine edit, out of Phase 3.
+    // CORRECT OUTCOME: FND_TEMPORAL_CONTRADICTION over both (A, B) and (C, N).
+    const system = 'audit logger'
+    const failure = { patternType: 'unwanted-behavior', trigger: 'the disk write fails' } as const
+    const seeded = [
+      reqOf(A, system, 'record the event', { negated: true }),
+      reqOf(B, system, 'record the event', failure),
+      reqOf(C, system, 'raise the alarm', failure),
+    ]
+    expect(cores(await check(seeded, 3), 'FND_TEMPORAL_CONTRADICTION')).toEqual([[A, B]])
+    const moved = await check(
+      [...seeded, reqOf(N, system, 'raise the alarm', { negated: true })],
+      3,
+    )
+    expect(
+      cores(moved, 'FND_TEMPORAL_CONTRADICTION'),
+      'the recorded gap is still open: one joint core',
+    ).toEqual([[N, C].sort()])
+    expect(cores(moved, 'FND_CONTRADICTION').sort()).toEqual([[N, C].sort(), [A, B]])
+  })
+})

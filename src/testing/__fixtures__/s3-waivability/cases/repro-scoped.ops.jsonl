@@ -1,0 +1,5 @@
+# The reproducer with the waiver in the scoped form a repair op carries: refs and the content
+# hash of CAB-R1 and CAB-R2 as written in base.json. Then the same fill/drain pair.
+{"op":"waive","code":"FND_OPPOSITION_CANDIDATE","reason":"heating and cooling are separate climate modes","refs":["CAB-R1","CAB-R2"],"contentHash":"sha256:7092d13706b6f9b5b8c407fe8fa96a6d50603b68e6749122534d5e5fb1c08817"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000d1","key":"TNK-R1","patternType":"event-driven","trigger":"the level sensor reports low","systemName":"pump controller","systemResponse":"fill the tank"}
+{"op":"add","id":"5a1e0000-0000-4000-8000-0000000000d2","key":"TNK-R2","patternType":"event-driven","trigger":"the level sensor reports low","systemName":"pump controller","systemResponse":"drain the tank"}

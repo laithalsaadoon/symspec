@@ -30,7 +30,10 @@
  */
 
 import type { Repair } from '../../ports/repair.ts'
+import { asShellArg, type ShellArg, shellWord } from '../engine/core/shell-word.ts'
+import type { StateVariable } from '../requirements/document.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
+import { REACHABILITY_BFS_STATE_CAP } from './explicit-state.ts'
 import type { ConstraintResult, ReachabilityReport } from './reachability.ts'
 import type { ReachabilityFndCode } from './reachability-codes.ts'
 
@@ -90,9 +93,70 @@ export const REACHABILITY_DEMOTION_REASONS = [
   // predicate". Collapsing them would send an agent to add bounds to a document whose
   // bounds are already the problem.
   'reachability-vacuous-initial-state',
+  // APPENDED for spec 007 AC-1-5: the explicit-state search refuted a proof, so the proof
+  // was withdrawn. Its own reason because the remedy is neither a budget nor a bound — it
+  // is a tool defect to report.
+  'reachability-certificate-disagrees',
+  // APPENDED for spec 007 AC-1-6: the proof needs a frame the document does not declare.
+  // Its own reason because its discharge is a frame DECLARATION (or requirements), where
+  // `reachability-frame-relied-upon`'s is the opposite — releasing one.
+  'reachability-frame-undeclared',
+  // APPENDED for spec 007 AC-1-5: the solver proved the constraint, but the explicit-state
+  // search stopped without either finishing or showing the model is beyond its cap, so the
+  // proof was withheld. Its own reason because the remedy is to make the model enumerable,
+  // not to raise the solver's budget or to read a refutation.
+  'reachability-cross-check-incomplete',
 ] as const
 
 export type ReachabilityDemotionReason = (typeof REACHABILITY_DEMOTION_REASONS)[number]
+
+/** The hypothesis list as prose: each variable with the requirements that write it. */
+const reliedOn = (hypotheses: NonNullable<ConstraintResult['hypotheses']>): string =>
+  hypotheses
+    .map(
+      (h) =>
+        `${h.variable} (written by ${h.writers.length > 0 ? h.writers.join(', ') : 'NO requirement'})`,
+    )
+    .join('; ')
+
+/**
+ * The `state` op that re-declares `variable` EXACTLY as declared, with only `frame` changed.
+ *
+ * `state` is a full redeclaration (see `StateOp`), so this carries the variable's own type,
+ * enum domain or int bounds, and initial. The first implementation emitted `type: 'bool'`
+ * for every variable, which for an int is a type change the fold refuses — the repair a
+ * check handed out could not be applied (spec 007 AC-1-6).
+ */
+const redeclare = (variable: StateVariable, frame: 'stable' | 'volatile'): DocumentOp => {
+  const initial = variable.initial !== undefined ? { initial: variable.initial } : {}
+  if (variable.type === 'bool')
+    return { op: 'state', name: variable.name, type: 'bool', frame, ...initial }
+  if (variable.type === 'enum') {
+    return {
+      op: 'state',
+      name: variable.name,
+      type: 'enum',
+      domain: [...variable.domain],
+      frame,
+      ...initial,
+    }
+  }
+  return {
+    op: 'state',
+    name: variable.name,
+    type: 'int',
+    ...(variable.domain?.min !== undefined ? { min: variable.domain.min } : {}),
+    ...(variable.domain?.max !== undefined ? { max: variable.domain.max } : {}),
+    frame,
+    ...initial,
+  }
+}
+
+/** Render one state as `a = 1, b = true`, in declaration order. */
+const renderState = (state: Readonly<Record<string, string>>): string =>
+  Object.entries(state)
+    .map(([name, value]) => `${name} = ${value}`)
+    .join(', ')
 
 /** Render a trace as an arrow-joined path, which is how a human reads a counterexample. */
 const renderTrace = (result: ConstraintResult): string => {
@@ -109,11 +173,14 @@ const renderTrace = (result: ConstraintResult): string => {
  * needs `classify`. Naming the wrong one would send an agent to the wrong command with
  * full confidence — the failure mode v4's `<blocking-code>` placeholder had.
  */
-const notCheckedRepair = (report: ReachabilityReport, docPath: string): Repair => {
+const notCheckedRepair = (report: ReachabilityReport, docPath: ShellArg): Repair => {
   if (report.variables === 0) {
     return {
       ops: [{ op: 'state', name: '<variable>', type: 'bool' } satisfies DocumentOp],
-      commands: [`symspec state <variable> --type bool ${docPath}`, `symspec check ${docPath}`],
+      commands: [
+        `symspec state <variable> --type bool --file ${docPath}`,
+        `symspec check ${docPath}`,
+      ],
     }
   }
   return {
@@ -127,7 +194,7 @@ const notCheckedRepair = (report: ReachabilityReport, docPath: string): Repair =
     ],
     commands: [
       `symspec list ${docPath}`,
-      `symspec classify <requirement> --kind constraint --expression "<predicate>" ${docPath}`,
+      `symspec classify <requirement> --kind constraint --expression "<predicate>" --file ${docPath}`,
       `symspec check ${docPath}`,
     ],
   }
@@ -175,12 +242,16 @@ const notCheckedReason = (report: ReachabilityReport): string | undefined => {
  * Project a finished run onto findings and demotions.
  *
  * `docPath` is threaded in only so every command is copy-pasteable as-is — the same
- * reason `RepairContext` carries it. Nothing here reads the filesystem.
+ * reason `RepairContext` carries it, and in the same form: one shell word (`shellWord`, R60),
+ * so a path with a space, a quote or `$` reaches the shell whole. Nothing here reads the
+ * filesystem.
  */
 export const projectReachability = (
   report: ReachabilityReport,
-  docPath: string,
+  docPathWord: string,
 ): ReachabilityProjection => {
+  // Quoted once by the caller (R60), marked so every command below splices it as is (R64).
+  const docPath = asShellArg(docPathWord)
   const findings: ReachabilityFinding[] = []
   const demotions: ReachabilityDemotion[] = []
 
@@ -263,6 +334,84 @@ export const projectReachability = (
 
   for (const result of report.vacuousInitialState ? [] : report.results) {
     const ids = [result.requirementId]
+    // A PROOF THE EXPLICIT SEARCH REFUTED (AC-1-5). Checked BEFORE the verdict switch: the
+    // tier has already withdrawn the proof (verdict UNKNOWN), and reporting that as an
+    // ordinary "the solver did not decide" would hide that a checker is wrong.
+    if (result.crossCheck?.status === 'disagrees') {
+      const witness = result.crossCheck
+      findings.push({
+        code: 'FND_CERTIFICATE_DISAGREES',
+        severity: 'error',
+        requirementIds: ids,
+        message:
+          `${result.label}: the unbounded solver PROVED this constraint, but an independent ` +
+          'explicit-state search of the same model reaches a state that VIOLATES it' +
+          (witness.trace.length > 0
+            ? `, by firing: ${witness.trace.join(' -> ')}`
+            : ' — the initial state itself') +
+          '. The proof is WITHDRAWN. The two checkers share nothing beyond the parsed ' +
+          'expression, so one of them is wrong about this model; this is a tool defect, not a ' +
+          'document defect.',
+        evidence: {
+          frame: witness.frame,
+          trace: [...witness.trace],
+          path: [...witness.path],
+          strictRun: result.strict,
+        },
+        repair: {
+          ops: [],
+          commands: [
+            `symspec show ${shellWord(result.label)} ${docPath}`,
+            `symspec list ${docPath}`,
+          ],
+        },
+      })
+      demotions.push({
+        reason: 'reachability-certificate-disagrees' satisfies ReachabilityDemotionReason,
+        requirementIds: ids,
+        action:
+          `The proof for ${result.label} was refuted by the explicit-state cross-check and ` +
+          'withdrawn. Nothing about this constraint is claimed. Read the witness path against ' +
+          'the state model; report the document if the solver was the one that was wrong.',
+        repair: { ops: [], commands: [`symspec check ${docPath}`] },
+      })
+      continue
+    }
+    // A PROOF THE EXPLICIT SEARCH COULD NOT EXAMINE (AC-1-5). It stopped without showing the
+    // model is beyond its cap, so the model may be one the cross-check must cover. The
+    // tier has withheld the proof (verdict UNKNOWN), and this says why.
+    if (result.crossCheck?.status === 'not-applicable' && !result.crossCheck.beyondCap) {
+      const why = result.crossCheck.reason
+      findings.push({
+        code: 'FND_REACHABILITY_UNKNOWN',
+        severity: 'info',
+        requirementIds: ids,
+        message:
+          `${result.label}: the unbounded solver proved this constraint, but the independent ` +
+          `explicit-state search that must re-decide every proof over a model of at most ` +
+          `${REACHABILITY_BFS_STATE_CAP} reachable states stopped (${why}) without showing that ` +
+          'this model is larger. The proof is WITHHELD, and nothing is claimed either way.',
+        evidence: {
+          unknownReason: 'cross-check-incomplete',
+          crossCheckReason: why,
+          strictRun: result.strict,
+        },
+      })
+      demotions.push({
+        reason: 'reachability-cross-check-incomplete' satisfies ReachabilityDemotionReason,
+        requirementIds: ids,
+        action:
+          `The proof for ${result.label} was not re-decided by the explicit-state cross-check ` +
+          `(${why}), so it is not reported. Make the model enumerable: state each variable's ` +
+          'initial value as `name = <value or expression>` rather than through a combined ' +
+          'predicate, or narrow the declared ranges. Raising the solver budget will NOT help.',
+        repair: {
+          ops: [],
+          commands: [`symspec list ${docPath}`, `symspec check ${docPath}`],
+        },
+      })
+      continue
+    }
     switch (result.verdict) {
       case 'VIOLATED': {
         findings.push({
@@ -279,6 +428,9 @@ export const projectReachability = (
             'described system rather than an artifact of assuming nothing.',
           evidence: {
             trace: (result.trace?.steps ?? []).map((s) => s.rule),
+            // The state sequence the trace walks (AC-1-3), so a reader can CHECK each step
+            // against its guard and effect rather than trust the rule names.
+            states: result.trace?.states ?? [],
             strictRun: result.strict,
             ...(result.framed !== undefined ? { framedRun: result.framed } : {}),
           },
@@ -288,7 +440,10 @@ export const projectReachability = (
           // judgment are offered instead.
           repair: {
             ops: [],
-            commands: [`symspec show ${result.label} ${docPath}`, `symspec list ${docPath}`],
+            commands: [
+              `symspec show ${shellWord(result.label)} ${docPath}`,
+              `symspec list ${docPath}`,
+            ],
           },
         })
         break
@@ -353,30 +508,25 @@ export const projectReachability = (
         // shipped by SPARK/GNATprove in its assumptions report). Never "P is
         // unreachable" — the claim is about the requirement-sanctioned transition
         // relation, and the sentence has to carry that.
-        const relied = hypotheses
-          .map(
-            (h) =>
-              `${h.variable} (written by ${h.writers.length > 0 ? h.writers.join(', ') : 'NO requirement'})`,
-          )
-          .join('; ')
+        const relied = reliedOn(hypotheses)
         findings.push({
           code: 'FND_REACHABILITY_UNDER_HYPOTHESES',
           severity: 'info',
           requirementIds: ids,
           message:
             `${result.label}: PROVED_UNDER_HYPOTHESES — no reachable state violates this ` +
-            'constraint, ASSUMING these variables change only when a requirement changes ' +
-            `them: ${relied}. THE DOCUMENT DOES NOT STATE THAT. With nothing assumed the ` +
-            'constraint IS violable, so this is a proof about the requirement-sanctioned ' +
-            'transition relation and not about the system as specified — `verified` is demoted ' +
-            'accordingly. A variable written by NO requirement is the sharpest case: nothing in ' +
-            'the document keeps it from changing.',
+            'constraint, ASSUMING these variables, which the document declares `frame: stable`, ' +
+            `change only when a requirement changes them: ${relied}. That is a HYPOTHESIS: no ` +
+            'requirement establishes it, and with the frame released the constraint IS violable, ' +
+            'so this is a proof about the declared model and not about the system as specified ' +
+            '— `verified` is demoted accordingly. A variable written by NO requirement is the ' +
+            'sharpest case: nothing in the document keeps it from changing.',
           evidence: {
             invariant: result.invariant?.invariant ?? '',
             certificateVerified: result.invariant?.certificateVerified === true,
             hypotheses: hypotheses.map((h) => ({ variable: h.variable, writers: h.writers })),
             strictRun: result.strict,
-            framedRun: result.framed ?? 'unreachable',
+            declaredRun: result.declared ?? 'unreachable',
           },
         })
         demotions.push({
@@ -385,28 +535,66 @@ export const projectReachability = (
           action:
             `The proof for ${result.label} depends on the declared frame: ${relied}. Discharge it ` +
             'either by adding the requirements that make those variables genuinely written only ' +
-            'where intended, or by declaring them `volatile` and accepting the weaker (honest) ' +
-            'claim that the constraint can be violated.',
+            'where intended, or by releasing the frame (the ops below re-declare each variable ' +
+            '`volatile` with its own type, range, and initial) and accepting the weaker, honest ' +
+            'verdict: the proof then needs a hypothesis the document does not state.',
           repair: {
-            ops: hypotheses.map(
-              (h) =>
-                ({
-                  op: 'state',
-                  name: h.variable,
-                  // A concrete, applicable op: RELEASE the frame. That is the one
-                  // mechanical discharge — the other (author more requirements) is
-                  // content this must not invent.
-                  type: 'bool',
-                  frame: 'volatile',
-                }) satisfies DocumentOp,
-            ),
-            commands: [`symspec show ${result.label} ${docPath}`, `symspec check ${docPath}`],
+            // A concrete, applicable op per hypothesis: RELEASE the frame, re-declaring the
+            // variable EXACTLY as declared otherwise — `state` is a full redeclaration, so an
+            // op that dropped the type, range, or initial would change the model (or be
+            // refused) rather than release a frame (spec 007 AC-1-6).
+            ops: hypotheses.map((h) => redeclare(h.declaration, 'volatile')),
+            commands: [
+              `symspec show ${shellWord(result.label)} ${docPath}`,
+              `symspec check ${docPath}`,
+            ],
           },
         })
         break
       }
 
       case 'UNKNOWN': {
+        if (result.unknownReason === 'frame-undeclared') {
+          const hypotheses = result.hypotheses ?? []
+          const needed = reliedOn(hypotheses)
+          findings.push({
+            code: 'FND_REACHABILITY_UNKNOWN',
+            severity: 'info',
+            requirementIds: ids,
+            message:
+              `${result.label}: NOT PROVED, and not violated by any requirement — it holds only ` +
+              `if these variables keep their value whenever no requirement writes them: ${needed}. ` +
+              'THE DOCUMENT DOES NOT STATE THAT: they are declared `volatile` (the default), and ' +
+              'with them free the constraint IS violable through a change no requirement makes. ' +
+              'Nothing is claimed either way. State the hypothesis by declaring them ' +
+              '`frame: stable` (the verdict becomes PROVED_UNDER_HYPOTHESES, still demoted), or ' +
+              'author the requirements that make it true.',
+            evidence: {
+              unknownReason: 'frame-undeclared',
+              hypotheses: hypotheses.map((h) => ({ variable: h.variable, writers: h.writers })),
+              strictRun: result.strict,
+              ...(result.declared !== undefined ? { declaredRun: result.declared } : {}),
+              framedRun: result.framed ?? 'unreachable',
+            },
+          })
+          demotions.push({
+            reason: 'reachability-frame-undeclared' satisfies ReachabilityDemotionReason,
+            requirementIds: ids,
+            action:
+              `${result.label} holds only under a frame the document does not declare: ${needed}. ` +
+              'Either author the requirements that keep those variables fixed, or state the ' +
+              'hypothesis — the ops below re-declare each variable `frame: stable` with its own ' +
+              'type, range, and initial — and accept PROVED_UNDER_HYPOTHESES, which still demotes.',
+            repair: {
+              ops: hypotheses.map((h) => redeclare(h.declaration, 'stable')),
+              commands: [
+                `symspec show ${shellWord(result.label)} ${docPath}`,
+                `symspec check ${docPath}`,
+              ],
+            },
+          })
+          break
+        }
         const budget = result.unknownReason === 'budget-exhausted'
         findings.push({
           code: 'FND_REACHABILITY_UNKNOWN',
@@ -460,11 +648,93 @@ export const projectReachability = (
               }
             : {
                 ops: [],
-                commands: [`symspec show ${result.label} ${docPath}`],
+                commands: [`symspec show ${shellWord(result.label)} ${docPath}`],
               },
         })
         break
       }
+    }
+  }
+
+  // --- THE DECLARED-RANGE OBLIGATIONS (spec 007 AC-1-2) --------------------------
+  for (const check of report.rangeChecks) {
+    const bounds = [
+      check.range.min !== undefined ? `min ${check.range.min}` : undefined,
+      check.range.max !== undefined ? `max ${check.range.max}` : undefined,
+    ]
+      .filter((b) => b !== undefined)
+      .join(', ')
+    if (check.verdict === 'reachable') {
+      const states = check.trace?.states ?? []
+      const preState = states.length >= 2 ? states[states.length - 2] : undefined
+      const value = states.length >= 1 ? states[states.length - 1]?.[check.variable] : undefined
+      const steps = (check.trace?.steps ?? []).map((s) => s.rule)
+      findings.push({
+        code: 'FND_RANGE_VIOLATION',
+        // ERROR: the declared range is false of the system as specified, and every step of
+        // the witness is a change some requirement makes (full frame).
+        severity: 'error',
+        requirementIds: [check.requirementId],
+        message:
+          `${check.label}: writes ${check.variable} OUTSIDE its declared range (${bounds}) from a ` +
+          'reachable state' +
+          (preState !== undefined && value !== undefined
+            ? ` — from ${renderState(preState)} it sets ${check.variable} := ${value}`
+            : '') +
+          `. Reached by firing: ${steps.length > 0 ? steps.join(' -> ') : '(the trace was not recovered)'}. ` +
+          'The step is not disabled by the range: it is a transition the document describes, and ' +
+          'any constraint it breaks is reported against it.',
+        evidence: {
+          variable: check.variable,
+          range: { ...check.range },
+          ...(value !== undefined ? { value } : {}),
+          ...(preState !== undefined ? { preState } : {}),
+          trace: steps,
+          states,
+        },
+        // NO ops: guarding the effect, clamping the value, or widening the range are three
+        // different statements about the system, and choosing one is the author's call.
+        repair: {
+          ops: [],
+          commands: [
+            `symspec show ${shellWord(check.label)} ${docPath}`,
+            `symspec list ${docPath}`,
+          ],
+        },
+      })
+    } else if (check.verdict === 'unknown') {
+      const budget = check.unknownReason === 'budget-exhausted'
+      findings.push({
+        code: 'FND_REACHABILITY_UNKNOWN',
+        severity: 'info',
+        requirementIds: [check.requirementId],
+        message:
+          `${check.label}: the solver did not decide whether this effect can write ` +
+          `${check.variable} outside its declared range (${bounds}). Nothing is claimed either way.`,
+        evidence: {
+          variable: check.variable,
+          unknownReason: check.unknownReason ?? 'undecidable',
+          elapsedMs: check.elapsedMs,
+          timeoutMs: report.timeoutMs,
+        },
+      })
+      demotions.push({
+        reason: (budget
+          ? 'reachability-budget-exhausted'
+          : 'reachability-undecidable') satisfies ReachabilityDemotionReason,
+        requirementIds: [check.requirementId],
+        action: budget
+          ? `Whether ${check.label} keeps ${check.variable} in range was not decided within the ${report.timeoutMs}ms budget. Raise it: \`symspec check ${docPath} --reachability-timeout-ms ${report.timeoutMs * 4}\`.`
+          : `Whether ${check.label} keeps ${check.variable} in range was undecidable within its budget; more time will not help. Bound the integer domains in the state model.`,
+        repair: budget
+          ? {
+              ops: [],
+              commands: [
+                `symspec check ${docPath} --reachability-timeout-ms ${report.timeoutMs * 4}`,
+              ],
+            }
+          : { ops: [], commands: [`symspec show ${shellWord(check.label)} ${docPath}`] },
+      })
     }
   }
 
@@ -497,8 +767,8 @@ export const projectReachability = (
       requirementIds: ids,
       action: `Reachability was not fully checked: ${gap}. ${
         report.variables === 0
-          ? `Declare the state variables (\`symspec state <name> --type bool|int|enum ${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> --kind constraint --expression "<predicate>" ${docPath}\`).`
-          : `Classify the responses that touch the declared variables: \`symspec classify <ref> --kind constraint --expression "<predicate>" ${docPath}\`.`
+          ? `Declare the state variables (\`symspec state <name> --type <bool|int|enum> --file ${docPath}\`), then classify the responses that touch them (\`symspec classify <ref> --kind constraint --expression "<predicate>" --file ${docPath}\`).`
+          : `Classify the responses that touch the declared variables: \`symspec classify <ref> --kind constraint --expression "<predicate>" --file ${docPath}\`.`
       }`,
       repair: notCheckedRepair(report, docPath),
     })

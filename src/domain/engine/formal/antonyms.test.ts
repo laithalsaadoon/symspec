@@ -25,16 +25,25 @@ import {
   type AntonymEntry,
   buildAntonymIndex,
   buildAntonymIndexWithDoc,
+  GOVERNED_PREPOSITIONS,
   SEED_ANTONYM_PAIRS,
 } from './antonyms.ts'
-import { atomize } from './atomize.ts'
+import { atomize, contraryPairs } from './atomize.ts'
 
 /** Every verb the seed table mentions, from the table itself rather than a typed list. */
 const SEED_VERBS = [...new Set(SEED_ANTONYM_PAIRS.flat())].sort()
 
-/** One row per member: `<canonical>  <polarity>  <verb>`, sorted, so a diff names the verb. */
+/**
+ * One row per member: `<canonical>  <polarity>  <verb>  <opposes>  <governs>  <outside>`, sorted,
+ * so a diff names the verb. `opposes` is the whole relation the table asserts about `verb`
+ * (AC-2-1), `governs` the prepositions that verb's governed opposition keys mark out, and
+ * `outside` those of them that introduce the second place (quarantine/release).
+ */
 const render = (index: ReadonlyMap<string, AntonymEntry>): string => {
-  const rows = [...index].map(([verb, e]) => `${e.canonical}\t${e.negated ? '-' : '+'}\t${verb}`)
+  const rows = [...index].map(
+    ([verb, e]) =>
+      `${e.canonical}\t${e.negated ? '-' : '+'}\t${verb}\t${e.opposes.join(',')}\t${e.governs.join(',')}\t${e.outside.join(',')}`,
+  )
   return `${rows.sort().join('\n')}\n`
 }
 
@@ -72,16 +81,132 @@ describe('the resolved seed index', () => {
     }
   })
 
-  it('resolves a shared member into ONE class rather than an ambiguous pair', () => {
-    // `accept↔reject`, `approve↔reject` and `accept↔decline` all touch the same two verbs. A
-    // flat pair map would make `reject` ambiguous; the signed union-find puts all four in one
-    // class, with the two same-side near-synonyms unified as a documented consequence.
-    for (const verb of ['accept', 'approve']) {
-      expect(ANTONYM_INDEX.get(verb)).toEqual({ canonical: 'accept', negated: false })
+  it('resolves a shared member into ONE class, and relates only the pairs in it', () => {
+    // `seal↔unseal`, `seal↔expose` and `expose↔conceal` all touch `seal`/`expose`. The signed
+    // union-find puts all four in one class — the key two contraries share — but the class
+    // asserts nothing by itself (spec 007 AC-2-1): each verb opposes exactly the verbs a pair
+    // names, so `conceal` and `unseal` are unrelated, and `seal` and `conceal` are not synonyms.
+    expect(ANTONYM_INDEX.get('seal')).toEqual({
+      canonical: 'conceal',
+      negated: false,
+      opposes: ['expose', 'unseal'],
+      governs: ['from'],
+      outside: [],
+    })
+    expect(ANTONYM_INDEX.get('conceal')).toEqual({
+      canonical: 'conceal',
+      negated: false,
+      opposes: ['expose'],
+      governs: ['from'],
+      outside: [],
+    })
+    expect(ANTONYM_INDEX.get('expose')).toEqual({
+      canonical: 'conceal',
+      negated: true,
+      opposes: ['conceal', 'seal'],
+      governs: ['into', 'onto', 'to'],
+      outside: [],
+    })
+    expect(ANTONYM_INDEX.get('unseal')).toEqual({
+      canonical: 'conceal',
+      negated: true,
+      opposes: ['seal'],
+      governs: [],
+      outside: [],
+    })
+  })
+
+  it('gives each verb its OWN governed prepositions, never the class union', () => {
+    // Per verb: `connect` governs `to` and `disconnect` governs `from`. The class union let
+    // `connect` drop `from` too, so "connect calls FROM the number" and "disconnect calls TO the
+    // number" shared a key. Identical remainders ("include/exclude the file in the box") stay one
+    // key through the LITERAL reading every response keeps, so no mark has to be shared.
+    expect(ANTONYM_INDEX.get('include')?.governs).toEqual(['into', 'onto', 'to'])
+    expect(ANTONYM_INDEX.get('exclude')?.governs).toEqual(['from'])
+    expect(ANTONYM_INDEX.get('connect')?.governs).toEqual(['into', 'onto', 'to', 'with'])
+    expect(ANTONYM_INDEX.get('disconnect')?.governs).toEqual(['from'])
+    expect(ANTONYM_INDEX.get('grant')?.governs).toEqual(['into', 'onto', 'to'])
+    // revoke takes away a right, which names its place with `to` as grant does ("revoke access
+    // to the server" / "grant access into the server").
+    expect(ANTONYM_INDEX.get('revoke')?.governs).toEqual(['from', 'to'])
+    // No verb governs a locative: whether `at`, `in`, `inside`, `on` or `within` names a place or
+    // a time is a guess about the words after it ("at ten" / "in ten", "in time" / "on time", "in
+    // a moment" / "within a moment"), and a guess may not create a proof.
+    for (const [verb, entry] of ANTONYM_INDEX) {
+      for (const p of ['at', 'in', 'inside', 'on', 'within']) {
+        expect(entry.governs, `${verb} ${p}`).not.toContain(p)
+      }
     }
-    for (const verb of ['reject', 'decline']) {
-      expect(ANTONYM_INDEX.get(verb)).toEqual({ canonical: 'accept', negated: true })
+    // No verb that does not remove its object FROM the place governs `from`, and no verb that
+    // does governs a goal, but for the `to` of revoke, the remover of a right: those prepositions
+    // carry direction ("allow calls to" / "deny calls from", "remove the item to the trash").
+    // `release … to` is the one other goal after a from-verb, and it names the OTHER place.
+    // `suspend` removes, but its one contrary, `resume`, names the place only with a locative, so
+    // a `from` after suspend would meet no mark: it governs nothing.
+    const removers = new Set([
+      'exclude',
+      'remove',
+      'withdraw',
+      'disconnect',
+      'revoke',
+      'hide',
+      'conceal',
+      'seal',
+      'retract',
+      'disengage',
+      'roll_back',
+      'rollback',
+      'release',
+    ])
+    for (const [verb, entry] of ANTONYM_INDEX) {
+      expect(entry.governs.includes('from'), `${verb} from`).toBe(
+        removers.has(verb) || verb === 'quarantine',
+      )
+      if (removers.has(verb)) {
+        for (const goal of ['to', 'into', 'onto']) {
+          expect(
+            entry.governs.includes(goal) && !entry.outside.includes(goal),
+            `${verb} ${goal}`,
+          ).toBe(goal === 'to' && verb === 'revoke')
+        }
+      }
     }
+    expect(ANTONYM_INDEX.get('quarantine')?.outside).toEqual(['from'])
+    // Every row is under the rule (A3): only seed verbs have an entry, and a verb whose every
+    // contrary names the place only with a locative (start/stop, open/close, suspend/resume, …)
+    // governs nothing, so it has none.
+    for (const verb of GOVERNED_PREPOSITIONS.keys()) expect(SEED_VERBS, verb).toContain(verb)
+    for (const verb of [
+      'start',
+      'stop',
+      'open',
+      'close',
+      'enable',
+      'disable',
+      'suspend',
+      'resume',
+    ]) {
+      expect(ANTONYM_INDEX.get(verb)?.governs, verb).toEqual([])
+    }
+    expect(ANTONYM_INDEX.get('release')?.outside).toEqual(['into', 'onto', 'to'])
+    for (const [verb, entry] of ANTONYM_INDEX) {
+      const places = [...(GOVERNED_PREPOSITIONS.get(verb) ?? new Map())]
+      expect(entry.governs, verb).toEqual(places.map(([p]) => p).sort())
+      expect(entry.outside, verb).toEqual(
+        places
+          .filter(([, place]) => place === 'outside')
+          .map(([p]) => p)
+          .sort(),
+      )
+    }
+  })
+
+  it('opposes exactly the pairs in the table — every edge, both ways, and nothing else', () => {
+    // The whole-table form of the property above: the relation IS the pair list.
+    const edges = new Set(SEED_ANTONYM_PAIRS.flatMap(([a, b]) => [`${a}|${b}`, `${b}|${a}`]))
+    const listed = [...ANTONYM_INDEX].flatMap(([verb, e]) => e.opposes.map((o) => `${verb}|${o}`))
+    expect(new Set(listed)).toEqual(edges)
+    expect(listed).toHaveLength(edges.size)
   })
 })
 
@@ -111,19 +236,44 @@ describe('a document pair that touches a seed class', () => {
     // `abort ↔ commit` makes `abort` the smallest member, so `commit` becomes the NEGATIVE side
     // of a class named after a verb no requirement used.
     const merged = buildAntonymIndexWithDoc([['abort', 'commit']])
-    expect(ANTONYM_INDEX.get('commit')).toEqual({ canonical: 'commit', negated: false })
-    expect(merged.get('commit')).toEqual({ canonical: 'abort', negated: true })
-    expect(merged.get('roll_back')).toEqual({ canonical: 'abort', negated: false })
+    expect(ANTONYM_INDEX.get('commit')).toEqual({
+      canonical: 'commit',
+      negated: false,
+      opposes: ['roll_back', 'rollback'],
+      governs: ['into', 'onto', 'to'],
+      outside: [],
+    })
+    expect(merged.get('commit')).toEqual({
+      canonical: 'abort',
+      negated: true,
+      opposes: ['abort', 'roll_back', 'rollback'],
+      governs: ['into', 'onto', 'to'],
+      outside: [],
+    })
+    expect(merged.get('roll_back')).toEqual({
+      canonical: 'abort',
+      negated: false,
+      opposes: ['commit'],
+      governs: ['from'],
+      outside: [],
+    })
   })
 
-  it('rewrites the atom NAME and its polarity for every requirement in the document', () => {
-    // The consequence, at the layer that decides verdicts. The name moves and the sign inverts,
-    // so a document that was consistent under the seed table can report a contradiction under
-    // the merged one, with no requirement edited.
+  it('moves only the opposition KEY — never an atom NAME or a polarity (AC-2-1)', () => {
+    // Under the pre-AC-2-1 rename this commit renamed `commit the transaction` to
+    // `abort_the_transaction` and inverted its sign, so a document consistent under the seed
+    // table could report a contradiction under the merged one with no requirement edited. With
+    // opposition as a contrary axiom the index decides only which atoms are CONTRARIES; `commit`
+    // is still alone on its side, so its atom and its polarity are unchanged.
     const seeded = atomize({ kind: 'resp', text: 'commit the transaction', systemName: 'ledger' })
     expect(seeded).toMatchObject({
       name: 'sys__ledger__resp__commit_the_transaction',
       negated: false,
+      opposition: {
+        key: 'sys__ledger__resp__commit_the_transaction',
+        body: 'commit_the_transaction',
+        negative: false,
+      },
     })
     const merged = atomize({
       kind: 'resp',
@@ -132,8 +282,51 @@ describe('a document pair that touches a seed class', () => {
       antonyms: buildAntonymIndexWithDoc([['abort', 'commit']]),
     })
     expect(merged).toMatchObject({
-      name: 'sys__ledger__resp__abort_the_transaction',
-      negated: true,
+      name: 'sys__ledger__resp__commit_the_transaction',
+      negated: false,
+      opposition: {
+        key: 'sys__ledger__resp__abort_the_transaction',
+        body: 'abort_the_transaction',
+        negative: true,
+      },
     })
+  })
+
+  it('keeps a doc member that joins a seed side its OWN atom — a class is not a synonym table', () => {
+    // `abort` joins `roll_back`/`rollback` on the side opposite `commit`. The pair says only
+    // `¬(abort ∧ commit)`; it says nothing about `roll back`, so `abort` and `roll back` stay two
+    // atoms, and `abort` is a contrary of `commit` alone (spec 007 AC-2-1). `rollback` is
+    // `roll back` spelled as one word — an orthographic identity, not a table inference.
+    const antonyms = buildAntonymIndexWithDoc([['abort', 'commit']])
+    const at = (text: string) => atomize({ kind: 'resp', text, systemName: 'ledger', antonyms })
+    expect(at('roll back the transaction').name).toBe(
+      'sys__ledger__resp__roll_back_the_transaction',
+    )
+    expect(at('abort the transaction').name).toBe('sys__ledger__resp__abort_the_transaction')
+    expect(at('rollback the transaction').name).toBe(at('roll back the transaction').name)
+    const lits = ['abort', 'roll back', 'rollback', 'commit'].map((verb) => {
+      const a = at(`${verb} the transaction`)
+      return { atom: a.name, ...(a.opposition !== undefined ? { opposition: a.opposition } : {}) }
+    })
+    expect(contraryPairs(lits)).toEqual([
+      ['sys__ledger__resp__abort_the_transaction', 'sys__ledger__resp__commit_the_transaction'],
+      ['sys__ledger__resp__commit_the_transaction', 'sys__ledger__resp__roll_back_the_transaction'],
+    ])
+  })
+
+  it('never chains two committed pairs into a synonymy (hold ≡ quarantine, finish ≡ stop)', () => {
+    // The seed `quarantine↔release` plus a committed `hold↔release` put `hold` and `quarantine`
+    // on one side; the seed `start↔stop` plus `start↔finish` put `finish` and `stop` on one.
+    // Neither is a statement that the two are one action.
+    const name = (text: string, pairs: ReadonlyArray<readonly [string, string]>) =>
+      atomize({ kind: 'resp', text, systemName: 'shop', antonyms: buildAntonymIndexWithDoc(pairs) })
+        .name
+    expect(name('hold the order', [['hold', 'release']])).toBe('sys__shop__resp__hold_the_order')
+    expect(name('quarantine the order', [['hold', 'release']])).toBe(
+      'sys__shop__resp__quarantine_the_order',
+    )
+    expect(name('finish the job', [['start', 'finish']])).not.toBe(
+      name('stop the job', [['start', 'finish']]),
+    )
   })
 })

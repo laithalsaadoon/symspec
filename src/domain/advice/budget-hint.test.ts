@@ -74,6 +74,7 @@ const reportOf = (args: {
   return {
     findings: [],
     excluded: [],
+    run: { embedder: 'model' },
     pairsChecked: args.pairs ?? 100,
     waived: 0,
     counts: { error: 0, warn: 0, info: 0 },

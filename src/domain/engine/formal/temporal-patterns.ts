@@ -17,11 +17,32 @@
  *
  *   | EARS pattern       | slot(s) used        | SPS pattern    | LTL shape              |
  *   |--------------------|---------------------|----------------|------------------------|
- *   | event-driven       | trigger, response   | Response       | G(trig → F resp)       |
- *   | unwanted-behavior  | trigger, response   | Absence        | G(cond → ¬resp)        |
+ *   | event-driven       | [pre,] trigger, resp| Response       | G((pre ∧ trig) → F resp) |
+ *   | unwanted-behavior  | [pre,] trigger, resp| Response       | G((pre ∧ trig) → F resp) |
  *   | state-driven       | preCondition, resp  | Universality   | G(state → resp)        |
  *   | optional-feature   | preCondition, resp  | Universality⟨feat⟩ | G(feature → resp)   |
  *   | ubiquitous         | response            | Universality    | G(resp)               |
+ *
+ * ## Unwanted-behavior is an OBLIGATION, not an absence (spec 007 AC-2-7)
+ *
+ * `If T, then the S shall R` says what S must DO when the unwanted event happens:
+ * "If a disk write error occurs, then the audit logger shall record the event."
+ * The propositional tier encodes it as `T ⇒ R` (`encode.ts`), exactly like
+ * event-driven, and so does this tier: `G((P ∧ T) → F R)`. It used to be read as
+ * SPS Absence, `G(T → ¬R)`, which inverted the sentence — so that requirement
+ * plus "The audit logger shall record the event." was an error-severity
+ * `FND_TEMPORAL_CONTRADICTION` on a document with no conflict, and a genuine
+ * "shall not R" against it was invisible. A prohibition is `negated: true`
+ * ("shall not R"), which threads onto the response literal like any other
+ * pattern; the template itself contributes no `¬`.
+ *
+ * The antecedent is every guard slot the requirement carries, conjoined — the
+ * precondition too, for event-driven and unwanted-behavior (EARS complex
+ * `While P, when T`). Dropping it made the temporal obligation fire on `T` alone,
+ * strictly stronger than the sentence and than the propositional `(P ∧ T) ⇒ R`.
+ * `temporal.test.ts` pins the parity for every pattern × slot combination: the
+ * temporal antecedent IS the propositional context, and the temporal consequent
+ * IS the propositional response.
  *
  * ## AC-2-7: ONE atomizer, injected — the blindness was STRUCTURAL
  *
@@ -197,10 +218,10 @@ export const U = (lhs: TemporalFormula, rhs: TemporalFormula): TemporalFormula =
  *
  * **Polarity, never a name** (AC-2-7 divergence 7). The atomizer returns the
  * POSITIVE atom plus a polarity flag (its invariant 4), and the flag becomes a
- * `¬` node here. An antonym-unified response (`revoke x` → `grant x` + negated)
- * therefore lands on the same atom the propositional tier uses, at the polarity
- * that makes `G(t → F grant_x)` vs `G(t → F ¬grant_x)` provable. Composing the
- * AC-2-4 `negated` flag with an antonym flip is the atomizer's XOR, not ours.
+ * `¬` node here. An antonym is NOT a polarity (spec 007 AC-2-1): `revoke x` is its
+ * own atom, and the contrary axiom `G ¬(grant_x ∧ revoke_x)` reaches this tier as
+ * an unguarded assertion from `check.ts`, next to the same atom names the
+ * propositional tier uses.
  */
 function slotLiteral(
   atomize: Atomize,
@@ -253,7 +274,8 @@ function guardLiteral(
  *
  * Slot sourcing follows the EARS templates:
  *   - event-driven / unwanted-behavior read the `trigger` slot (the "When"/"If"
- *     clause) as the antecedent;
+ *     clause), conjoined with the `preCondition` slot when present (the "While"
+ *     of the complex template), as the antecedent — the propositional context;
  *   - state-driven / optional-feature read the `preCondition` slot (the
  *     "While"/"Where" clause) as the guarding state / feature;
  *   - every pattern reads `systemResponse` as the consequent, threading
@@ -295,17 +317,18 @@ export function earsToTemporal(req: ReqView, atomize: Atomize): TemporalFormula 
 
   const pattern: EarsPattern = req.patternType
   switch (pattern) {
-    // Response (SPS): every trigger is eventually followed by the response.
-    case 'event-driven': {
-      const trig = guardLiteral(atomize, 'trig', req.trigger, req.systemName)
-      return trig === null ? G(F(resp)) : G(tImplies(trig, F(resp)))
-    }
-    // Absence (SPS): under the condition, the response must not occur. The
-    // prohibition is the pattern's `¬`; `negated` (if the requirement itself
-    // says "shall not") composes onto the response literal underneath it.
+    // Response (SPS): every trigger — in its precondition, when the requirement
+    // has one — is eventually followed by the response. Unwanted-behavior is the
+    // SAME obligation (spec 007 AC-2-7): "If T, then the S shall R" demands R on
+    // T, exactly as the propositional `T ⇒ R` does. A prohibition is carried by
+    // `negated`, never by the template.
+    case 'event-driven':
     case 'unwanted-behavior': {
-      const trig = guardLiteral(atomize, 'trig', req.trigger, req.systemName)
-      return trig === null ? G(tNot(resp)) : G(tImplies(trig, tNot(resp)))
+      const guards = [
+        guardLiteral(atomize, 'pre', req.preCondition, req.systemName),
+        guardLiteral(atomize, 'trig', req.trigger, req.systemName),
+      ].filter((g): g is TemporalFormula => g !== null)
+      return guards.length === 0 ? G(F(resp)) : G(tImplies(tAnd(guards), F(resp)))
     }
     // Universality within scope (SPS): while the state holds, the response holds.
     case 'state-driven': {

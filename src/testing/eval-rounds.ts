@@ -4,19 +4,21 @@
  *
  * Twelve documents reconstructed from the Run 1-3 red-team eval: the rounds where a
  * proposer authored specs whose z3-confirmed contradictions symspec certified clean
- * (`exit 0`, `data.verified: true`, under `--strict --semantic --temporal`). Nine plant a
- * contradiction a sound extractor can reach; three plant one it cannot, where the required
+ * (`exit 0`, `data.verified: true`, under `--strict --semantic --temporal`). Eight plant a
+ * contradiction a sound extractor can reach; four plant one it cannot, where the required
  * behavior is to decline rather than to guess.
  *
  * Each case reproduces one WINNING PATTERN and pins the fix that closes it:
  *   - lexicon rounds (commit/rollback, seal/expose, quarantine/release, publish/retract,
- *     suspend/resume in 3sg, exclude-from/include-in) prove `FND_CONTRADICTION` through the
- *     expanded antonym seeds, de-inflection, and the preposition rule;
+ *     suspend/resume in 3sg) prove `FND_CONTRADICTION` through the expanded antonym seeds,
+ *     de-inflection, and the preposition rule;
  *   - bridge-chain rounds (grant-vs-deny behind authenticated -> verified -> trusted ->
  *     privileged; "keeps the reactor online" behind a copula guard) prove through the
  *     widened establish-verb lexicon, copula normalization, and the
  *     grant/allow/permit-deny class merge;
- *   - the beyond-the-lexicon rounds assert that `verified` DEMOTES instead of certifying.
+ *   - the beyond-the-lexicon rounds assert that `verified` DEMOTES instead of certifying; the
+ *     exclude-from/include-in round is one of them, because no verb governs a locative (`in`
+ *     names a time as readily as a place, spec 007 demote-not-prove C1).
  *
  * ## Ground truth, never a verdict
  *
@@ -49,6 +51,7 @@ import {
   type RequirementsDoc,
   SCHEMA_VERSION,
 } from '../domain/engine/core/schema.ts'
+import { emptyDocument, type RequirementsDocument } from '../domain/requirements/document.ts'
 import type { AdversarialCase } from './generate.ts'
 
 /**
@@ -461,25 +464,35 @@ export function evalRoundCases(): AdversarialCase[] {
     cases.push({
       id: 'eval-feedback-exclude-include',
       kind: 'contradiction',
-      tier: 4,
-      expectedCodes: ['FND_CONTRADICTION'],
+      tier: 5,
+      expectedCodes: [],
       culpritIds: [rid(t, 1), rid(t, 2)],
       doc: docOf(reqs),
       note:
-        'The FEEDBACK residual: include/exclude was seeded but "from"/"in" kept the remainders ' +
-        'distinct. Closed by: the antonym-hit preposition rule (A4).',
+        'The FEEDBACK residual: include/exclude is seeded, but "from"/"in" keep the remainders ' +
+        'distinct. No verb governs a locative, since `in` names a time as readily as a place ' +
+        '("include the tile in time"), so no key proves the pair; the preposition-variant rule ' +
+        'must DEMOTE verified with a named repair (align the preposition), never certify. A ' +
+        'phrase bound to one declared symbol (spec 007 Story 4) is what proves it again.',
     })
   }
 
   // ---- 8. Run 2 reactor shape: "keeps the reactor online" copula bridge.
+  //
+  // The overheating rules are STATE-driven. Run 2 phrased them as events ("When the sensor
+  // reports overheating …"), and that shape is not a snapshot conflict: an event-driven "mark
+  // the coolant pump engaged" is an action effect that takes hold at the NEXT step (spec 007
+  // AC-6-1), so it never meets the same-instant "deny power" — the fabrication AC-2-9 closed.
+  // `formal/guard-implication.test.ts` pins that event-driven shape as withheld; this round
+  // keeps the copula bridge it was written to exercise, through a bridge the snapshot may assert.
   {
     const t = 'reactor'
     const reqs = [
       mkReq({
         id: rid(t, 1),
-        patternType: 'event-driven',
+        patternType: 'state-driven',
         systemName: 'controller',
-        trigger: 'the temperature sensor reports overheating',
+        preCondition: 'the reactor is overheating',
         systemResponse: 'mark the coolant pump engaged',
       }),
       mkReq({
@@ -498,9 +511,9 @@ export function evalRoundCases(): AdversarialCase[] {
       }),
       mkReq({
         id: rid(t, 4),
-        patternType: 'event-driven',
+        patternType: 'state-driven',
         systemName: 'controller',
-        trigger: 'the temperature sensor reports overheating',
+        preCondition: 'the reactor is overheating',
         systemResponse: 'deny power to the distribution grid',
       }),
     ]
@@ -512,9 +525,10 @@ export function evalRoundCases(): AdversarialCase[] {
       culpritIds: [rid(t, 3), rid(t, 4)],
       doc: docOf(reqs),
       note:
-        'Run 2 R3/R8 shape: overheating engages the pump, "keeps the reactor online" bridges into ' +
-        'the copula guard "the reactor is online", forcing grant AND deny power. Closed by: ' +
-        'keep/hold establish form + copula strip + grant/deny merge (E/A3/B).',
+        'Run 2 R3/R8 shape: while overheating the pump is engaged, "keeps the reactor online" ' +
+        'bridges into the copula guard "the reactor is online", forcing grant AND deny power. ' +
+        'Closed by: keep/hold establish form + copula strip + grant/deny merge (E/A3/B). The ' +
+        'bridges are state-driven: an event-driven one lands at the next step (AC-2-9).',
     })
   }
 
@@ -690,3 +704,51 @@ export function evalRoundCases(): AdversarialCase[] {
 
   return cases
 }
+
+/**
+ * Project one of these v2-shaped rounds onto the greenfield document shape.
+ *
+ * The rounds are authored as engine documents, so anything that runs the real `check`
+ * operation over them needs the same CONTENT as a greenfield document. Deliberately in
+ * `testing/` rather than in production: nothing shipped reads a v2 document (the greenfield
+ * format has no read-compat by design — migration is the `import` op-stream replay), so a
+ * production converter would be dead code that also weakened the format boundary. It lives
+ * here, beside the rounds, because more than one gate runs them through `check`
+ * (`./adversarial.test.ts`, `./report-corpus.test.ts`) and two projections could drift.
+ */
+export const asRequirementsDocument = (doc: RequirementsDoc): RequirementsDocument => ({
+  ...emptyDocument(),
+  requirements: Object.fromEntries(
+    Object.entries(doc.requirements).map(([id, r]) => [
+      id,
+      {
+        id: r.id,
+        patternType: r.patternType,
+        systemName: r.systemName,
+        systemResponse: r.systemResponse,
+        negated: r.negated,
+        sentence: r.sentence,
+        priority: r.priority,
+        status: r.status,
+        derives: [...r.derives],
+        satisfies: [...r.satisfies],
+        verifies: [...r.verifies],
+        refines: [...r.refines],
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+        ...(r.key !== undefined ? { key: r.key } : {}),
+        ...(r.preCondition !== undefined ? { preCondition: r.preCondition } : {}),
+        ...(r.trigger !== undefined ? { trigger: r.trigger } : {}),
+        ...(r.verificationMethod !== undefined ? { verificationMethod: r.verificationMethod } : {}),
+        ...(r.verificationNote !== undefined ? { verificationNote: r.verificationNote } : {}),
+      },
+    ]),
+  ),
+  glossary: (doc.glossary ?? []).map((g) => ({ canonical: g.canonical, aliases: [...g.aliases] })),
+  antonyms: (doc.antonyms ?? []).map((a) => ({ a: a.a, b: a.b })),
+  waivers: (doc.waivers ?? []).map((w) => ({
+    code: w.code,
+    reason: w.reason,
+    ...(w.requirementId !== undefined ? { requirementId: w.requirementId } : {}),
+  })),
+})

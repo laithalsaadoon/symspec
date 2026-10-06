@@ -105,6 +105,34 @@ describe('no module reaches outside the package', () => {
     expect(leaking).toEqual(['src/domain/engine/parse/result.ts -> ../../requirements/ops.ts'])
   })
 
+  it('keeps the anchor schemas a leaf — `anchor/` imports `Schema` from `effect` and nothing else', () => {
+    // The intent and policy schemas are what a later certificate kernel reads to know what
+    // a spec is FOR, and that kernel's boundary admits only the typed IR and the solver
+    // port. A leaf that imports nothing from the repo is the only shape it can import
+    // without inheriting the requirements model along with it. Every import STATEMENT is
+    // collected, not just relative specifiers, so a second package is caught as well.
+    const anchorRoot = join(PKG_ROOT, 'src', 'domain', 'anchor')
+    const files = tsFiles(anchorRoot).filter((f) => !f.endsWith('.test.ts'))
+    expect(files.map((f) => relative(PKG_ROOT, f))).toEqual([
+      join('src', 'domain', 'anchor', 'anchor.ts'),
+    ])
+    const imports: string[] = []
+    for (const file of files) {
+      const code = withoutComments(readFileSync(file, 'utf8'))
+      for (const pattern of [
+        /^\s*import\b[^;=]*?\bfrom\s*'[^']*'/gm, // import … from '…'
+        /^\s*import\s*'[^']*'/gm, // import '…' (side effect)
+        /^\s*export\b[^;=]*?\bfrom\s*'[^']*'/gm, // export … from '…'
+        /\bimport\(\s*'[^']*'\s*\)/g, // import('…')
+      ]) {
+        for (const match of code.matchAll(pattern)) {
+          imports.push(match[0].trim().replace(/\s+/g, ' '))
+        }
+      }
+    }
+    expect(imports).toEqual(["import { Schema } from 'effect'"])
+  })
+
   it('ships a `dist` that the bin actually points at', () => {
     // `bin/symspec.mjs` is a one-line wrapper, and its whole job is to keep the shebang on
     // a stable path while the build output moves. A wrong relative path here is a package

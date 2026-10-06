@@ -1,0 +1,219 @@
+{
+  "about": "Intake for VDD run 2, slice S3 Waivability (AC-5-6), at base 0fca0433eb82 (feat/controlled-vocabulary). Every consequence class, ceiling and trust tag here is PROPOSED by the intake agent and approved by nobody yet. Ceilings use the VDD evidence levels: 1 executable example, 2 generated-input property, 3 type or domain rule, 4 boundary contract, 5 checked model, 6 proof.",
+  "approval": "proposed by agent (intake, job 817); not approved",
+  "classes": {
+    "false certificate": {
+      "consequence": "check reports verified: true, or exit 0 under --strict, while a finding the tool never decided or nobody reviewed over the current text is suppressed by a waiver",
+      "status": "proposed"
+    },
+    "reviewed-waiver loss": {
+      "consequence": "a waiver a person reviewed stops applying, or is refused or dropped, with no disclosure naming it and no replacement op; or a legacy document's result changes without the change being stated",
+      "status": "proposed"
+    },
+    "instruction drift": {
+      "consequence": "advice, repair ops, scope or engine prose offer a remedy the build refuses, or offer waive for a code the build calls never waivable, so an agent follows a dead or forbidden path",
+      "status": "proposed"
+    },
+    "gate drift": {
+      "consequence": "a trusted-base measurement (gaming harness KNOWN_ESCAPES, report-corpus snapshot, AGENTS.md drift check, version agreement) stops measuring what it names, or is edited to match the change it judges",
+      "status": "proposed"
+    }
+  },
+  "components": [
+    {
+      "id": "waive-fold",
+      "name": "write path: the waive op fold and its classifier",
+      "layer": "domain",
+      "paths": [
+        "src/domain/requirements/mutate.ts",
+        "src/domain/requirements/ops.ts",
+        "src/app/operations/mutate-options.ts",
+        "src/app/operations/mutation.ts",
+        "src/app/runtime/errors.ts",
+        "src/cli.ts"
+      ],
+      "notes": "applyWaive (~mutate.ts:992) today accepts any non-empty code, with no scope, ref, or refs (+ optional contentHash it checks against the text it computes). MutateOptions is the injection point (mutate.ts cannot import app/runtime/signal-classes.ts); MUTATE_OPTIONS is the single fence source for apply, import and the gaming harness. `symspec waive <code> --ref` (cli.ts waiveCommand, mutation.ts waiveOp) has no --refs flag. ERR_WAIVER_REFUSED is a new error code for the errors catalog and AGENTS.md (pnpm gen:agents).",
+      "oracles": [
+        { "type": "exact", "check": "vitest on foldOps/applyOp under MUTATE_OPTIONS: the op result's error code (ERR_WAIVER_REFUSED vs ERR_USAGE vs ok) and the stored Waiver (code, requirementIds, contentHash) for each fixture stream in fixture/cases/*.ops.jsonl", "strength": "strong" },
+        { "type": "exact", "check": "the CLI suite spawning dist/cli.mjs apply and dist/cli.mjs waive on the fixture: exit code, data.results[].ok and .code, written", "strength": "strong" },
+        { "type": "metamorphic", "check": "for every code FINDING_CLASS publishes and every scope shape (none, ref, refs, refs+hash), the fold refuses exactly when waivabilityOf(code) is 'never' or the shape is not refs+hash; a refused stream leaves the document byte-identical (atomic mode)", "strength": "strong" },
+        { "type": "contract", "check": "waivability.test.ts write-time half: WAIVABILITY_ENFORCED equals what the fold does on one never code per class", "strength": "strong" }
+      ],
+      "consequence": { "class": "false certificate", "status": "proposed" },
+      "ceiling": { "level": 3, "status": "proposed", "why": "a pure fold over a closed code catalog: properties reach every code and scope shape, and a domain rule (a write-time Waiver shape that cannot be code-only) is reachable; no checked model applies to a single op" },
+      "trust": { "tags": ["trust boundary", "data store"], "status": "proposed", "crosses": "agent-supplied op (code, reason, ref/refs, contentHash) enters the document", "writes": "the requirements document's waivers[]" }
+    },
+    {
+      "id": "import-waivers",
+      "name": "import: v4 stream waivers folded through the same fence",
+      "layer": "application",
+      "paths": ["src/app/operations/import.ts", "src/app/operations/import.test.ts", "src/app/operations/roundtrip.test.ts"],
+      "notes": "import's own WaiveOp record schema (~import.ts:186) has code, reason and optional ref only: refs and contentHash are rejected as unexpected keys (verified at base with fixture/import/scoped-record.txt). v4 command lines carry only --ref. An unresolvable --ref is WIDENED to a document-wide waiver and disclosed in unresolved[] (~import.ts:575). A refused record is a problems[] entry plus an error-severity finding, exit 1, and the rest of the stream still imports.",
+      "oracles": [
+        { "type": "exact", "check": "import envelope on fixture/import/*.txt: data.imported.waivers, data.problems[] (line, detail), data.unresolved[], exit code; the waivers[] of the written document", "strength": "strong" },
+        { "type": "contract", "check": "import's waiver fold equals apply's: a record import commits is one apply would commit from the same op (both under MUTATE_OPTIONS)", "strength": "strong" },
+        { "type": "replay", "check": "roundtrip.test.ts: reproduce a document's op stream and import it back; the waiver set that survives is stated", "strength": "partial: the v4 emitter is not in the repo, the stream shapes are pinned by parseSideTableCommand's tests" }
+      ],
+      "consequence": { "class": "reviewed-waiver loss", "status": "proposed" },
+      "ceiling": { "level": 4, "status": "proposed", "why": "a boundary contract (import's fold is apply's fold) run over both callers; the foreign v4 producer can only be replayed from recorded shapes" },
+      "trust": { "tags": ["trust boundary", "data store"], "status": "proposed", "crosses": "a stream written by another tool version (v4 reproduce) or by hand becomes a document", "writes": "a new requirements document" }
+    },
+    {
+      "id": "check-compat",
+      "name": "check-time compat: which stored waivers cross to the engine, and the disclosures for the rest",
+      "layer": "domain",
+      "paths": ["src/domain/compat.ts", "src/domain/compat.test.ts", "src/domain/requirements/document.ts", "src/domain/requirements/content-hash.ts"],
+      "notes": "toEngineDoc filters waivers through bindsCurrentText (compat.ts ~:117): a waiver with no contentHash passes; one whose hash no longer matches is dropped silently; a surviving hash becomes textBound: true, which the engine trusts without rehashing. DIAGNOSTIC_KINDS (document.ts ~:1480) is ['unknown-top-level-key', 'sentence-drift'] and DocumentDiagnostic.severity is fixed 'info'. Diagnostics today come from the document LOAD, before compat runs. data.ignoredWaivers does not exist yet.",
+      "oracles": [
+        { "type": "exact", "check": "toEngineDoc(document).waivers for each stored fixture document (fixture/cases/*.stored.json, cases/hand-*.json, legacy-mixed.json)", "strength": "strong" },
+        { "type": "exact", "check": "check envelope: data.diagnostics[] entries of kind waiver-inert (requirementIds, the replacement ops), data.ignoredWaivers[] for stale hashes; every replacement op decodes as a DocumentOp and the fold accepts it", "strength": "strong" },
+        { "type": "metamorphic", "check": "deleting an inert waiver from the stored document leaves data.findings, data.coverage.demotions and data.verified unchanged; only the disclosure goes", "strength": "strong" },
+        { "type": "differential", "check": "a stored waiver qualifies at check time exactly when the S3 fold would accept the same waiver as an op today (check-time twin of the write fence, risk R4)", "strength": "strong" }
+      ],
+      "consequence": { "class": "false certificate", "status": "proposed" },
+      "ceiling": { "level": 4, "status": "proposed", "why": "pure projection with exact and metamorphic oracles (level 2 reachable) plus a write/check twin contract; the hand-edited channel has no fence, so the twin is the contract" },
+      "trust": { "tags": ["trust boundary", "data store"], "status": "proposed", "crosses": "a document on disk (written by apply, by import, by an older build, or by hand) is trusted as the check input; the engine trusts compat's textBound", "reads": "the requirements document's waivers[] and requirement text" }
+    },
+    {
+      "id": "engine-waiver-scope",
+      "name": "engine tier: how a crossed waiver suppresses a finding (reach only, no logic edit)",
+      "layer": "engine (owned, frozen logic)",
+      "paths": ["src/domain/engine/pipeline/check.ts", "src/domain/engine/pipeline/gate.ts", "src/domain/engine/pipeline/waiver-scope.test.ts", "src/domain/engine/pipeline/verified.test.ts", "src/package-boundary.test.ts"],
+      "notes": "isWaived/reachesFinding (check.ts ~:683-698): code match plus every scope the waiver carries. PAIR_BOUND_CODES = {FND_OPPOSITION_CANDIDATE} (~:711) already declines a code-only or one-ref waiver of an opposition candidate (requires requirementIds and textBound) and names it in the demotion via unappliedNote. isWaivedBlocking (gate.ts ~:93) re-admits a requirement whose blocking GTWR finding is waived. Plan section 10: no engine LOGIC change in Phase 3.",
+      "oracles": [
+        { "type": "exact", "check": "waiver-scope.test.ts and verified.test.ts stay green unchanged", "strength": "strong" },
+        { "type": "contract", "check": "package-boundary.test.ts unchanged for the engine", "strength": "strong" }
+      ],
+      "consequence": { "class": "false certificate", "status": "proposed" },
+      "ceiling": { "level": 2, "status": "proposed", "why": "existing examples and fixtures; S3 must not change it, so its evidence is regression only" },
+      "trust": { "tags": [], "status": "proposed", "crosses": "none new; it trusts compat's waiver list and textBound flag" }
+    },
+    {
+      "id": "check-demotions",
+      "name": "app check: waived-blocking-lint and the AppDemotionReason type",
+      "layer": "application",
+      "paths": ["src/app/operations/check.ts", "src/app/operations/check.test.ts", "src/app/runtime/signal-classes.ts", "src/app/runtime/signal-classes.test.ts"],
+      "notes": "The plan computes waived-blocking-lint at the app boundary as excludedIds(gateRequirements(reqs, [])) minus the post-waiver excluded set. The cast the plan places at check.ts:1006 is at ~:1103 at base (`reason: d.reason as CoverageDemotion['reason']`). DEMOTION_CLASS lists waived-blocking-lint under hygiene in the plan (2.3); signal-classes.ts at base has no such row.",
+      "oracles": [
+        { "type": "exact", "check": "check envelope on the blocking-lint fixture streams: data.coverage.demotions[] (reason, requirementIds), data.verified, exit code with --strict", "strength": "strong" },
+        { "type": "metamorphic", "check": "the requirement ids under waived-blocking-lint equal the requirements excluded with no waivers minus those excluded with the stored waivers; with no waivers the demotion list is unchanged from base", "strength": "strong" },
+        { "type": "exact", "check": "tsc --noEmit: DEMOTION_CLASS satisfies Record<AppDemotionReason, ...> with no cast", "strength": "strong" }
+      ],
+      "consequence": { "class": "false certificate", "status": "proposed" },
+      "ceiling": { "level": 3, "status": "proposed", "why": "set arithmetic over the gate is property-checkable, and the reason union is a type rule tsc enforces" },
+      "trust": { "tags": ["trust boundary"], "status": "proposed", "crosses": "check's verified and exit code are what CI and a person trust as the certificate" }
+    },
+    {
+      "id": "published-waivability",
+      "name": "published waivability: the waivable column, WAIVABILITY_ENFORCED and its statement on every surface",
+      "layer": "application (published surface)",
+      "paths": ["src/app/runtime/signal-classes.ts", "src/app/operations/waivability.test.ts", "src/app/runtime/agents-doc.ts", "AGENTS.md"],
+      "notes": "WAIVABILITY_ENFORCED is false at base and waivabilityStatement says the column is NOT enforced; waivability.test.ts holds the flag to what the fold and check do, both directions, and its header says S3 flips it. explain, the manifest and AGENTS.md publish the column.",
+      "oracles": [
+        { "type": "exact", "check": "waivability.test.ts: with the flag true, apply refuses one never code per class and check ignores a stored waiver on one", "strength": "strong" },
+        { "type": "exact", "check": "check:agents (AGENTS.md drift) after pnpm gen:agents; a negative guard that the 'NOT enforced' sentence is absent", "strength": "strong" }
+      ],
+      "consequence": { "class": "instruction drift", "status": "proposed" },
+      "ceiling": { "level": 4, "status": "proposed", "why": "the flag-equals-behavior test is a contract between the published claim and both enforcement points" },
+      "trust": { "tags": ["trust boundary"], "status": "proposed", "crosses": "agents and people read explain/manifest/AGENTS.md to decide what verified rules out" }
+    },
+    {
+      "id": "repair-advice",
+      "name": "repair advice: the ops each demotion's repair offers",
+      "layer": "domain",
+      "paths": ["src/domain/advice/repair.ts", "src/domain/advice/repair.test.ts"],
+      "notes": "scopedWaive (~repair.ts:476) emits a refs + contentHash waive op for open-opposition-candidate, opposite-polarity-near-duplicate, quantity-alias-candidate, relational-reasoning-not-attempted, numeric-bounds-uncompared and number-spelling-candidate, every one a never-class code under FINDING_CLASS; excluded-from-formal emits one waive per blocking (GTWR, scoped-class) code.",
+      "oracles": [
+        { "type": "exact", "check": "repair.test.ts on repair.ops per demotion reason", "strength": "strong" },
+        { "type": "contract", "check": "every op a repair offers decodes as a DocumentOp and the S3 fold accepts it (an offered op is never ERR_WAIVER_REFUSED)", "strength": "strong" },
+        { "type": "metamorphic", "check": "negative guard: no repair op with op 'waive' names a code whose waivabilityOf is 'never', over every report-corpus and fixture document", "strength": "strong" }
+      ],
+      "consequence": { "class": "instruction drift", "status": "proposed" },
+      "ceiling": { "level": 2, "status": "proposed", "why": "pure function of demotion and findings; the negative guard runs over the whole corpus" },
+      "trust": { "tags": ["trust boundary"], "status": "proposed", "crosses": "check output becomes ops an agent pipes into apply" }
+    },
+    {
+      "id": "scope-prose",
+      "name": "scope prose: SCOPE.coverageDemotion",
+      "layer": "application (published surface)",
+      "paths": ["src/app/runtime/scope.ts", "src/app/runtime/scope.test.ts"],
+      "notes": "coverageDemotion (~scope.ts:66) says an opposition candidate is triaged 'via symspec antonym / symspec glossary, or waived'.",
+      "oracles": [
+        { "type": "exact", "check": "scope.test.ts negative guard: the phrase 'or waived' is ABSENT from every SCOPE claim", "strength": "strong" },
+        { "type": "exact", "check": "check:agents drift on the rendered surfaces", "strength": "strong" }
+      ],
+      "consequence": { "class": "instruction drift", "status": "proposed" },
+      "ceiling": { "level": 1, "status": "proposed", "why": "prose: exact absence is checkable, whether the new sentence is true is a human reading" },
+      "trust": { "tags": [], "status": "proposed" }
+    },
+    {
+      "id": "engine-prose",
+      "name": "engine prose: demotion actions and finding suggestions that offer waive",
+      "layer": "engine (owned; prose-only edit)",
+      "paths": [
+        "src/domain/engine/pipeline/check.ts",
+        "src/domain/engine/formal/semantic.ts",
+        "src/domain/engine/formal/numeric-contradiction.ts",
+        "src/domain/engine/formal/number-spelling.ts",
+        "src/domain/engine/formal/quantity-alias.ts"
+      ],
+      "notes": "At base the plan's 'check.ts:2093-2104' range holds the conditional-conflict prose ('it is not waivable'); the 'symspec waive add <blocking-code> --ref' text is at ~:2127-2132 (excluded-from-formal), and further waive remedies sit in the relational (~:2160), numeric-uncompared (~:2176, ~:2181), number-spelling (~:2196), near-duplicate (~:2223) and open-opposition (~:2279) actions, in semantic.ts (~:538-569 'declare them distinct with the demotion's repair waiver', ~:954), numeric-contradiction.ts (~:209, :832, :874, :1046, :1067-1082, :1256-1263), number-spelling.ts (~:118, :126) and quantity-alias.ts (~:254).",
+      "oracles": [
+        { "type": "exact", "check": "report-corpus negative guard: no emitted demotion action or finding suggestion for a never-class code contains 'waive' (needs the corpus run to read action and suggestion text, which report-corpus.ts deliberately leaves out of the snapshot row)", "strength": "strong" },
+        { "type": "human", "check": "whether the replacement remedy is the right one for each code", "strength": "partial" },
+        { "type": "exact", "check": "the pinned red-team rounds and package-boundary.test.ts unchanged (no engine logic change)", "strength": "strong" }
+      ],
+      "consequence": { "class": "instruction drift", "status": "proposed" },
+      "ceiling": { "level": 1, "status": "proposed", "why": "prose: the negative guard is exact, the remedy's correctness is a human reading" },
+      "trust": { "tags": ["trust boundary"], "status": "proposed", "crosses": "engine text reaches the agent as instructions" }
+    },
+    {
+      "id": "gaming-harness",
+      "name": "gaming harness: the waive-by-code move and its KNOWN_ESCAPES rows",
+      "layer": "testing (trusted base)",
+      "paths": ["src/testing/gaming.ts", "src/testing/gaming.test.ts", "src/testing/gaming.shard-a.test.ts", "src/testing/gaming.shard-i.test.ts", "src/testing/__snapshots__/gaming-a.txt", "src/testing/__snapshots__/gaming-moves.txt"],
+      "notes": "Move 'waive-by-code' (~gaming.ts:1139) waives every code the baseline report shows, document-wide. 11 KNOWN_ESCAPES rows name it (~:1786-1805): 10 formal fixtures plus derives-cycle (FND_CYCLE, structural). The opposition fixtures are not among them. The registry test requires every op verb to map to a move that emits it (waive -> waive-by-code, ~:2048). The fixture waived-blocking-lint (~:686) commits refs-form GTWR_R7_VAGUE waivers; its control twin is CLEAN verified=true at base (gaming-f.txt).",
+      "oracles": [
+        { "type": "exact", "check": "exactness: every KNOWN_ESCAPES row still escapes, and no clean moved run lacks a row (I-5), across all shards", "strength": "strong" },
+        { "type": "exact", "check": "the gaming shard snapshots and gaming-moves.txt diff", "strength": "strong" }
+      ],
+      "consequence": { "class": "gate drift", "status": "proposed" },
+      "ceiling": { "level": 1, "status": "proposed", "why": "the harness is the oracle for escapes; its own evidence is its exactness test and planted sabotage" },
+      "trust": { "tags": ["trusted base"], "status": "proposed", "crosses": "measures what an agent can do through the real write path (MUTATE_OPTIONS)" }
+    },
+    {
+      "id": "report-corpus",
+      "name": "report-corpus snapshot",
+      "layer": "testing (trusted base)",
+      "paths": ["src/testing/report-corpus.ts", "src/testing/report-corpus.test.ts", "src/testing/__snapshots__/report-corpus.txt"],
+      "notes": "One row per corpus document: exit, verified, findings (code/severity/requirements), demotions (reason/requirements). Messages, suggestions and evidence are left out on purpose. Run with ARMED knobs and fixtureEmbedder, --strict. Legacy documents are meant to check byte-identically except the two deliberate deltas (plan 6).",
+      "oracles": [
+        { "type": "exact", "check": "snapshot diff: each changed row is a reviewable verdict delta, attributable to AC-5-6", "strength": "strong" }
+      ],
+      "consequence": { "class": "gate drift", "status": "proposed" },
+      "ceiling": { "level": 1, "status": "proposed", "why": "a pinned snapshot; its strength is that a person reads every changed row" },
+      "trust": { "tags": ["trusted base"], "status": "proposed" }
+    },
+    {
+      "id": "release",
+      "name": "release: breaking change as the next major",
+      "layer": "build",
+      "paths": ["package.json", "RELEASING.md", "src/publish.test.ts", "src/app/runtime/version.ts"],
+      "notes": "Base version 1.2.1. The story ships S3 as feat! together with the feat/controlled-vocabulary dev line. The version lives in four files asserted to agree.",
+      "oracles": [
+        { "type": "exact", "check": "publish.test.ts version agreement; the commit carries '!' or a BREAKING CHANGE footer so release-please computes a major", "strength": "strong" }
+      ],
+      "consequence": { "class": "reviewed-waiver loss", "status": "proposed" },
+      "ceiling": { "level": 1, "status": "proposed", "why": "metadata; the release workflow is outside the run" },
+      "trust": { "tags": ["external endpoint"], "status": "proposed", "crosses": "npm publish through OIDC (release workflow, not run here)" }
+    }
+  ],
+  "dataStores": [
+    { "id": "requirements-document", "what": "the requirements JSON document (--file / SYMSPEC_DOC / ./requirements.json); its waivers[] is the stored-waiver table", "writers": ["waive-fold (apply, symspec waive)", "import-waivers", "a person or agent editing the JSON by hand", "any older symspec build"], "readers": ["check-compat", "engine-waiver-scope", "repair-advice"] },
+    { "id": "symspec-config", "what": "symspec.config.json, which pins strict and the gate's run settings (D8 discovery)", "writers": ["the owner, under CODEOWNERS (D5)"], "readers": ["check"] }
+  ],
+  "externalEndpoints": [
+    { "id": "embedding-model", "what": "the pinned local embedding model; tests use the stub or the harness's orthogonal fixture embedder, never a download", "note": "not crossed by S3" },
+    { "id": "npm-registry", "what": "release publish through OIDC", "note": "release workflow only" }
+  ]
+}

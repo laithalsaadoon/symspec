@@ -1,0 +1,1579 @@
+{
+  "schemaVersion": 1,
+  "role": "release auditor",
+  "job": 1262,
+  "run": 2,
+  "swarm": "vdd-2-s3-waivability",
+  "boardItem": 252,
+  "inputBoardItem": 206,
+  "auditedHead": "f0d48b71e9e9c03b9f1df23ec864821b86d287fa",
+  "base": "0fca0433eb82431936c8edd81f7ccf3464d6f52e",
+  "branch": "vdd/s3-waivability",
+  "generatedAtUtc": "2026-10-06T07:09:51.195852+00:00",
+  "verdict": "FAIL: three planted-defect findings; two static-guard escapes and the required unused-export plant",
+  "blockingFindings": 3,
+  "tamperFound": false,
+  "environment": {
+    "node": "24.21.0",
+    "pnpm": "11.21.0",
+    "SYMSPEC_EMBED_STUB": "1",
+    "NO_COLOR": "1",
+    "CI": "1"
+  },
+  "findings": [
+    {
+      "id": "AUDIT-1",
+      "severity": "blocking",
+      "kind": "gate accepts its planted defect",
+      "related": "review R10; threat T31; rulings R63/R64",
+      "title": "The static command guard misses a local-array assembly",
+      "evidence": {
+        "id": "R10",
+        "source": "export const auditCommand = (id: string): string => {\n  const words = ['symspec', 'show', id]\n  return words.join(' ')\n}\n",
+        "scan": {
+          "files": 122,
+          "sites": 302,
+          "prose": 29,
+          "flagged": [],
+          "plantSites": [],
+          "plantDiagnostics": []
+        },
+        "gate": {
+          "exit": 0,
+          "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-R10.log",
+          "report": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-R10-vitest.json",
+          "counts": {
+            "numPassedTests": 4,
+            "numFailedTests": 0,
+            "numPendingTests": 44,
+            "numTotalTests": 48
+          },
+          "evidence": {
+            "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-R10-vitest.json",
+            "bytes": 24465,
+            "sha256": "d92c63433ad8c5f71b453923d68ca53ac8c0205c64b7cfea7eb163499898e601"
+          }
+        },
+        "syntax": {
+          "command": "symspec show it's",
+          "exit": 2,
+          "stderr": "bash: line 1: unexpected EOF while looking for matching `''\n",
+          "executed": false
+        },
+        "target": "the four committed static shell-safety guard tests inside the vitest leg",
+        "command": "pnpm exec vitest run src/shell-sites.test.ts -t '^the static shell-safety guard ' --reporter=json",
+        "scopeLimit": "Targeted static guard run, not a claim that all pnpm check legs pass with a new unused exported helper. R63 explicitly scans every non-test source file, including unreferenced ones."
+      },
+      "whyBlocking": "The gate passes its own real defect plant, the explicit blocking condition in audit-3. This is not inferred from an old review verdict.",
+      "impactLimit": "No claim that the clean product currently emits this added command. The independently reproduced defect is in the new checker."
+    },
+    {
+      "id": "AUDIT-2",
+      "severity": "blocking",
+      "kind": "gate accepts its planted defect",
+      "related": "review R13; threat T31; rulings R60/R63/R64",
+      "title": "The static guard accepts shellWord inside a dollar-single-quoted word",
+      "evidence": {
+        "id": "R13",
+        "source": "import { shellWord } from './domain/engine/core/shell-word.ts'\nexport const auditCommand = (id: string): string =>\n  \"symspec show $'\" + shellWord(id) + \"'\"\n",
+        "scan": {
+          "files": 122,
+          "sites": 303,
+          "prose": 29,
+          "flagged": [],
+          "plantSites": [
+            {
+              "file": "src/audit-guard-plant.ts",
+              "line": 3,
+              "form": "concat",
+              "extent": "whole",
+              "command": "symspec show $'${shellWord(id)}'",
+              "holes": [
+                "${shellWord(id)}: shell-word helper"
+              ],
+              "problems": []
+            }
+          ],
+          "plantDiagnostics": []
+        },
+        "gate": {
+          "exit": 0,
+          "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-R13.log",
+          "report": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-R13-vitest.json",
+          "counts": {
+            "numPassedTests": 4,
+            "numFailedTests": 0,
+            "numPendingTests": 44,
+            "numTotalTests": 48
+          },
+          "evidence": {
+            "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-R13-vitest.json",
+            "bytes": 24466,
+            "sha256": "df63315a2084ee209706b86885c3752ddbfb054246f18465350c3934399dab64"
+          }
+        },
+        "syntax": {
+          "command": "symspec show $'\"it's\"'",
+          "exit": 2,
+          "stderr": "bash: line 1: unexpected EOF while looking for matching `\"'\n",
+          "executed": false
+        },
+        "target": "the four committed static shell-safety guard tests inside the vitest leg",
+        "command": "pnpm exec vitest run src/shell-sites.test.ts -t '^the static shell-safety guard ' --reporter=json",
+        "scopeLimit": "Targeted static guard run, not a claim that all pnpm check legs pass with a new unused exported helper. R63 explicitly scans every non-test source file, including unreferenced ones."
+      },
+      "whyBlocking": "The guard sees the unsafe site but accepts it; its committed tests exit 0 while bash -n rejects the rendered harmless apostrophe command.",
+      "impactLimit": "No claim that the clean product currently uses this quote context. The independently reproduced defect is in the new checker."
+    },
+    {
+      "id": "AUDIT-3",
+      "severity": "nonblocking",
+      "kind": "literal-only scope assertion is false",
+      "title": "The engine diff includes a pure formatting helper, calls, imports, a type marker and a prose-variable removal",
+      "evidence": {
+        "files": [
+          "src/domain/engine/core/shell-word.ts",
+          "src/domain/engine/formal/graph.ts",
+          "src/domain/engine/formal/quantity-alias.ts",
+          "src/domain/engine/formal/semantic.ts",
+          "src/domain/engine/pipeline/check.ts",
+          "src/domain/reachability/reachability-report.ts",
+          "src/domain/terminology/terminology.ts"
+        ],
+        "rulings": [
+          "R56",
+          "R60",
+          "R63",
+          "R64"
+        ],
+        "astResult": "13 of 13 changed existing tier files match after the explicitly documented output-only normalization; one new 74-line pure string helper is inspected separately."
+      },
+      "whyNonblocking": "These are ruled formatting changes, not test/gate tampering. Audit-3 separately asks to establish that finding, demotion and verified decisions are preserved; that check passes. The older literal/comment-only assertion must not be reported as true."
+    },
+    {
+      "id": "AUDIT-4",
+      "severity": "blocking",
+      "kind": "required unused-export plant survives whole gate",
+      "title": "Knip export checking is deliberately disabled in the trusted base",
+      "file": "knip.jsonc:28",
+      "evidence": {
+        "leg": "knip",
+        "path": "src/domain/engine/core/shell-word.ts",
+        "exit": 0,
+        "seconds": 138.308,
+        "expected": "auditUnusedExport",
+        "expectedFound": false,
+        "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-knip.log",
+        "command": "pnpm check",
+        "verdict": "fail: the whole gate accepts the required unused-export plant",
+        "patch": "diff --git a/src/domain/engine/core/shell-word.ts b/src/domain/engine/core/shell-word.ts\nindex d461b8a..cf9753b 100644\n--- a/src/domain/engine/core/shell-word.ts\n+++ b/src/domain/engine/core/shell-word.ts\n@@ -72,3 +72,5 @@ const QUOTED_WORD = /^(?:\"(?:[^\"$`\\\\\\n\\r]|\\\\[\"$`\\\\])*\"|\\$'(?:\\\\x60|\\\\n|\\\\r)+')+$\n  */\n export const asShellArg = (word: string): ShellArg =>\n   (BARE_WORD.test(word) || QUOTED_WORD.test(word) ? word : shellQuoted(word)) as ShellArg\n+\n+export const auditUnusedExport = 'audit'\n",
+        "evidence": {
+          "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-knip.log",
+          "bytes": 1545,
+          "sha256": "c2cb5b3349315f061a017e4343131f568c88297df9fcafc11c88d72b19036676"
+        },
+        "failureLines": [
+          " Test Files  113 passed (113)",
+          "      Tests  3705 passed (3705)"
+        ],
+        "shortCircuit": "All seven legs ran and exited 0, including 113 files / 3705 tests and knip."
+      },
+      "baseStatus": "The same exports: off and types: off rules are present verbatim at 0fca0433eb82. The trusted-base diff is empty.",
+      "whyBlocking": "Item 206 explicitly requires an unused-export plant to make pnpm check nonzero. This plant is accepted by the entire seven-leg command, meeting the task's gate-does-not-fail-on-its-plant blocking condition.",
+      "impactLimit": "Pre-existing configuration/scope mismatch with the requested audit criterion, not tampering or a regression introduced by S3. Knip does gate other configured issue classes; this evidence does not claim it detects nothing."
+    }
+  ],
+  "plants": [
+    {
+      "leg": "biome",
+      "path": "src/app/runtime/version.ts",
+      "exit": 1,
+      "seconds": 1.855,
+      "expected": "lint/suspicious/noDebugger",
+      "expectedFound": true,
+      "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-biome.log",
+      "command": "pnpm check",
+      "verdict": "pass: intended gate rejected its plant",
+      "patch": "diff --git a/src/app/runtime/version.ts b/src/app/runtime/version.ts\nindex cf6e254..fe61d60 100644\n--- a/src/app/runtime/version.ts\n+++ b/src/app/runtime/version.ts\n@@ -25,3 +25,6 @@\n  * negotiate.\n  */\n export const VERSION = '1.2.1' // x-release-please-version\n+\n+// Audit plant: forbidden debugger statement.\n+debugger\n",
+      "evidence": {
+        "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-biome.log",
+        "bytes": 4503,
+        "sha256": "f5145bec8d5d6c73db65eade82f5cbbd00aef7b796ca9a5e56730b3192779ddb"
+      },
+      "failureLines": [
+        "\u001b[0msrc/app/runtime/version.ts\u001b[0m\u001b[0m:\u001b[0m\u001b[0m30\u001b[0m\u001b[0m:\u001b[0m\u001b[0m1\u001b[0m\u001b[0m \u001b[0m\u001b[0m\u001b]8;;https://biomejs.dev/linter/rules/no-debugger\u001b\\lint/suspicious/noDebugger\u001b]8;;\u001b\\\u001b[0m\u001b[0m \u001b[0m\u001b[0m\u001b[30m\u001b[47m FIXABLE \u001b[0m\u001b[0m \u001b[0m\u001b[0m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m\u001b[0m",
+        "[ELIFECYCLE] Command failed with exit code 1."
+      ],
+      "shortCircuit": "The unchanged && pipeline stops at this leg; later legs are not claimed to have run on this plant."
+    },
+    {
+      "leg": "typecheck",
+      "path": "src/app/runtime/version.ts",
+      "exit": 2,
+      "seconds": 22.877,
+      "expected": "TS2322",
+      "expectedFound": true,
+      "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-typecheck.log",
+      "command": "pnpm check",
+      "verdict": "pass: intended gate rejected its plant",
+      "patch": "diff --git a/src/app/runtime/version.ts b/src/app/runtime/version.ts\nindex cf6e254..0bd7c02 100644\n--- a/src/app/runtime/version.ts\n+++ b/src/app/runtime/version.ts\n@@ -25,3 +25,7 @@\n  * negotiate.\n  */\n export const VERSION = '1.2.1' // x-release-please-version\n+\n+// Audit plant: incompatible assignment.\n+const auditValue: number = 'audit'\n+console.log(auditValue)\n",
+      "evidence": {
+        "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-typecheck.log",
+        "bytes": 379,
+        "sha256": "6bfc962732df60333ff3a80dbf2f6aeca16a510a3cfd1ca6a3650103b6bb59f3"
+      },
+      "failureLines": [
+        "src/app/runtime/version.ts(30,7): error TS2322: Type 'string' is not assignable to type 'number'.",
+        "[ELIFECYCLE] Command failed with exit code 2."
+      ],
+      "shortCircuit": "The unchanged && pipeline stops at this leg; later legs are not claimed to have run on this plant."
+    },
+    {
+      "leg": "agents",
+      "path": "AGENTS.md",
+      "exit": 1,
+      "seconds": 27.246,
+      "expected": "AGENTS.md is stale",
+      "expectedFound": true,
+      "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-agents.log",
+      "command": "pnpm check",
+      "verdict": "pass: intended gate rejected its plant",
+      "patch": "diff --git a/AGENTS.md b/AGENTS.md\nindex 83cc402..631d241 100644\n--- a/AGENTS.md\n+++ b/AGENTS.md\n@@ -974,3 +974,5 @@ INCOSE Guide to Writing Requirements rules, all on the `lint` tier.\n | `GTWR_R37_ACRONYM` | An undefined or inconsistently used acronym (R37). |\n | `GTWR_R38_ABBREVIATION` | A non-unit abbreviation (R38). |\n | `GTWR_R40_DECIMAL_FORMAT` | Inconsistent decimal precision across the requirement set (R40). |\n+\n+Audit stale guide.\n",
+      "evidence": {
+        "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-agents.log",
+        "bytes": 507,
+        "sha256": "87774aab468b628421fcff17235602c768029e3cbe138c7b36d61fc4f95408e6"
+      },
+      "failureLines": [
+        "$ tsx scripts/gen-agents.ts --stdout | diff -u AGENTS.md - >/dev/null || (echo \"AGENTS.md is stale — run pnpm gen:agents\" >&2; exit 1)",
+        "AGENTS.md is stale — run pnpm gen:agents",
+        "[ELIFECYCLE] Command failed with exit code 1.",
+        "[ELIFECYCLE] Command failed with exit code 1."
+      ],
+      "shortCircuit": "The unchanged && pipeline stops at this leg; later legs are not claimed to have run on this plant."
+    },
+    {
+      "leg": "reachability",
+      "path": "src/domain/reachability/reachability.ts",
+      "exit": 1,
+      "seconds": 30.315,
+      "expected": "INFEASIBLE",
+      "expectedFound": true,
+      "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-reachability.log",
+      "command": "pnpm check",
+      "verdict": "pass: intended gate rejected its plant",
+      "patch": "diff --git a/src/domain/reachability/reachability.ts b/src/domain/reachability/reachability.ts\nindex 58c302a..b6b9168 100644\n--- a/src/domain/reachability/reachability.ts\n+++ b/src/domain/reachability/reachability.ts\n@@ -209,8 +209,8 @@ export type ReachabilityVerdict = 'unreachable' | 'reachable' | 'unknown'\n  * alternative is treating an unrecognized code as a proof.\n  */\n export const verdictOfLbool = (lbool: number): ReachabilityVerdict => {\n-  if (lbool === -1) return 'unreachable'\n-  if (lbool === 1) return 'reachable'\n+  if (lbool === -1) return 'reachable'\n+  if (lbool === 1) return 'unreachable'\n   return 'unknown'\n }\n \n",
+      "evidence": {
+        "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-reachability.log",
+        "bytes": 840,
+        "sha256": "d8060aa14bd50d859e244b1e6576416c9fc3a99de68b8d520184d1468997e2a5"
+      },
+      "failureLines": [
+        "INFEASIBLE — the PROVABLE fixture did not prove (got UNKNOWN). Either the encoding stopped being able to infer the invariant, or the lbool→verdict polarity is inverted — do NOT ship.",
+        "[ELIFECYCLE] Command failed with exit code 1.",
+        "[ELIFECYCLE] Command failed with exit code 1."
+      ],
+      "shortCircuit": "The unchanged && pipeline stops at this leg; later legs are not claimed to have run on this plant."
+    },
+    {
+      "leg": "build",
+      "path": "tsdown.config.ts",
+      "exit": 1,
+      "seconds": 14.691,
+      "expected": "AUDIT_BUILD_BREAK",
+      "expectedFound": true,
+      "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-build.log",
+      "command": "pnpm check",
+      "verdict": "pass: intended gate rejected its plant",
+      "patch": "diff --git a/tsdown.config.ts b/tsdown.config.ts\nindex a36b5c0..6ac75cd 100644\n--- a/tsdown.config.ts\n+++ b/tsdown.config.ts\n@@ -15,6 +15,8 @@ import { defineConfig } from 'tsdown'\n  */\n const BUNDLED_DEPS = [/^effect(\\/|$)/, /^@effect\\//, 'ini', 'toml', 'yaml']\n \n+throw new Error('AUDIT_BUILD_BREAK')\n+\n export default defineConfig({\n   entry: ['src/main.ts'],\n   format: ['esm'],\n",
+      "evidence": {
+        "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-build.log",
+        "bytes": 2990,
+        "sha256": "db90f789bab4c21d5950452b1d39ada8471ed4ae1223fd9aa5e1cd863564aa37"
+      },
+      "failureLines": [
+        " ERROR  Error: AUDIT_BUILD_BREAK",
+        "[ELIFECYCLE] Command failed with exit code 1.",
+        "[ELIFECYCLE] Command failed with exit code 1."
+      ],
+      "shortCircuit": "The unchanged && pipeline stops at this leg; later legs are not claimed to have run on this plant."
+    },
+    {
+      "leg": "vitest",
+      "path": "src/app/runtime/version.test.ts",
+      "exit": 1,
+      "seconds": 165.457,
+      "expected": "audit planted failing assertion",
+      "expectedFound": true,
+      "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-vitest.log",
+      "command": "pnpm check",
+      "verdict": "pass: intended gate rejected its plant",
+      "patch": "diff --git a/src/app/runtime/version.test.ts b/src/app/runtime/version.test.ts\nindex 70d62db..7fedace 100644\n--- a/src/app/runtime/version.test.ts\n+++ b/src/app/runtime/version.test.ts\n@@ -23,3 +23,7 @@ describe('VERSION', () => {\n     expect(VERSION).toMatch(/^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$/)\n   })\n })\n+\n+it('audit planted failing assertion', () => {\n+  expect(true).toBe(false)\n+})\n",
+      "evidence": {
+        "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-vitest.log",
+        "bytes": 2209,
+        "sha256": "365cfd1a902906be8aaa3c00ec125cc89a9430bc20b01b5a335e8c278139aa23"
+      },
+      "failureLines": [
+        " ❯ src/app/runtime/version.test.ts (3 tests | 1 failed) 53ms",
+        "   × audit planted failing assertion 19ms",
+        " FAIL  src/app/runtime/version.test.ts > audit planted failing assertion",
+        "     27| it('audit planted failing assertion', () => {",
+        " Test Files  1 failed | 112 passed (113)",
+        "      Tests  1 failed | 3705 passed (3706)",
+        "[ELIFECYCLE] Command failed with exit code 1."
+      ],
+      "shortCircuit": "The unchanged && pipeline stops at this leg; later legs are not claimed to have run on this plant."
+    },
+    {
+      "leg": "knip",
+      "path": "src/domain/engine/core/shell-word.ts",
+      "exit": 0,
+      "seconds": 138.308,
+      "expected": "auditUnusedExport",
+      "expectedFound": false,
+      "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-knip.log",
+      "command": "pnpm check",
+      "verdict": "fail: the whole gate accepts the required unused-export plant",
+      "patch": "diff --git a/src/domain/engine/core/shell-word.ts b/src/domain/engine/core/shell-word.ts\nindex d461b8a..cf9753b 100644\n--- a/src/domain/engine/core/shell-word.ts\n+++ b/src/domain/engine/core/shell-word.ts\n@@ -72,3 +72,5 @@ const QUOTED_WORD = /^(?:\"(?:[^\"$`\\\\\\n\\r]|\\\\[\"$`\\\\])*\"|\\$'(?:\\\\x60|\\\\n|\\\\r)+')+$\n  */\n export const asShellArg = (word: string): ShellArg =>\n   (BARE_WORD.test(word) || QUOTED_WORD.test(word) ? word : shellQuoted(word)) as ShellArg\n+\n+export const auditUnusedExport = 'audit'\n",
+      "evidence": {
+        "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plant-knip.log",
+        "bytes": 1545,
+        "sha256": "c2cb5b3349315f061a017e4343131f568c88297df9fcafc11c88d72b19036676"
+      },
+      "failureLines": [
+        " Test Files  113 passed (113)",
+        "      Tests  3705 passed (3705)"
+      ],
+      "shortCircuit": "All seven legs ran and exited 0, including 113 files / 3705 tests and knip."
+    }
+  ],
+  "checks": [
+    {
+      "id": "1",
+      "name": "trusted base",
+      "verdict": "pass",
+      "evidence": {
+        "paths": [
+          "scripts/",
+          "biome.json",
+          "knip.jsonc",
+          "vitest.config.ts",
+          "tsconfig.json",
+          "tsdown.config.ts",
+          "lefthook.yml",
+          "mise.toml",
+          ".github/",
+          "release-please-config.json",
+          ".release-please-manifest.json",
+          "pnpm-lock.yaml",
+          "CHANGELOG.md"
+        ],
+        "diff": ""
+      },
+      "packageChangedKeys": [
+        "description",
+        "repository",
+        "homepage",
+        "bugs"
+      ],
+      "descriptionDelta": "89 stable codes → 90 stable codes only",
+      "dependenciesAndScripts": "byte-identical in package.json; pnpm-lock.yaml unchanged"
+    },
+    {
+      "id": "2",
+      "name": "tests, escaped-case ledger and snapshots",
+      "verdict": "pass with ruled replacements",
+      "baseTestFiles": 108,
+      "headTestFiles": 113,
+      "deletedTestFiles": [],
+      "expectAndAssertCallSites": {
+        "base": 4805,
+        "head": 5427
+      },
+      "filesWithDecliningCallSites": [],
+      "skipTodoOnlyCalls": [],
+      "method": "Independent TypeScript AST inventory of every tracked *.test.ts at base and head; reviewed every diff hunk with removed test text, including src/cli.test.ts and src/publish.test.ts, against its ruling comments. These are static expect/assert call counts, not expanded runtime cases. Old test names are not claimed unchanged.",
+      "rulingReview": [
+        {
+          "files": [
+            "src/app/operations/check.test.ts",
+            "src/domain/advice/repair.test.ts"
+          ],
+          "rulings": [
+            "R2",
+            "R15",
+            "R29"
+          ],
+          "result": "Old successful never-class waiver discharge tests are replaced by no-waive / inert-waiver tests. Existing pair growth, changed text and four-cycle safety assertions remain or now require every original pair to remain demoted.",
+          "verdict": "pass: replacement matches named ruling; no unruled weakening found"
+        },
+        {
+          "files": [
+            "src/app/operations/import.test.ts",
+            "src/cli.test.ts"
+          ],
+          "rulings": [
+            "R5",
+            "R10",
+            "R13",
+            "R37"
+          ],
+          "result": "Unscoped import rows now must be refused and counted on their original lines; single refs become refs plus hash; unresolved refs are refused rather than widened. The non-waiver side-table, required row counts, dry-run and no-write checks remain.",
+          "verdict": "pass: replacement matches named ruling; no unruled weakening found"
+        },
+        {
+          "files": [
+            "src/domain/compat.test.ts",
+            "src/app/operations/mutation.test.ts"
+          ],
+          "rulings": [
+            "R3",
+            "R5",
+            "R16",
+            "R39"
+          ],
+          "result": "The binding/roundtrip controls use an eligible scoped code and explicit hash so they still exercise the guarded behavior. New assertions require bare and stale waivers to be inert.",
+          "verdict": "pass: replacement matches named ruling; no unruled weakening found"
+        },
+        {
+          "files": [
+            "src/app/operations/roundtrip.test.ts",
+            "src/testing/report-corpus.test.ts",
+            "src/testing/gaming.ts"
+          ],
+          "rulings": [
+            "R26",
+            "R53"
+          ],
+          "result": "The blocking-lint waiver exchanges excluded-from-formal for waived-blocking-lint, so old progress-to-zero and verified:true expectations are replaced by exact demotion and verified:false expectations. The old clean control remains as the separately asserted corpus twin. The two deletion escapes remain.",
+          "verdict": "pass: replacement matches named ruling; no unruled weakening found"
+        },
+        {
+          "files": [
+            "src/app/runtime/errors.test.ts",
+            "src/app/runtime/catalog.test.ts",
+            "src/app/runtime/agents-doc.test.ts",
+            "src/app/operations/index.test.ts",
+            "src/app/runtime/signal-classes.test.ts",
+            "src/domain/requirements/document.test.ts"
+          ],
+          "rulings": [
+            "R47",
+            "R48",
+            "R49"
+          ],
+          "result": "Append ERR_WAIVER_REFUSED (23→24 ERR; 89→90 total), waived-blocking-lint and waiver-inert. Fixed totals and old catalog ordering remain pinned. Derived offsets are supplemented by exact total and last-two-code assertions.",
+          "verdict": "pass: replacement matches named ruling; no unruled weakening found"
+        },
+        {
+          "files": [
+            "src/app/runtime/scope.test.ts",
+            "src/publish.test.ts"
+          ],
+          "rulings": [
+            "R30",
+            "R51",
+            "RH-R1",
+            "RH-R3"
+          ],
+          "result": "Frozen scope changes are explicit. pinnedConfig is excluded from one loop only because RH-009 independently compares the same full literal. The old homepage substring is replaced by an exact new URL in RH-001, alongside repository and bugs URL pins.",
+          "verdict": "pass: replacement matches named ruling; no unruled weakening found"
+        },
+        {
+          "files": [
+            "src/adapters/embedding/embedder.test.ts",
+            "src/domain/engine/formal/preposition-variant.test.ts",
+            "src/domain/engine/pipeline/verified.test.ts",
+            "src/app/runtime/catalog.test.ts"
+          ],
+          "rulings": [
+            "R56",
+            "R60",
+            "R61"
+          ],
+          "result": "Command expectations switch from unsupported nested add forms to the full flat form. Finding identities, polarity and demotion assertions remain. Several negative checks explicitly forbid the prior spelling.",
+          "verdict": "pass: replacement matches named ruling; no unruled weakening found"
+        }
+      ],
+      "escapes": {
+        "baseCount": 62,
+        "headCount": 51,
+        "baseDistinct": 62,
+        "headDistinct": 51,
+        "removed": [
+          {
+            "fixture": "one-trigger-contradiction",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable."
+          },
+          {
+            "fixture": "contrary-pair",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable."
+          },
+          {
+            "fixture": "registered-contrary",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable."
+          },
+          {
+            "fixture": "numeric-conflict",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable."
+          },
+          {
+            "fixture": "temporal-conflict",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable."
+          },
+          {
+            "fixture": "glossary-bridged",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable."
+          },
+          {
+            "fixture": "term-bridged",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable."
+          },
+          {
+            "fixture": "waived-blocking-lint",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable."
+          },
+          {
+            "fixture": "dangling-target",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable."
+          },
+          {
+            "fixture": "overlapping-contrary",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses an error-severity FORMAL finding, and a waived finding still counts as a comparison, so the run verifies. AC-5-6 makes formal findings unwaivable."
+          },
+          {
+            "fixture": "derives-cycle",
+            "move": "waive-by-code",
+            "closedBy": "AC-5-6",
+            "why": "A code-only waiver suppresses FND_CYCLE, an error-severity structural finding, and nothing else is wrong, so the run verifies. AC-5-6 refuses a waiver that does not name the requirement ids and content hash it was raised on; a structural finding stays waivable only that way (`scoped`)."
+          }
+        ],
+        "added": [],
+        "retainedRowsChanged": [],
+        "headByOwner": {
+          "AC-5-2": 26,
+          "AC-5-9": 14,
+          "AC-4-6": 2,
+          "S4 / AC-4-2 (cross-table fence + check twin)": 4,
+          "AC-5-9 (drift on the conflict signal an alias removed; F1 resolved-by-unification must not excuse it)": 2,
+          "AC-5-9 (drift on the conflict signal a contrary axiom discharged; F1 resolved-by-unification must not excuse it)": 1,
+          "AC-5-7": 2
+        }
+      },
+      "snapshotCommits": {
+        "src/testing/__snapshots__/gaming-a.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ],
+        "src/testing/__snapshots__/gaming-b.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ],
+        "src/testing/__snapshots__/gaming-c.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ],
+        "src/testing/__snapshots__/gaming-d.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ],
+        "src/testing/__snapshots__/gaming-e.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ],
+        "src/testing/__snapshots__/gaming-f.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ],
+        "src/testing/__snapshots__/gaming-g.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ],
+        "src/testing/__snapshots__/gaming-h.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ],
+        "src/testing/__snapshots__/gaming-i.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ],
+        "src/testing/__snapshots__/gaming-moves.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ],
+        "src/testing/__snapshots__/report-corpus.txt": [
+          "7afb20e6bfbd4b937465662ceaba3c60742e9bc2"
+        ]
+      },
+      "corpus": {
+        "baseRows": 53,
+        "headRows": 53,
+        "unchanged": 51,
+        "removed": [
+          "gaming-control/waived-blocking-lint\texit=0\tverified=true\tfindings=FND_AMBIGUOUS_VAGUE/info[WBL-R1] FND_AMBIGUOUS_VAGUE/info[WBL-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R1] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R2]\tdemotions=-",
+          "gaming/waived-blocking-lint\texit=1\tverified=true\tfindings=FND_AMBIGUOUS_VAGUE/info[WBL-R1] FND_AMBIGUOUS_VAGUE/info[WBL-R2] FND_CONTRADICTION/error[WBL-R1,WBL-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[WBL-R2] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R1] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R2]\tdemotions=-"
+        ],
+        "added": [
+          "gaming-control/waived-blocking-lint\texit=3\tverified=false\tfindings=FND_AMBIGUOUS_VAGUE/info[WBL-R1] FND_AMBIGUOUS_VAGUE/info[WBL-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R1] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R2]\tdemotions=waived-blocking-lint[WBL-R1,WBL-R2]",
+          "gaming/waived-blocking-lint\texit=1\tverified=false\tfindings=FND_AMBIGUOUS_VAGUE/info[WBL-R1] FND_AMBIGUOUS_VAGUE/info[WBL-R2] FND_CONTRADICTION/error[WBL-R1,WBL-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[WBL-R2] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R1] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R2]\tdemotions=waived-blocking-lint[WBL-R1,WBL-R2]"
+        ]
+      },
+      "snapshotVerdict": "Every changed snapshot line was read against 7afb20e's detailed body: 11 snapshots all changed only there; waive move rows, blocked-lint demotion rows, its no-longer-clean control and the two corpus rows are fully attributed. No unrelated row changed.",
+      "evidence": [
+        {
+          "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/test-scan.json",
+          "bytes": 1675979,
+          "sha256": "6c6f09f8aa819b0fefcb1b0bb2253b9062839881ddfd396c5ed38ecdc89d085d"
+        },
+        {
+          "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/changed-test-hunks.diff",
+          "bytes": 82401,
+          "sha256": "15671b256920b186ad265e219fc85b2ad88568837a5eaeda0c207ca5f7724544"
+        },
+        {
+          "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/root-test-hunks.diff",
+          "bytes": 5384,
+          "sha256": "478f9b169ac4bda8fa60a36b3df2f73f507751b53e9c94afacbf1b9138138564"
+        },
+        {
+          "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/snapshots.diff",
+          "bytes": 16599,
+          "sha256": "b116df3aebf0c60e54fa7344f7dd22a2f06f4e249b26c3bf2beade344f3bdfe4"
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "name": "literal/comment-only engine condition",
+      "verdict": "not literally satisfied; nonblocking ruled formatting exception",
+      "finding": "AUDIT-3",
+      "ast": [
+        {
+          "file": "src/domain/engine/core/shell-word.ts",
+          "added": true,
+          "lines": 74
+        },
+        {
+          "file": "src/domain/engine/formal/codes.ts",
+          "literal-only": true,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/engine/formal/coverage.ts",
+          "literal-only": true,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/engine/formal/graph.ts",
+          "literal-only": false,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/engine/formal/number-spelling.ts",
+          "literal-only": true,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/engine/formal/numeric-contradiction.ts",
+          "literal-only": true,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/engine/formal/quantity-alias.ts",
+          "literal-only": false,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/engine/formal/semantic.ts",
+          "literal-only": false,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/engine/formal/similar.ts",
+          "literal-only": true,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/engine/pipeline/check.ts",
+          "literal-only": false,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/reachability/reachability-codes.ts",
+          "literal-only": true,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/reachability/reachability-report.ts",
+          "literal-only": false,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/terminology/terminology-codes.ts",
+          "literal-only": true,
+          "shell-normalized": true,
+          "output-fields": true
+        },
+        {
+          "file": "src/domain/terminology/terminology.ts",
+          "literal-only": false,
+          "shell-normalized": true,
+          "output-fields": true
+        }
+      ],
+      "normalization": [
+        "Parse base and head with TypeScript 6.0.3; walk full AST with comments/trivia excluded, preserving all non-string tokens, identifiers, operators, branches and calls except the explicit formatting cases below.",
+        "Replace literal text with a sentinel; flatten string-concatenation/template fragments while preserving all interpolated expressions. All literal changes were separately reviewed in engine.diff and extended-engine.diff: descriptions, messages, actions, command strings only.",
+        "Ignore imports of shell-word.ts; unwrap shellQuoted/shellWord/asShellArg to their original argument for comparison. These helpers are pure string renderers.",
+        "Remove only semantic.ts's exact prose-only const waiver declaration and its string interpolation; the deleted literal and sole use were checked.",
+        "For reachability-report.ts only: normalize docPathWord to docPath, ShellArg annotation to string and the new const docPath = asShellArg(docPathWord) output-boundary alias.",
+        "Do not mask message/action property expressions in the claimed comparison: the shell-normalized result is used, not the broader output-fields exploratory result."
+      ],
+      "evidence": [
+        {
+          "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/scan.mjs",
+          "bytes": 6064,
+          "sha256": "16098ac69bbba3230347e0729bc417ec1c5d5f0b2377f59e149cff76d8db8feb"
+        },
+        {
+          "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/engine-scan.json",
+          "bytes": 2009,
+          "sha256": "e95227f84feab7d9abfaece6ff64879acd3fee94466505d9fae02c6fbce6796a"
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "name": "commit grammar",
+      "verdict": "pass",
+      "evidence": {
+        "total": 47,
+        "merges": 1,
+        "nonmerge": 46,
+        "nonconventional": [],
+        "withoutBehaviors": [],
+        "breaking": [
+          {
+            "hash": "7afb20e6bfbd4b937465662ceaba3c60742e9bc2",
+            "subject": "feat(waivers)!: enforce waivability: refuse never-class and unscoped waivers, inert stored ones",
+            "merge": false,
+            "conventional": true,
+            "behaviors": true,
+            "breakingSubject": true,
+            "breakingFooter": true
+          }
+        ]
+      },
+      "scope": "Conventional Commits syntax and Behaviors paragraph required by this task; not the unrelated worked-example scope vocabulary. Exactly 46 nonmerge commits examined, independently matching rev-list; merge 2d3e5fe excepted."
+    },
+    {
+      "id": "5",
+      "name": "plant per seven pnpm check legs",
+      "verdict": "fail: 6 plants rejected at intended legs; required unused-export plant survives",
+      "plants": [
+        "biome",
+        "typecheck",
+        "agents",
+        "reachability",
+        "build",
+        "vitest",
+        "knip"
+      ],
+      "finding": "AUDIT-4",
+      "baseline": "fresh unmodified f0d48b7 full gate exits 0",
+      "note": "Knip explicitly disables exports checking in unchanged configuration. The new static guard's two additional failures are recorded separately in check 10."
+    },
+    {
+      "id": "6",
+      "name": "receipt factual checks",
+      "verdict": "pass: checked claims match records and cheap reruns",
+      "evidence": {
+        "intent": {
+          "offset": 66573,
+          "readingsBytes": 29035,
+          "readingsSha256": "48647db3d1bc5a7670f5ffc4cd6a80457b249265b099ca0d2d07b383395c66f5",
+          "rulingsBytes": 43361,
+          "rulingsSha256": "3f01bd964940ce5d389b97d784e52e3cec11f02addb73c7129790c95076cd10d",
+          "combined": "8e350eefe2b81c27eaeb316d0d27300ab764b275f1a24a62143a05eae5d3d3b1"
+        },
+        "threatSha256": "75accbe50a8e84a54cb7b44718b5564294e94a9620db2e8e08be99058aa467ff",
+        "run3RulingsSha256": "ad4c2b2c69878d9bd340600128eaa6d3e071a8f80c1bc448416b563fe1d89798",
+        "testCounts": {
+          "total": 3705,
+          "counts": {
+            "S3-001": 18,
+            "S3-002": 6,
+            "S3-003": 4,
+            "S3-004": 1,
+            "S3-005": 6,
+            "S3-006": 3,
+            "S3-007": 2,
+            "S3-008": 5,
+            "S3-009": 6,
+            "S3-010": 6,
+            "S3-011": 5,
+            "S3-012": 9,
+            "S3-013": 3,
+            "S3-014": 1,
+            "S3-015": 1,
+            "S3-016": 18,
+            "S3-017": 3,
+            "S3-018": 3,
+            "S3-019": 4,
+            "S3-020": 3,
+            "S3-021": 7,
+            "S3-022": 1,
+            "S3-023": 4,
+            "S3-024": 7,
+            "S3-025": 1,
+            "S3-026": 3,
+            "S3-027": 30,
+            "S3-028": 6,
+            "S3-029": 1,
+            "S3-030": 13,
+            "S3-031": 5,
+            "S3-032": 1,
+            "S3-033": 4,
+            "S3-034": 2,
+            "S3-035": 2,
+            "S3-036": 3,
+            "S3-037": 2,
+            "S3-038": 2,
+            "S3-039": 66,
+            "S3-040": 33,
+            "S3-041": 5,
+            "S3-042": 3,
+            "S3-043": 6,
+            "S3-044": 6,
+            "S3-045": 241,
+            "S3-046": 6,
+            "S3-047": 2,
+            "S3-048": 19,
+            "S3-049": 12,
+            "S3-050": 10,
+            "S3-051": 0,
+            "S3-052": 0,
+            "S3-053": 0,
+            "RH-001": 1,
+            "RH-002": 2,
+            "RH-003": 2,
+            "RH-004": 2,
+            "RH-005": 1,
+            "RH-006": 1,
+            "RH-007": 4,
+            "RH-008": 4,
+            "RH-009": 6,
+            "RH-010": 4,
+            "RH-011": 1,
+            "RH-012": 2
+          },
+          "mismatches": []
+        },
+        "absences": [
+          {
+            "file": ".erpaval/vdd/release-hardening/absence-2.json",
+            "verdict": "ok (the 4 new tests are red on ca83661 by assertion; every earlier test passes; RH-010's ELOOP guards kill the reviewer's R1 mutant)",
+            "counts": {
+              "new_red": 4,
+              "new_green": 0,
+              "guards_green": 2,
+              "earlier_passed": 3278,
+              "earlier_failed": 0,
+              "refutations_confirmed": 3,
+              "refutations_refuted": 0
+            },
+            "newTests": null
+          },
+          {
+            "file": ".erpaval/vdd/release-hardening/absence.json",
+            "verdict": "clean",
+            "counts": {
+              "tests": 3276,
+              "passed": 3261,
+              "failed": 15,
+              "files": 108,
+              "files_failed": 5
+            },
+            "newTests": null
+          },
+          {
+            "file": ".erpaval/vdd/s3-waivability/absence-2.json",
+            "verdict": "clean",
+            "counts": {
+              "tests_total": 3488,
+              "failed_total": 163,
+              "passed_total": 3325,
+              "s3_named_total": 312,
+              "s3_named_red": 153,
+              "s3_named_green_existing_guards": 159,
+              "s3_named_broken": 0,
+              "repinned_total": 15,
+              "repinned_red_by_assertion": 15,
+              "repinned_green": 0,
+              "repinned_broken": 0,
+              "earlier_total": 3176,
+              "earlier_failed": 10,
+              "earlier_failed_are_expected_gaming_snapshots": 10,
+              "earlier_passed": 3166,
+              "failure_kinds": {
+                "AssertionError": 153,
+                "snapshot_mismatch_Error": 10
+              },
+              "contract_failing_list": 163
+            },
+            "newTests": null
+          },
+          {
+            "file": ".erpaval/vdd/s3-waivability/absence-4.json",
+            "verdict": "clean",
+            "counts": {
+              "tests": 3561,
+              "failed": 45,
+              "passed": 3516,
+              "brokenSuites": 0
+            },
+            "newTests": {
+              "total": 64,
+              "red": 15,
+              "green": 49,
+              "greenExistingWithKill": 5
+            }
+          },
+          {
+            "file": ".erpaval/vdd/s3-waivability/absence-6.json",
+            "verdict": "clean",
+            "counts": {
+              "tests": 3651,
+              "failed": 30,
+              "passed": 3621,
+              "brokenSuites": 0
+            },
+            "newTests": {
+              "total": 64,
+              "red": 30,
+              "green": 34,
+              "greenWithKill": 7
+            }
+          },
+          {
+            "file": ".erpaval/vdd/s3-waivability/absence-7.json",
+            "verdict": "clean",
+            "counts": {
+              "tests": 3705,
+              "failed": 22,
+              "passed": 3683,
+              "brokenSuites": 0
+            },
+            "newTests": {
+              "total": 48,
+              "red": 22,
+              "green": 26
+            }
+          },
+          {
+            "file": ".erpaval/vdd/s3-waivability/absence.json",
+            "verdict": "passes on base",
+            "counts": {
+              "new_total": 297,
+              "new_red": 138,
+              "new_green": 159,
+              "new_broken": 0,
+              "red_failing_on_assertion": 148,
+              "red_by_snapshot_mismatch_only_not_carrying_S3_id": 10,
+              "failed_total": 148,
+              "contract_failing_list": 148
+            },
+            "newTests": null
+          }
+        ],
+        "attack": {
+          "round1": {
+            "total": 75,
+            "valid": 71,
+            "killed": 50,
+            "survived": 21,
+            "compile_error": 4,
+            "timeout": 0,
+            "files": 21
+          },
+          "round1Percent": 70.4225,
+          "round2": {
+            "total": 47,
+            "valid": 43,
+            "killed": 32,
+            "survived": 11,
+            "compile_error": 4,
+            "timeout": 0,
+            "files": 25,
+            "controlsExcluded": 3
+          },
+          "round2Percent": 74.4186
+        },
+        "threat": {
+          "version": 2,
+          "threats": 34,
+          "resolved": 29,
+          "openCount": 5,
+          "open": [
+            {
+              "id": "T30",
+              "title": "A v4 schema description claims enforcement no check tier performs",
+              "owner": "Laith (rule the RH-012 scope of the parent sentence); spec 007 S6 (V-PARENT: parents exist, are systems, are acyclic) makes it true",
+              "endDate": "next minor release"
+            },
+            {
+              "id": "T31",
+              "title": "The static shell-safety guard misses commands assembled through an array join, inside $'...', or after a backslash",
+              "owner": "Laith",
+              "endDate": "next minor release"
+            },
+            {
+              "id": "T32",
+              "title": "Two pre-existing advice commands name a CLI form this build rejects",
+              "owner": "Laith",
+              "endDate": "next minor release"
+            },
+            {
+              "id": "T33",
+              "title": "Non-zero-exit JSON larger than the pipe capacity is truncated for a slow reader",
+              "owner": "Laith",
+              "endDate": "next minor release"
+            },
+            {
+              "id": "T34",
+              "title": "The prose-command normalizer lets two advice commands regress to forms the CLI rejects (attack C14, C15)",
+              "owner": "Laith",
+              "endDate": "next minor release"
+            }
+          ],
+          "resolvedBelowFloor": 0,
+          "approval": "none: no approvals entry exists for v1 or v2; a person approves this version and accepts each open threat (owner, reason, until) or the model stays unapproved",
+          "howBypassed": "Each resolved threat carries a bypass note: the answer to \"how could the mitigation be bypassed\" from the attack and review ledgers. The ones that are real gaps are threats T30-T34 or assumption TA3, not notes."
+        },
+        "pack": {
+          "version": "1.2.1",
+          "files": [
+            "LICENSE",
+            "README.md",
+            "bin/symspec.mjs",
+            "dist/cli.mjs",
+            "dist/model-cache-PZRCo9qP.mjs",
+            "package.json"
+          ],
+          "entryCount": 6,
+          "bytes": 791393
+        },
+        "manifest": {
+          "errorCodes": 24,
+          "findingCodes": 42,
+          "lintCodes": 24
+        },
+        "releaseRange": {
+          "range": "v1.2.1..7324137",
+          "total": 238,
+          "merges": 32,
+          "nonmerge": 206,
+          "types": {
+            "fix": 133,
+            "feat": 4,
+            "featBreaking": 1,
+            "test": 53,
+            "docs": 15
+          },
+          "computedBumpByCommitRules": "2.0.0",
+          "releasePleaseActuallyRun": false
+        },
+        "review": "The final ledger explicitly retains R10/R13 and R11/R12 blocking and says This tree does not survive review; the receipt quotes it correctly. Audit independently reproduces the checker failures, and does not convert the release review into a pass. Run3 R1-R3 are closed and R4 remains open nonblocking.",
+        "historicalScope": "Absence, attacks, earlier reviews and old gate results cross-checked against their committed records, not all rerun. Latest full check, test listing, manifest, pack, hashes, escape table and new plants rerun in this audit.",
+        "approvals": "No intent or threat approval exists or was created; no approve command was run."
+      }
+    },
+    {
+      "id": "7",
+      "name": "fresh-clone CI-equivalent run",
+      "verdict": "pass",
+      "evidence": {
+        "verdict": "pass",
+        "head": "f0d48b71e9e9c03b9f1df23ec864821b86d287fa",
+        "clone": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/fresh",
+        "cloneCommand": "git clone --no-hardlinks /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-815/repo /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/fresh",
+        "install": "pnpm install --frozen-lockfile",
+        "installExit": 0,
+        "command": "pnpm check",
+        "exit": 0,
+        "legsRun": 7,
+        "legs": [
+          "biome ci .",
+          "tsc --noEmit",
+          "pnpm run check:agents",
+          "pnpm run gate:reachability",
+          "pnpm run build",
+          "vitest run",
+          "pnpm run knip"
+        ],
+        "biomeFiles": 245,
+        "vitestFiles": 113,
+        "vitestPassed": 3705,
+        "vitestFailed": 0,
+        "vitestDurationSeconds": 108.91,
+        "reachability": {
+          "variables": 12,
+          "cleanVerdict": "PROVED_UNDER_HYPOTHESES",
+          "buggyVerdict": "VIOLATED",
+          "worstMs": 826,
+          "budgetMs": 5000
+        },
+        "knip": "completed exit 0",
+        "workflowEquivalence": "Same frozen install and single pnpm check commands as unchanged .github/workflows/check.yml, node 24 and packageManager pnpm@11.21.0. This is a local CI-equivalent run; GitHub Actions was not run by this audit.",
+        "evidence": [
+          {
+            "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/install.log",
+            "bytes": 1729,
+            "sha256": "f5fe87f7fb24df6917f718787264984ce67c9ebbb3c682e1f545ed4121436f4f"
+          },
+          {
+            "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/fresh-check.log",
+            "bytes": 1541,
+            "sha256": "de9c4e61e383a33740b2d4f14216ac49cb6bbadc925e2f6fd770d59657e5bf73"
+          }
+        ]
+      }
+    },
+    {
+      "id": "8",
+      "name": "merge remerge-diff",
+      "verdict": "pass",
+      "commit": "2d3e5fe3368d8a2166f50a32156c26734df253e8",
+      "files": [
+        "AGENTS.md",
+        "src/app/runtime/scope.test.ts",
+        "src/cli.test.ts",
+        "src/domain/requirements/document.test.ts"
+      ],
+      "evidence": {
+        "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/remerge.diff",
+        "bytes": 17556,
+        "sha256": "beca4fee38509b8031b9c6ca80c17a44c82838634489de0373646a265b8d52d6"
+      },
+      "inspection": "Exactly these four files have remerge diff hunks. AGENTS combines generated error rows; scope keeps run3 pinnedConfig wording plus S3 R30/R51 and RH-009 comparison; CLI and document retain both appended suites with closing braces/separators. No fifth file or undocumented resolution was found. The scope file has two conflict hunks, as the commit body documents."
+    },
+    {
+      "id": "9",
+      "name": "engine-tier decision preservation",
+      "verdict": "pass within inspected change scope",
+      "evidence": {
+        "existingFilesCompared": 13,
+        "matchedNormalizedAST": 13,
+        "newHelper": "src/domain/engine/core/shell-word.ts (74 lines)",
+        "scope": [
+          "src/domain/engine/",
+          "src/domain/reachability/",
+          "src/domain/terminology/"
+        ],
+        "helperInspection": "No imports or I/O; functions only split, map, join, regex-test/replace strings and return a string. Branding is type-only. All new tier callers feed descriptions/actions/commands, not finding presence, severity, demotion selection or verified decisions.",
+        "normalization": [
+          "Parse base and head with TypeScript 6.0.3; walk full AST with comments/trivia excluded, preserving all non-string tokens, identifiers, operators, branches and calls except the explicit formatting cases below.",
+          "Replace literal text with a sentinel; flatten string-concatenation/template fragments while preserving all interpolated expressions. All literal changes were separately reviewed in engine.diff and extended-engine.diff: descriptions, messages, actions, command strings only.",
+          "Ignore imports of shell-word.ts; unwrap shellQuoted/shellWord/asShellArg to their original argument for comparison. These helpers are pure string renderers.",
+          "Remove only semantic.ts's exact prose-only const waiver declaration and its string interpolation; the deleted literal and sole use were checked.",
+          "For reachability-report.ts only: normalize docPathWord to docPath, ShellArg annotation to string and the new const docPath = asShellArg(docPathWord) output-boundary alias.",
+          "Do not mask message/action property expressions in the claimed comparison: the shell-normalized result is used, not the broader output-fields exploratory result."
+        ],
+        "corpus": {
+          "baseRows": 53,
+          "headRows": 53,
+          "unchanged": 51,
+          "removed": [
+            "gaming-control/waived-blocking-lint\texit=0\tverified=true\tfindings=FND_AMBIGUOUS_VAGUE/info[WBL-R1] FND_AMBIGUOUS_VAGUE/info[WBL-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R1] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R2]\tdemotions=-",
+            "gaming/waived-blocking-lint\texit=1\tverified=true\tfindings=FND_AMBIGUOUS_VAGUE/info[WBL-R1] FND_AMBIGUOUS_VAGUE/info[WBL-R2] FND_CONTRADICTION/error[WBL-R1,WBL-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[WBL-R2] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R1] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R2]\tdemotions=-"
+          ],
+          "added": [
+            "gaming-control/waived-blocking-lint\texit=3\tverified=false\tfindings=FND_AMBIGUOUS_VAGUE/info[WBL-R1] FND_AMBIGUOUS_VAGUE/info[WBL-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R1] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R2]\tdemotions=waived-blocking-lint[WBL-R1,WBL-R2]",
+            "gaming/waived-blocking-lint\texit=1\tverified=false\tfindings=FND_AMBIGUOUS_VAGUE/info[WBL-R1] FND_AMBIGUOUS_VAGUE/info[WBL-R2] FND_CONTRADICTION/error[WBL-R1,WBL-R2] FND_REACHABILITY_NOT_CHECKED/info[] GTWR_R16_NEGATION/warn[WBL-R2] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R1] GTWR_R5_INDEFINITE_ARTICLE/warn[WBL-R2]\tdemotions=waived-blocking-lint[WBL-R1,WBL-R2]"
+          ]
+        },
+        "harmlessHelperProbe": [
+          {
+            "value": "word",
+            "helper": "shellWord",
+            "command": "symspec show word",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "word",
+            "helper": "shellQuoted",
+            "command": "symspec show \"word\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "word",
+            "helper": "asShellArg",
+            "command": "symspec show word",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "two words",
+            "helper": "shellWord",
+            "command": "symspec show \"two words\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "two words",
+            "helper": "shellQuoted",
+            "command": "symspec show \"two words\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "two words",
+            "helper": "asShellArg",
+            "command": "symspec show \"two words\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "say \"hello\"",
+            "helper": "shellWord",
+            "command": "symspec show \"say \\\"hello\\\"\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "say \"hello\"",
+            "helper": "shellQuoted",
+            "command": "symspec show \"say \\\"hello\\\"\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "say \"hello\"",
+            "helper": "asShellArg",
+            "command": "symspec show \"say \\\"hello\\\"\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "it's",
+            "helper": "shellWord",
+            "command": "symspec show \"it's\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "it's",
+            "helper": "shellQuoted",
+            "command": "symspec show \"it's\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "it's",
+            "helper": "asShellArg",
+            "command": "symspec show \"it's\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "a $ word",
+            "helper": "shellWord",
+            "command": "symspec show \"a \\$ word\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "a $ word",
+            "helper": "shellQuoted",
+            "command": "symspec show \"a \\$ word\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "a $ word",
+            "helper": "asShellArg",
+            "command": "symspec show \"a \\$ word\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "a | word",
+            "helper": "shellWord",
+            "command": "symspec show \"a | word\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "a | word",
+            "helper": "shellQuoted",
+            "command": "symspec show \"a | word\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          },
+          {
+            "value": "a | word",
+            "helper": "asShellArg",
+            "command": "symspec show \"a | word\"",
+            "exit": 0,
+            "stderr": "",
+            "executed": false
+          }
+        ],
+        "generatedCommandsExecuted": false
+      }
+    },
+    {
+      "id": "10",
+      "name": "new static guard planted-defect replay",
+      "verdict": "fail",
+      "findings": [
+        "AUDIT-1",
+        "AUDIT-2"
+      ],
+      "baseline": {
+        "scan": {
+          "files": 121,
+          "sites": 302,
+          "prose": 29,
+          "flagged": [],
+          "plantSites": [],
+          "plantDiagnostics": []
+        },
+        "gate": {
+          "exit": 0,
+          "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-baseline.log",
+          "report": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-baseline-vitest.json"
+        }
+      },
+      "positiveControl": {
+        "id": "inline-raw-control",
+        "source": "export const auditCommand = (id: string): string => ['symspec', 'show', id].join(' ')\n",
+        "scan": {
+          "files": 122,
+          "sites": 303,
+          "prose": 29,
+          "flagged": [
+            "src/audit-guard-plant.ts:1  symspec show ${id}  =>  ${id} does not pass through shellWord/shellQuoted"
+          ],
+          "plantSites": [
+            {
+              "file": "src/audit-guard-plant.ts",
+              "line": 1,
+              "form": "join",
+              "extent": "whole",
+              "command": "symspec show ${id}",
+              "holes": [],
+              "problems": [
+                "${id} does not pass through shellWord/shellQuoted"
+              ]
+            }
+          ],
+          "plantDiagnostics": []
+        },
+        "gate": {
+          "exit": 1,
+          "log": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-inline-raw-control.log",
+          "report": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-inline-raw-control-vitest.json",
+          "counts": {
+            "numPassedTests": 3,
+            "numFailedTests": 1,
+            "numPendingTests": 44,
+            "numTotalTests": 48
+          },
+          "evidence": {
+            "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-inline-raw-control-vitest.json",
+            "bytes": 26038,
+            "sha256": "f5b7c0f5c78b0d8fdb28e8a7248e0fd7f8582e849e632b889d588d1e98a72cdf"
+          }
+        },
+        "syntax": {
+          "command": "symspec show it's",
+          "exit": 2,
+          "stderr": "bash: line 1: unexpected EOF while looking for matching `''\n",
+          "executed": false
+        },
+        "target": "the four committed static shell-safety guard tests inside the vitest leg",
+        "command": "pnpm exec vitest run src/shell-sites.test.ts -t '^the static shell-safety guard ' --reporter=json",
+        "scopeLimit": "Targeted static guard run, not a claim that all pnpm check legs pass with a new unused exported helper. R63 explicitly scans every non-test source file, including unreferenced ones."
+      },
+      "safeTwin": {
+        "command": "symspec show \"it's\"",
+        "exit": 0,
+        "stderr": "",
+        "executed": false
+      },
+      "restored": {
+        "scan": {
+          "files": 121,
+          "sites": 302,
+          "prose": 29,
+          "flagged": [],
+          "plantSites": [],
+          "plantDiagnostics": []
+        },
+        "status": ""
+      },
+      "scope": "Four committed static guard tests, run unchanged for baseline and each plant. Filtered tests outside this target are not claimed to run. No generated command was executed; bash -n only."
+    }
+  ],
+  "ciEquivalent": {
+    "verdict": "pass",
+    "head": "f0d48b71e9e9c03b9f1df23ec864821b86d287fa",
+    "clone": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/fresh",
+    "cloneCommand": "git clone --no-hardlinks /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-815/repo /home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/fresh",
+    "install": "pnpm install --frozen-lockfile",
+    "installExit": 0,
+    "command": "pnpm check",
+    "exit": 0,
+    "legsRun": 7,
+    "legs": [
+      "biome ci .",
+      "tsc --noEmit",
+      "pnpm run check:agents",
+      "pnpm run gate:reachability",
+      "pnpm run build",
+      "vitest run",
+      "pnpm run knip"
+    ],
+    "biomeFiles": 245,
+    "vitestFiles": 113,
+    "vitestPassed": 3705,
+    "vitestFailed": 0,
+    "vitestDurationSeconds": 108.91,
+    "reachability": {
+      "variables": 12,
+      "cleanVerdict": "PROVED_UNDER_HYPOTHESES",
+      "buggyVerdict": "VIOLATED",
+      "worstMs": 826,
+      "budgetMs": 5000
+    },
+    "knip": "completed exit 0",
+    "workflowEquivalence": "Same frozen install and single pnpm check commands as unchanged .github/workflows/check.yml, node 24 and packageManager pnpm@11.21.0. This is a local CI-equivalent run; GitHub Actions was not run by this audit.",
+    "evidence": [
+      {
+        "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/install.log",
+        "bytes": 1729,
+        "sha256": "f5fe87f7fb24df6917f718787264984ce67c9ebbb3c682e1f545ed4121436f4f"
+      },
+      {
+        "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/fresh-check.log",
+        "bytes": 1541,
+        "sha256": "de9c4e61e383a33740b2d4f14216ac49cb6bbadc925e2f6fd770d59657e5bf73"
+      }
+    ]
+  },
+  "auditLimits": [
+    "No product fixes, approvals, pushes or branch switches. Only this audit file is intended for the shared release clone commit. Plants and installs ran only in throwaway clones below job1262.",
+    "The confirmed static-checker escapes do not assert an already shipped unsafe emitter. The receipt's pre-existing command-form, truncation and other accepted open issues retain their existing recorded status.",
+    "Historical attacks/absence/review runs were cross-checked as records; no new mutation campaign or remote GitHub run is claimed.",
+    "Subagent delegation was attempted with default settings but the runtime rejected its unavailable default model; all successful audit work was performed in this job."
+  ],
+  "artifacts": [
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/git-audit.py",
+      "bytes": 3373,
+      "sha256": "e150c06fffc495707f9222e9ac0cb0bc6b76bf3bbe11bcfc9f7be64d23549187"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/git-audit.json",
+      "bytes": 19977,
+      "sha256": "e8652d9c494e8fad10075d94c949d416a5167afbb33c6217cb94edc39127f33e"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/scan.mjs",
+      "bytes": 6064,
+      "sha256": "16098ac69bbba3230347e0729bc417ec1c5d5f0b2377f59e149cff76d8db8feb"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/plants.py",
+      "bytes": 2879,
+      "sha256": "069d487f632978da3de87333d16f902570c4003c9d44c05bba78302641427840"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-audit.mjs",
+      "bytes": 2959,
+      "sha256": "e9d4d04745a779c15965d92eaee021465fe41f1a43105182f1bb86adce143da1"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/guard-results.json",
+      "bytes": 3983,
+      "sha256": "51ab4285eb798ff06e894800d87867c9de616c8dfb18dba6a249a7a6784d6f91"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/escapes.mjs",
+      "bytes": 1543,
+      "sha256": "a667e303485d62603783722c47ad59b14fa384ff253e6c572c1857dbcfb835a6"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/escapes.json",
+      "bytes": 3962,
+      "sha256": "d640a7f8fa75d8459b48056356f3afe8e90107ac612649bffa02c49fe2b53931"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/receipt-test-counts.json",
+      "bytes": 1174,
+      "sha256": "8b6f78a455f00b42d8babe6913e9ca5d64f66b56c9d6915e2829a9f88d17f5af"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/safe-shell.mjs",
+      "bytes": 824,
+      "sha256": "a10290f80fa5fe442e7f26378861e74fc1c3da3ce96cb3ad8a373a2f223ba1c3"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/safe-shell.json",
+      "bytes": 2899,
+      "sha256": "a3be6c00e8867637b61dc1deb1941d37d872f09bff7b57e58adaa49aa197c8b4"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/pack-dry.json",
+      "bytes": 1811,
+      "sha256": "f5e47c713050c8c02f5f31589924dea8602bc6f42d5d1deb6b96c425871608da"
+    },
+    {
+      "path": "/home/lalsaado/bonk-fs/projects/mods-webapp-poc/run/work/job-1262/manifest.json",
+      "bytes": 112092,
+      "sha256": "37887913684c68e33fca63651236e7b706dfeba8aa845f65cb09dd0d62bd5e1e"
+    }
+  ]
+}

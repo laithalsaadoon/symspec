@@ -1,0 +1,62 @@
+registered-caught	weakening	rename-system@first	
+registered-caught	weakening	rename-system@second	
+registered-caught	weakening	split-system	
+registered-escapes-known-gap	weakening	alias-contraries-glossary@forward	AC-5-9 (drift on the conflict signal an alias removed; F1 resolved-by-unification must not excuse it)
+registered-escapes-known-gap	weakening	alias-contraries-glossary@reverse	AC-5-9 (drift on the conflict signal an alias removed; F1 resolved-by-unification must not excuse it)
+registered-escapes-known-gap	weakening	alias-contraries-term@forward	AC-4-6
+registered-escapes-known-gap	weakening	alias-contraries-term@reverse	AC-4-6
+registered-caught	weakening	term-over-phrase@inside-canonical	
+registered-caught	weakening	term-over-phrase@equal-canonical	
+registered-caught	weakening	term-over-phrase@around-canonical	
+registered-caught	weakening	term-over-phrase@straddle-canonical	
+registered-caught	weakening	term-over-phrase@straddle-alias	
+registered-caught	weakening	glossary-over-term@equal/term-then-glossary	
+registered-caught	weakening	glossary-over-term@equal/glossary-then-term	
+registered-escapes-known-gap	weakening	glossary-over-term@containing/term-then-glossary	S4 / AC-4-2 (cross-table fence + check twin)
+registered-escapes-known-gap	weakening	glossary-over-term@containing/glossary-then-term	S4 / AC-4-2 (cross-table fence + check twin)
+registered-caught	weakening	glossary-over-term@equal-canonical/term-then-glossary	
+registered-caught	weakening	glossary-over-term@equal-canonical/glossary-then-term	
+registered-escapes-known-gap	weakening	glossary-over-term@containing-canonical/term-then-glossary	S4 / AC-4-2 (cross-table fence + check twin)
+registered-escapes-known-gap	weakening	glossary-over-term@containing-canonical/glossary-then-term	S4 / AC-4-2 (cross-table fence + check twin)
+registered-caught	weakening	waive-by-code	
+registered-caught	weakening	waive-scoped-never	
+registered-caught	weakening	waive-raw	
+registered-caught	weakening	unwaive	
+registered-escapes-known-gap	weakening	delete-requirement@first	AC-5-2
+registered-escapes-known-gap	weakening	delete-requirement@second	AC-5-2
+registered-escapes-known-gap	weakening	flip-negated@first	AC-5-9
+registered-escapes-known-gap	weakening	flip-negated@second	AC-5-9
+registered-caught	weakening	condition-into-response@first	
+registered-caught	weakening	condition-into-response@second	
+registered-caught	strengthening	add-decoys	
+registered-caught	weakening	shall-to-should@first	
+registered-caught	weakening	shall-to-should@second	
+registered-caught	strengthening	link-culprits	
+registered-escapes-known-gap	weakening	antonym-over-candidate	AC-5-9 (drift on the conflict signal a contrary axiom discharged; F1 resolved-by-unification must not excuse it)
+registered-caught	strengthening	add-bound-past-bystander	
+registered-caught	strengthening	add-bystander-negation	
+registered-caught	strengthening	add-negation	
+registered-caught	strengthening	add-equivalent@exact	
+registered-caught	strengthening	add-equivalent@case	
+registered-caught	strengthening	branch-into-cycle	
+registered-caught	strengthening	supply-dangling-target	
+registered-escapes-known-gap	weakening	unglossary	AC-5-7
+registered-escapes-known-gap	weakening	unantonym	AC-5-9
+registered-escapes-known-gap	weakening	unterm	AC-5-7
+registered-caught	weakening	declassify-constraint	
+registered-escapes-known-gap	weakening	rebind-effect	AC-5-9
+registered-caught	weakening	vacuous-initial	
+registered-caught	weakening	release-frame	
+registered-caught	weakening	unstate	
+registered-caught	run-weakening	embedding-stub	
+registered-caught	run-weakening	semantic-off	
+registered-caught	run-weakening	solver-budget-1ms	
+registered-caught	run-weakening	solver-timeout-1ms	
+registered-caught	run-weakening	temporal-bound-1	
+registered-caught	run-weakening	temporal-off	
+not-applicable-yet	weakening	edit-intent	AC-5-2
+not-applicable-yet	weakening	edit-policy	AC-5-2
+not-applicable-yet	weakening	narrow-exceeds-conflict	AC-5-3
+not-applicable-yet	weakening	yield-against-policy	AC-5-3
+not-applicable-yet	weakening	untraced-assumption	AC-5-5
+not-applicable-yet	weakening	weakening-derived	AC-5-2

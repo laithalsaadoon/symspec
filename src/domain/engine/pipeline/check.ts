@@ -48,6 +48,10 @@
  * runs a conservative leading-negator scan ("not …", "never …", "do/does
  * not …") and strips it — but the schema flag wins: if `negated` is already
  * set, the stored text is trusted as-is (positive) and no scan is applied.
+ * "not only …" is not a negator here, exactly as it is not one in the parse's
+ * `extractNegation`: "shall not only X but also Y" obliges both halves (spec 007
+ * AC-2-3), and the parse stores it `negated: false` with "not only" kept in the
+ * response, which this scan must not then re-negate.
  * Either way the atomizer receives positive text + a polarity flag, restoring
  * the same atom-polarity discipline (same atom, opposite polarity) the parse
  * tier established.
@@ -62,8 +66,9 @@
  *     `encode` and `earsToTemporal`. The temporal tier previously received none —
  *     `earsToTemporal(req)` took no glossary or antonym parameter at all — so
  *     `--temporal` was structurally blind to every committed glossary alias and
- *     antonym pair. Passing the same instance is what makes `G(t → F grant_x)` vs
- *     `G(t → F ¬grant_x)` provable once `antonym add grant revoke` is committed.
+ *     antonym pair. Passing the same instance, plus the same contrary axioms
+ *     (spec 007 AC-2-1), is what makes `G(grant_x)` vs `G(t → F revoke_x)`
+ *     provable once `antonym add grant revoke` is committed.
  *   - **One requirement population.** Both tiers now score the AC-3-7 gate's
  *     INCLUDED subset. The temporal tier previously scored raw `reqs`, so the two
  *     error-severity tiers disagreed about which document they were checking, and
@@ -77,13 +82,31 @@ import type { Doc } from '../core/doc.ts'
 import { listRequirements } from '../core/doc.ts'
 import { renderSentence } from '../core/render.ts'
 import type { Requirement, Waiver } from '../core/schema.ts'
+import { shellQuoted } from '../core/shell-word.ts'
 import { detectAmbiguity } from '../formal/ambiguity.ts'
 import { type AntonymEntry, buildAntonymIndexWithDoc } from '../formal/antonyms.ts'
-import { glossaryIndex, makeAtomize, normalize, termIndex } from '../formal/atomize.ts'
+import {
+  areContrary,
+  contraryPairs,
+  glossaryContraries,
+  glossaryIndex,
+  makeAtomize,
+  makeDigitSeparatorFoldAtomize,
+  normalize,
+  type Opposition,
+  termIndex,
+} from '../formal/atomize.ts'
 import { getContext } from '../formal/backend.ts'
 import { type SolverBounds, SolverBudget } from '../formal/budget.ts'
 import { type FndCode, structuralKindToFndCode } from '../formal/codes.ts'
-import { contextAtomsOf, findContradictions } from '../formal/contradiction.ts'
+import {
+  analyzeContradictions,
+  type CheckedContextGroup,
+  contextAtomsOf,
+  type GroupSolverCheck,
+  liveIn,
+  planGroups,
+} from '../formal/contradiction.ts'
 import {
   excludedFromFormalFinding,
   noPairsCheckedFinding,
@@ -95,6 +118,7 @@ import {
   type EncodableRequirement,
   type EncodedRequirement,
   encode,
+  toEncodable,
 } from '../formal/encode.ts'
 import { attachEvidenceToAll, type Evidence } from '../formal/finding.ts'
 import { buildSimilarityGraph, type GraphRequirement } from '../formal/graph.ts'
@@ -104,20 +128,35 @@ import {
   type GroupChecker,
   SolverBudgetExceededError,
 } from '../formal/needs-review.ts'
-import { extractNumericPredicates } from '../formal/numeric.ts'
-import { findNumericContradictions } from '../formal/numeric-contradiction.ts'
+import { findNumberSpellingCandidates } from '../formal/number-spelling.ts'
+import {
+  actionOccurrences,
+  type NumericPredicate,
+  requirementBounds,
+  unreadQuantities,
+} from '../formal/numeric.ts'
+import {
+  analyzeNumericBounds,
+  disclosureOfUnreadQuantities,
+} from '../formal/numeric-contradiction.ts'
 import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
 import { findRelationalUnchecked } from '../formal/relational.ts'
-import { findOppositionCandidates, findSimilarSemantic } from '../formal/semantic.ts'
+import {
+  DEFAULT_SEMANTIC_THRESHOLD,
+  findOppositionCandidates,
+  findSimilarSemantic,
+  type GlossaryMerge,
+  literalsConflict,
+} from '../formal/semantic.ts'
 import { findSimilarUnunified } from '../formal/similar.ts'
 import { checkSubsumption } from '../formal/subsumption.ts'
 import { findTemporalContradictions } from '../formal/temporal.ts'
-import { earsToTemporal } from '../formal/temporal-patterns.ts'
+import { earsToTemporal, G, tAnd, tAtom, tNot } from '../formal/temporal-patterns.ts'
 import { checkVacuity } from '../formal/vacuity.ts'
 import { checkGtWRules, checkGtWRulesSet } from '../lint/gtwr.ts'
 import { type FormalTierResult, runSolvers } from '../solvers/index.ts'
-import { asView, type ReqView } from '../solvers/types.ts'
-import { type Exclusion, excludedIds, gateRequirements } from './gate.ts'
+import { asView } from '../solvers/types.ts'
+import { type Exclusion, excludedIds, gateRequirements, namesExactly } from './gate.ts'
 
 /** Which pipeline tier produced a finding. */
 export type CheckTier = 'structural' | 'lint' | 'formal'
@@ -180,6 +219,14 @@ export interface CheckOptions {
     embedder: Embedder
     /** Cosine threshold (default `DEFAULT_SEMANTIC_THRESHOLD`, `--semantic-threshold`). */
     threshold?: number
+    /**
+     * True when `embedder` is the deterministic TEST stub (AC-3-5). The stub's cosines are
+     * a hash, so the opposition detector — part of the certification surface — cannot find
+     * what the pinned model would: the run is WEAKENED, demotes with `run-weakened`, and is
+     * disclosed as `run.embedder: 'stub'`. The caller that loaded the embedder knows which
+     * one it loaded, so it says so here; the engine never infers it.
+     */
+    stub?: boolean
   }
   /**
    * Opt-in bounded temporal tier (AC-33-2, `--temporal`). When set, EARS
@@ -226,6 +273,15 @@ export interface CheckOptions {
    * the outcome would be a race rather than a fixture.
    */
   needsReviewCheckGroup?: GroupChecker
+  /**
+   * Injectable solver call for the contradiction tier's enumeration loop — the seam
+   * `findContradictions` exposes, threaded one level up for the same reason as
+   * {@link needsReviewCheckGroup}: the verdict consequence of an `unknown` part-way
+   * through a group (the `solver-unknown` demotion, AC-3-4) is computed here, and no
+   * `timeoutMs` can put an `unknown` in ONE group without also putting one in the
+   * needs-review tier's separate solve, whose own demotion would then hide this one.
+   */
+  contradictionCheck?: GroupSolverCheck
 }
 
 /**
@@ -278,9 +334,9 @@ export interface ResidualRisk {
    */
   unmatchedAtoms: number
   /**
-   * How many gate-included requirements share NO atom with any other included
-   * requirement — vocabulary-disjoint islands the decide tier never actually
-   * constrained against a peer. Mirrors `coverage.requirements[].participates`
+   * How many gate-included requirements the decide tier never actually
+   * constrained against a peer — never co-live, in a decided context group, with a
+   * requirement they share an atom with (AC-3-1). Mirrors `coverage.requirements[].participates`
    * for one-glance reading; any nonzero count demotes {@link CheckReport.verified}.
    */
   uncoveredRequirements: number
@@ -290,10 +346,13 @@ export interface ResidualRisk {
 export interface CoverageRequirementRow {
   id: string
   /**
-   * True when this requirement shares ≥1 atom with ≥1 OTHER gate-included
-   * requirement — i.e. the SMT conjunction genuinely constrained it against a
-   * peer. A non-participating requirement was never cross-compared, so its
-   * conflicts are invisible no matter what the rest of the document proves.
+   * True when this requirement was CO-LIVE with ≥1 other gate-included requirement it
+   * shares an atom with, in a context group the contradiction solver decided — i.e. the
+   * SMT conjunction genuinely asserted the two obligations together (AC-3-1) — or when a
+   * decide-tier cross-requirement finding names it. Sharing an atom alone does not count:
+   * two requirements whose guards no group asserts together were never compared, however
+   * much vocabulary they share. A non-participating requirement was never cross-compared,
+   * so its conflicts are invisible no matter what the rest of the document proves.
    */
   participates: boolean
   /** This requirement's singleton atoms (atoms no other requirement references). */
@@ -324,6 +383,11 @@ export interface CoverageDemotion {
     // hide, which symspec's pairwise numeric tier does not attempt. An honest
     // "not attempted" caveat so `verified` never outruns what was compared.
     | 'relational-reasoning-not-attempted'
+    // Co-live bounds on one quantity key that the numeric tier neither proved nor
+    // dismissed, because the verdict turns on a reading the sentences do not fix (a
+    // deadline vs a duration, an absolute vs a difference temperature, two units no
+    // conversion relates). Discharged by restating the bounds, or by a reviewed waiver.
+    | 'numeric-bounds-uncompared'
     // AC-1-7: the whole-run `--solver-budget-ms` deadline expired and at least
     // one solver tier stopped before finishing its units of work. The run did
     // NOT compare everything it would otherwise have compared, so it cannot
@@ -339,6 +403,50 @@ export interface CoverageDemotion {
     // `FND_NEEDS_REVIEW` disclosure: suppressing "I could not decide" does not
     // decide it.
     | 'inconclusive-group'
+    // AC-3-4: a solver call INSIDE the contradiction enumeration (a group check or a
+    // core-minimization re-check) or the temporal tier's joint check returned
+    // `unknown`. The enumeration stops at an `unknown`, so any conflict after it in
+    // that group was never looked for — even when an earlier conflict in the same group
+    // was reported, and even when the needs-review tier's separate solve of the group
+    // happened to finish. Recorded where the `unknown` happened, never inferred from
+    // another tier. Discharged by raising `--timeout-ms`; there is no finding to waive.
+    | 'solver-unknown'
+    // AC-3-2: two requirements under one system demand responses that conflict as written —
+    // the same response atom at opposite polarity, or two contraries (AC-2-1) both asserted —
+    // and no context group makes both live — so the solver never
+    // asserted them together and never asked whether they can hold at once. The
+    // detect-and-demote bridge for a conflict whose reachability (can the two guards
+    // co-occur?) this tier cannot decide. Not waivable: there is no finding behind it.
+    | 'conditional-conflict-unchecked'
+    // AC-3-5 / invariant I-1: the run itself was weakened — the semantic tier ran on the
+    // deterministic TEST stub embedder, whose cosines are meaningless, so the opposition
+    // detector could not find what the pinned model would; or it ran with a
+    // `--semantic-threshold` above the default, so it proposed less. A statement about the
+    // RUN, not the document: discharged by re-running without the weakening, never by waiving.
+    | 'run-weakened'
+    // AC-3-6: a kept FND_SIMILAR_SEMANTIC pair whose responses differ only in inflection or
+    // number and would conflict as one thing: OPPOSITE polarity ("open the door" / "shall not
+    // open the doors"), or both asserted on opposite sides of an antonym class ("open the door"
+    // / "close the doors", contraries under AC-2-1). If they mean one thing it is a
+    // contradiction on two atoms (or two keys) the solver cannot see. Discharged by the glossary
+    // merge the finding proposes (it lands both on one atom at opposite polarity, or on one key
+    // as contraries; it is withheld when every merge would alias a phrase to its own opposite
+    // or split an atom the document already shares, and a rewrite is the route instead) or by
+    // waiving the finding (declared distinct) — the finding is the triage record.
+    | 'opposite-polarity-near-duplicate'
+    // AC-2-4: two requirements write one phrase with numbers that differ only in a digit
+    // separator (`1.5` / `1,5`, `1_500` / `1.500`), so they sit on two atoms and were never
+    // compared. Whether they are one number turns on the decimal convention, which no closed
+    // rule fixes, so the pair is demoted and never proved. Discharged by spelling the number
+    // identically in both (one atom, compared by the solver) or by waiving the
+    // FND_NUMBER_SPELLING_CANDIDATE finding for the pair when they are different numbers.
+    | 'number-spelling-candidate'
+    // A committed glossary entry names two CONTRARIES as one action ("open the door" with alias
+    // "close the door"). With the antonym table's ¬(A ∧ B) that entry makes both actions
+    // impossible, which no requirement is checked against, so the atomizer keeps each contrary
+    // phrase on its own atom (where the axiom still relates it) and this demotes over every
+    // requirement whose response the entry names. Discharged by removing the contrary alias.
+    | 'contrary-glossary-alias'
   requirementIds: string[]
   /** The exact command (or rewrite guidance) that discharges this demotion. */
   action: string
@@ -427,9 +535,10 @@ export interface CheckReport {
    * First-class "did the formal tier actually verify anything across
    * requirements?" flag (wishlist #5, hardened after the Run 3 adversarial
    * eval). `true` requires ALL of:
-   *   (a) PARTICIPATION — every gate-included requirement shares ≥1 atom with
-   *       another included requirement, so the SMT conjunction genuinely
-   *       constrained it against a peer. This kills the eval's winning shape:
+   *   (a) PARTICIPATION — every gate-included requirement was co-live, in a
+   *       context group the solver decided, with a peer it shares ≥1 atom with
+   *       (AC-3-1), so the SMT conjunction genuinely asserted it against that
+   *       peer. This kills the eval's winning shape:
    *       dense distractor vocabulary buying one checked pair while the
    *       conflicting pair's atoms stayed singletons;
    *   (b) NO OPEN OPPOSITION CANDIDATES — every kept `FND_OPPOSITION_CANDIDATE`
@@ -458,6 +567,22 @@ export interface CheckReport {
    * error-severity finding.
    */
   strictGate?: 'pass' | 'fail'
+  /**
+   * What this run was made of, where it can weaken the verdict (spec 007 invariant I-1).
+   * `embedder` is `'model'` when the semantic tier ran on a caller-supplied embedder,
+   * `'stub'` when it ran on the deterministic TEST stub (which demotes with
+   * `run-weakened`), and `'off'` when it did not run (which demotes with
+   * `semantic-tier-skipped`). `semanticThreshold` is the cosine threshold the semantic tier
+   * ran at, present exactly when it ran; above `DEFAULT_SEMANTIC_THRESHOLD` it demotes with
+   * `run-weakened`.
+   */
+  run: RunDisclosure
+}
+
+/** See {@link CheckReport.run}. */
+export interface RunDisclosure {
+  readonly embedder: 'model' | 'stub' | 'off'
+  readonly semanticThreshold?: number
 }
 
 /**
@@ -507,6 +632,8 @@ const PROPOSE_ONLY_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
   'FND_EXCLUDED_FROM_FORMAL',
   'FND_QUANTITY_ALIAS_CANDIDATE',
   'FND_RELATIONAL_UNCHECKED',
+  'FND_NUMERIC_UNCOMPARED',
+  'FND_NUMBER_SPELLING_CANDIDATE',
   // The completeness heuristic names its whole same-trigger group, so it always
   // spans ≥2 ids — but its solver answer is fixed by the encoding, not read off
   // the document: `encode` emits every `pre` row positive, and a disjunction of
@@ -541,20 +668,72 @@ const COVERAGE_GAP_FND_CODES: ReadonlySet<string> = new Set<FndCode>([
   'FND_EXCLUDED_FROM_FORMAL',
   'FND_QUANTITY_ALIAS_CANDIDATE',
   'FND_RELATIONAL_UNCHECKED',
+  'FND_NUMERIC_UNCOMPARED',
+  'FND_NUMBER_SPELLING_CANDIDATE',
   'FND_INCOMPLETE',
   'FND_NEEDS_REVIEW',
 ])
 
 /**
  * True when finding `f` is suppressed by waiver `w` (wishlist #3): the codes
- * match, and either the waiver is document-wide (no `requirementId`) or the
- * finding names that requirement. Scoped waivers only bite findings that
- * actually reference the scoped requirement.
+ * match, and every scope the waiver carries holds — the finding names its
+ * `requirementId`, and names exactly its `requirementIds`. A waiver with neither
+ * is document-wide. Scoped waivers only bite findings that actually reference
+ * the scoped requirements.
  */
 function isWaived(f: CheckFinding, w: Waiver): boolean {
+  if (PAIR_BOUND_CODES.has(f.code) && (w.requirementIds === undefined || w.textBound !== true)) {
+    return false
+  }
+  return reachesFinding(f, w)
+}
+
+/** The scope test alone: the code matches and every scope the waiver carries holds. */
+function reachesFinding(f: CheckFinding, w: Waiver): boolean {
   if (f.code !== w.code) return false
+  if (w.requirementIds !== undefined && !namesExactly(f.requirementIds, w.requirementIds)) {
+    return false
+  }
   if (w.requirementId === undefined) return true
   return f.requirementIds.includes(w.requirementId)
+}
+
+/**
+ * Codes a waiver discharges only over EXACTLY the finding's requirement set and only while it is
+ * bound to their current text (`textBound`, set at the boundary from a matching content hash).
+ *
+ * An opposition candidate is often a pair a base build PROVED (spec 007, demote-not-prove C3): the
+ * preposition-variant rule demotes what base proved by dropping a preposition. A waiver by code, or
+ * by one requirement, reaches every candidate that names it — including ones created after the
+ * triage, over pairs nobody read — and would turn that base proof into `verified: true`. Such a
+ * waiver (a legacy one, or one hand-written) is kept in the document but not applied, and the
+ * candidate's demotion says so.
+ */
+const PAIR_BOUND_CODES: ReadonlySet<string> = new Set<FndCode>(['FND_OPPOSITION_CANDIDATE'])
+
+/** Waivers that reach `f` by scope but are not applied to it, because its code is pair-bound. */
+function unappliedWaivers(f: CheckFinding, waivers: readonly Waiver[]): Waiver[] {
+  if (!PAIR_BOUND_CODES.has(f.code)) return []
+  return waivers.filter((w) => reachesFinding(f, w) && !isWaived(f, w))
+}
+
+/** The demotion-action sentence naming the waivers {@link unappliedWaivers} found, if any. */
+function unappliedNote(unapplied: readonly Waiver[]): string {
+  if (unapplied.length === 0) return ''
+  const scopes = unapplied.map((w) =>
+    w.requirementIds !== undefined
+      ? `the one over ${w.requirementIds.join(' and ')}, whose content hash is missing or no longer matches`
+      : w.requirementId !== undefined
+        ? `the one scoped to ${w.requirementId} alone`
+        : 'the document-wide one',
+  )
+  const one = unapplied.length === 1
+  return (
+    ` ${one ? 'A stored suppression' : `${unapplied.length} stored suppressions`} of ${unapplied[0]!.code} ` +
+    `${one ? 'reaches' : 'reach'} this pair but ${one ? 'was' : 'were'} not applied (${scopes.join('; ')}): ` +
+    'a triage candidate is decided only by an edit that lets the solver compare the pair, so ' +
+    'no suppression of it certifies a pair, and one by code or by one requirement reaches pairs nobody read.'
+  )
 }
 
 const SEVERITY_RANK: Record<CheckSeverity, number> = { error: 0, warn: 1, info: 2 }
@@ -631,30 +810,6 @@ function docAntonymIndex(doc: Doc): ReadonlyMap<string, AntonymEntry> | undefine
   }
 }
 
-/** Conservative leading-negator scan for stored response text (see header). */
-const LEADING_NEGATOR = /^(?:do(?:es)?\s+not|not|never)\s+/i
-
-/**
- * Project a stored requirement into the encodable view, resolving negation.
- *
- * The persisted `negated` flag (C1) is authoritative: when it is set, the
- * stored `systemResponse` is already the positive atom, so it passes through
- * untouched with `negated: true`. Only when the flag is absent/false do we
- * fall back to the conservative leading-negator text scan (for hand-authored
- * docs that baked "not …" into the response), stripping it to the positive
- * atom.
- */
-export function toEncodable(view: ReqView): EncodableRequirement {
-  if (view.negated === true) return { ...view, negated: true }
-  const match = LEADING_NEGATOR.exec(view.systemResponse)
-  if (match === null) return view
-  return {
-    ...view,
-    systemResponse: view.systemResponse.slice(match[0].length),
-    negated: true,
-  }
-}
-
 /**
  * The CO-LIVENESS context key: BOTH guard slots, never `trigger` alone.
  *
@@ -673,8 +828,8 @@ export function toEncodable(view: ReqView): EncodableRequirement {
  * (which groups on it), and a shared derivation is what keeps the two tiers from
  * disagreeing about what "the same context" means.
  *
- * `normalize` emits only `[a-z0-9_]`, so `|` cannot appear inside either half
- * and the composite can never alias one slot pair onto another.
+ * `normalize` emits only letters, marks, digits (any script) and `_`, so `|` cannot appear
+ * inside either half and the composite can never alias one slot pair onto another.
  *
  * ## The two consumers group at DIFFERENT granularities, and must
  *
@@ -718,6 +873,90 @@ function guardKeyOf(r: {
  */
 function pipelineAtomize(doc: Doc): Atomize {
   return makeAtomize(glossaryIndex(doc.glossary), docAntonymIndex(doc), termIndex(doc.terms ?? []))
+}
+
+/**
+ * {@link pipelineAtomize} in digit-separator fold space, over the same committed tables: the
+ * PROPOSE-only encoding `findNumberSpellingCandidates` compares against the real one. Built from
+ * the same three indexes, so a table threaded into one and not the other cannot compile away.
+ */
+function pipelineDigitSeparatorFoldAtomize(doc: Doc): Atomize {
+  return makeDigitSeparatorFoldAtomize(
+    glossaryIndex(doc.glossary),
+    docAntonymIndex(doc),
+    termIndex(doc.terms ?? []),
+  )
+}
+
+/**
+ * AC-3-6: the whole-document admission test for a glossary merge the semantic tier proposes
+ * ({@link FindSimilarSemanticOptions.admitsMerge}). The semantic finder sees one pair; a
+ * glossary entry is global, so only here can a candidate be tried against every slot.
+ *
+ * Every slot of every requirement (`reqs`, not the gate-included subset: an entry rewrites
+ * all of them) is atomized twice through {@link pipelineAtomize}, once as committed and once
+ * with the candidate entry added. The merge is admitted when the pair's two responses land on
+ * one atom or on the two sides of one opposition key (contraries, spec 007 AC-2-1), AND the old
+ * partitions survive: every set of slots that shares an atom today still shares one, at the same
+ * relative polarity, and every set of responses that shares an opposition key today still shares
+ * one, on the same relative sides. The second half is the one a pair-local check cannot see.
+ * Lookup is one hop, so aliasing "close the doors" away while the glossary routes "arm the
+ * barrier" onto it moves "close the doors" alone; so does an inflection ("closes the doors") or
+ * a term that shares its atom, and so does an alias that moves "open the door" off the key
+ * "close the door" shares with it. Any conflict the shared atom or key carried is then gone, and
+ * a later `check` certifies over it.
+ */
+function glossaryMergeAdmission(
+  doc: Doc,
+  reqs: readonly EncodableRequirement[],
+): (merge: GlossaryMerge, pair: readonly [string, string]) => boolean {
+  const slotsUnder = (atomize: Atomize) => {
+    const slots = new Map<string, { atom: string; negated: boolean; opposition?: Opposition }>()
+    for (const r of reqs) {
+      for (const row of encode(r, atomize).atoms) {
+        slots.set(`${r.id}|${row.kind}`, {
+          atom: row.atom,
+          negated: row.negated,
+          ...(row.opposition !== undefined ? { opposition: row.opposition } : {}),
+        })
+      }
+    }
+    return slots
+  }
+  const now = slotsUnder(pipelineAtomize(doc))
+  return (merge, [a, b]) => {
+    const glossary = [...doc.glossary, { canonical: merge.canonical, aliases: [merge.alias] }]
+    const merged = slotsUnder(pipelineAtomize({ ...doc, glossary }))
+    const ra = merged.get(`${a}|resp`)
+    const rb = merged.get(`${b}|resp`)
+    if (ra === undefined || rb === undefined) return false
+    const related =
+      ra.atom === rb.atom || areContrary({ name: ra.atom, ...ra }, { name: rb.atom, ...rb })
+    if (!related) return false
+    // old atom -> the one new atom its slots all move to, and whether they flip polarity; old
+    // opposition key -> the one new key its responses all move to, and whether they flip side.
+    const movesTo = new Map<string, string>()
+    const keyMovesTo = new Map<string, string>()
+    const agrees = (table: Map<string, string>, from: string, to: string): boolean => {
+      const seen = table.get(from)
+      if (seen === undefined) table.set(from, to)
+      return seen === undefined || seen === to
+    }
+    for (const [slot, before] of now) {
+      const after = merged.get(slot)
+      if (after === undefined) return false
+      if (!agrees(movesTo, before.atom, `${after.atom}|${after.negated !== before.negated}`)) {
+        return false
+      }
+      if (before.opposition === undefined) continue
+      if (after.opposition === undefined) return false
+      const side = after.opposition.negative !== before.opposition.negative
+      if (!agrees(keyMovesTo, before.opposition.key, `${after.opposition.key}|${side}`)) {
+        return false
+      }
+    }
+    return true
+  }
 }
 
 /**
@@ -832,6 +1071,177 @@ function compareFindings(a: CheckFinding, b: CheckFinding): number {
 }
 
 /**
+ * AC-3-1: the requirements the contradiction solver actually asserted TOGETHER with a
+ * peer they share an atom with — co-live ({@link liveIn}, carried as `liveIds`) in a
+ * context group whose every check was decided.
+ *
+ * Both halves are necessary. Co-liveness without a shared atom is a conjunction that
+ * constrains nothing across the pair (two unconditional rules about unrelated things),
+ * which the atom-sharing rule this replaces never counted either. A shared atom without
+ * co-liveness is the defect: the obligations were never asserted in the same solver call.
+ * An `unknown` group decided nothing, so it confers no participation (its members are
+ * disclosed by the `solver-unknown` demotion instead).
+ */
+function coLiveParticipants(
+  groups: readonly CheckedContextGroup[],
+  atomOwners: ReadonlyMap<string, ReadonlySet<string>>,
+): Set<string> {
+  const atomsOf = new Map<string, string[]>()
+  for (const [atom, owners] of atomOwners) {
+    if (owners.size < 2) continue
+    for (const id of owners) {
+      const list = atomsOf.get(id)
+      if (list === undefined) atomsOf.set(id, [atom])
+      else list.push(atom)
+    }
+  }
+  const shareAtom = (a: string, b: string): boolean =>
+    (atomsOf.get(a) ?? []).some((atom) => atomOwners.get(atom)?.has(b) === true)
+
+  const participants = new Set<string>()
+  for (const group of groups) {
+    if (group.outcome !== 'decided') continue
+    const live = group.liveIds
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i] as string
+        const b = live[j] as string
+        if (shareAtom(a, b)) {
+          participants.add(a)
+          participants.add(b)
+        }
+      }
+    }
+  }
+  return participants
+}
+
+/**
+ * One AC-3-2 pair: two responses that conflict as written ({@link literalsConflict}) — one
+ * atom at opposite polarity, or contraries both asserted — never co-live.
+ */
+interface ConditionalConflict {
+  readonly a: string
+  readonly b: string
+  /** Each requirement's response slot text. */
+  readonly responseA: string
+  readonly responseB: string
+  /** True for two contrary atoms (AC-2-1), false for one atom at opposite polarity. */
+  readonly contrary: boolean
+  /** Each requirement's guard slot texts (empty = unconditional). */
+  readonly contextA: readonly string[]
+  readonly contextB: readonly string[]
+  /** The union of both guard texts, deduplicated, in slot order. */
+  readonly union: readonly string[]
+}
+
+/** Render a requirement's guard texts for a demotion action. */
+function describeContext(context: readonly string[]): string {
+  return context.length === 0
+    ? 'unconditionally'
+    : `when ${context.map((t) => `"${t}"`).join(' and ')}`
+}
+
+/** Pair key over two requirement ids; U+0000 cannot occur in an id. */
+const pairKeyOf = (x: string, y: string): string => (x < y ? `${x}\u0000${y}` : `${y}\u0000${x}`)
+
+/**
+ * AC-3-2: every pair of included requirements whose responses CONFLICT as written while no
+ * planned context group makes both live. "Conflict" is {@link literalsConflict}, the reading
+ * the AC-3-6 near-duplicate rule uses: the SAME response atom at OPPOSITE polarity, or two
+ * contraries (spec 007 AC-2-1: distinct atoms on opposite sides of one opposition key) both
+ * asserted. Both negated ("do neither") satisfies the contrary axiom and is not a pair. Without
+ * the contrary half, "open the door" / "close the door" under two guards certified where
+ * "open the door" / "shall not open the door" demoted, so the positive restatement GtWR
+ * recommends (and the STRONGER claim under the axiom) cleared the demotion.
+ *
+ * Rows are bucketed by opposition key when the atom has one, else by atom: one atom always
+ * carries one key, and contraries share theirs, so every candidate pair meets in one bucket.
+ * Both names are system-scoped, so "under one system" is carried by the bucket. Planned
+ * groups rather than decided ones: a pair co-live in a group the solver did not decide is
+ * disclosed by `solver-unknown` (or the budget demotion when the tier never ran), and
+ * naming it here too would claim its contexts were never asserted together when they
+ * were. A pair a `FND_CONTRADICTION` already names was compared — a guard-implication
+ * bridge can make a requirement live in a group its own guard does not name — so it is
+ * excluded.
+ */
+function conditionalConflicts(
+  encoded: readonly EncodedRequirement[],
+  formal: readonly CheckFinding[],
+): ConditionalConflict[] {
+  const groups = planGroups(encoded.map(contextAtomsOf))
+  const contradicted = new Set<string>()
+  for (const f of formal) {
+    if (f.code !== 'FND_CONTRADICTION') continue
+    for (const x of f.requirementIds)
+      for (const y of f.requirementIds) if (x !== y) contradicted.add(pairKeyOf(x, y))
+  }
+
+  interface RespRow {
+    readonly enc: EncodedRequirement
+    readonly lit: { name: string; negated: boolean; opposition?: Opposition }
+    readonly text: string
+  }
+  const buckets = new Map<string, RespRow[]>()
+  for (const enc of encoded) {
+    for (const row of enc.atoms) {
+      if (row.kind !== 'resp') continue
+      // U+0000 cannot occur in an atom name or a key, so the two namespaces cannot collide.
+      const bucket =
+        row.opposition !== undefined ? `key\u0000${row.opposition.key}` : `atom\u0000${row.atom}`
+      const list = buckets.get(bucket) ?? []
+      list.push({
+        enc,
+        lit: {
+          name: row.atom,
+          negated: row.negated,
+          ...(row.opposition !== undefined ? { opposition: row.opposition } : {}),
+        },
+        text: row.slotText,
+      })
+      buckets.set(bucket, list)
+    }
+  }
+
+  const guardTexts = (e: EncodedRequirement): string[] =>
+    e.atoms.filter((r) => r.kind === 'pre' || r.kind === 'trig').map((r) => r.slotText)
+
+  const out = new Map<string, ConditionalConflict>()
+  for (const rows of buckets.values()) {
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length; j++) {
+        const x = rows[i] as RespRow
+        const y = rows[j] as RespRow
+        if (x.enc.id === y.enc.id || !literalsConflict(x.lit, y.lit)) continue
+        const key = pairKeyOf(x.enc.id, y.enc.id)
+        if (out.has(key) || contradicted.has(key)) continue
+        const ctxX = contextAtomsOf(x.enc)
+        const ctxY = contextAtomsOf(y.enc)
+        if (groups.some((g) => liveIn(g, ctxX) && liveIn(g, ctxY))) continue
+        const [first, second] = x.enc.id < y.enc.id ? [x, y] : [y, x]
+        const contextA = guardTexts(first.enc)
+        const contextB = guardTexts(second.enc)
+        out.set(key, {
+          a: first.enc.id,
+          b: second.enc.id,
+          responseA: first.text,
+          responseB: second.text,
+          contrary: first.lit.name !== second.lit.name,
+          contextA,
+          contextB,
+          union: [...new Set([...contextA, ...contextB])],
+        })
+      }
+    }
+  }
+  return [...out.values()].sort((x, y) => {
+    if (x.a !== y.a) return x.a < y.a ? -1 : 1
+    if (x.b !== y.b) return x.b < y.b ? -1 : 1
+    return 0
+  })
+}
+
+/**
  * Run the full default `check` pipeline over a loaded document. Never touches
  * Lean (AC-5-5); never hands a gate-excluded statement to the SMT layer
  * (AC-3-7); every formal finding carries `evidence` (AC-4-6).
@@ -887,6 +1297,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   // is computed from the same roster.
   let coverageAtomOwners: ReadonlyMap<string, ReadonlySet<string>> = new Map()
   let coverageIncludedIds: readonly string[] = []
+  // AC-3-2: the encoded (included) requirements, for the opposite-polarity pair scan.
+  let coverageEncoded: readonly EncodedRequirement[] = []
 
   // AC-1-7: the ONE whole-run solver deadline every tier shares, plus its
   // truncation ledger. Constructed inside the formal runner (so the clock starts
@@ -895,6 +1307,18 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   // ledger after `runSolvers` returns. `undefined` when no budget was requested,
   // in which case every tier runs unbounded exactly as before.
   let solverBudget: SolverBudget | undefined
+
+  // AC-3-4 / AC-3-1: what the contradiction tier's solver actually decided, per planned
+  // context group. Empty when the tier was skipped (budget) or had <2 requirements.
+  let contradictionGroups: readonly CheckedContextGroup[] = []
+  // AC-3-4: `unknown`s reported by tiers that have no group structure of their own (the
+  // temporal tier's single joint check), each naming the requirements it covered.
+  const tierUnknowns: { tier: string; requirementIds: string[] }[] = []
+  // AC-3-6: the FND_SIMILAR_SEMANTIC pairs that are opposite-polarity inflection variants,
+  // keyed `lo|hi`, each mapped to whether its finding proposes a glossary merge (it withholds
+  // one that would alias a phrase to its own opposite or split a shared atom). The demotion
+  // reads the KEPT findings, so a waiver discharges it.
+  const oppositeVariantPairs = new Map<string, boolean>()
 
   const report = await runSolvers(doc, {
     ...(options.similarityThreshold !== undefined
@@ -915,17 +1339,25 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       const bounds: SolverBounds = {
         timeoutMs,
         ...(solverBudget !== undefined ? { budget: solverBudget } : {}),
+        onUnknown: (tier, requirementIds) => {
+          tierUnknowns.push({ tier, requirementIds: [...requirementIds].sort() })
+        },
       }
       // AC-9-3: canonicalize atoms through the committed glossary so
       // agent-confirmed paraphrases collide and paraphrased contradictions
       // become provable. Empty glossary ⇒ identical to a glossary-free run.
       // #1: fold the committed antonym pairs into the seed table so
-      // agent-confirmed opposites (open/shut) collapse to one atom at opposite
-      // polarity — the shape the contradiction tier proves. Empty ⇒ seed-only.
+      // agent-confirmed opposites (open/shut) become contraries — two atoms and
+      // the axiom `¬(open ∧ shut)` every solver tier asserts (spec 007 AC-2-1).
+      // Empty ⇒ seed-only.
       // #6: committed noun-phrase terms are substituted inside every slot body, so one entry
       // aligns a noun document-wide. Empty ⇒ identical to a term-free run.
       const atomize = pipelineAtomize(doc)
-      const contradictionOpts = { atomize, timeoutMs }
+      const contradictionOpts = {
+        atomize,
+        timeoutMs,
+        ...(options.contradictionCheck !== undefined ? { check: options.contradictionCheck } : {}),
+      }
 
       // Whole-spec checks (contradiction / vacuity / completeness / review)
       // and pairwise checks (subsumption / redundancy) share one encoding.
@@ -951,11 +1383,23 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           owners.add(e.id)
         }
       }
+      // Spec 007 AC-2-1: a contrary axiom compares two atoms exactly as the old rename's one shared
+      // atom did, so each side's atom counts the other side's owners as partners. Two members of
+      // one side get no credit: nothing relates them, so nothing compared them. Read from a
+      // snapshot so the credit is one hop.
+      const contraryOwners = contraryPairs(encoded.flatMap((e) => e.atoms)).map(
+        ([a, b]) => [a, b, [...(atomOwners.get(a) ?? [])], [...(atomOwners.get(b) ?? [])]] as const,
+      )
+      for (const [a, b, ownersA, ownersB] of contraryOwners) {
+        for (const id of ownersB) atomOwners.get(a)?.add(id)
+        for (const id of ownersA) atomOwners.get(b)?.add(id)
+      }
       for (const owners of atomOwners.values()) {
         if (owners.size === 1) unmatchedAtoms += 1
       }
       coverageAtomOwners = atomOwners
       coverageIncludedIds = included.map((r) => r.id)
+      coverageEncoded = encoded
 
       const includedPairs = pairs.filter((p) => includedIdSet.has(p.a) && includedIdSet.has(p.b))
 
@@ -966,9 +1410,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // demotes `verified`. Deliberately NOT a mid-loop cut inside
       // `findContradictions`: its per-context-group discipline is load-bearing
       // (the reachability lesson), and this task must not restructure it.
-      const contradictions = budgetSpent(solverBudget, 'contradiction', encodable.length)
-        ? []
-        : await findContradictions(encodable, contradictionOpts)
+      const contradictionRun = budgetSpent(solverBudget, 'contradiction', encodable.length)
+        ? { findings: [], groups: [] }
+        : await analyzeContradictions(encodable, contradictionOpts)
+      const contradictions = contradictionRun.findings
+      contradictionGroups = contradictionRun.groups
       const subsumption = await checkSubsumption(ctx, encodedById, includedPairs, bounds)
       const subsumptions = subsumption.findings
       const vacuities = await checkVacuity(ctx, encoded, bounds)
@@ -1064,20 +1510,64 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // co-assert its bounds with everything. `encode` is pure and Z3-free, so the
       // extra encodings cost no solver time.
       const quantityAliases = glossaryIndex(doc.glossary)
-      const numericReqPreds = reqs.map((r) => ({
-        id: r.id,
-        contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
-        predicates: [
-          ...extractNumericPredicates(r.systemResponse, r.systemName, 'resp', quantityAliases),
-          ...(r.trigger !== undefined
-            ? extractNumericPredicates(r.trigger, r.systemName, 'trig', quantityAliases)
-            : []),
-          ...(r.preCondition !== undefined
-            ? extractNumericPredicates(r.preCondition, r.systemName, 'pre', quantityAliases)
-            : []),
-        ],
-      }))
-      const numericContradictions = await findNumericContradictions(ctx, numericReqPreds, bounds)
+      // `requirementBounds` reads the response through the SAME negation view the
+      // propositional tier encodes (`toEncodable`): the stored `negated` flag, or a leading
+      // `not`/`never` stripped from hand-authored text. `shall not … above 30 seconds`
+      // bounds the quantity at `<= 30 s`; read without the flag it asserted `> 30 s` (spec
+      // 007 AC-2-6). The R6 lint reads its bounds through the same function.
+      //
+      // A response that does an action asserts its occurrence, which is what two opposed
+      // prohibitions on it (`shall not keep the door unlocked above 30 seconds`, `... below 40
+      // seconds`) cannot both survive: at every place a bound could stand, keyed as that bound's
+      // subject would be, with the rest as its qualifier (`keep the door unlocked`, `... until
+      // the guard arrives`); and, with bounds, on each bound's own quantity, whatever unit it is
+      // in (`run the pump at least 80%` runs the pump, and meets `not above 30 minutes` there).
+      // A bound's quantity is not always the action: `keep the door unlocked when the level is
+      // above 5 meters` bounds `keep the door unlocked when the level`, and `... after at most 5
+      // seconds` a delay, while both keep the door unlocked, so a bound response keys its
+      // prefixes too. Its whole text, bound included, names no action, and is not one of them.
+      // Never a prohibition's: `shall not keep the door unlocked` does not do the action.
+      const occurrencesOf = (r: (typeof reqs)[number], response: readonly NumericPredicate[]) => {
+        const view = toEncodable(r)
+        if (view.negated === true) return []
+        const sourceText = view.systemResponse.trim()
+        const bound = response.map((p) => ({
+          quantity: p.quantity,
+          ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
+        }))
+        const keyed = new Set(bound.map((a) => a.quantity))
+        const prefixes = actionOccurrences(view.systemResponse, r.systemName, quantityAliases)
+          .filter((a) => !keyed.has(a.quantity))
+          .filter((a) => bound.length === 0 || a.qualifier !== undefined)
+        return [...bound, ...prefixes].map((a) => ({ ...a, sourceText }))
+      }
+      const numericReqPreds = reqs.map((r) => {
+        const predicates = requirementBounds(r, quantityAliases).map((b) => b.predicate)
+        const response = predicates.filter((p) => p.slot === 'resp')
+        return {
+          id: r.id,
+          contextAtoms: contextAtomsOf(encode(toEncodable(r), atomize)),
+          occurrences: occurrencesOf(r, response),
+          ...(toEncodable(r).negated === true
+            ? {}
+            : {
+                response: { systemName: r.systemName, text: toEncodable(r).systemResponse.trim() },
+              }),
+          predicates,
+        }
+      })
+      // The decide half (`contradictions`) and what it declined to decide (`uncompared`,
+      // demotion-only): a proof must hold under every reading of a role or a temperature,
+      // and a pair the readings split is disclosed rather than dropped.
+      const { contradictions: numericContradictions, uncompared: numericUncompared } =
+        await analyzeNumericBounds(ctx, numericReqPreds, bounds)
+      // What it never read: a quantity in a converted unit that no bound it extracted covers
+      // (`poll every 5 seconds`, a comparator phrase the lexicon does not know). Over the same
+      // population as the bounds, so a requirement is disclosed exactly where its numbers were
+      // not handed to the decide half. Demotion-only, through `numeric-bounds-uncompared`.
+      const numericUnread = disclosureOfUnreadQuantities(
+        reqs.map((r) => ({ id: r.id, response: r.systemResponse, unread: unreadQuantities(r) })),
+      )
 
       // Issue #2 (reproducer a): the numeric tier keys a quantity off the phrase
       // before the comparator, so ONE physical quantity described with two
@@ -1098,6 +1588,23 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
           guardKey: guardKeyOf(r),
           predicates: predsById.get(r.id) ?? [],
         })),
+      )
+
+      // AC-2-4: a phrase whose numbers differ only in a digit separator is two atoms, and no
+      // closed rule says whether they are one number. Propose-only: name the pair so it is
+      // demoted, never silently covered. Over EVERY requirement, gate-excluded ones too, encoded
+      // through the solver's own atomizer: a `1_500 ms` that R6 keeps out is still half of a
+      // pair 669c0e9 proved against `1.500 ms`, and only a pair demotion names its partner. A
+      // propose-only demotion over an untrusted slot can only withhold `verified`.
+      //
+      // A committed glossary or term alias is a spelling too: an alias written `1,5 m pipe`
+      // no longer matches a body that spells `1.5 m pipe`, so the table rewrites one side only
+      // and the two atoms' folds differ. Each requirement is therefore also encoded in fold
+      // space, tables included, and a pair that shares an atom THERE is named as well.
+      const foldAtomize = pipelineDigitSeparatorFoldAtomize(doc)
+      const numberSpellingCandidates = findNumberSpellingCandidates(
+        reqs.map((r) => encodedById.get(r.id) ?? encode(toEncodable(r), atomize)),
+        reqs.map((r) => encode(toEncodable(r), foldAtomize)),
       )
 
       // Issue #2 (reproducer b + aggregate/relational families): detect the
@@ -1180,6 +1687,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
               encodable.map((r) => ({ id: r.id, formula: earsToTemporal(r, atomize) })),
               options.temporal.bound ?? 10,
               bounds,
+              // Spec 007 AC-2-1: the same contrary axioms the propositional tiers assert, over the
+              // same atoms — `encoded` is `encodable` through the same atomizer.
+              contraryPairs(encoded.flatMap((e) => e.atoms)).map(([a, b]) =>
+                G(tNot(tAnd([tAtom(a), tAtom(b)]))),
+              ),
             )
           : []
 
@@ -1189,13 +1701,25 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // already unify. Runs over the SAME included set; never a verdict.
       const semantic =
         options.semantic !== undefined
-          ? await findSimilarSemantic(included, options.semantic.embedder, {
+          ? // The ENCODABLE rows, as every solver tier reads them: `toEncodable` strips a
+            // stored leading "not " into polarity, so a raw row would put "not open the doors"
+            // on its own positive atom, miss the AC-3-6 variant, and key a merge on text the
+            // glossary lookup never sees.
+            await findSimilarSemantic(encodable, options.semantic.embedder, {
               glossary: glossaryIndex(doc.glossary),
+              atomize: pipelineAtomize(doc),
+              admitsMerge: glossaryMergeAdmission(doc, reqs.map(toEncodable)),
               ...(options.semantic.threshold !== undefined
                 ? { threshold: options.semantic.threshold }
                 : {}),
             })
           : []
+
+      for (const f of semantic) {
+        if (f.oppositePolarityVariant) {
+          oppositeVariantPairs.set(f.requirementIds.join('|'), f.merge !== undefined)
+        }
+      }
 
       // #6: opt-in opposition-candidate proposals. Same embedder, propose-only —
       // emits FND_OPPOSITION_CANDIDATE for same-system responses that share an
@@ -1204,8 +1728,11 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // topical-relatedness floor; the structure is the signal. Never a verdict.
       const opposition =
         options.semantic !== undefined
-          ? await findOppositionCandidates(included, options.semantic.embedder, {
+          ? // The ENCODABLE rows through the pipeline's own atomizer, so the shape is also read
+            // off the body every solver tier reads: after the committed glossary and terms.
+            await findOppositionCandidates(encodable, options.semantic.embedder, {
               glossary: glossaryIndex(doc.glossary),
+              atomize: pipelineAtomize(doc),
               ...(docAntonymIndex(doc) !== undefined
                 ? { antonyms: docAntonymIndex(doc) as ReadonlyMap<string, AntonymEntry> }
                 : {}),
@@ -1257,6 +1784,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         ...graph,
         ...opposition,
         ...quantityAliasCandidates,
+        ...numberSpellingCandidates,
+        ...numericUncompared,
+        ...numericUnread,
       ]) {
         formal.push({
           code: f.code,
@@ -1404,8 +1934,18 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   // suppress it, so the disclosure still fires when truly nothing was compared.
   const noPairsChecked =
     report.pairsChecked === 0 && requirements.length >= 2 && !crossRequirementFired
+  // Why nothing was compared, so neither the disclaimer nor the `no-decide-tier-comparison`
+  // advice names a cause the coverage rows contradict: shared atoms are not a vocabulary gap,
+  // and an exact-duplicate pair is reported rather than compared.
+  const noPairsCause = {
+    atomsShared: [...coverageAtomOwners.values()].some((o) => o.size >= 2),
+    exactDuplicates: findings.some((f) => f.code === 'FND_EXACT_DUPLICATE'),
+  }
   if (noPairsChecked) {
-    const coverage = noPairsCheckedFinding(requirements.map((r) => r.id))
+    const coverage = noPairsCheckedFinding(
+      requirements.map((r) => r.id),
+      noPairsCause,
+    )
     findings.push({
       code: coverage.code,
       severity: coverage.severity,
@@ -1461,25 +2001,32 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   const inconclusive =
     report.pairsChecked === 0 && requirements.length >= 2 && !decideTierCrossReqFired
 
-  // A requirement participates when (a) it shares ≥1 atom with another
-  // included requirement (the propositional conjunction constrained it), OR
-  // (b) a decide-tier cross-requirement finding names it (the numeric/temporal
-  // tiers compare requirements the propositional atom roster cannot see).
+  // AC-3-1: a requirement participates when (a) it was CO-LIVE with a peer it shares ≥1
+  // atom with, in a context group the contradiction solver DECIDED — the only situation in
+  // which the SMT conjunction actually asserted the two obligations together — OR (b) a
+  // decide-tier cross-requirement finding names it (the numeric/temporal tiers compare
+  // requirements the propositional groups cannot see). Sharing an atom is NOT enough: two
+  // requirements under guards no group asserts together share their response atom and were
+  // still never compared, which is exactly how the canonical feature-interaction conflict
+  // earned `verified: true`.
   const decideFindingParticipants = new Set<string>()
   for (const f of formal) {
     if (f.requirementIds.length >= 2 && !PROPOSE_ONLY_FND_CODES.has(f.code)) {
       for (const id of f.requirementIds) decideFindingParticipants.add(id)
     }
   }
+  const coLive = coLiveParticipants(contradictionGroups, coverageAtomOwners)
   const coverageRows: CoverageRequirementRow[] = [...coverageIncludedIds]
     .sort()
     .map((id): CoverageRequirementRow => {
       const singletons: string[] = []
-      let shares = decideFindingParticipants.has(id)
+      const vocabularyPeers = new Set<string>()
+      const shares = decideFindingParticipants.has(id) || coLive.has(id)
       for (const [atomName, owners] of coverageAtomOwners) {
         if (!owners.has(id)) continue
-        if (owners.size >= 2) shares = true
-        else singletons.push(atomName)
+        if (owners.size >= 2) {
+          for (const peer of owners) if (peer !== id) vocabularyPeers.add(peer)
+        } else singletons.push(atomName)
       }
       singletons.sort()
       return {
@@ -1498,9 +2045,19 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
                   ? `${id} is the only requirement, so there is nothing to cross-compare yet. ` +
                     'Coverage begins when a second requirement lands (`symspec add`); this row ' +
                     'will then say whether the two share vocabulary.'
-                  : `Rewrite ${id} to share guard/response vocabulary with the requirements it ` +
-                    'relates to, or link its terms via `symspec glossary add`/`symspec antonym add` ' +
-                    'so the formal tier can cross-compare it.',
+                  : vocabularyPeers.size > 0
+                    ? // The vocabulary is ALREADY shared, so the rewrite-for-vocabulary advice
+                      // would be wrong: what is missing is a context in which both hold.
+                      `${id} shares atoms with ${[...vocabularyPeers].sort().join(', ')}, but no ` +
+                      'context group the solver decided asserted it together with any of them: ' +
+                      'their guards are only ever asserted separately, so their obligations were ' +
+                      'never compared. symspec checks each distinct guard set on its own (asserting ' +
+                      'unrelated guards together would fake conflicts between mutually exclusive ' +
+                      'triggers) and cannot yet decide whether these guards co-occur. See any ' +
+                      `\`conditional-conflict-unchecked\` demotion naming ${id}.`
+                    : `Rewrite ${id} to share guard/response vocabulary with the requirements it ` +
+                      'relates to, or link its terms via `symspec glossary "<canonical>" "<alias>"`/`symspec antonym <a> <b>` ' +
+                      'so the formal tier can cross-compare it.',
             }),
       }
     })
@@ -1515,6 +2072,8 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
   // legitimate discharge, unlike suppressing a coverage FACT.
   const quantityAliasFindings = kept.filter((f) => f.code === 'FND_QUANTITY_ALIAS_CANDIDATE')
   const relationalFindings = kept.filter((f) => f.code === 'FND_RELATIONAL_UNCHECKED')
+  const numericUncomparedFindings = kept.filter((f) => f.code === 'FND_NUMERIC_UNCOMPARED')
+  const numberSpellingFindings = kept.filter((f) => f.code === 'FND_NUMBER_SPELLING_CANDIDATE')
 
   const demotions: CoverageDemotion[] = []
   if (requirements.length >= 2) {
@@ -1523,6 +2082,32 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         reason: 'uncovered-requirement',
         requirementIds: [row.id],
         action: row.suggestion ?? '',
+      })
+    }
+    // AC-3-2: two requirements whose responses conflict as written — one response atom at
+    // opposite polarity, or contraries both asserted (AC-2-1) — under guards no planned
+    // context group makes both live, are a conflict the solver never looked for: it asserts
+    // each guard set on its own. Detect and demote: whether the guards can co-occur is not
+    // something this tier can decide.
+    for (const c of conditionalConflicts(coverageEncoded, formal)) {
+      const what = c.contrary
+        ? `demand contrary responses ("${c.responseA}" and "${c.responseB}": opposite sides of ` +
+          'one antonym pair, which cannot both hold)'
+        : `constrain the same response ("${c.responseA}") at opposite polarity`
+      demotions.push({
+        reason: 'conditional-conflict-unchecked',
+        requirementIds: [c.a, c.b],
+        action:
+          `${c.a} and ${c.b} ${what}, ` +
+          `under contexts that are never asserted together: ${c.a} applies ${describeContext(c.contextA)}` +
+          ` and ${c.b} applies ${describeContext(c.contextB)}. No context group the solver checked ` +
+          'makes both live, so it never tested whether they can hold at once — and if ' +
+          `${c.union.map((t) => `"${t}"`).join(' and ')} can hold together, they conflict there. ` +
+          'Decide whether those contexts can overlap. If they can, change one of the two ' +
+          'requirements so it no longer demands the opposite of the other in the overlap, then ' +
+          're-run `symspec check`. If they cannot, symspec has no way yet to record that the ' +
+          'guards are mutually exclusive, so this stays demoted; it is not waivable, because ' +
+          'nothing was decided.',
       })
     }
     // Excluded-from-formal: the solver never saw these requirements, so
@@ -1542,10 +2127,12 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         action:
           `Rephrase ${ex.id} to clear the error-severity lint/parse finding that blocked it from ` +
           'the formal tier (see the finding message for the blocking code), then re-run `symspec ' +
-          'check`. Alternatively, `symspec waive add <blocking-code> --ref ' +
-          `${ex.id}` +
-          ' --reason "…"` — the waiver-aware gate re-admits the requirement to the solver. Waiving ' +
-          'the FND_EXCLUDED_FROM_FORMAL disclosure itself does NOT restore coverage.',
+          'check`: that is the only discharge that can reach `verified: true`. Alternatively, when ' +
+          'the blocking finding is a lint whose wording a reviewer accepts as written, the repair ' +
+          `carries a waive op of that code over exactly ${ex.id} and its current text (refs plus ` +
+          'the content hash): the waiver-aware gate re-admits the requirement to the solver, but ' +
+          'the run then demotes `waived-blocking-lint` in place of this demotion, so it cannot ' +
+          'verify. The FND_EXCLUDED_FROM_FORMAL disclosure itself is never waivable.',
       })
     }
     // Quantity-alias candidates: a possible single-quantity numeric conflict
@@ -1556,8 +2143,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         requirementIds: [...f.requirementIds],
         action:
           'Two co-active opposed numeric bounds landed on different quantity keys. If they ' +
-          'constrain one physical quantity, commit the `symspec glossary add` alias from the ' +
-          "finding's message so the numeric tier compares them; otherwise waive it. Then re-run `symspec check`.",
+          'constrain one physical quantity, commit the `symspec glossary "<canonical>" "<alias>"` alias from the ' +
+          "finding's message so the numeric tier compares them; otherwise reword one so each " +
+          'names its own quantity in different words. Then re-run `symspec check`.',
       })
     }
     // Relational/aggregate blind spot: the pairwise same-quantity numeric tier
@@ -1570,28 +2158,188 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         requirementIds: [...f.requirementIds],
         action:
           `Aggregate/cross-quantity reasoning over ${f.requirementIds.join(', ')} was not attempted ` +
-          '(the numeric tier is pairwise same-quantity only). Verify any shared-resource sum or ' +
-          'cross-entity relation by hand and waive this finding, or restate the constraint as a ' +
-          'same-quantity numeric bound the solver can check.',
+          '(the numeric tier is pairwise same-quantity only). Restate the constraint as a ' +
+          'same-quantity numeric bound the solver can check: a relation the tier did not attempt ' +
+          'is discharged only by a restatement it decides, never by accepting it as written.',
+      })
+    }
+    // Numeric bounds the tier neither proved nor dismissed: a verdict that turns on a
+    // reading the sentences do not fix is not a comparison that happened.
+    // A finding naming one requirement is a quantity the tier never read a bound on
+    // (`disclosureOfUnreadQuantities`), so it has no partner to be consistent with.
+    for (const f of numericUncomparedFindings) {
+      demotions.push({
+        reason: 'numeric-bounds-uncompared',
+        requirementIds: [...f.requirementIds],
+        action:
+          f.requirementIds.length === 1
+            ? `${f.requirementIds[0]} states a quantity the numeric tier read no bound on, so it ` +
+              "was compared with nothing (the finding's message names it). Restate it after a " +
+              'comparator phrase the tier reads so the numeric tier can decide it. Then re-run ' +
+              '`symspec check`.'
+            : `The numeric bounds of ${f.requirementIds.join(', ')} were neither proved nor dismissed ` +
+              "(the finding's message says which reading splits them). Restate them in one sense and " +
+              'one recognized unit so the numeric tier can decide them. Then re-run `symspec check`.',
+      })
+    }
+    // AC-2-4: a number spelled with two digit separators. Off the KEPT set, so the reviewed
+    // waiver that declares the two numbers different discharges it.
+    for (const f of numberSpellingFindings) {
+      demotions.push({
+        reason: 'number-spelling-candidate',
+        requirementIds: [...f.requirementIds],
+        action:
+          `${f.requirementIds.join(' and ')} write one phrase with numbers that differ only in a ` +
+          'digit separator, on two atoms the solver never compared. If they are one number, ' +
+          'rewrite one with `symspec update --ref <id> <attr> "<wording>"` so both spell it identically, then re-run `symspec ' +
+          'check`: the shared atom makes any conflict provable. If they are different numbers, ' +
+          'rewrite one so both follow one digit-separator convention.',
+      })
+    }
+    // AC-3-6: an untriaged opposite-polarity inflection variant is a possible
+    // contradiction on two atoms, so it demotes exactly like an opposition candidate:
+    // off the KEPT set, so the waiver that declares the pair distinct discharges it.
+    for (const f of kept) {
+      if (f.code !== 'FND_SIMILAR_SEMANTIC') continue
+      const hasMerge = oppositeVariantPairs.get(f.requirementIds.join('|'))
+      if (hasMerge === undefined) continue
+      demotions.push({
+        reason: 'opposite-polarity-near-duplicate',
+        requirementIds: [...f.requirementIds],
+        action:
+          `${f.requirementIds.join(' and ')} respond with the same words up to inflection or ` +
+          'number at OPPOSITE polarity, or as contraries under the committed antonyms, on two ' +
+          'different atoms or keys, so if they mean one thing they contradict each other and ' +
+          'the solver cannot see it. ' +
+          (hasMerge
+            ? 'If they are the same, commit the `symspec glossary "<canonical>" "<alias>"` merge from the finding\'s ' +
+              'message: it puts both on one atom at opposite polarity, or on one antonym key as ' +
+              'contraries. The solver then compares them wherever a checked context makes both ' +
+              'live; if their guards are never asserted together, the pair stays demoted as ' +
+              '`conditional-conflict-unchecked` until you settle whether the guards can overlap. '
+            : "If they are the same, rewrite one to use the other's words: no glossary merge is " +
+              'offered, because every merge of these phrasings aliases a phrase to its own ' +
+              'opposite or splits an atom the document already shares. ') +
+          'If they are genuinely distinct, reword one so the two plainly name different actions. ' +
+          'Then re-run `symspec check`.',
+      })
+    }
+    // A glossary entry naming two contraries as one action: its consequence (neither action ever
+    // happens) is not decided. The atomizer keeps the contraries apart and links each requirement's
+    // phrase to the entry under its own guard, so a conflict still takes two requirements; one
+    // requirement demanding either action is impossible alone, and no tier reports that.
+    const glossaryEntries = new Map(doc.glossary.map((e) => [normalize(e.canonical), e]))
+    for (const entry of glossaryContraries(
+      glossaryIndex(doc.glossary),
+      docAntonymIndex(doc),
+      termIndex(doc.terms ?? []),
+    )) {
+      const phrases = new Set(entry.phrases)
+      const ids = requirements
+        .filter((r) => phrases.has(normalize(r.systemResponse)))
+        .map((r) => r.id)
+        .sort()
+      if (ids.length === 0) continue
+      const stored = glossaryEntries.get(entry.canonical)
+      const spelled = (phrase: string) =>
+        stored?.aliases.find((a) => normalize(a) === phrase) ?? phrase.replace(/_/g, ' ')
+      const canonical = stored?.canonical ?? entry.canonical.replace(/_/g, ' ')
+      const removals = [...new Set(entry.contraries.flat())]
+        .filter((phrase) => phrase !== entry.canonical)
+        .map(
+          (phrase) =>
+            `\`symspec glossary ${shellQuoted(canonical)} ${shellQuoted(spelled(phrase))} --remove\``,
+        )
+      demotions.push({
+        reason: 'contrary-glossary-alias',
+        requirementIds: ids,
+        action:
+          `The glossary entry "${canonical}" names contraries as one action (` +
+          entry.contraries
+            .map(([p, q]) => `"${p.replace(/_/g, ' ')}" / "${q.replace(/_/g, ' ')}"`)
+            .join(', ') +
+          '). The antonym table says the two cannot both happen, so an entry saying they are ' +
+          'one action says neither ever happens. The formal tier keeps each contrary phrase on ' +
+          'its own atom and links it to the entry, so two requirements the entry puts at odds ' +
+          'are still compared, but a requirement above that demands either action is impossible ' +
+          'on its own, and nothing reports that. ' +
+          'If they are two actions, remove the alias that names the opposite one: ' +
+          `${removals.join(' or ')}. Then re-run \`symspec check\`.`,
       })
     }
     for (const f of openOppositionFindings) {
       demotions.push({
         reason: 'open-opposition-candidate',
         requirementIds: [...f.requirementIds],
+        // The waiver named here is the exact-pair one the repair carries: a candidate is often
+        // a pair a base build PROVED, so a document-wide or one-requirement waiver would
+        // certify every other candidate it reaches, none of which anyone triaged.
         action:
-          'Triage this opposition candidate: commit `symspec antonym add <a> <b>` if the verbs are ' +
-          'opposites, `symspec glossary add "<a>" "<b>"` if synonyms, or waive it ' +
-          `(\`symspec waive add FND_OPPOSITION_CANDIDATE --reason "…"\`) if neither. See the finding's message for the exact verbs.`,
+          `Triage the opposition candidate over ${f.requirementIds.join(' and ')}: make the pair ` +
+          "provable with the edit the finding's message names (the rewrite, `symspec antonym <verbA> <verbB>` " +
+          'if the verbs are opposites, or `symspec glossary "<canonical>" "<alias>"` if synonyms), or, if the two do ' +
+          'not conflict, reword one so they no longer read as opposite responses: a candidate is ' +
+          'decided by an edit, never by accepting it as written. Then re-run `symspec check`.' +
+          unappliedNote(unappliedWaivers(f, waivers)),
       })
     }
     if (inconclusive) {
+      // When the requirements ALREADY share vocabulary, "align vocabulary" is the wrong
+      // advice, and the cause the prose names must agree with the coverage rows: an
+      // exact-duplicate pair is reported rather than compared; requirements no decided group
+      // asserted together are named by the rows and any `conditional-conflict-unchecked` /
+      // `solver-unknown` demotion; and co-live requirements may still yield no candidate pair.
+      const action = !noPairsCause.atomsShared
+        ? 'No cross-requirement comparison happened. Align vocabulary across requirements (shared ' +
+          'guards/objects) or commit glossary/antonym links so the decide tier can compare pairs.'
+        : noPairsCause.exactDuplicates
+          ? 'No decide-tier pair comparison was recorded. The requirements share atoms, but an ' +
+            'exact-duplicate pair is reported as FND_EXACT_DUPLICATE rather than compared. Delete ' +
+            'one copy of each duplicate, then re-run `symspec check`.'
+          : coLive.size === 0
+            ? 'No cross-requirement comparison happened. The requirements share atoms, but no ' +
+              'context group the solver decided asserted any two of them together, so no pair ' +
+              'was compared — see `coverage.requirements` and any `conditional-conflict-unchecked` ' +
+              'or `solver-unknown` demotion for which.'
+            : 'No decide-tier pair comparison was recorded. The requirements share atoms and ' +
+              'some were asserted together in a decided context group, but no pair of them was ' +
+              'a candidate for the pairwise tier — see `coverage.requirements`.'
       demotions.push({
         reason: 'no-decide-tier-comparison',
         requirementIds: requirements.map((r) => r.id),
+        action,
+      })
+    }
+    // AC-3-5: the stub ran in the model's place. Inside the ≥2 guard with
+    // `semantic-tier-skipped`, for the same reason: with fewer than two requirements the
+    // semantic tier has nothing to compare, so which embedder ran cannot weaken anything.
+    if (options.semantic?.stub === true) {
+      demotions.push({
+        reason: 'run-weakened',
+        requirementIds: [],
         action:
-          'No cross-requirement comparison happened. Align vocabulary across requirements (shared ' +
-          'guards/objects) or commit glossary/antonym links so the decide tier can compare pairs.',
+          'The semantic tier ran on the deterministic TEST stub embedder (SYMSPEC_EMBED_STUB=1), ' +
+          'whose cosines are a hash rather than a similarity, so opposition candidates and ' +
+          'paraphrase merges the pinned model would propose may be missing — this run cannot ' +
+          'certify. Unset SYMSPEC_EMBED_STUB and re-run `symspec check` (pre-warm an air-gapped ' +
+          'host with `symspec download-model`). Waiving cannot discharge this: nothing was compared.',
+      })
+    }
+    // Invariant I-1: a semantic threshold RAISED above the measured default is a
+    // run-weakening move too. The paraphrase pass only proposes pairs at or above it, and the
+    // AC-3-6 near-duplicate demotion rides on those proposals, so one run with a high
+    // threshold drops a demotion the pinned run keeps. Lowering it only proposes more.
+    const threshold = options.semantic?.threshold
+    if (threshold !== undefined && threshold > DEFAULT_SEMANTIC_THRESHOLD) {
+      demotions.push({
+        reason: 'run-weakened',
+        requirementIds: [],
+        action:
+          `The semantic tier ran with --semantic-threshold ${threshold}, above the measured ` +
+          `default of ${DEFAULT_SEMANTIC_THRESHOLD}, so paraphrase merges and near-duplicate ` +
+          'demotions the default run would raise may be missing — this run cannot certify. ' +
+          'Re-run `symspec check` without --semantic-threshold (or with a value at or below ' +
+          'the default). Waiving cannot discharge this: nothing was compared.',
       })
     }
     if (options.semantic === undefined) {
@@ -1630,7 +2378,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         `The solver returned unknown for the context group covering ${f.requirementIds.join(', ')} ` +
         '(undecidable within the per-group timeout, or the timeout fired), so that group was never ' +
         'decided — an unknown is never read as "no conflict". Raise --timeout-ms and re-run ' +
-        '`symspec check`. Waiving FND_NEEDS_REVIEW cannot discharge this: the group is still undecided.',
+        '`symspec check`. Suppressing FND_NEEDS_REVIEW cannot discharge this: the group is still undecided.',
     })
   }
 
@@ -1662,6 +2410,39 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
         'this run compared less than it would have. Raise --solver-budget-ms (or reduce the ' +
         'document / raise --similarity-threshold to shrink the candidate-pair set), then re-run ' +
         '`symspec check`. Waiving a finding cannot discharge this — the comparison did not happen.',
+    })
+  }
+  // AC-3-4 — an `unknown` INSIDE the contradiction enumeration, or in the temporal
+  // tier's joint check. Recorded at the call that returned it rather than inferred from
+  // the needs-review tier: that tier runs its OWN solve of each group, and a group whose
+  // enumeration stopped at an `unknown` after one reported conflict (or whose second
+  // check timed out where the first did not) is decided there just often enough to hide
+  // the gap. Outside the ≥2-requirement guard for the reason truncation is: it is a
+  // statement about the RUN. Not waiver-discharged: there is no finding behind it.
+  for (const g of contradictionGroups.filter((g) => g.outcome === 'unknown')) {
+    const where =
+      g.contextAtoms.length === 0
+        ? 'the unconditional (baseline) context group'
+        : `the context group asserting ${g.contextAtoms.join(' ∧ ')}`
+    demotions.push({
+      reason: 'solver-unknown',
+      requirementIds: [...g.liveIds],
+      action:
+        `The contradiction tier's solver returned unknown inside ${where}` +
+        (g.liveIds.length > 0 ? ` (live: ${g.liveIds.join(', ')})` : '') +
+        ', so its enumeration stopped there and any conflict it had not yet reached was never ' +
+        'looked for — an unknown is never read as "no conflict", and a conflict already reported ' +
+        'for this group does not mean it was the only one. Raise --timeout-ms and re-run `symspec check`.',
+    })
+  }
+  for (const u of tierUnknowns) {
+    demotions.push({
+      reason: 'solver-unknown',
+      requirementIds: [...u.requirementIds],
+      action:
+        `The ${u.tier} tier's solver returned unknown for its check over ` +
+        `${u.requirementIds.join(', ')}, so that check decided nothing — an unknown is never read ` +
+        'as "no conflict". Raise --timeout-ms and re-run `symspec check`.',
     })
   }
   const verified = demotions.length === 0
@@ -1724,5 +2505,12 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
     coverage: coverageReport,
     verified,
     ...(strictGate !== undefined ? { strictGate } : {}),
+    run: {
+      embedder:
+        options.semantic === undefined ? 'off' : options.semantic.stub === true ? 'stub' : 'model',
+      ...(options.semantic !== undefined
+        ? { semanticThreshold: options.semantic.threshold ?? DEFAULT_SEMANTIC_THRESHOLD }
+        : {}),
+    },
   }
 }

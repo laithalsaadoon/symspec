@@ -33,6 +33,7 @@
  */
 
 import { ErrNotFound } from '../../ports/errors.ts'
+import { shellWord } from '../engine/core/shell-word.ts'
 import type { Requirement, RequirementsDocument } from './document.ts'
 
 /**
@@ -153,7 +154,9 @@ export const requireRequirement = (
     repair: {
       ops: [],
       commands:
-        near.length > 0 && near[0] !== undefined ? [`symspec show ${near[0]}`] : ['symspec list'],
+        near.length > 0 && near[0] !== undefined
+          ? [`symspec show ${shellWord(near[0])}`]
+          : ['symspec list'],
     },
   })
 }

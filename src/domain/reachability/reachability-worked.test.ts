@@ -48,7 +48,7 @@ import { stubEmbedder } from '../../adapters/embedding/embedder.ts'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import { type CheckPayload, checkOp } from '../../app/operations/check.ts'
 import { runOperation } from '../../app/runtime/operation.ts'
-import { DocPath, DocStore, makeDocPath } from '../../ports/doc-store.ts'
+import { DocPath, DocStore, documentOnlyStore, makeDocPath } from '../../ports/doc-store.ts'
 import { embedderLayerOf } from '../../ports/embedder.ts'
 import { ErrDocNotFound } from '../../ports/errors.ts'
 import {
@@ -155,15 +155,20 @@ const conversationLockDoc = (): RequirementsDocument => ({
     ),
   },
   stateModel: {
+    // Both declared `frame: stable` — the author's statement that the lock count and the
+    // waiting flag change only when a requirement changes them. Every variable here IS
+    // written by some requirement, so this is the honest reading of the lifecycle, and it is
+    // the hypothesis the TX-C1 proof is reported under (spec 007 AC-1-6: without the
+    // declaration the proof needs a frame the document does not state, and is UNKNOWN).
     variables: [
       {
         name: 'held',
         type: 'int',
-        frame: 'volatile',
+        frame: 'stable',
         initial: 'held = 0',
         domain: { min: 0, max: 3 },
       },
-      { name: 'queued', type: 'bool', frame: 'volatile', initial: 'queued = false' },
+      { name: 'queued', type: 'bool', frame: 'stable', initial: 'queued = false' },
     ],
   },
   glossary: [],
@@ -179,7 +184,7 @@ const check = (document: RequirementsDocument): Promise<CheckPayload> =>
       Effect.provide(
         Layer.mergeAll(
           Layer.succeed(DocStore)(
-            DocStore.of({
+            documentOnlyStore({
               load: (path) =>
                 path === 'doc.json'
                   ? Effect.succeed({ document, unknownKeys: {}, diagnostics: [] })

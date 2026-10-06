@@ -115,7 +115,8 @@ describe('the tier fires on eligibility alone', () => {
         code: 'FND_INCOMPLETE',
         severity: 'info',
         requirementIds: ['i-enabled', 'i-not-enabled'],
-        triggerKey: 'sys__gateway__trig__request_arrives',
+        // Spec 007 AC-3-3: a trigger atom lives in the shared `guard` namespace.
+        triggerKey: 'sys__gateway__guard__request_arrives',
         message:
           'Requirements i-enabled, i-not-enabled share a trigger but their preconditions do not ' +
           'cover all cases (heuristic — only bites when preconditions normalize to ' +

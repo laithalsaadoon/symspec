@@ -34,7 +34,7 @@
 
 import { emitCandidatePairs } from '../solvers/free/pairwise-filter.ts'
 import type { CandidatePair, ReqView } from '../solvers/types.ts'
-import { atomize } from './atomize.ts'
+import { type Atom, areContrary, atomize } from './atomize.ts'
 
 /** An info-severity similar-but-not-unified finding (Appendix B `FND_SIMILAR_UNUNIFIED`). */
 export interface SimilarUnunifiedFinding {
@@ -62,13 +62,13 @@ export interface FindSimilarUnunifiedOptions {
 }
 
 /** The scoped RESPONSE atom name for a requirement, per AC-4-2a. Polarity-agnostic by design. */
-function responseAtomName(req: SimilarityRequirement): string {
+function responseAtomOf(req: SimilarityRequirement): Atom {
   return atomize({
     kind: 'resp',
     text: req.systemResponse,
     systemName: req.systemName,
     ...(req.negated !== undefined ? { negated: req.negated } : {}),
-  }).name
+  })
 }
 
 const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
@@ -108,11 +108,14 @@ export function findSimilarUnunified(
     if (seen.has(key)) continue
     seen.add(key)
 
-    const atomA = responseAtomName(a)
-    const atomB = responseAtomName(b)
-    // Same atom name ⇒ unified (identical text, or a seed-antonym-table hit
-    // that unified them with opposite polarity by design) ⇒ no finding.
-    if (atomA === atomB) continue
+    const litA = responseAtomOf(a)
+    const litB = responseAtomOf(b)
+    const atomA = litA.name
+    const atomB = litB.name
+    // Same atom name ⇒ unified (identical text) ⇒ no finding. A seed-antonym pair is two
+    // CONTRARY atoms (AC-2-1) the solver already relates — proposing to reword one into the other
+    // would tell the author to merge `grant access` with `revoke access`.
+    if (atomA === atomB || areContrary(litA, litB)) continue
 
     findings.push({
       code: 'FND_SIMILAR_UNUNIFIED',
@@ -123,7 +126,7 @@ export function findSimilarUnunified(
         `${options.similarityThreshold ?? 0.7}) but their responses did not unify to the ` +
         'same atom under the conservative normalization/antonym table. If these are genuine ' +
         `synonyms (e.g. "${atomA}" vs "${atomB}"), reword one requirement's response via ` +
-        '`symspec update` so both use the same phrasing, then re-run `symspec check` to ' +
+        '`symspec update --ref <id> systemResponse "<wording>"` so both use the same phrasing, then re-run `symspec check` to ' +
         'surface any conflict the shared atom exposes.',
     })
   }

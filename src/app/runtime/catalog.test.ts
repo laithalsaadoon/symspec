@@ -10,7 +10,7 @@
  * `null` severity or a missing example, and no test notices.
  *
  * So the assertions here are COUNTS and TOTALITY, not spot checks: every `FND_*`
- * severity parses (not "some do"), the example extractor finds exactly the 11 codes
+ * severity parses (not "some do"), the example extractor finds exactly the 12 codes
  * that carry one (not "at least one"), and every code resolves through
  * `lookupCode`. A regex that stops matching fails a count; a regex that starts
  * over-matching fails it too.
@@ -25,6 +25,7 @@ import {
 } from '../../domain/reachability/reachability-codes.ts'
 import { TERMINOLOGY_FND_CODES } from '../../domain/terminology/terminology-codes.ts'
 import { descriptionOf, ERR_CLASSES, tagOf } from '../../ports/errors.ts'
+import { WAIVE_INFLECTION } from '../../testing/cli-argv.ts'
 import {
   allCodeStrings,
   allCodes,
@@ -36,19 +37,25 @@ import {
 } from './catalog.ts'
 
 // ---------------------------------------------------------------------------
-// Coverage: all 83, in family order
+// Coverage: every code, in family order
 // ---------------------------------------------------------------------------
 
 describe('the unified catalog spans all three code families', () => {
-  it('holds exactly 21 ERR_* / 38 FND_* / 24 GTWR_* = 83', () => {
-    // 38 FND_*: the transplanted 30, plus 6 `FND_REACHABILITY_*` and 2 `FND_TERM_*` /
+  it('[S3-001] holds exactly 24 ERR_* / 42 FND_* / 24 GTWR_* = 90, the S3 append included (R47)', () => {
+    // 24 ERR_*: v4's 21 plus spec 007's `ERR_CLAUSE_UNBOUND` and `ERR_CONFIG_INVALID`, plus S3's
+    // `ERR_WAIVER_REFUSED` (R47: a real catalog code, an `ERR_CLASSES` append).
+    // 42 FND_*: the transplanted 30 plus `FND_NUMERIC_UNCOMPARED` and `FND_NUMBER_SPELLING_CANDIDATE`, plus 8 reachability-tier
+    // (`FND_REACHABILITY_*`, `FND_RANGE_VIOLATION`, `FND_CERTIFICATE_DISAGREES`) and 2 `FND_TERM_*` /
     // `FND_ACRONYM_*`. The three live in different files because codes live with the tier
     // that emits them. They report the same `family`, because an agent switches on a code and
     // not on provenance.
-    expect(catalogCounts()).toEqual({ ERR: 21, FND: 38, GTWR: 24, total: 83 })
+    expect(catalogCounts()).toEqual({ ERR: 24, FND: 42, GTWR: 24, total: 90 })
+    // NEGATIVE half: the pre-S3 ERR count is not what the catalog reports.
+    expect(catalogCounts().ERR).not.toBe(23)
+    expect(lookupCode('ERR_WAIVER_REFUSED')?.family).toBe('ERR')
   })
 
-  it('resolves EVERY code in every catalog', () => {
+  it('[S3-001] resolves EVERY code in every catalog, ERR_WAIVER_REFUSED included (R47)', () => {
     const codes = [
       ...ERR_CLASSES.map((c) => tagOf(c)),
       ...FND_CODES,
@@ -56,7 +63,9 @@ describe('the unified catalog spans all three code families', () => {
       ...TERMINOLOGY_FND_CODES,
       ...GTWR_CODES,
     ] as readonly string[]
-    expect(codes).toHaveLength(83)
+    // Derived: the five lists sum to the catalog's own total, and the S3 append is among them.
+    expect(codes).toHaveLength(catalogCounts().total)
+    expect(codes).toContain('ERR_WAIVER_REFUSED')
     for (const code of codes) {
       const entry = lookupCode(code)
       expect(entry, `${code} must resolve`).toBeDefined()
@@ -66,19 +75,29 @@ describe('the unified catalog spans all three code families', () => {
     }
   })
 
-  it('lists the families in order, each in its own append-only order', () => {
+  it('[S3-001] lists the families in order, each in its own append-only order, ERR_WAIVER_REFUSED last of the ERR rows (R47)', () => {
     const rows = allCodes()
-    expect(rows.slice(0, 21).map((r) => r.family)).toEqual(Array(21).fill('ERR'))
-    // 38 FND rows: v4's 30, then the reachability 6, then the terminology 2 — all reporting
-    // `family: 'FND'`.
-    expect(rows.slice(21, 59).map((r) => r.family)).toEqual(Array(38).fill('FND'))
-    expect(rows.slice(59).map((r) => r.family)).toEqual(Array(24).fill('GTWR'))
+    // Offsets derived from the family lists, so the next append moves them with it.
+    const err = ERR_CLASSES.length
+    const fnd = err + FND_CODES.length
+    const reach = fnd + REACHABILITY_FND_CODES.length
+    const term = reach + TERMINOLOGY_FND_CODES.length
+    expect(rows.slice(0, err).map((r) => r.family)).toEqual(Array(err).fill('ERR'))
+    // The S3 append is the LAST ERR row, after `ERR_CONFIG_INVALID`.
+    expect(rows.slice(err - 2, err).map((r) => r.code)).toEqual([
+      'ERR_CONFIG_INVALID',
+      'ERR_WAIVER_REFUSED',
+    ])
+    // 42 FND rows: v4's 30, the numeric disclosure and the number-spelling proposal, then the reachability 8, then the
+    // terminology 2 — all reporting `family: 'FND'`.
+    expect(rows.slice(err, term).map((r) => r.family)).toEqual(Array(42).fill('FND'))
+    expect(rows.slice(term).map((r) => r.family)).toEqual(Array(24).fill('GTWR'))
     // The per-family order is the shipped append-only order, unreordered — and WITHIN the
     // FND family, provenance order: the transplanted list, then the greenfield's.
-    expect(rows.slice(21, 51).map((r) => r.code)).toEqual([...FND_CODES])
-    expect(rows.slice(51, 57).map((r) => r.code)).toEqual([...REACHABILITY_FND_CODES])
-    expect(rows.slice(57, 59).map((r) => r.code)).toEqual([...TERMINOLOGY_FND_CODES])
-    expect(rows.slice(59).map((r) => r.code)).toEqual([...GTWR_CODES])
+    expect(rows.slice(err, fnd).map((r) => r.code)).toEqual([...FND_CODES])
+    expect(rows.slice(fnd, reach).map((r) => r.code)).toEqual([...REACHABILITY_FND_CODES])
+    expect(rows.slice(reach, term).map((r) => r.code)).toEqual([...TERMINOLOGY_FND_CODES])
+    expect(rows.slice(term).map((r) => r.code)).toEqual([...GTWR_CODES])
   })
 
   it('publishes the description VERBATIM — the manifest`s own bytes', () => {
@@ -116,9 +135,9 @@ describe('severity is derived, and null where it genuinely is not per-code', () 
    * would report `null` for every code — which reads as "no severity" rather than
    * as a bug. Asserting every one parses is what makes the derivation trustworthy.
    */
-  it('parses a severity for ALL 38 FND_* codes', () => {
+  it('parses a severity for ALL 42 FND_* codes', () => {
     const fnd = allCodes().filter((r) => r.family === 'FND')
-    expect(fnd).toHaveLength(38)
+    expect(fnd).toHaveLength(42)
     for (const row of fnd) {
       expect(row.severity, `${row.code} severity must parse`).not.toBeNull()
       expect(['error', 'warn', 'info', 'warn/info']).toContain(row.severity)
@@ -159,6 +178,11 @@ describe('severity is derived, and null where it genuinely is not per-code', () 
       // decide" must never fail a build the way a proof does.
       'FND_REACHABILITY_VIOLATED',
       'FND_REACHABILITY_VACUOUS_INITIAL',
+      // RANGE_VIOLATION (spec 007 AC-1-2): a reachable, requirement-sanctioned step writes
+      // outside a declared range, so the declared model is false of itself.
+      'FND_RANGE_VIOLATION',
+      // CERTIFICATE_DISAGREES (AC-1-5): an independent search refuted a proof.
+      'FND_CERTIFICATE_DISAGREES',
     ])
   })
 
@@ -241,12 +265,14 @@ describe('worked examples are extracted where the corpus carries one', () => {
    * starts over-matching — neither of which a "some code has an example" assertion
    * would catch.
    */
-  it('finds an example for exactly the 11 codes that carry one', () => {
+  it('finds an example for exactly the 13 codes that carry one', () => {
     const withExample = allCodes().filter((r) => r.example !== undefined)
     expect(withExample.map((r) => r.code)).toEqual([
       'FND_AMBIGUOUS_VAGUE',
       'FND_OPPOSITION_CANDIDATE',
       'FND_QUANTITY_ALIAS_CANDIDATE',
+      'FND_NUMERIC_UNCOMPARED',
+      'FND_NUMBER_SPELLING_CANDIDATE',
       'GTWR_R8_ESCAPE',
       'GTWR_R9_OPEN_ENDED',
       'GTWR_R10_SUPERFLUOUS_INFINITIVE',
@@ -308,7 +334,26 @@ describe('runnable commands are lifted out of the description text', () => {
     expect(lookupCode('FND_OPPOSITION_CANDIDATE')?.commands).toEqual([
       'symspec antonym <verbA> <verbB>',
     ])
-    expect(lookupCode('FND_SIMILAR_SEMANTIC')?.commands).toEqual(['symspec glossary'])
+    // R56: the FULL glossary form. Bare `symspec glossary` prints usage (Missing
+    // required argument: canonical), so the catalog hands an agent both positionals.
+    expect(lookupCode('FND_SIMILAR_SEMANTIC')?.commands).toEqual([
+      'symspec glossary "<canonical>" "<alias>"',
+    ])
+  })
+
+  it('[S3-045] names the bare `symspec glossary`, with no arguments, on no catalog row (R56)', () => {
+    const rows = allCodes()
+    expect(rows.length).toBeGreaterThan(0)
+    const bare = rows.flatMap((row) =>
+      row.commands
+        .filter((command) => command.trim().replace(/\s+/g, ' ') === 'symspec glossary')
+        .map((command) => `${row.code}: ${command}`),
+    )
+    expect(bare).toEqual([])
+    // Anti-vacuity: the glossary command is still named, in its full form, somewhere.
+    expect(
+      rows.some((row) => row.commands.some((command) => command.startsWith('symspec glossary "'))),
+    ).toBe(true)
   })
 
   it('finds the migration pair on ERR_SCHEMA_VERSION', () => {
@@ -398,8 +443,32 @@ describe('nearestCodesAll ranks across all three families', () => {
     expect(nearestCodesAll('FND_', 5)).toHaveLength(5)
   })
 
-  it('draws from all 83 code strings', () => {
-    expect(allCodeStrings()).toHaveLength(83)
-    expect(new Set(allCodeStrings()).size, 'no duplicate codes across families').toBe(83)
+  it('[S3-001] draws from all 90 code strings, ERR_WAIVER_REFUSED included (R47)', () => {
+    expect(allCodeStrings()).toHaveLength(90)
+    expect(new Set(allCodeStrings()).size, 'no duplicate codes across families').toBe(90)
+    expect(allCodeStrings()).toContain('ERR_WAIVER_REFUSED')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Final closure round (R61, review R7): a never-class row says no inflection of "waive"
+// ---------------------------------------------------------------------------
+
+describe('[S3-040] no never-class catalog row carries any inflection of "waive" (R61, review R7)', () => {
+  it('[S3-040] the description, meaning and suggestions of every never-class code use no inflection of "waive" (waive, waives, waived, waiving, waiver, waivers)', () => {
+    const never = allCodes().filter((row) => row.waivable === 'never')
+    // Anti-vacuity: the never classes hold most of the finding codes, the R7 code among them.
+    expect(never.length).toBeGreaterThan(20)
+    expect(never.map((row) => row.code)).toContain('FND_EXCLUDED_FROM_FORMAL')
+    const offenders = never.flatMap((row) =>
+      [
+        ['description', row.description],
+        ['meaning', row.meaning],
+        ...row.suggestions.map((s, i) => [`suggestions[${i}]`, s] as const),
+      ]
+        .filter(([, text]) => WAIVE_INFLECTION.test(text))
+        .map(([field, text]) => `${row.code}.${field}: ${text}`),
+    )
+    expect(offenders).toEqual([])
   })
 })

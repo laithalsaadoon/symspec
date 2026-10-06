@@ -63,25 +63,34 @@ const ERR_CODES_SNAPSHOT = [
   'ERR_DOC_EXISTS',
   'ERR_EMBED_MODEL_MISSING',
   'ERR_DUPLICATE_KEY',
+  // Spec 007 AC-2-2: a leading clause with no EARS slot is refused, not dropped.
+  'ERR_CLAUSE_UNBOUND',
+  // Spec 007 AC-5-10: a pinned config that cannot be read fails closed.
+  'ERR_CONFIG_INVALID',
+  // S3 (AC-5-6, R47): a waive of a never-class code, or with no refs, is refused.
+  'ERR_WAIVER_REFUSED',
 ] as const
 
 describe('append-only ERR_* catalog', () => {
-  it('holds all 21 v4 codes', () => {
-    expect(ERR_CODES).toHaveLength(21)
-    expect(ERR_CODES_SNAPSHOT).toHaveLength(21)
+  it('[S3-001] holds the 21 v4 codes plus the greenfield appends, ERR_WAIVER_REFUSED last (R47)', () => {
+    expect(ERR_CODES).toHaveLength(24)
+    expect(ERR_CODES_SNAPSHOT).toHaveLength(24)
+    // NEGATIVE half: the pre-S3 length is gone.
+    expect(ERR_CODES.length).not.toBe(23)
+    expect(ERR_CODES.at(-1)).toBe('ERR_WAIVER_REFUSED')
   })
 
-  it('keeps every shipped code at its original index', () => {
+  it('[S3-001] keeps every shipped code at its original index (R47)', () => {
     for (const [i, code] of ERR_CODES_SNAPSHOT.entries()) {
       expect(ERR_CODES[i], `code at index ${i} changed`).toBe(code)
     }
   })
 
-  it('may only GROW in length — a shorter list means a code was removed', () => {
+  it('[S3-001] may only GROW in length — a shorter list means a code was removed (R47)', () => {
     expect(ERR_CODES.length).toBeGreaterThanOrEqual(ERR_CODES_SNAPSHOT.length)
   })
 
-  it('matches the snapshot as a PREFIX — appends allowed, reorders are not', () => {
+  it('[S3-001] matches the snapshot as a PREFIX — appends allowed, reorders are not (R47)', () => {
     expect(ERR_CODES.slice(0, ERR_CODES_SNAPSHOT.length)).toEqual([...ERR_CODES_SNAPSHOT])
   })
 
@@ -99,11 +108,11 @@ describe('append-only ERR_* catalog', () => {
       actual.length >= ERR_CODES_SNAPSHOT.length &&
       ERR_CODES_SNAPSHOT.every((code, i) => actual[i] === code)
 
-    it('passes on the real catalog', () => {
+    it('[S3-001] passes on the real catalog (R47)', () => {
       expect(prefixMatches(ERR_CODES)).toBe(true)
     })
 
-    it('passes on an APPEND (the one permitted change)', () => {
+    it('[S3-001] passes on an APPEND (the one permitted change) (R47)', () => {
       expect(prefixMatches([...ERR_CODES, 'ERR_SOMETHING_NEW'])).toBe(true)
     })
 

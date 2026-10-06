@@ -19,10 +19,11 @@
  * never remove. New codes go at the END of {@link REACHABILITY_FND_CODES}. The count is
  * pinned in `catalog.test.ts` so growing the vocabulary is a visible edit in review.
  *
- * ## Why exactly six, and why each severity
+ * ## Why each code exists, and why each severity
  *
  * Each code answers a question with a DIFFERENT remedy, which is the test for whether a
- * code deserves to exist:
+ * code deserves to exist. The list is {@link REACHABILITY_FND_CODES}; the paragraphs below
+ * are the reasons, not a count:
  *
  * - `FND_REACHABILITY_VIOLATED` — **error**. A reachable state violates a declared
  *   constraint, with a trace naming the requirements that get there. This is the only
@@ -39,10 +40,11 @@
  *   by cause in the MESSAGE (budget vs undecidable) rather than into two codes, because
  *   the code is what an agent branches on and both branches lead to the same place:
  *   read the reason, then either raise the budget or bound the model.
- * - `FND_REACHABILITY_NOT_CHECKED` — **info**, and DEMOTES. The tier did not run, or ran
- *   over less than the whole document. THE "silence made visible" code, in the
- *   `FND_NO_PAIRS_CHECKED` tradition: without it, a document with no state model looks
- *   exactly like a document that passed.
+ * - `FND_REACHABILITY_NOT_CHECKED` — **info**. The tier did not run, or ran over less than
+ *   the whole document. THE "silence made visible" code, in the `FND_NO_PAIRS_CHECKED`
+ *   tradition: without it, a document with no state model looks exactly like a document
+ *   that passed. It DEMOTES when a committed model leaves a gap; with no model at all the
+ *   tier is opt-in and the `check` boundary emits it without a demotion.
  *
  * - `FND_REACHABILITY_VACUOUS_INITIAL` — **error**, and DEMOTES every constraint. The
  *   initial-state predicate conjoined with the declared ranges is UNSATISFIABLE, so the
@@ -54,6 +56,16 @@
  *   fixture, adding `held = 0 and held = 2` to the model flipped a genuine
  *   `FND_REACHABILITY_VIOLATED` into `PROVED ... with nothing assumed` and the exit code
  *   from 1 to 0.
+ * - `FND_CERTIFICATE_DISAGREES` — **error** (spec 007 AC-1-5). The independent
+ *   explicit-state search refuted a proof. The V28 certificate re-checks the SAME encoding,
+ *   so an encoder that asks the wrong question passes it; only a second route to the answer
+ *   sees that. Error, and the proof is withdrawn, because the tool cannot tell which
+ *   checker is wrong and must not publish a claim one of its own checkers refutes.
+ * - `FND_RANGE_VIOLATION` — **error** (spec 007 AC-1-2). An effect writes outside its
+ *   target's declared `--min`/`--max` from a reachable state, under the full frame. Its own
+ *   code because the remedy is about the EFFECT or the RANGE, not about any constraint —
+ *   and because the alternative, conjoining the range into the transition relation,
+ *   silently disabled the overflowing step and "proved" its consequences impossible.
  *
  * `FND_REACHABILITY_CERTIFICATE_FAILED` is deliberately NOT here. When the three
  * obligations do not discharge, the tier does not report a weaker proof — it reports
@@ -88,6 +100,10 @@ export const REACHABILITY_FND_CODES = [
   'FND_REACHABILITY_NOT_CHECKED',
   // APPENDED at the HARDENING wave, never inserted — see the append-only rule above.
   'FND_REACHABILITY_VACUOUS_INITIAL',
+  // APPENDED for spec 007 Story 1. Named by the spec rather than by the family prefix:
+  // a range overflow is a defect in the declared MODEL, not a verdict about a constraint.
+  'FND_RANGE_VIOLATION',
+  'FND_CERTIFICATE_DISAGREES',
 ] as const
 
 export type ReachabilityFndCode = (typeof REACHABILITY_FND_CODES)[number]
@@ -131,34 +147,48 @@ export const ReachabilityFndCodeMeta: Record<
       'info — a declared constraint holds only WHEN the declared frame assumptions are granted: it ' +
       'is reachable-violating with nothing assumed, and unreachable once the variables declared ' +
       '`frame: stable` are held fixed except where a requirement writes them. That is a proof given ' +
-      'a hypothesis THE DOCUMENT DOES NOT STATE, so it DEMOTES `verified` and names the exact ' +
+      'a hypothesis NO REQUIREMENT ESTABLISHES, so it DEMOTES `verified` and names the exact ' +
       'variables relied upon together with the requirements that write them. Never rendered as ' +
       'proven-unconditionally. Suggestion: either add the requirements that justify the stable ' +
-      'declaration, or drop `--frame stable` on those variables and accept the weaker claim.',
+      'declaration, or apply the repair ops, which re-declare those variables `volatile` with their ' +
+      'own type, range, and initial — the verdict then becomes FND_REACHABILITY_UNKNOWN with reason ' +
+      'frame-undeclared, the honest weaker claim.',
   },
   FND_REACHABILITY_UNKNOWN: {
     code: 'FND_REACHABILITY_UNKNOWN',
     description:
-      'info — the solver did not decide whether a declared constraint can be violated, so nothing ' +
-      'is claimed either way and `verified` is DEMOTED. The message states which of the two causes ' +
-      'applies, because they need different remedies and the solver cannot be asked: a timed-out ' +
-      'Spacer query reports its reason as the literal string "ok", so the distinction is derived ' +
-      'out-of-band from measured elapsed time against the budget that was set. Suggestion: for ' +
-      'budget exhaustion raise --reachability-timeout-ms (this tier`s own per-query bound, which ' +
-      'defaults to --timeout-ms when absent); for genuine undecidability bound the integer domains ' +
-      'in the state model instead, since more time will not help.',
+      'info — whether a declared constraint (or a declared range) can be violated was not decided, ' +
+      'so nothing is claimed either way and `verified` is DEMOTED. The message states which cause ' +
+      'applies, because the causes need different remedies. Budget exhaustion and undecidability ' +
+      'are solver limits the solver cannot be asked about: a timed-out Spacer query reports its reason as the literal string ' +
+      '"ok", so budget exhaustion is told from undecidability out-of-band, by measured elapsed time ' +
+      'against the budget that was set. Frame-undeclared is not a solver limit: the ' +
+      'constraint holds once every unwritten variable is held fixed and is violable when the ' +
+      'variables the document declares `volatile` change on their own, which the document does not ' +
+      'rule out. Cross-check-incomplete withholds a proof: the solver proved the ' +
+      'constraint, but the independent explicit-state search stopped without showing the model is ' +
+      'beyond the size it must re-decide. Suggestion: for budget exhaustion raise ' +
+      '--reachability-timeout-ms (this tier`s own ' +
+      'per-query bound, which defaults to --timeout-ms when absent); for genuine undecidability bound ' +
+      'the integer domains in the state model instead, since more time will not help; for ' +
+      'frame-undeclared either author the requirements that keep the named variables fixed or apply ' +
+      'the repair ops, which declare them `frame: stable` (the verdict becomes ' +
+      'FND_REACHABILITY_UNDER_HYPOTHESES, still demoted); for cross-check-incomplete state each ' +
+      'initial value as `name = <value or expression>` or narrow the declared ranges, so the search ' +
+      'can enumerate the model.',
   },
   FND_REACHABILITY_NOT_CHECKED: {
     code: 'FND_REACHABILITY_NOT_CHECKED',
     description:
-      'info — the unbounded reachability tier did NOT cover part or all of this document, and ' +
-      '`verified` is DEMOTED accordingly. Emitted when no state model is committed, when no ' +
-      'requirement carries a constraint to check, when a classified requirement could not be read, ' +
-      'or when the model admits no transitions at all (in which case only the initial state exists ' +
+      'info — the unbounded reachability tier did NOT cover part or all of this document. Emitted ' +
+      'when no state model is committed (the tier is opt-in, so this one does not demote ' +
+      '`verified`), and — DEMOTING `verified` — when a committed model leaves a gap: no ' +
+      'requirement carries a constraint to check, a classified requirement could not be read, ' +
+      'or the model admits no transitions at all (in which case only the initial state exists ' +
       'and any invariant over it holds almost vacuously). This is a coverage DISCLOSURE, not a ' +
       'defect: silence over a question that was never asked reads exactly like a pass, which is the ' +
-      'one thing this tool must never do. Suggestion: declare state variables with `symspec state`, ' +
-      'then classify the responses that touch them with `symspec classify`.',
+      'one thing this tool must never do. Suggestion: declare state variables with `symspec state <name> --type <bool|int|enum>`, ' +
+      'then classify the responses that touch them with `symspec classify <ref> --kind constraint --expression "<predicate>"`.',
   },
   FND_REACHABILITY_VACUOUS_INITIAL: {
     code: 'FND_REACHABILITY_VACUOUS_INITIAL',
@@ -178,5 +208,30 @@ export const ReachabilityFndCodeMeta: Record<
       '`symspec state <name> --type <type> --initial "<predicate>"` for a per-variable one, or ' +
       '`symspec state-initial --clear` to drop the model-wide constraint entirely. Also check ' +
       'the declared --min/--max bounds do not exclude the initial value.',
+  },
+  FND_RANGE_VIOLATION: {
+    code: 'FND_RANGE_VIOLATION',
+    description:
+      'error — an EFFECT writes a value OUTSIDE its target variable`s declared --min/--max range ' +
+      'from a REACHABLE state, so the declared range is false of the system as specified. The ' +
+      'evidence names the effect, the variable, the value written, the reachable pre-state, and ' +
+      'the trace that reaches it (every step requirement-sanctioned). The step is NOT disabled: ' +
+      'enforcing the range by conjoining it into the transition relation made an overflowing ' +
+      'step silently never fire, which "proved" everything downstream of it impossible. ' +
+      'Suggestion: guard the effect so it cannot fire at the bound, clamp the value it writes, or ' +
+      'widen the declared range if the overflow is intended.',
+  },
+  FND_CERTIFICATE_DISAGREES: {
+    code: 'FND_CERTIFICATE_DISAGREES',
+    description:
+      'error — the unbounded solver PROVED a constraint (or proved it under hypotheses), and an ' +
+      'INDEPENDENT explicit-state search of the same model found a reachable state that violates ' +
+      'it. The search shares nothing with the SMT encoder beyond the parsed expression, and it ' +
+      'runs on every proof over a model whose reachable state space is small enough to ' +
+      'enumerate, so a disagreement means one of the two checkers is wrong about THIS model. ' +
+      'The proof is WITHDRAWN rather than reported, and `verified` is demoted. The evidence ' +
+      'carries the explicit witness: the path of states and the requirements that fired. ' +
+      'Suggestion: this is a tool defect, not a document defect — read the witness against the ' +
+      'model to see which checker is right, and report it with the document attached.',
   },
 }

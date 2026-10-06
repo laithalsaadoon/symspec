@@ -44,6 +44,8 @@
  */
 
 import { Effect, Schema } from 'effect'
+import { RUN_WEAKENING } from '../../domain/config/config.ts'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import { FND_CODES, FndCodeMeta } from '../../domain/engine/formal/codes.ts'
 import { GTWR_CODES, GtwrCodeMeta } from '../../domain/engine/lint/codes.ts'
 import {
@@ -70,6 +72,7 @@ import {
   type Manifest,
 } from '../runtime/operation.ts'
 import { SCOPE } from '../runtime/scope.ts'
+import { manifestOpDirections, manifestSignalClasses } from '../runtime/signal-classes.ts'
 import { VERSION } from '../runtime/version.ts'
 import { checkOp } from './check.ts'
 import { initOp, listOp, showOp } from './document.ts'
@@ -197,6 +200,14 @@ const manifestEnvelope = () =>
       // it — a disclosure that lives only in prose is one the agent following instructions
       // never sees.
       scope: SCOPE,
+      // What each op can do to the verdict (spec 007 AC-5-1), and what each finding and
+      // demotion MEANS. Both are tables in code, so the manifest reads them rather than
+      // restating them, and `AGENTS.md` renders the same rows.
+      opDirections: manifestOpDirections(),
+      signalClasses: manifestSignalClasses(),
+      // The pinned-config knob table (spec 007 AC-5-10), projected from the one table `check`
+      // compares a run against.
+      runWeakening: RUN_WEAKENING,
     }),
   )
 
@@ -262,7 +273,7 @@ export const explainOp = defineOperation({
             ops: [],
             commands:
               near.length > 0 && near[0] !== undefined
-                ? [`symspec explain --code ${near[0]}`]
+                ? [`symspec explain --code ${shellWord(near[0])}`]
                 : ['symspec manifest'],
           },
         }),

@@ -1,0 +1,116 @@
+overlapping-contrary	(baseline)	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-candidate	(baseline)	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	(control)	CLEAN verified=true signal=gone errors=[] demotions=[]
+overlapping-contrary	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[uncovered-requirement]
+overlapping-contrary	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[uncovered-requirement]
+overlapping-contrary	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+overlapping-contrary	alias-contraries-glossary@forward	refused glossary:ERR_USAGE
+overlapping-contrary	alias-contraries-glossary@reverse	refused glossary:ERR_USAGE
+overlapping-contrary	alias-contraries-term@forward	refused term:ERR_USAGE
+overlapping-contrary	alias-contraries-term@reverse	refused term:ERR_USAGE
+overlapping-contrary	term-over-phrase@inside-canonical	inapplicable
+overlapping-contrary	term-over-phrase@equal-canonical	inapplicable
+overlapping-contrary	term-over-phrase@around-canonical	inapplicable
+overlapping-contrary	term-over-phrase@straddle-canonical	inapplicable
+overlapping-contrary	term-over-phrase@straddle-alias	inapplicable
+overlapping-contrary	glossary-over-term@equal/term-then-glossary	inapplicable
+overlapping-contrary	glossary-over-term@equal/glossary-then-term	inapplicable
+overlapping-contrary	glossary-over-term@containing/term-then-glossary	inapplicable
+overlapping-contrary	glossary-over-term@containing/glossary-then-term	inapplicable
+overlapping-contrary	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+overlapping-contrary	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+overlapping-contrary	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+overlapping-contrary	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+overlapping-contrary	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+overlapping-contrary	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+overlapping-contrary	waive-raw	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	unwaive	inapplicable
+overlapping-contrary	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+overlapping-contrary	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+overlapping-contrary	flip-negated@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+overlapping-contrary	flip-negated@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+overlapping-contrary	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[uncovered-requirement]
+overlapping-contrary	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[uncovered-requirement]
+overlapping-contrary	add-decoys	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	shall-to-should@first	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	shall-to-should@second	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	link-culprits	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	antonym-over-candidate	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	add-bound-past-bystander	inapplicable
+overlapping-contrary	add-bystander-negation	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION,FND_TEMPORAL_CONTRADICTION] demotions=[]
+overlapping-contrary	add-negation	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	add-equivalent@exact	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION,FND_EXACT_DUPLICATE] demotions=[]
+overlapping-contrary	add-equivalent@case	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	branch-into-cycle	inapplicable
+overlapping-contrary	supply-dangling-target	inapplicable
+overlapping-contrary	unglossary	inapplicable
+overlapping-contrary	unantonym	inapplicable
+overlapping-contrary	unterm	inapplicable
+overlapping-contrary	declassify-constraint	inapplicable
+overlapping-contrary	rebind-effect	inapplicable
+overlapping-contrary	vacuous-initial	inapplicable
+overlapping-contrary	release-frame	inapplicable
+overlapping-contrary	unstate	inapplicable
+overlapping-contrary	embedding-stub	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[run-weakened]
+overlapping-contrary	semantic-off	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[semantic-tier-skipped]
+overlapping-contrary	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+overlapping-contrary	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+overlapping-contrary	temporal-bound-1	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+overlapping-contrary	temporal-off	exit 1 verified=true signal=fires errors=[FND_CONTRADICTION] demotions=[]
+opposition-candidate	rename-system@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-candidate	rename-system@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-candidate	split-system	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-candidate	alias-contraries-glossary@forward	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-candidate	alias-contraries-glossary@reverse	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-candidate	alias-contraries-term@forward	refused term:ERR_USAGE
+opposition-candidate	alias-contraries-term@reverse	refused term:ERR_USAGE
+opposition-candidate	term-over-phrase@inside-canonical	inapplicable
+opposition-candidate	term-over-phrase@equal-canonical	inapplicable
+opposition-candidate	term-over-phrase@around-canonical	inapplicable
+opposition-candidate	term-over-phrase@straddle-canonical	inapplicable
+opposition-candidate	term-over-phrase@straddle-alias	inapplicable
+opposition-candidate	glossary-over-term@equal/term-then-glossary	inapplicable
+opposition-candidate	glossary-over-term@equal/glossary-then-term	inapplicable
+opposition-candidate	glossary-over-term@containing/term-then-glossary	inapplicable
+opposition-candidate	glossary-over-term@containing/glossary-then-term	inapplicable
+opposition-candidate	glossary-over-term@equal-canonical/term-then-glossary	inapplicable
+opposition-candidate	glossary-over-term@equal-canonical/glossary-then-term	inapplicable
+opposition-candidate	glossary-over-term@containing-canonical/term-then-glossary	inapplicable
+opposition-candidate	glossary-over-term@containing-canonical/glossary-then-term	inapplicable
+opposition-candidate	waive-by-code	refused waive:ERR_WAIVER_REFUSED
+opposition-candidate	waive-scoped-never	refused waive:ERR_WAIVER_REFUSED
+opposition-candidate	waive-raw	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	unwaive	inapplicable
+opposition-candidate	delete-requirement@first	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-candidate	delete-requirement@second	CLEAN verified=true signal=gone errors=[] demotions=[]
+opposition-candidate	flip-negated@first	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	flip-negated@second	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	condition-into-response@first	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-candidate	condition-into-response@second	exit 3 verified=false signal=gone errors=[] demotions=[no-decide-tier-comparison,uncovered-requirement]
+opposition-candidate	add-decoys	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	shall-to-should@first	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	shall-to-should@second	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	link-culprits	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	antonym-over-candidate	exit 1 verified=true signal=gone errors=[FND_CONTRADICTION] demotions=[]
+opposition-candidate	add-bound-past-bystander	inapplicable
+opposition-candidate	add-bystander-negation	inapplicable
+opposition-candidate	add-negation	exit 1 verified=false signal=fires errors=[FND_CONTRADICTION] demotions=[open-opposition-candidate]
+opposition-candidate	add-equivalent@exact	exit 1 verified=false signal=fires errors=[FND_EXACT_DUPLICATE] demotions=[open-opposition-candidate]
+opposition-candidate	add-equivalent@case	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	branch-into-cycle	inapplicable
+opposition-candidate	supply-dangling-target	inapplicable
+opposition-candidate	unglossary	inapplicable
+opposition-candidate	unantonym	inapplicable
+opposition-candidate	unterm	inapplicable
+opposition-candidate	declassify-constraint	inapplicable
+opposition-candidate	rebind-effect	inapplicable
+opposition-candidate	vacuous-initial	inapplicable
+opposition-candidate	release-frame	inapplicable
+opposition-candidate	unstate	inapplicable
+opposition-candidate	embedding-stub	exit 3 verified=false signal=gone errors=[] demotions=[run-weakened]
+opposition-candidate	semantic-off	exit 3 verified=false signal=gone errors=[] demotions=[semantic-tier-skipped]
+opposition-candidate	solver-budget-1ms	not clean (timing-sensitive; detail not pinned)
+opposition-candidate	solver-timeout-1ms	not clean (timing-sensitive; detail not pinned)
+opposition-candidate	temporal-bound-1	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]
+opposition-candidate	temporal-off	exit 3 verified=false signal=fires errors=[] demotions=[open-opposition-candidate]

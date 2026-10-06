@@ -163,10 +163,25 @@ export type TermEntry = {
   aliases: string[]
 }
 
-/** One reviewed finding waiver. */
+/**
+ * One reviewed finding waiver.
+ *
+ * `requirementId` scopes it to the findings that NAME that requirement. `requirementIds` scopes
+ * it to the findings whose requirement set is EXACTLY that set, so a pair triage does not reach a
+ * cluster that later grows or a sibling pair sharing one id. When both are present a finding
+ * must satisfy both. (A content-hash binding is checked at the boundary, which drops a waiver
+ * whose requirements were edited before the tier ever sees it.)
+ */
 export type Waiver = {
   code: string
   requirementId?: string | undefined
+  requirementIds?: readonly string[] | undefined
+  /**
+   * True when the waiver was bound to the reviewed text by a content hash that still matches it.
+   * Set only at the boundary (the tier cannot hash). An opposition candidate is discharged only by
+   * an exact-set waiver carrying this binding: see `PAIR_BOUND_CODES` in `pipeline/check.ts`.
+   */
+  textBound?: boolean | undefined
   reason: string
 }
 
