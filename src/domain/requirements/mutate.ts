@@ -1144,13 +1144,25 @@ const applyUnwaive = (
   // The code is matched EXACTLY as stored (ruling R55): a hand-written ` FND_X` is its own row,
   // and trimming it here would also delete the canonical `FND_X` waiver beside it.
   const code = op.code
-  // A ref that resolves to nothing is matched as written: a stored waiver can still name a
-  // requirement the document has since deleted, and an unresolved ref must not widen into the
-  // unscoped key and delete the code-only or another scoped waiver of the code (R55).
-  const requirementId = op.ref !== undefined ? (resolveId(document, op.ref) ?? op.ref) : undefined
+  // A ref that equals an id a stored waiver of this code names is that id, BEFORE any key lookup
+  // (R59): a waiver can name a requirement the document has since deleted, and that deleted UUID
+  // may be another requirement's key, so resolving it first would retarget the op onto the live
+  // requirement's waivers. Every other ref resolves as a key or UUID, and one that resolves to
+  // nothing is matched as written: an unresolved ref must not widen into the unscoped key and
+  // delete the code-only or another scoped waiver of the code (R55).
+  const stored = new Set(
+    document.waivers
+      .filter((w) => w.code === code)
+      .flatMap((w) => [
+        ...(w.requirementId !== undefined ? [w.requirementId] : []),
+        ...(w.requirementIds ?? []),
+      ]),
+  )
+  const idOf = (ref: string): string => (stored.has(ref) ? ref : (resolveId(document, ref) ?? ref))
+  const requirementId = op.ref !== undefined ? idOf(op.ref) : undefined
   // `refs` removes every exact-set waiver over that set, whatever text it was bound to — the
   // stale ones are exactly what an author clearing a pair wants gone.
-  const ids = op.refs?.map((ref) => resolveId(document, ref) ?? ref)
+  const ids = op.refs?.map(idOf)
   const matches = (w: Waiver): boolean =>
     w.code === code &&
     w.requirementId === requirementId &&
