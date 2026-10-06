@@ -69,6 +69,7 @@
 
 import { runnable } from '../../ports/command-form.ts'
 import type { Repair } from '../../ports/repair.ts'
+import { asShellArg, shellWord } from '../engine/core/shell-word.ts'
 import type { CheckFinding, CoverageDemotion, RunDisclosure } from '../engine/pipeline/check.ts'
 import type { Exclusion } from '../engine/pipeline/gate.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
@@ -129,6 +130,8 @@ export interface RepairContext {
   /**
    * The document path as one shell word (`shellWord`, R60), so every command is
    * copy-pasteable as-is: a path with a space, a quote, `$` or a newline reaches the shell whole.
+   * The repair marks it with `asShellArg` (R64), which keeps a word as it is, so it is never
+   * quoted twice.
    */
   readonly docPath: string
   /**
@@ -183,6 +186,8 @@ const raisedTimeout = (current: number | undefined): number =>
  * silently repair-less demotion.
  */
 export const repairForDemotion = (demotion: CoverageDemotion, context: RepairContext): Repair => {
+  // The path its caller quoted once (R60), marked so every command below splices it as is (R64).
+  const doc = asShellArg(context.docPath)
   switch (demotion.reason) {
     // ---------------------------------------------------------------------
     // THE PLACEHOLDER JOIN — the one v4 left to the agent
@@ -195,7 +200,7 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // sentence simply did not parse. So the only repair is to look at it, which
       // `show` does. Waiving nothing would be the wrong instruction.
       if (exclusion === undefined || exclusion.reason === 'parse-failure') {
-        return { ops: [], commands: [`symspec show ${id} ${context.docPath}`] }
+        return { ops: [], commands: [`symspec show ${shellWord(id)} ${doc}`] }
       }
       // The join: the gate carried the blocking findings as evidence, so each
       // becomes a CONCRETE waive — one per code, because waiving is per-code and an
@@ -233,8 +238,8 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
           // Look FIRST: the honest primary repair is to fix the sentence, and an
           // agent cannot rewrite what it has not read. A waiver is the fallback, not
           // the recommendation — which is why the read leads and the ops are second.
-          `symspec show ${id} ${context.docPath}`,
-          `symspec check ${context.docPath}`,
+          `symspec show ${shellWord(id)} ${doc}`,
+          `symspec check ${doc}`,
         ],
       }
     }
@@ -265,8 +270,8 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
-          `symspec check ${context.docPath}`,
+          ...demotion.requirementIds.map((id) => `symspec show ${shellWord(id)} ${doc}`),
+          `symspec check ${doc}`,
         ],
       }
 
@@ -278,8 +283,8 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
-          `symspec check ${context.docPath}`,
+          ...demotion.requirementIds.map((id) => `symspec show ${shellWord(id)} ${doc}`),
+          `symspec check ${doc}`,
         ],
       }
 
@@ -290,8 +295,8 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
-          `symspec check ${context.docPath}`,
+          ...demotion.requirementIds.map((id) => `symspec show ${shellWord(id)} ${doc}`),
+          `symspec check ${doc}`,
         ],
       }
 
@@ -302,7 +307,7 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          `symspec check ${context.docPath} --solver-budget-ms ${raisedBudget(context.solverBudgetMs, context.recommendedBudgetMs)}`,
+          `symspec check ${doc} --solver-budget-ms ${raisedBudget(context.solverBudgetMs, context.recommendedBudgetMs)}`,
         ],
       }
 
@@ -316,9 +321,7 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // `solver-budget-exhausted`'s `--solver-budget-ms`.
       return {
         ops: [],
-        commands: [
-          `symspec check ${context.docPath} --timeout-ms ${raisedTimeout(context.timeoutMs)}`,
-        ],
+        commands: [`symspec check ${doc} --timeout-ms ${raisedTimeout(context.timeoutMs)}`],
       }
 
     case 'run-weakened':
@@ -331,8 +334,8 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
         ops: [],
         commands: [
           context.run === undefined || context.run.embedder === 'stub'
-            ? `SYMSPEC_EMBED_STUB=0 symspec check ${context.docPath}`
-            : `symspec check ${context.docPath}`,
+            ? `SYMSPEC_EMBED_STUB=0 symspec check ${doc}`
+            : `symspec check ${doc}`,
         ],
       }
 
@@ -345,8 +348,8 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          `symspec check ${context.docPath} --semantic`,
-          `SYMSPEC_EMBED_ALLOW_REMOTE=1 symspec check ${context.docPath}`,
+          `symspec check ${doc} --semantic`,
+          `SYMSPEC_EMBED_ALLOW_REMOTE=1 symspec check ${doc}`,
         ],
       }
 
@@ -357,8 +360,8 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
-          `symspec check ${context.docPath}`,
+          ...demotion.requirementIds.map((id) => `symspec show ${shellWord(id)} ${doc}`),
+          `symspec check ${doc}`,
         ],
       }
 
@@ -371,8 +374,8 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          ...demotion.requirementIds.map((id) => `symspec show ${id} ${context.docPath}`),
-          `symspec check ${context.docPath}`,
+          ...demotion.requirementIds.map((id) => `symspec show ${shellWord(id)} ${doc}`),
+          `symspec check ${doc}`,
         ],
       }
 
@@ -382,7 +385,7 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       // says which). The levers — a glossary or antonym link, deleting a copy, a rewrite —
       // are judgments about the document's meaning that no run can make. So the command
       // is the inspection that lets an agent decide, not a fabricated edit.
-      return { ops: [], commands: [`symspec list ${context.docPath}`] }
+      return { ops: [], commands: [`symspec list ${doc}`] }
 
     // ---------------------------------------------------------------------
     // The reason whose repair is INPUT, not an edit
@@ -406,9 +409,9 @@ export const repairForDemotion = (demotion: CoverageDemotion, context: RepairCon
       return {
         ops: [],
         commands: [
-          `symspec show ${id} ${context.docPath}`,
-          `symspec list ${context.docPath}`,
-          `symspec check ${context.docPath}`,
+          `symspec show ${shellWord(id)} ${doc}`,
+          `symspec list ${doc}`,
+          `symspec check ${doc}`,
         ],
       }
     }
@@ -484,7 +487,7 @@ const fromFindingMessage = (
       // The finding's own alternatives FIRST, in the order its reasoning recommends: a
       // committed glossary or antonym link lets the solver PROVE or dismiss the conflict.
       ...advice,
-      `symspec check ${context.docPath}`,
+      `symspec check ${asShellArg(context.docPath)}`,
     ],
   }
 }

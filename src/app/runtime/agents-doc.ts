@@ -44,6 +44,7 @@
  */
 
 import { CONFIG_FILE_NAME } from '../../domain/config/config.ts'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import { V4_EXPERIMENTAL_STATEMENT } from '../../domain/requirements/document.ts'
 import { CONFIG_PATH_CONVENTION } from '../../ports/doc-store.ts'
 import { allCodes, type CodeEntry } from './catalog.ts'
@@ -66,7 +67,9 @@ const operationsTable = (manifest: Manifest): string =>
   [
     '| Operation | What it does |',
     '|---|---|',
-    ...manifest.operations.map((op) => `| \`symspec ${op.name}\` | ${cell(op.summary)} |`),
+    ...manifest.operations.map(
+      (op) => `| \`symspec ${shellWord(op.name)}\` | ${cell(op.summary)} |`,
+    ),
   ].join('\n')
 
 /** The exit-code table, projected from the manifest. */

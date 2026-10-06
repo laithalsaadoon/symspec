@@ -954,7 +954,7 @@ function variantMessage(
       `${lo} and ${hi} respond under the same system with the same verb ("${headA}"), one of them ` +
       `under "shall not", over objects that differ only by prepositions ${objects}. ${why} If they ` +
       'name ONE object, make the pair provable: align the preposition with ' +
-      `\`symspec update --ref ${b.id} systemResponse ${shellQuoted(a.systemResponse)}\`, or commit the two ` +
+      `\`symspec update --ref ${shellWord(b.id)} systemResponse ${shellQuoted(a.systemResponse)}\`, or commit the two ` +
       `phrasings as one action with \`symspec glossary ${shellQuoted(a.systemResponse)} ${shellQuoted(b.systemResponse)}\`; ` +
       'either puts both on one atom at opposite polarity, and the solver decides the conflict.' +
       tail
@@ -966,7 +966,7 @@ function variantMessage(
       `${lo} and ${hi} respond under the same system with verbs an antonym row relates ` +
       `("${headA}" vs "${headB}") over objects that differ only by prepositions ${objects}. ${why} ` +
       'If they name ONE object, make the pair provable: align the preposition with ' +
-      `\`symspec update --ref ${b.id} systemResponse ${shellQuoted(aligned)}\`, or commit the rewording as ` +
+      `\`symspec update --ref ${shellWord(b.id)} systemResponse ${shellQuoted(aligned)}\`, or commit the rewording as ` +
       `one action with \`symspec glossary ${shellQuoted(aligned)} ${shellQuoted(b.systemResponse)}\`; either puts ` +
       'both on one key on opposite sides of the row, and the solver decides the conflict.' +
       tail
@@ -977,10 +977,10 @@ function variantMessage(
   // contraries once the objects are aligned.
   const repair = shape.sameSide
     ? `If they ARE one action on one object, rewrite one requirement in the other's words ` +
-      `(\`symspec update --ref ${b.id} systemResponse ${shellQuoted(a.systemResponse)}\`), so the two share ` +
+      `(\`symspec update --ref ${shellWord(b.id)} systemResponse ${shellQuoted(a.systemResponse)}\`), so the two share ` +
       'one atom and the solver decides the conflict.'
     : 'If they are opposites acting on one object, align the preposition ' +
-      `(\`symspec update --ref ${b.id} systemResponse ${shellQuoted(phraseOf(`${headB}_${restA}`))}\`) and ` +
+      `(\`symspec update --ref ${shellWord(b.id)} systemResponse ${shellQuoted(phraseOf(`${headB}_${restA}`))}\`) and ` +
       `commit the pair (\`symspec antonym ${shellWord(headA)} ${shellWord(headB)}\`), so the solver decides the conflict.`
   return (
     `${lo} and ${hi} respond under the same system with verbs one antonym class holds but no row ` +

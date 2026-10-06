@@ -46,6 +46,7 @@
  */
 
 import { type Effect, Schema } from 'effect'
+import { asShellArg, type ShellArg, shellWord } from '../engine/core/shell-word.ts'
 import { DEFAULT_SEMANTIC_THRESHOLD } from '../engine/formal/semantic.ts'
 
 /** Multi-line description builder. */
@@ -498,7 +499,8 @@ const raiseOne = <K extends Knob>(
  * command run in that environment, as the embedder's is.
  *
  * `docPath` and `configFlag` arrive as shell words (`shellWord`, R60): the caller quotes a path a
- * shell would mangle, so the joined command hands each one over whole.
+ * shell would mangle, so the joined command hands each one over whole. They are marked with
+ * `asShellArg` (R64), which keeps a word as it is, and every other word goes through `shellWord`.
  */
 export const pinnedInvocation = (
   docPath: string,
@@ -520,8 +522,17 @@ export const pinnedInvocation = (
   const args = [...flags.values()].flatMap((f) =>
     f.value === undefined ? [f.name] : [f.name, f.value],
   )
-  const config = configFlag !== undefined ? ['--config', configFlag] : []
-  return [...env, 'symspec', 'check', docPath, ...config, ...args].join(' ')
+  const word = (text: string): ShellArg => asShellArg(shellWord(text))
+  const config: readonly ShellArg[] =
+    configFlag !== undefined ? [word('--config'), asShellArg(configFlag)] : []
+  return [
+    ...[...env].map(word),
+    'symspec',
+    'check',
+    asShellArg(docPath),
+    ...config,
+    ...args.map(word),
+  ].join(' ')
 }
 
 /**

@@ -9,6 +9,16 @@
  * Pure: no I/O, no imports.
  */
 
+declare const shellArgBrand: unique symbol
+
+/**
+ * A string that is exactly one shell word, as {@link shellQuoted} and {@link shellWord} write it
+ * (R60, R64). Only {@link asShellArg} returns it: the type marks a value quoted once at its
+ * boundary (the document path, the config path), so the commands that carry it splice it as it
+ * is and nothing is quoted twice.
+ */
+export type ShellArg = string & { readonly [shellArgBrand]: true }
+
 /**
  * ONE ARGUMENT OF A COMMAND THE TOOL PRINTS, QUOTED SO A SHELL HANDS IT OVER WHOLE (R60).
  *
@@ -49,3 +59,16 @@ const BARE_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/
  * path a shell would mangle (a space, a quote, `$`, `;`, a newline) gets quoted (R60).
  */
 export const shellWord = (text: string): string => (BARE_WORD.test(text) ? text : shellQuoted(text))
+
+/** One word as {@link shellQuoted} writes it: double-quoted pieces and `$'…'` pieces, joined. */
+const QUOTED_WORD = /^(?:"(?:[^"$`\\\n\r]|\\["$`\\])*"|\$'(?:\\x60|\\n|\\r)+')+$/
+
+/**
+ * A value its caller already rendered with {@link shellWord}, marked as one shell word (R64): the
+ * document path and config path a library caller threads in, which the operation quoted once at
+ * its boundary. A value that is already one word (bare, or in {@link shellQuoted}'s form) is kept
+ * exactly as it is, so nothing is quoted twice; anything else is quoted here, so the mark can
+ * never put a raw value into a command.
+ */
+export const asShellArg = (word: string): ShellArg =>
+  (BARE_WORD.test(word) || QUOTED_WORD.test(word) ? word : shellQuoted(word)) as ShellArg

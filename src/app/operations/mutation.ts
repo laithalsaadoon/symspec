@@ -34,6 +34,7 @@
  */
 
 import { Effect, Schema } from 'effect'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 // STATIC. A dynamic import here bought nothing: `operations/parse.ts` imports
 // `engine/parse/batch.ts` statically and that imports `result.ts` statically, so the parse
 // ladder is in the main chunk on every run regardless. The lazy form only added an await
@@ -1098,7 +1099,7 @@ export const stateOp = defineOperation({
             error: 'state requires --type when declaring a variable.',
             suggestions: [
               `Legal values: ${STATE_VAR_TYPES.join(', ')}.`,
-              `Example: \`symspec state --name ${input.name} --type bool\`.`,
+              `Example: \`symspec state ${shellWord(input.name)} --type bool\`.`,
               'Pass --remove to undeclare an existing variable instead.',
             ],
           }),
@@ -1341,7 +1342,7 @@ export const classifyOp = defineOperation({
             error: 'classify requires --kind, or --retract to remove an existing classification.',
             suggestions: [
               `Legal values: ${RESPONSE_KINDS.join(', ')}.`,
-              `Example: \`symspec classify ${input.ref} --kind constraint --expression "not (lock_held and pending)"\`.`,
+              `Example: \`symspec classify ${shellWord(input.ref)} --kind constraint --expression "not (lock_held and pending)"\`.`,
             ],
           }),
         )

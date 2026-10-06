@@ -730,10 +730,10 @@ const undeclared = (name: string, vars: DeclaredVars): ExprError => {
   const declared = [...vars.keys()].sort()
   return fail(`"${name}" is not a declared state variable.`, [
     declared.length === 0
-      ? 'This document declares no state variables yet. Declare one first: `symspec state --name <name> --type bool`.'
+      ? 'This document declares no state variables yet. Declare one first: `symspec state <name> --type bool`.'
       : `Declared variables: ${declared.join(', ')}.`,
     'Every name in an effect or a constraint must be declared in the state model — an undeclared reference is refused HERE, at authoring time, because it would otherwise reach the Horn encoder and hang the solver (v4 findings V14/V21).',
-    'Declare it: `symspec state --name <name> --type bool|int|enum`.',
+    'Declare it: `symspec state <name> --type <bool|int|enum>`.',
   ])
 }
 
@@ -805,7 +805,7 @@ export const resolveExpr = (expr: Expr, vars: DeclaredVars, expected?: Sort): Ty
           `"${expr.name}" is not a member of enum ${expected.enumOf}'s declared domain.`,
           [
             `Declared domain of ${expected.enumOf}: ${[...domain].join(', ')}.`,
-            `Add the member with \`symspec state --name ${shellWord(expected.enumOf)} --type enum --domain ${shellQuoted([...domain, expr.name].join(','))}\`, or fix the spelling.`,
+            `Add the member with \`symspec state ${shellWord(expected.enumOf)} --type enum --domain ${shellQuoted([...domain, expr.name].join(','))}\`, or fix the spelling.`,
           ],
         )
       }

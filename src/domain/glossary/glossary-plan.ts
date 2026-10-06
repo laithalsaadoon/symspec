@@ -1024,8 +1024,8 @@ const guardRemediesFor = (a: Node, b: Node, withheld: boolean): readonly Remedy[
     kind: 'realign-guards',
     ops: [],
     commands: [
-      `symspec show ${a.requirementIds[0] ?? '<id>'}`,
-      `symspec show ${b.requirementIds[0] ?? '<id>'}`,
+      `symspec show ${shellWord(a.requirementIds[0] ?? '<id>')}`,
+      `symspec show ${shellWord(b.requirementIds[0] ?? '<id>')}`,
     ],
     consequence:
       'Reword one guard so both name the same condition. That is what puts the requirements ' +
@@ -1112,8 +1112,8 @@ const remediesFor = (
         kind: 'realign-objects',
         ops: [],
         commands: [
-          `symspec show ${a.requirementIds[0] ?? '<id>'}`,
-          `symspec show ${b.requirementIds[0] ?? '<id>'}`,
+          `symspec show ${shellWord(a.requirementIds[0] ?? '<id>')}`,
+          `symspec show ${shellWord(b.requirementIds[0] ?? '<id>')}`,
         ],
         consequence:
           `The antonym table already relates "${verbs[0]}" and "${verbs[1]}" at opposite ` +

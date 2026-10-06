@@ -1027,7 +1027,7 @@ const waiverClassRefusal = (
       'ERR_WAIVER_REFUSED',
       `No catalog publishes the code \`${code}\`, so it has no waivability class and cannot be waived.`,
       [
-        `Run \`symspec explain --code ${code}\` for the nearest published codes, and waive the exact code a \`symspec check\` finding carries.`,
+        `Run \`symspec explain --code ${shellWord(code)}\` for the nearest published codes, and waive the exact code a \`symspec check\` finding carries.`,
       ],
     )
   }
@@ -1037,7 +1037,7 @@ const waiverClassRefusal = (
     `\`${code}\` is a ${row.class}-class finding, and a ${row.class} finding is never waivable, in any scope: only a change to what the document says discharges it.`,
     [
       `Read the finding's message and demotion action (\`symspec check\`), then rewrite the requirement it names (\`symspec update --ref <id> <attr> "<wording>"\`), or commit the \`symspec antonym <verbA> <verbB>\` or \`symspec glossary "<canonical>" "<alias>"\` entry it proposes where the two phrasings really are contraries or one action.`,
-      `\`symspec explain --code ${code}\` states what the code means and how it is discharged.`,
+      `\`symspec explain --code ${shellWord(code)}\` states what the code means and how it is discharged.`,
     ],
   )
 }
@@ -1078,7 +1078,7 @@ const applyWaive = (
         `A \`waive\` of \`${code}\` must name the requirement ids of the finding it accepts ("refs"): a waiver by code alone would reach every finding of the code, including ones nobody reviewed.`,
         [
           `Copy the waive op from the finding's \`repair.ops\` (\`symspec check\`): it carries "refs" and the content hash of the text the finding was raised on.`,
-          `Or pass the finding's requirement with \`symspec waive ${code} --ref <id> --reason "…"\`.`,
+          `Or pass the finding's requirement with \`symspec waive ${shellWord(code)} --ref <id> --reason "…"\`.`,
         ],
       )
     }
@@ -1116,7 +1116,7 @@ const applyWaive = (
         'ERR_USAGE',
         `The requirements this \`waive\` names have changed since the finding was raised (content hash ${op.contentHash}, now ${contentHash}).`,
         [
-          `Re-run \`symspec check\`, re-read ${ids.map((id) => `\`symspec show ${id}\``).join(' and ')}, and waive from the new finding's repair only if the new text is consistent too.`,
+          `Re-run \`symspec check\`, re-read ${ids.map((id) => `\`symspec show ${shellWord(id)}\``).join(' and ')}, and waive from the new finding's repair only if the new text is consistent too.`,
         ],
       )
     }
@@ -1331,7 +1331,7 @@ const modelKeepsExpressionsValid = (
       kind === 'effect' ? validateEffect(source, model) : validateExpression(source, model, kind)
     if (isExprError(checked)) {
       return usage(`${what} would invalidate ${label}'s ${kind} "${source}": ${checked.error}`, [
-        `Edit or clear ${label} first: \`symspec classify ${label} --retract\`, or \`symspec update state${kind === 'effect' ? 'Effect' : 'Constraint'} "<new expression>" --ref ${label}\`.`,
+        `Edit or clear ${label} first: \`symspec classify ${shellWord(label)} --retract\`, or \`symspec update state${kind === 'effect' ? 'Effect' : 'Constraint'} "<new expression>" --ref ${shellWord(label)}\`.`,
         ...checked.suggestions,
       ])
     }
@@ -1619,10 +1619,10 @@ const applyClassify = (
       `Classifying ${target.key ?? target.id} as ${op.kind} requires the expression that says WHAT it ${op.kind === 'effect' ? 'changes' : 'asserts'}.`,
       [
         op.kind === 'effect'
-          ? `Supply it: \`symspec classify ${target.key ?? target.id} --kind effect --expression "lock_held := true"\`.`
-          : `Supply it: \`symspec classify ${target.key ?? target.id} --kind constraint --expression "not (lock_held and pending)"\`.`,
+          ? `Supply it: \`symspec classify ${shellWord(target.key ?? target.id)} --kind effect --expression "lock_held := true"\`.`
+          : `Supply it: \`symspec classify ${shellWord(target.key ?? target.id)} --kind constraint --expression "not (lock_held and pending)"\`.`,
         'A responseKind with no expression contributes nothing to the reachability encoding, so it would read as classified while the solver saw no state model at all.',
-        `Retract instead with \`symspec classify ${target.key ?? target.id} --retract\` if the response does not touch state.`,
+        `Retract instead with \`symspec classify ${shellWord(target.key ?? target.id)} --retract\` if the response does not touch state.`,
       ],
     )
   }

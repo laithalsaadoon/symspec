@@ -30,6 +30,7 @@
  */
 
 import type { Repair } from '../../ports/repair.ts'
+import { asShellArg, type ShellArg, shellWord } from '../engine/core/shell-word.ts'
 import type { StateVariable } from '../requirements/document.ts'
 import type { DocumentOp } from '../requirements/ops.ts'
 import { REACHABILITY_BFS_STATE_CAP } from './explicit-state.ts'
@@ -172,7 +173,7 @@ const renderTrace = (result: ConstraintResult): string => {
  * needs `classify`. Naming the wrong one would send an agent to the wrong command with
  * full confidence — the failure mode v4's `<blocking-code>` placeholder had.
  */
-const notCheckedRepair = (report: ReachabilityReport, docPath: string): Repair => {
+const notCheckedRepair = (report: ReachabilityReport, docPath: ShellArg): Repair => {
   if (report.variables === 0) {
     return {
       ops: [{ op: 'state', name: '<variable>', type: 'bool' } satisfies DocumentOp],
@@ -247,8 +248,10 @@ const notCheckedReason = (report: ReachabilityReport): string | undefined => {
  */
 export const projectReachability = (
   report: ReachabilityReport,
-  docPath: string,
+  docPathWord: string,
 ): ReachabilityProjection => {
+  // Quoted once by the caller (R60), marked so every command below splices it as is (R64).
+  const docPath = asShellArg(docPathWord)
   const findings: ReachabilityFinding[] = []
   const demotions: ReachabilityDemotion[] = []
 
@@ -357,7 +360,10 @@ export const projectReachability = (
         },
         repair: {
           ops: [],
-          commands: [`symspec show ${result.label} ${docPath}`, `symspec list ${docPath}`],
+          commands: [
+            `symspec show ${shellWord(result.label)} ${docPath}`,
+            `symspec list ${docPath}`,
+          ],
         },
       })
       demotions.push({
@@ -434,7 +440,10 @@ export const projectReachability = (
           // judgment are offered instead.
           repair: {
             ops: [],
-            commands: [`symspec show ${result.label} ${docPath}`, `symspec list ${docPath}`],
+            commands: [
+              `symspec show ${shellWord(result.label)} ${docPath}`,
+              `symspec list ${docPath}`,
+            ],
           },
         })
         break
@@ -535,7 +544,10 @@ export const projectReachability = (
             // op that dropped the type, range, or initial would change the model (or be
             // refused) rather than release a frame (spec 007 AC-1-6).
             ops: hypotheses.map((h) => redeclare(h.declaration, 'volatile')),
-            commands: [`symspec show ${result.label} ${docPath}`, `symspec check ${docPath}`],
+            commands: [
+              `symspec show ${shellWord(result.label)} ${docPath}`,
+              `symspec check ${docPath}`,
+            ],
           },
         })
         break
@@ -575,7 +587,10 @@ export const projectReachability = (
               'type, range, and initial — and accept PROVED_UNDER_HYPOTHESES, which still demotes.',
             repair: {
               ops: hypotheses.map((h) => redeclare(h.declaration, 'stable')),
-              commands: [`symspec show ${result.label} ${docPath}`, `symspec check ${docPath}`],
+              commands: [
+                `symspec show ${shellWord(result.label)} ${docPath}`,
+                `symspec check ${docPath}`,
+              ],
             },
           })
           break
@@ -633,7 +648,7 @@ export const projectReachability = (
               }
             : {
                 ops: [],
-                commands: [`symspec show ${result.label} ${docPath}`],
+                commands: [`symspec show ${shellWord(result.label)} ${docPath}`],
               },
         })
         break
@@ -681,7 +696,10 @@ export const projectReachability = (
         // different statements about the system, and choosing one is the author's call.
         repair: {
           ops: [],
-          commands: [`symspec show ${check.label} ${docPath}`, `symspec list ${docPath}`],
+          commands: [
+            `symspec show ${shellWord(check.label)} ${docPath}`,
+            `symspec list ${docPath}`,
+          ],
         },
       })
     } else if (check.verdict === 'unknown') {
@@ -715,7 +733,7 @@ export const projectReachability = (
                 `symspec check ${docPath} --reachability-timeout-ms ${report.timeoutMs * 4}`,
               ],
             }
-          : { ops: [], commands: [`symspec show ${check.label} ${docPath}`] },
+          : { ops: [], commands: [`symspec show ${shellWord(check.label)} ${docPath}`] },
       })
     }
   }

@@ -45,6 +45,7 @@
 
 import { Effect, Schema } from 'effect'
 import { RUN_WEAKENING } from '../../domain/config/config.ts'
+import { shellWord } from '../../domain/engine/core/shell-word.ts'
 import { FND_CODES, FndCodeMeta } from '../../domain/engine/formal/codes.ts'
 import { GTWR_CODES, GtwrCodeMeta } from '../../domain/engine/lint/codes.ts'
 import {
@@ -272,7 +273,7 @@ export const explainOp = defineOperation({
             ops: [],
             commands:
               near.length > 0 && near[0] !== undefined
-                ? [`symspec explain --code ${near[0]}`]
+                ? [`symspec explain --code ${shellWord(near[0])}`]
                 : ['symspec manifest'],
           },
         }),

@@ -75,7 +75,7 @@ import {
   type RunSettings,
   resolveReachabilityTimeoutMs,
 } from '../../domain/config/config.ts'
-import { shellWord } from '../../domain/engine/core/shell-word.ts'
+import { asShellArg, type ShellArg, shellWord } from '../../domain/engine/core/shell-word.ts'
 import type { Embedder } from '../../domain/engine/formal/embed.ts'
 import { DEFAULT_SEMANTIC_THRESHOLD } from '../../domain/engine/formal/semantic.ts'
 import type {
@@ -610,7 +610,7 @@ const CheckInput = Schema.Struct({
  * on each: the corrected invocation is a command an agent can run verbatim, which
  * is the AC-A-9 discipline applied to usage errors too.
  */
-const validate = (input: typeof CheckInput.Type, path: string): Effect.Effect<void, ErrUsage> => {
+const validate = (input: typeof CheckInput.Type, path: ShellArg): Effect.Effect<void, ErrUsage> => {
   const usage = (error: string, corrected: string) =>
     Effect.fail(
       new ErrUsage({
@@ -767,7 +767,7 @@ const severityAtLeast = (severity: CheckSeverity, minimum: CheckSeverity): boole
  * input→output specifications the propositional tiers fully cover. A committed-but-incomplete
  * model is different — the author asked the question — and the tier's own projection demotes it.
  */
-const noStateModelDisclosure = (docPath: string): ReachabilityFinding => ({
+const noStateModelDisclosure = (docPath: ShellArg): ReachabilityFinding => ({
   code: 'FND_REACHABILITY_NOT_CHECKED',
   severity: 'info',
   requirementIds: [],
@@ -884,7 +884,7 @@ const pinnedRunOf = (
   config: ConfigLocation,
   gate: GatePins,
   run: RunSettings,
-  docPath: string,
+  docPath: ShellArg,
 ): {
   readonly disclosure: Required<Pick<PinnedRunDisclosure, 'config' | 'pinned' | 'belowPinned'>>
   readonly demotions: readonly RepairableDemotion[]
@@ -937,8 +937,9 @@ export const checkOp = defineOperation({
       const store = yield* DocStore
       const path = docPath.resolve(input.file)
       // The path as one shell word (R60): every command this run names carries it, so a path
-      // with a space, a quote, `$` or a newline is handed to the shell whole.
-      const shellPath = shellWord(path)
+      // with a space, a quote, `$` or a newline is handed to the shell whole. Marked as quoted
+      // once (R64), so the commands that carry it never quote it again.
+      const shellPath = asShellArg(shellWord(path))
 
       yield* validate(input, shellPath)
 
