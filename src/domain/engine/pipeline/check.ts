@@ -150,7 +150,7 @@ import {
 } from '../formal/semantic.ts'
 import { findSimilarUnunified } from '../formal/similar.ts'
 import { checkSubsumption } from '../formal/subsumption.ts'
-import { findTemporalContradictions } from '../formal/temporal.ts'
+import { findTemporalContradictions, type TemporalSolverCheck } from '../formal/temporal.ts'
 import { earsToTemporal, G, tAnd, tAtom, tNot } from '../formal/temporal-patterns.ts'
 import { checkVacuity } from '../formal/vacuity.ts'
 import { checkGtWRules, checkGtWRulesSet } from '../lint/gtwr.ts'
@@ -282,6 +282,14 @@ export interface CheckOptions {
    * needs-review tier's separate solve, whose own demotion would then hide this one.
    */
   contradictionCheck?: GroupSolverCheck
+  /**
+   * Injectable joint check for the bounded temporal tier — the seam
+   * `findTemporalContradictions` exposes, threaded one level up for the same reason as
+   * {@link contradictionCheck}: the verdict consequence of a temporal `unknown` (the
+   * `solver-unknown` demotion, AC-3-4) is computed here, and {@link timeoutMs} cannot
+   * produce one deterministically. Ignored unless {@link temporal} is set.
+   */
+  temporalCheck?: TemporalSolverCheck
 }
 
 /**
@@ -1692,6 +1700,7 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
               contraryPairs(encoded.flatMap((e) => e.atoms)).map(([a, b]) =>
                 G(tNot(tAnd([tAtom(a), tAtom(b)]))),
               ),
+              options.temporalCheck,
             )
           : []
 

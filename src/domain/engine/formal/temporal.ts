@@ -126,6 +126,25 @@ import type { Evidence } from './finding.ts'
 import type { TemporalFormula } from './temporal-patterns.ts'
 
 /**
+ * The one call through which {@link findTemporalContradictions} makes its JOINT check — the
+ * single whole-spec solve whose `unknown` is disclosed (AC-3-4). Defaults to
+ * `solver.check(...assumptions)`.
+ *
+ * Injectable for the reason `contradiction.ts` exposes its `GroupSolverCheck`: an `unknown`
+ * cannot be produced as a fixture through `timeoutMs`. z3's timeout is a cancel request a
+ * timer delivers, so at `1` a fast or lightly loaded machine can still decide a k=60 check
+ * before it lands — the pipeline reproducer was a race, and it lost on the 2.0.0 release
+ * PR's CI run (37429286065) while passing on the same tree's two runs before it.
+ */
+export type TemporalSolverCheck = (
+  solver: InstanceType<Z3Context['Solver']>,
+  assumptions: readonly Z3Bool[],
+) => Promise<'sat' | 'unsat' | 'unknown'>
+
+const defaultTemporalCheck: TemporalSolverCheck = (solver, assumptions) =>
+  solver.check(...assumptions)
+
+/**
  * A temporal-contradiction finding (Appendix B `FND_TEMPORAL_CONTRADICTION`).
  *
  * `error` when the `unsat` survives with the reachability premise reduced to at most
@@ -383,6 +402,7 @@ export async function findTemporalContradictions(
   k = 10,
   bounds: SolverBounds = {},
   axioms: readonly TemporalFormula[] = [],
+  check: TemporalSolverCheck = defaultTemporalCheck,
 ): Promise<TemporalFinding[]> {
   if (reqTemporals.length < 2) return []
 
@@ -410,7 +430,7 @@ export async function findTemporalContradictions(
   const ids = ordered.map((r) => r.id)
   const solver = buildBoundedSolver(ctx, ordered, k, bounds, axioms)
   const guards = ids.map((id) => ctx.Bool.const(id))
-  const res = await solver.check(...guards)
+  const res = await check(solver, guards)
   const evidence: Evidence = { atomTable: [], temporal: { bound: k, complete: false } }
   // AC-3-4: an `unknown` decided nothing, so it is disclosed (and demotes) rather than read as
   // consistent; the finding below says so in the findings list too.

@@ -230,8 +230,10 @@ describe('AC-3-4: a solver unknown inside the contradiction enumeration', () => 
 })
 
 describe('AC-3-4: a solver unknown in the temporal tier', () => {
-  /** A temporal check at a large bound, cut at 1ms: the encoding alone is thousands of terms,
-   * so the solver cannot decide it inside the timeout on any machine. */
+  /** A temporal check at a large bound. The `unknown` comes through the `temporalCheck` seam,
+   * not `timeoutMs: 1`: z3 delivers its timeout as an asynchronous cancel, so at 1ms a fast
+   * runner sometimes decided this k=60 check first, and the reproducer was a race that the
+   * 2.0.0 release PR's CI run (37429286065) lost. */
   const temporalDoc = () =>
     docOf([
       {
@@ -263,7 +265,7 @@ describe('AC-3-4: a solver unknown in the temporal tier', () => {
     const report = await runCheck(temporalDoc(), {
       ...SEMANTIC(),
       temporal: { bound: 60 },
-      timeoutMs: 1,
+      temporalCheck: async () => 'unknown',
     })
     expect(temporalUnknowns(report).map((d) => d.requirementIds)).toEqual([['t-a', 't-b', 't-c']])
     expect(report.verified).toBe(false)
