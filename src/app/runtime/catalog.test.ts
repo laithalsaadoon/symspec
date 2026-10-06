@@ -333,7 +333,26 @@ describe('runnable commands are lifted out of the description text', () => {
     expect(lookupCode('FND_OPPOSITION_CANDIDATE')?.commands).toEqual([
       'symspec antonym <verbA> <verbB>',
     ])
-    expect(lookupCode('FND_SIMILAR_SEMANTIC')?.commands).toEqual(['symspec glossary'])
+    // R56: the FULL glossary form. Bare `symspec glossary` prints usage (Missing
+    // required argument: canonical), so the catalog hands an agent both positionals.
+    expect(lookupCode('FND_SIMILAR_SEMANTIC')?.commands).toEqual([
+      'symspec glossary "<canonical>" "<alias>"',
+    ])
+  })
+
+  it('[S3-045] names the bare `symspec glossary`, with no arguments, on no catalog row (R56)', () => {
+    const rows = allCodes()
+    expect(rows.length).toBeGreaterThan(0)
+    const bare = rows.flatMap((row) =>
+      row.commands
+        .filter((command) => command.trim().replace(/\s+/g, ' ') === 'symspec glossary')
+        .map((command) => `${row.code}: ${command}`),
+    )
+    expect(bare).toEqual([])
+    // Anti-vacuity: the glossary command is still named, in its full form, somewhere.
+    expect(
+      rows.some((row) => row.commands.some((command) => command.startsWith('symspec glossary "'))),
+    ).toBe(true)
   })
 
   it('finds the migration pair on ERR_SCHEMA_VERSION', () => {

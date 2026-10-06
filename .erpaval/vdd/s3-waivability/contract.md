@@ -664,3 +664,21 @@ R55's "no other stored waiver" for a bystander at the target's OWN key (same cod
 prefixed-hash target beside a reviewed waiver over the same refs, or a stale waiver beside a fresh
 one: the exact unwaive S3-024/S3-029 pin (`toEqual(unwaiveOf(w))`) carries no reason or hash, so no
 build can tell them apart. The tests exclude that bystander and say why.
+
+## Loop-back contract-5 (contract gap from build-4, job 1091; job 1094)
+
+- R56 re-pin, S3-045: `src/app/runtime/catalog.test.ts` 'finds the discharging command on the
+  propose-only candidates' pinned FND_SIMILAR_SEMANTIC's catalog commands to exactly
+  `['symspec glossary']`, the bare form waive-fold's '[S3-045] every command named by explain, ...
+  and by every catalog row, parses with the built binary' rejects (Missing required argument:
+  canonical). It now pins `['symspec glossary "<canonical>" "<alias>"']`, the string build-4 writes
+  in codes.ts and AGENTS.md. New negative half, same file: '[S3-045] names the bare `symspec
+  glossary`, with no arguments, on no catalog row (R56)', with an anti-vacuity check that a full
+  `symspec glossary "..."` command is still named on some row.
+- Scan: no other test pins a bare or nested command form R56 forbids as product output. The
+  remaining `glossary add` / `antonym add` / bare `symspec update` literals in tests are inputs to the
+  argv oracle (cli.test.ts S3 closure), the side-table import parser (import.test.ts, cli.test.ts
+  import cases) or the nested-verb normalizer (repair.test.ts), or `not.toContain` / substring pins
+  a full-argv form still satisfies. Throwaway run with build-4.patch applied on 5f79f9a (job-1094/tw):
+  before this re-pin, 3561 tests, 1 failed (exactly this assertion); after it, 3562 tests, 0 failed.
+  On 5f79f9a product code both catalog tests are red by assertion (bare `symspec glossary` still listed).
