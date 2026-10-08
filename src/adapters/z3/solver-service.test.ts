@@ -50,6 +50,8 @@
  * same params object — which S3 measured as unbounded (>20s, no sign of finishing).
  */
 
+import { setFlagsFromString } from 'node:v8'
+import { runInNewContext } from 'node:vm'
 import { Duration, Effect, Fiber, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { resetZ3, type Z3Context, type Z3Module } from '../../domain/engine/formal/backend.ts'
@@ -521,6 +523,47 @@ describe('solverServiceLayer — the Layer owns the WASM lifetime', () => {
     // missing from the release, the second build would reuse the first's module
     // through the transplanted tier's memo and this would fail.
     expect(a).not.toBe(b)
+  })
+
+  /**
+   * THE RELEASE GUARD. A released module's heap must be collectable, or every process that boots
+   * more than one Layer keeps every heap it ever booted: S6's corpus sweep, one Layer per
+   * document, peaked at 36 GB RSS that way and the 16 GB CI runner died mid-suite.
+   *
+   * The retainer is the runtime's own main-thread mailbox wait (`Atomics.waitAsync`, no
+   * timeout), which V8 roots as a global handle; release terminates the threads and un-parks it.
+   * Observed by a `WeakRef` on the heap's buffer across a forced GC, so the test reads the one
+   * property that matters (nothing roots the heap) rather than RSS, which the host's other
+   * tenants move.
+   */
+  it('RELEASE: a closed scope lets its module go, heap and all', async () => {
+    setFlagsFromString('--expose-gc')
+    const gc = runInNewContext('gc') as () => void
+    const heapOf = Effect.flatMap(SolverService, (s) =>
+      Effect.flatMap(s.boot, ({ module }) =>
+        Effect.promise(async () => {
+          // Run a solve, so the heap is the one a check leaves behind, not a bare boot.
+          const ctx = module.Context('release-guard')
+          const solver = new ctx.Solver()
+          solver.add(ctx.Int.const('x').gt(3))
+          expect(await solver.check()).toBe('sat')
+          const em = (module as unknown as { em: { HEAP32: Int32Array } }).em
+          return new WeakRef(em.HEAP32.buffer)
+        }),
+      ),
+    )
+    const heaps: WeakRef<ArrayBufferLike>[] = []
+    for (let i = 0; i < 3; i++) {
+      heaps.push(
+        await Effect.runPromise(heapOf.pipe(Effect.provide(Layer.fresh(solverServiceLayer)))),
+      )
+    }
+    // The re-parked wait settles a task after the notify; give it one, then collect.
+    for (let round = 0; round < 3; round++) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      gc()
+    }
+    expect(heaps.map((h) => h.deref() === undefined)).toEqual([true, true, true])
   })
 
   it('exposes solve as the interruptible primitive, not a raw promise wrapper', async () => {
