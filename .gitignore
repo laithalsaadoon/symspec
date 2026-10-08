@@ -36,6 +36,9 @@ mise.local.toml
 # Claude Code scratch files (created by tools, not user content)
 _tmp_*
 
+# Claude Code workflow worktrees (each is a full checkout with its own biome.json)
+/.claude/worktrees/
+
 # ERPAVal session state — orchestrator-coupled, ephemeral
 .erpaval/sessions/
 
