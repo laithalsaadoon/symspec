@@ -31,11 +31,7 @@
  */
 
 import { requirementBounds } from '../engine/formal/numeric.ts'
-import {
-  bindsCurrentText,
-  requirementsContentHash,
-  waiverScope,
-} from '../requirements/content-hash.ts'
+import { requirementsContentHash, waiverBinding } from '../requirements/content-hash.ts'
 import type {
   Requirement,
   RequirementsDocument,
@@ -303,12 +299,20 @@ export const projectVocabulary = (
  * bound to the requirements as the author wrote them. The sentence, and every other field, is
  * passed verbatim.
  *
- * A waiver's `contentHash` binds it to the text a reviewer read, and the boundary drops one whose
- * requirements no longer hash to it (`bindsCurrentText`). The author's text is the document's, and
- * a projection does not edit it: so a waiver that binds the document as written is rebound to the
- * requirements as projected, and one that does not is dropped here, as the boundary would drop it
- * on the original. Either way the check honours exactly the waivers it honours on the original: a
- * rewrite neither resurrects a finding someone reviewed nor revives a review of other words.
+ * A waiver's `contentHash` binds it to the text a reviewer read, and the boundary forwards one only
+ * while its requirements still hash to it (`waiverBinding`, the one binding function). The author's
+ * text is the document's, and a projection does not edit it, so each waiver keeps the standing it
+ * has on the document as written:
+ *
+ * - one that `binds` is rebound to the requirements as projected;
+ * - one that is `stale` is dropped, as the boundary drops it on the original: kept, a rewrite that
+ *   restored the words it was reviewed on would revive it;
+ * - one that is `unbound` is kept verbatim: its cause reads no words, so it stays unbound, by the
+ *   same cause, on the projected document.
+ *
+ * The code's waivability class reads no words either, so the check honours exactly the waivers it
+ * honours on the original: a rewrite neither resurrects a finding someone reviewed nor revives a
+ * review of other words.
  */
 export const projectedDocument = (
   doc: RequirementsDocument,
@@ -321,9 +325,10 @@ export const projectedDocument = (
     ]),
   )
   const waivers = doc.waivers.flatMap((w) => {
-    if (!bindsCurrentText(doc, w)) return []
-    if (w.contentHash === undefined) return [w]
-    const contentHash = requirementsContentHash({ requirements }, waiverScope(w))
+    const binding = waiverBinding(doc, w)
+    if (binding.kind === 'unbound') return [w]
+    if (binding.kind === 'stale') return []
+    const contentHash = requirementsContentHash({ requirements }, binding.ids)
     return contentHash === undefined ? [] : [{ ...w, contentHash }]
   })
   return {

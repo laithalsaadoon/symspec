@@ -148,7 +148,12 @@ export interface TextTables {
   readonly glossary: ReadonlyArray<{ canonical: string; aliases: readonly string[] }>
   readonly antonyms: ReadonlyMap<string, AntonymEntry> | undefined
   readonly terms: ReadonlyArray<{ canonical: string; aliases: readonly string[] }>
-  /** The waivers the boundary hands the engine: those `bindsCurrentText` keeps. */
+  /**
+   * The waivers that bind the current text (`bindsCurrentText`). The boundary also drops a
+   * `never`-class code, a filter this tier cannot read (`compat.ts` is its caller), and need not:
+   * the only waivers a reader here applies are the gate's, of blocking GtWR codes, every one of
+   * them `scoped`, so over those this set is exactly the one the engine is handed.
+   */
   readonly waivers: readonly Waiver[]
 }
 

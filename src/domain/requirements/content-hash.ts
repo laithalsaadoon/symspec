@@ -27,7 +27,12 @@
  * published test vectors and against `node:crypto` in `content-hash.test.ts`.
  */
 
-import type { Requirement, RequirementsDocument, Waiver } from './document.ts'
+import {
+  CONTENT_HASH_PATTERN,
+  type Requirement,
+  type RequirementsDocument,
+  type Waiver,
+} from './document.ts'
 
 /** SHA-256 round constants: the first 32 bits of the fractional cube roots of the first 64 primes. */
 const K = new Uint32Array([
@@ -128,25 +133,82 @@ export const requirementsContentHash = (
 }
 
 /**
- * True unless `w` is bound to reviewed text that has since changed.
+ * Why a stored waiver binds no reviewed text, when it does not: each a shape no fold writes, so a
+ * waiver of any of them reaches no finding (spec 007 AC-5-6, ruling R54). None of them reads the
+ * requirements' words, so a rewrite of the words cannot change one.
+ */
+export type UnboundCause =
+  /** Both scope fields at once, a shape no fold writes: which scope was reviewed is unknowable. */
+  | 'both-scopes'
+  /** A reason that is blank after trimming: no audit trail, a shape the fold refuses. */
+  | 'blank-reason'
+  /** No requirement scope at all: a waiver by code reaches findings nobody reviewed. */
+  | 'code-only'
+  /** A scope but no content hash: bound to no reviewed text. */
+  | 'no-hash'
+  /** A content hash that is not `sha256:` and 64 lowercase hex digits, a shape no fold writes. */
+  | 'malformed-hash'
+  /** A scope naming a requirement the document no longer has, so the hash binds nothing. */
+  | 'missing-requirement'
+
+/**
+ * How one stored waiver stands to the text it was reviewed on, whatever its code.
+ *
+ * - `binds`: the shape the fold stores (one scope field, a reason, an anchored hash) over
+ *   requirements whose current text hashes to the stored hash; `ids` is the exact set.
+ * - `stale`: the same shape, but the text changed since the review.
+ * - `unbound`: a shape that binds no text at all ({@link UnboundCause}).
+ */
+export type WaiverBinding =
+  | { readonly kind: 'binds'; readonly ids: readonly string[] }
+  | {
+      readonly kind: 'stale'
+      readonly ids: readonly string[]
+      readonly storedHash: string
+      readonly currentHash: string
+    }
+  | { readonly kind: 'unbound'; readonly cause: UnboundCause }
+
+/**
+ * The ONE binding function: the boundary (`../compat.ts` `waiverStanding`, after the code's
+ * waivability class) forwards a waiver exactly when it `binds`, and the vocabulary's projection
+ * rebinds by it, so a projection honours exactly the waivers the boundary honours on the original.
  *
  * A waiver carrying a `contentHash` records that someone read the requirements it scopes AS THEY
  * WERE WRITTEN THEN. The tier cannot hash (it never sees the document's own fields), so the check
- * is made at the boundary (`../compat.ts`) and a stale waiver never crosses: the finding it covered
- * comes back, with its demotion, for the new text to be reviewed. Dropping a waiver can only put a
- * finding back, never invent one, so this direction is the safe one. A hash with no requirement to
- * bind to, or naming a requirement that is gone, binds nothing and is dropped too.
- *
- * One function: the boundary drops by it, and the vocabulary's projection rebinds by it.
+ * is made at the boundary and a stale waiver never crosses: the finding it covered comes back, with
+ * its demotion, for the new text to be reviewed. Dropping a waiver can only put a finding back,
+ * never invent one, so this direction is the safe one.
+ */
+export const waiverBinding = (
+  document: Pick<RequirementsDocument, 'requirements'>,
+  w: Waiver,
+): WaiverBinding => {
+  if (w.requirementId !== undefined && w.requirementIds !== undefined) {
+    return { kind: 'unbound', cause: 'both-scopes' }
+  }
+  if (typeof w.reason !== 'string' || w.reason.trim().length === 0) {
+    return { kind: 'unbound', cause: 'blank-reason' }
+  }
+  const ids = waiverScope(w)
+  if (ids.length === 0) return { kind: 'unbound', cause: 'code-only' }
+  if (w.contentHash === undefined) return { kind: 'unbound', cause: 'no-hash' }
+  if (!CONTENT_HASH_PATTERN.test(w.contentHash)) return { kind: 'unbound', cause: 'malformed-hash' }
+  const currentHash = requirementsContentHash(document, ids)
+  if (currentHash === undefined) return { kind: 'unbound', cause: 'missing-requirement' }
+  return currentHash === w.contentHash
+    ? { kind: 'binds', ids }
+    : { kind: 'stale', ids, storedHash: w.contentHash, currentHash }
+}
+
+/**
+ * True when `w` {@link waiverBinding binds} the current text of `document`: the waivers the
+ * boundary hands the engine, for every code the waivability policy lets through.
  */
 export const bindsCurrentText = (
   document: Pick<RequirementsDocument, 'requirements'>,
   w: Waiver,
-): boolean => {
-  if (w.contentHash === undefined) return true
-  const ids = waiverScope(w)
-  return ids.length > 0 && requirementsContentHash(document, ids) === w.contentHash
-}
+): boolean => waiverBinding(document, w).kind === 'binds'
 
 /** The requirements a waiver's `contentHash` is taken over: its exact set, else its one requirement. */
 export const waiverScope = (w: Waiver): readonly string[] =>

@@ -21,8 +21,9 @@ import { describe, expect, it } from 'vitest'
 import { solverServiceLayer } from '../../adapters/z3/solver-service.ts'
 import { SolverService } from '../../ports/solver.ts'
 import { lexicalEmbedder, orthogonalEmbedder } from '../../testing/gaming.ts'
-import { toEngineDoc } from '../compat.ts'
+import { toEngineDoc, waiverStanding } from '../compat.ts'
 import type { Embedder } from '../engine/formal/embed.ts'
+import { GTWR_CODES } from '../engine/lint/codes.ts'
 import { runCheck } from '../engine/pipeline/check.ts'
 import { requirementsContentHash } from '../requirements/content-hash.ts'
 import {
@@ -33,6 +34,7 @@ import {
   type VocabSymbol,
 } from '../requirements/document.ts'
 import { renderSentence } from '../requirements/render.ts'
+import { waivabilityOf } from '../waivability.ts'
 import { buildProjection } from './build.ts'
 import { implicitVocabulary } from './implicit.ts'
 import { frozenTablesDigest, validateVocabulary } from './invariants.ts'
@@ -855,52 +857,97 @@ describe('the relational roster is the one `check` takes, over the requirements 
 // ---------------------------------------------------------------------------
 
 describe('a rewrite keeps the waivers the check honours', () => {
+  // Two identical requirements: an exact duplicate, a `wording`-class pair finding, so a waiver of
+  // it over the pair and the text as written crosses the boundary (spec 007 AC-5-6). An opposition
+  // candidate would not: `triage` is never waivable, so its waiver is inert either way.
   const r1 = req({ systemName: 'The pump controller', systemResponse: 'enable the pump' })
-  const r2 = req({ systemName: 'The pump controller', systemResponse: 'throttle the pump' })
+  const r2 = req({ systemName: 'The pump controller', systemResponse: 'enable the pump' })
   const ids = [r1.id, r2.id].sort()
   const plain = docOf([r1, r2])
+  const reviewed = docOf([
+    { ...r1, systemName: 'The main pump controller' },
+    { ...r2, systemName: 'The main pump controller' },
+  ])
+  const waiver = (contentHash: string | undefined, reason: string) => ({
+    code: 'FND_EXACT_DUPLICATE',
+    requirementIds: ids,
+    ...(contentHash !== undefined ? { contentHash } : {}),
+    reason,
+  })
   const waived: RequirementsDocument = {
     ...plain,
-    waivers: [
-      {
-        code: 'FND_OPPOSITION_CANDIDATE',
-        requirementIds: ids,
-        contentHash: requirementsContentHash(plain, ids) ?? '',
-        reason: 'reviewed: enabling and throttling the pump are not opposites',
-      },
-    ],
+    waivers: [waiver(requirementsContentHash(plain, ids), 'reviewed: one requirement per line')],
   }
+  const duplicate = (v: { findings: readonly string[] }) =>
+    v.findings.some((f) => f.startsWith('FND_EXACT_DUPLICATE'))
 
   it('admits a system rename, and the waiver reviewed on the text as written still binds', async () => {
     const doc = renamed(waived, (s) => s.kind === 'system', 'The main pump controller')
     expect(brief(doc)).toEqual([])
     const { before, after, rewrites } = await beforeAndAfter(doc, constantEmbedder)
     expect(rewrites.map((r) => Object.keys(r))).toEqual([['systemName'], ['systemName']])
-    expect(before.findings.some((f) => f.startsWith('FND_OPPOSITION_CANDIDATE'))).toBe(false)
+    expect(duplicate(before)).toBe(false)
     expect(after).toEqual(before)
   })
 
   it('keeps a stale waiver stale when the rewrite restores the text it was reviewed on', async () => {
     // The waiver was reviewed on `The main pump controller`; the requirements now say `The pump
     // controller`, so the check drops it. Renaming back to the reviewed words must not revive it.
-    const reviewed = docOf([
-      { ...r1, systemName: 'The main pump controller' },
-      { ...r2, systemName: 'The main pump controller' },
-    ])
     const stale: RequirementsDocument = {
       ...plain,
-      waivers: [
-        {
-          ...(waived.waivers[0] as (typeof waived.waivers)[number]),
-          contentHash: requirementsContentHash(reviewed, ids) ?? '',
-        },
-      ],
+      waivers: [waiver(requirementsContentHash(reviewed, ids), 'reviewed on other words')],
     }
     const doc = renamed(stale, (s) => s.kind === 'system', 'The main pump controller')
     expect(brief(doc)).toEqual([])
     const { before, after } = await beforeAndAfter(doc, constantEmbedder)
-    expect(before.findings.some((f) => f.startsWith('FND_OPPOSITION_CANDIDATE'))).toBe(true)
+    expect(duplicate(before)).toBe(true)
     expect(after).toEqual(before)
+  })
+
+  it('keeps every stored waiver`s standing at the boundary, and drops only a stale one', () => {
+    const bound = requirementsContentHash(plain, ids)
+    const stored: RequirementsDocument['waivers'] = [
+      waiver(bound, 'qualifies'),
+      waiver(requirementsContentHash(reviewed, ids), 'stale'),
+      waiver(undefined, 'no hash'),
+      waiver('sha256:not-a-hash', 'malformed hash'),
+      { code: 'FND_EXACT_DUPLICATE', reason: 'code only' },
+      { ...waiver(bound, 'both scopes'), requirementId: r1.id },
+      { ...waiver(bound, 'never-class code'), code: 'FND_OPPOSITION_CANDIDATE' },
+      { ...waiver(bound, 'unclassified code'), code: 'FND_NOT_A_CODE' },
+    ]
+    const doc = renamed(
+      { ...plain, waivers: stored },
+      (s) => s.kind === 'system',
+      'The main pump controller',
+    )
+    const projection = buildProjection(doc)
+    if (projection === undefined) throw new Error('the fixture declares no vocabulary')
+    expect([...projection.rewrites.values()]).toHaveLength(2)
+    const projected = projectedDocument(doc, projection)
+    const standings = (d: RequirementsDocument) =>
+      d.waivers.map((w) => {
+        const s = waiverStanding(d, w)
+        return [w.reason, s.kind, s.kind === 'inert' ? s.cause : s.ids.join(',')]
+      })
+    expect(standings(projected)).toEqual(standings(doc).filter(([, kind]) => kind !== 'stale'))
+    expect(standings(doc).map(([reason, kind]) => [reason, kind])).toEqual([
+      ['qualifies', 'qualifies'],
+      ['stale', 'stale'],
+      ['no hash', 'inert'],
+      ['malformed hash', 'inert'],
+      ['code only', 'inert'],
+      ['both scopes', 'inert'],
+      ['never-class code', 'inert'],
+      ['unclassified code', 'inert'],
+    ])
+  })
+
+  it('reads the gate`s waivers by their text alone, because every blocking GtWR code is scoped', () => {
+    // `readers.ts` hands `isBlocked` the waivers that bind the text, without the code's class (the
+    // vocabulary cannot read `waivability.ts`). That is the engine's set only while no GtWR code
+    // is `never`-class.
+    expect(GTWR_CODES.filter((code) => waivabilityOf(code) !== 'scoped')).toEqual([])
   })
 })
 
