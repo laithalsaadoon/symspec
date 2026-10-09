@@ -11,8 +11,7 @@
  * Cite: research-ears-incose.md §2 (~24 rules checkability rollup)
  */
 
-import { renderSentenceSlots, type SlotOffsets } from '../core/render.ts'
-import type { Requirement } from '../core/schema.ts'
+import { renderSentence, renderSentenceSlots, type SlotOffsets } from '../core/render.ts'
 import {
   opensConvertedUnit,
   type PredicateSlot,
@@ -21,6 +20,7 @@ import {
   type SubjectBound,
 } from '../formal/numeric.ts'
 import { KW } from '../parse/tier1.ts'
+import type { ReqView } from '../solvers/types.ts'
 
 export interface GtWRFinding {
   /** Stable code: GTWR_R<n>_<slug> */
@@ -342,6 +342,14 @@ function isDimensionlessRatio(numText: string): boolean {
 }
 
 /**
+ * The sentence the lint reads for a requirement: the stored one, or the slots' rendering when
+ * none is stored. The one reading `check` lints and the formal gate blocks on.
+ */
+export function lintSentenceOf(requirement: ReqView): string {
+  return requirement.sentence || renderSentence(requirement)
+}
+
+/**
  * Check a single requirement's systemResponse field against GTWR rules.
  * Runs the ~24 T1 lexicon checks on the rendered sentence.
  *
@@ -349,7 +357,7 @@ function isDimensionlessRatio(numText: string): boolean {
  * @param sentence - the full rendered EARS sentence (or systemResponse slot alone)
  * @returns array of findings ([] if clean)
  */
-export function checkGtWRules(requirement: Requirement, sentence: string): GtWRFinding[] {
+export function checkGtWRules(requirement: ReqView, sentence: string): GtWRFinding[] {
   const findings: GtWRFinding[] = []
 
   // R1 — Pattern compliance: statement must match one of the EARS patterns
@@ -500,7 +508,7 @@ function checkR5IndefiniteArticle(sentence: string, findings: GtWRFinding[]): vo
 // ============================================================================
 
 function checkR6MissingUnits(
-  requirement: Requirement,
+  requirement: ReqView,
   sentence: string,
   findings: GtWRFinding[],
 ): void {
@@ -715,7 +723,7 @@ interface BoundSpans {
  * this requirement's rendering is read, because the spans come from its slots; any other
  * sentence has none, and keeps every numeral a finding.
  */
-function boundSpans(requirement: Requirement, sentence: string): BoundSpans {
+function boundSpans(requirement: ReqView, sentence: string): BoundSpans {
   const { sentence: rendered, offsets } = renderSentenceSlots(requirement)
   if (rendered !== sentence) return { unitNumbers: [], identifiers: [] }
   const unitNumbers: Array<readonly [number, number]> = []
@@ -1087,11 +1095,7 @@ function checkR24Pronoun(sentence: string, findings: GtWRFinding[]): void {
 // R26 — Absolutes (with AC-3-3 legitimate-exception handling)
 // ============================================================================
 
-function checkR26Absolutes(
-  sentence: string,
-  findings: GtWRFinding[],
-  _requirement: Requirement,
-): void {
+function checkR26Absolutes(sentence: string, findings: GtWRFinding[], _requirement: ReqView): void {
   // AC-3-3: absolutes have legitimate exceptions; mark as warn if context suggests exception
   // Heuristic: "disregard all signals when override ON" is legitimate
   // Pattern: "all" + "when" or "if" within the same sentence
@@ -1391,7 +1395,7 @@ interface DecimalHit {
  * @returns set-level findings ([] if the set uses a single consistent precision)
  */
 export function checkGtWRulesSet(
-  requirements: readonly { requirement: Requirement; sentence: string }[],
+  requirements: readonly { requirement: ReqView; sentence: string }[],
 ): GtWRFinding[] {
   const findings: GtWRFinding[] = []
 

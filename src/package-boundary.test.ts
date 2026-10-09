@@ -133,6 +133,41 @@ describe('no module reaches outside the package', () => {
     expect(imports).toEqual(["import { Schema } from 'effect'"])
   })
 
+  it('keeps the vocabulary a greenfield client of the engine — it reads the engine`s readers, and the engine reads nothing of it', () => {
+    // `domain/vocabulary/` computes its phrase keys with the engine's OWN normalizers and
+    // atomizer, which is what makes a symbol partition comparable with the atom partition at
+    // all, and it measures a projection with every engine reader of a slot's words, so that what
+    // it admits is what the engine reads. It may therefore reach into the tiers that hold those
+    // readers — `engine/formal` (as `compat.ts` does), the GtWR lint, the free tier's pair
+    // filters and the AC-3-7 gate, which decides the requirements the relational tier's roster is
+    // taken over — and into the requirements model it reads, and nowhere else. `compat.ts` in
+    // particular is excluded, because the projection there is the vocabulary's CALLER, and so is
+    // the rest of `engine/pipeline`, which runs the solver. The engine side of the one-way rule is
+    // the exact crossing list above, which names no vocabulary module.
+    const vocabularyRoot = join(PKG_ROOT, 'src', 'domain', 'vocabulary')
+    const files = tsFiles(vocabularyRoot).filter((f) => !f.endsWith('.test.ts'))
+    expect(files.length).toBeGreaterThan(0)
+    const allowed = [
+      join('src', 'domain', 'vocabulary'),
+      join('src', 'domain', 'engine', 'formal'),
+      join('src', 'domain', 'engine', 'lint'),
+      join('src', 'domain', 'engine', 'solvers', 'free'),
+      join('src', 'domain', 'engine', 'pipeline', 'gate.ts'),
+      join('src', 'domain', 'requirements', 'document.ts'),
+      join('src', 'domain', 'requirements', 'content-hash.ts'),
+    ]
+    const outside: string[] = []
+    for (const file of files) {
+      for (const specifier of relativeSpecifiers(readFileSync(file, 'utf8'))) {
+        const target = relative(PKG_ROOT, resolve(dirname(file), specifier))
+        if (!allowed.some((a) => target === a || target.startsWith(`${a}${sep}`))) {
+          outside.push(`${relative(PKG_ROOT, file)} -> ${specifier}`)
+        }
+      }
+    }
+    expect(outside).toEqual([])
+  })
+
   it('ships a `dist` that the bin actually points at', () => {
     // `bin/symspec.mjs` is a one-line wrapper, and its whole job is to keep the shebang on
     // a stable path while the build output moves. A wrong relative path here is a package

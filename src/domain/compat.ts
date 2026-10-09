@@ -57,13 +57,16 @@
 
 import type { Doc } from './engine/core/doc.ts'
 import type { Requirement as EngineRequirement } from './engine/core/schema.ts'
-import { requirementsContentHash } from './requirements/content-hash.ts'
 import {
-  CONTENT_HASH_PATTERN,
-  type DocumentDiagnostic,
-  type Requirement as DocumentRequirement,
-  type RequirementsDocument,
-  type Waiver,
+  requirementsContentHash,
+  type UnboundCause,
+  waiverBinding,
+} from './requirements/content-hash.ts'
+import type {
+  DocumentDiagnostic,
+  Requirement as DocumentRequirement,
+  RequirementsDocument,
+  Waiver,
 } from './requirements/document.ts'
 import { type FindingClass, findingClassOf, WAIVABILITY } from './waivability.ts'
 
@@ -118,24 +121,16 @@ export const toEngineRequirement = (r: DocumentRequirement): EngineRequirement =
  */
 export const RESCOPED_REASON_MARKER = ' (rescoped from a legacy waiver)'
 
-/** Why a stored waiver does not reach the engine, when it does not. */
+/**
+ * Why a stored waiver does not reach the engine, when it does not: its code's class, or a shape
+ * that binds no reviewed text ({@link UnboundCause}, decided by `waiverBinding`).
+ */
 export type InertCause =
   /** No catalog publishes the code (an exact match: no trimming, no case folding). */
   | 'unclassified'
   /** The code's class is `never`: a verdict, disclosure, triage, hygiene or anchor finding. */
   | 'never'
-  /** No requirement scope at all: a waiver by code reaches findings nobody reviewed. */
-  | 'code-only'
-  /** A scope but no content hash: bound to no reviewed text. */
-  | 'no-hash'
-  /** A scope naming a requirement the document no longer has, so the hash binds nothing. */
-  | 'missing-requirement'
-  /** Both scope fields at once, a shape no fold writes: which scope was reviewed is unknowable. */
-  | 'both-scopes'
-  /** A reason that is blank after trimming: no audit trail, a shape the fold refuses. */
-  | 'blank-reason'
-  /** A content hash that is not `sha256:` and 64 lowercase hex digits, a shape no fold writes. */
-  | 'malformed-hash'
+  | UnboundCause
 
 /**
  * What the waivability policy makes of ONE stored waiver at check time.
@@ -174,28 +169,22 @@ export const waiverStanding = (document: RequirementsDocument, w: Waiver): Waive
   const cls = findingClassOf(w.code)
   if (cls === undefined) return { kind: 'inert', cause: 'unclassified' }
   if (WAIVABILITY[cls] === 'never') return { kind: 'inert', cause: 'never', class: cls }
-  // Only the shape the fold stores crosses (ruling R54): one scope field, a reason, an anchored hash.
-  if (w.requirementId !== undefined && w.requirementIds !== undefined) {
-    return { kind: 'inert', cause: 'both-scopes', class: cls }
+  // Only the shape the fold stores crosses (ruling R54): one scope field, a reason, an anchored
+  // hash. The text half is the one binding function the vocabulary's projection rebinds by.
+  const binding = waiverBinding(document, w)
+  switch (binding.kind) {
+    case 'binds':
+      return { kind: 'qualifies', ids: binding.ids }
+    case 'stale':
+      return {
+        kind: 'stale',
+        ids: binding.ids,
+        storedHash: binding.storedHash,
+        currentHash: binding.currentHash,
+      }
+    case 'unbound':
+      return { kind: 'inert', cause: binding.cause, class: cls }
   }
-  if (typeof w.reason !== 'string' || w.reason.trim().length === 0) {
-    return { kind: 'inert', cause: 'blank-reason', class: cls }
-  }
-  const ids = scopeOf(w)
-  if (ids === undefined || ids.length === 0) {
-    return { kind: 'inert', cause: 'code-only', class: cls }
-  }
-  if (w.contentHash === undefined) return { kind: 'inert', cause: 'no-hash', class: cls }
-  if (!CONTENT_HASH_PATTERN.test(w.contentHash)) {
-    return { kind: 'inert', cause: 'malformed-hash', class: cls }
-  }
-  const currentHash = requirementsContentHash(document, ids)
-  if (currentHash === undefined) {
-    return { kind: 'inert', cause: 'missing-requirement', class: cls }
-  }
-  return currentHash === w.contentHash
-    ? { kind: 'qualifies', ids }
-    : { kind: 'stale', ids, storedHash: w.contentHash, currentHash }
 }
 
 /** A finding as the boundary reads it: its code and the requirements it names. */

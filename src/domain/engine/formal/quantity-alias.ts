@@ -157,6 +157,54 @@ function sharedObjectSuffix(labelA: string, labelB: string): string | null {
 }
 
 /**
+ * The CO-LIVENESS context key: BOTH guard slots, never `trigger` alone.
+ *
+ * Two requirements' obligations hold together only when their guards can hold
+ * together, and EARS spreads a guard across two slots — `state-driven` and
+ * `optional-feature` carry theirs in `preCondition`, `event-driven` in `trigger`,
+ * and an `event-driven` requirement may carry both (`renderSentence` emits
+ * "While <pre>, when <trigger>, …"). A key built from `trigger` alone collapses
+ * every `preCondition`-guarded requirement to the same empty string, so two
+ * MUTUALLY EXCLUSIVE states read as one always-on context.
+ *
+ * `''` therefore means genuinely unguarded — no precondition AND no trigger —
+ * which is the only state in which a tier may tell an author that two bounds
+ * "always hold". The consumers of that claim are `findQuantityAliasCandidates`
+ * (whose message names the context it found) and `findRelationalUnchecked`
+ * (which groups on it), and a shared derivation is what keeps the two tiers from
+ * disagreeing about what "the same context" means.
+ *
+ * `normalize` emits only letters, marks, digits (any script) and `_`, so `|` cannot appear
+ * inside either half and the composite can never alias one slot pair onto another.
+ *
+ * ## The two consumers group at DIFFERENT granularities, and must
+ *
+ * A finer key is not uniformly safer — the safe direction is opposite for a prover and a
+ * discloser, so one shared granularity would be wrong for one of them:
+ *
+ * - `findQuantityAliasCandidates` proposes a committed alias that makes a numeric conflict
+ *   PROVABLE, so a too-coarse key co-asserts guards no requirement declared together and
+ *   fabricates. It groups on this composite. Finer is safer.
+ * - `findRelationalUnchecked` only ever emits `info` plus a demotion, so a too-coarse key
+ *   over-discloses (harmless) while a too-FINE key deletes a disclosure — and deleting a
+ *   demotion moves `verified` toward `true`, the direction the demotion-only doctrine forbids.
+ *   It groups per SLOT rather than per slot pair, which is strictly coarser.
+ *
+ * Measured: grouping that tier on this composite dropped `FND_RELATIONAL_UNCHECKED` for a pair
+ * sharing a trigger and differing in precondition, and a document the fabrication corpus files as
+ * a known open gap then reported `verified: true` beside two error-severity findings.
+ * `relational.ts` owns the grouping and `relational.test.ts` gates it.
+ */
+export function guardKeyOf(r: {
+  readonly preCondition?: string | undefined
+  readonly trigger?: string | undefined
+}): string {
+  const pre = r.preCondition !== undefined ? normalize(r.preCondition) : ''
+  const trigger = r.trigger !== undefined ? normalize(r.trigger) : ''
+  return pre === '' && trigger === '' ? '' : `${pre}|${trigger}`
+}
+
+/**
  * Find quantity-alias candidates across a set of requirements' numeric
  * predicates. Deterministic and conservative — a false negative (missed
  * suggestion) is preferred over a false positive that nags the author. Emits at

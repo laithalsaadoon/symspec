@@ -41,6 +41,7 @@ lessons before starting work.
 - [Lenient normalization that helps a PROPOSE signal must not touch the DECIDE key — it turns a suggestion into a fabricated verdict](solutions/architecture/normalization-for-a-propose-signal-must-not-touch-the-decide-key.md)
 - [Two code paths reading ONE sentence differently desync under a committed table — guard the inference, not the table](solutions/architecture/two-readings-of-one-sentence-desync-under-a-committed-table.md)
 - [DEMOTION-ONLY grants permission, not an obligation — a wording risk must not demote or it becomes a gate only a waiver clears](solutions/architecture/a-propose-only-finding-that-must-not-demote-either.md)
+- [Admit a rewrite by exact partition equality, never "equals the join" — a join is transitive](solutions/architecture/admit-a-rewrite-by-partition-equality-not-a-join.md)
 - [A finer partition key is not uniformly safer — the safe direction is OPPOSITE for a prover and a discloser](solutions/architecture/a-finer-key-is-not-uniformly-safer.md)
 - [An "I don't know" is not a comparison — enumerate a code set by what the code MEANS, not by which tier emits it](solutions/architecture/an-i-dont-know-is-not-a-comparison.md)
 - [Fix a decide-path text heuristic as an OUTCOME post-condition against base, under a corpus snapshot taken first](solutions/architecture/fix-a-text-heuristic-as-an-outcome-postcondition-against-base.md)

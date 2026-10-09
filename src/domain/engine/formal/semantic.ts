@@ -457,14 +457,43 @@ export async function findSimilarSemantic(
   embedder: Embedder,
   options: FindSimilarSemanticOptions = {},
 ): Promise<SimilarSemanticFinding[]> {
+  if (reqs.length < 2) return []
+  return similarSemanticOver(reqs, await responseCosine(reqs, embedder), options)
+}
+
+/**
+ * The cosine of the `i`-th and `j`-th requirement's responses, or `undefined` when either has
+ * no embedding: what an {@link Embedder} measures, in the form the pair tiers read it. The tiers
+ * take it rather than an embedder so they can run over any similarity, synchronously: the
+ * model's, or a fixed one a caller measures what they read on the text alone with.
+ */
+export type PairCosine = (i: number, j: number) => number | undefined
+
+/** {@link PairCosine} over the embedder's vectors of each requirement's response. */
+async function responseCosine(
+  reqs: readonly SemanticRequirement[],
+  embedder: Embedder,
+): Promise<PairCosine> {
+  const { cosine } = await import('./embed.ts')
+  const vectors = await embedder(reqs.map((r) => r.systemResponse))
+  return (i, j) => {
+    const va = vectors[i]
+    const vb = vectors[j]
+    return va === undefined || vb === undefined ? undefined : cosine(va, vb)
+  }
+}
+
+/**
+ * {@link findSimilarSemantic} over a given {@link PairCosine}: the whole tier but the
+ * embedding, with the same findings for the same cosines.
+ */
+export function similarSemanticOver(
+  reqs: readonly SemanticRequirement[],
+  cosineOf: PairCosine,
+  options: FindSimilarSemanticOptions = {},
+): SimilarSemanticFinding[] {
   const threshold = options.threshold ?? DEFAULT_SEMANTIC_THRESHOLD
   if (reqs.length < 2) return []
-
-  const { cosine } = await import('./embed.ts')
-
-  // Embed every distinct response text once (dedup by normalized-free raw text).
-  const texts = reqs.map((r) => r.systemResponse)
-  const vectors = await embedder(texts)
 
   const findings: SimilarSemanticFinding[] = []
   const seen = new Set<string>()
@@ -486,11 +515,8 @@ export async function findSimilarSemantic(
       const key = pairKey(a.id, b.id)
       if (seen.has(key)) continue
 
-      const va = vectors[i]
-      const vb = vectors[j]
-      if (va === undefined || vb === undefined) continue
-      const score = cosine(va, vb)
-      if (score < threshold) continue
+      const score = cosineOf(i, j)
+      if (score === undefined || score < threshold) continue
 
       seen.add(key)
       const [lo, hi] = a.id < b.id ? [a.id, b.id] : [b.id, a.id]
@@ -595,6 +621,15 @@ export interface OppositionCandidateFinding {
   /** The cosine similarity that confirmed topical relatedness, rounded to 3 dp. */
   readonly cosine: number
   readonly message: string
+}
+
+/** Options for {@link findOppositionCandidates}. */
+export interface OppositionCandidateOptions {
+  cosineFloor?: number
+  glossary?: ReadonlyMap<string, string>
+  antonyms?: ReadonlyMap<string, AntonymEntry>
+  /** The document's atomizer (glossary, terms and antonyms), as every solver tier reads it. */
+  atomize?: Atomize
 }
 
 /**
@@ -830,20 +865,25 @@ function oppositionShapesOf(
 export async function findOppositionCandidates(
   reqs: readonly SemanticRequirement[],
   embedder: Embedder,
-  options: {
-    cosineFloor?: number
-    glossary?: ReadonlyMap<string, string>
-    antonyms?: ReadonlyMap<string, AntonymEntry>
-    /** The document's atomizer (glossary, terms and antonyms), as every solver tier reads it. */
-    atomize?: Atomize
-  } = {},
+  options: OppositionCandidateOptions = {},
 ): Promise<OppositionCandidateFinding[]> {
+  if (reqs.length < 2) return []
+  return oppositionCandidatesOver(reqs, await responseCosine(reqs, embedder), options)
+}
+
+/**
+ * {@link findOppositionCandidates} over a given {@link PairCosine}: the whole tier but the
+ * embedding, with the same findings for the same cosines.
+ */
+export function oppositionCandidatesOver(
+  reqs: readonly SemanticRequirement[],
+  cosineOf: PairCosine,
+  options: OppositionCandidateOptions = {},
+): OppositionCandidateFinding[] {
   const floor = options.cosineFloor ?? DEFAULT_OPPOSITION_COSINE_FLOOR
   const antonyms = options.antonyms ?? ANTONYM_INDEX
   if (reqs.length < 2) return []
 
-  const { cosine } = await import('./embed.ts')
-  const vectors = await embedder(reqs.map((r) => r.systemResponse))
   const atomizer = options.atomize ?? makeAtomize(options.glossary, antonyms)
   const atoms = reqs.map((r) => responseAtom(r, { atomize: atomizer }))
 
@@ -893,9 +933,7 @@ export async function findOppositionCandidates(
       // proposed regardless of the topical cosine floor, as is a pair of one class.
       // Cosine is a topical-relatedness FLOOR only (antonyms embed close), not
       // the opposition signal — the shared-object/different-verb structure is.
-      const va = vectors[i]
-      const vb = vectors[j]
-      const score = va !== undefined && vb !== undefined ? cosine(va, vb) : 0
+      const score = cosineOf(i, j) ?? 0
       const shape = shapes.find(
         (s) => s.sameClass || isNegatingPrefixPair(s.headA, s.headB) || score >= floor,
       )

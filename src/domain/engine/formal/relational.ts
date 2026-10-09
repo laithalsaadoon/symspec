@@ -50,6 +50,7 @@
  */
 
 import { normalize, normalizeScope } from './atomize.ts'
+import { guardKeyOf } from './quantity-alias.ts'
 
 /** One requirement's projection for relational/aggregate shape detection. */
 export interface RelationalInput {
@@ -79,6 +80,49 @@ export interface RelationalInput {
   readonly hasNumericBound: boolean
   /** True when this requirement owns ≥1 singleton atom (uncompared surface). */
   readonly hasUnmatchedAtom: boolean
+}
+
+/**
+ * The requirements that own a singleton atom in `roster` (`encode.ts`'s `atomOwnerRoster`): an
+ * atom exactly one requirement references, which nothing compared.
+ */
+export function singletonOwners(roster: ReadonlyMap<string, ReadonlySet<string>>): Set<string> {
+  const ids = new Set<string>()
+  for (const owners of roster.values()) {
+    if (owners.size === 1) for (const id of owners) ids.add(id)
+  }
+  return ids
+}
+
+/**
+ * The tier's input for each requirement, as `check` builds it: over EVERY requirement (the
+ * population the numeric tier reads), with `hasUnmatchedAtom` read off the roster of the ones the
+ * gate admitted. One function, so a reader that measures this tier reads what `check` hands it.
+ */
+export function relationalInputsOf(
+  reqs: readonly {
+    readonly id: string
+    readonly systemName: string
+    readonly systemResponse: string
+    readonly preCondition?: string | undefined
+    readonly trigger?: string | undefined
+  }[],
+  hasNumericBound: (id: string) => boolean,
+  singletons: ReadonlySet<string>,
+): RelationalInput[] {
+  return reqs.map((r) => ({
+    id: r.id,
+    systemName: r.systemName,
+    guardKey: guardKeyOf(r),
+    // The RAW slots too: this tier groups per slot rather than per slot PAIR, because a
+    // discloser wants a coarser key than the prover it shares `guardKeyOf` with. See
+    // `findRelationalUnchecked`'s grouping comment for the direction argument.
+    ...(r.preCondition !== undefined ? { preCondition: r.preCondition } : {}),
+    ...(r.trigger !== undefined ? { trigger: r.trigger } : {}),
+    responseText: r.systemResponse,
+    hasNumericBound: hasNumericBound(r.id),
+    hasUnmatchedAtom: singletons.has(r.id),
+  }))
 }
 
 /** A propose-only relational-blind-spot finding (info; DEMOTES `verified`). */

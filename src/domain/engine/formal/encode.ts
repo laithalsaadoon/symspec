@@ -274,6 +274,43 @@ export interface EncodedRequirement {
 }
 
 /**
+ * The spec-wide atom roster: each atom, and the requirements that reference it (wishlist #5b).
+ * An atom counts once per requirement (a requirement that repeats an atom across slots does not
+ * make it "matched"); an atom is "matched" only when >=2 distinct requirements reference it.
+ *
+ * Spec 007 AC-2-1: a contrary axiom compares two atoms exactly as the old rename's one shared atom
+ * did, so each side's atom counts the other side's owners as partners. Two members of one side
+ * get no credit: nothing relates them, so nothing compared them. Read from a snapshot so the
+ * credit is one hop.
+ *
+ * One function, so `check`'s coverage, its relational tier and any reader that measures them read
+ * one roster. Deterministic, no solver contact.
+ */
+export function atomOwnerRoster(
+  encoded: readonly Pick<EncodedRequirement, 'id' | 'atoms'>[],
+): Map<string, Set<string>> {
+  const owners = new Map<string, Set<string>>()
+  for (const e of encoded) {
+    for (const row of e.atoms) {
+      let set = owners.get(row.atom)
+      if (set === undefined) {
+        set = new Set<string>()
+        owners.set(row.atom, set)
+      }
+      set.add(e.id)
+    }
+  }
+  const credit = contraryPairs(encoded.flatMap((e) => e.atoms)).map(
+    ([a, b]) => [a, b, [...(owners.get(a) ?? [])], [...(owners.get(b) ?? [])]] as const,
+  )
+  for (const [a, b, ownersA, ownersB] of credit) {
+    for (const id of ownersB) owners.get(a)?.add(id)
+    for (const id of ownersA) owners.get(b)?.add(id)
+  }
+  return owners
+}
+
+/**
  * A requirement projection the encoder accepts: {@link ReqView} plus the
  * optional parse-time `negated` flag (AC-2-4). A plain `ReqView` is accepted
  * (negation defaults to `false`); the flag is additive and requires no schema

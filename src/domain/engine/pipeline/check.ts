@@ -80,12 +80,12 @@
 import { analyze, type Finding } from '../core/analyze.ts'
 import type { Doc } from '../core/doc.ts'
 import { listRequirements } from '../core/doc.ts'
-import { renderSentence } from '../core/render.ts'
 import type { Requirement, Waiver } from '../core/schema.ts'
 import { shellQuoted } from '../core/shell-word.ts'
 import { detectAmbiguity } from '../formal/ambiguity.ts'
-import { type AntonymEntry, buildAntonymIndexWithDoc } from '../formal/antonyms.ts'
+import type { AntonymEntry } from '../formal/antonyms.ts'
 import {
+  antonymIndexOf,
   areContrary,
   contraryPairs,
   glossaryContraries,
@@ -115,6 +115,7 @@ import {
 import type { Embedder } from '../formal/embed.ts'
 import {
   type Atomize,
+  atomOwnerRoster,
   type EncodableRequirement,
   type EncodedRequirement,
   encode,
@@ -130,17 +131,21 @@ import {
 } from '../formal/needs-review.ts'
 import { findNumberSpellingCandidates } from '../formal/number-spelling.ts'
 import {
-  actionOccurrences,
   type NumericPredicate,
   requirementBounds,
+  responseOccurrences,
   unreadQuantities,
 } from '../formal/numeric.ts'
 import {
   analyzeNumericBounds,
   disclosureOfUnreadQuantities,
 } from '../formal/numeric-contradiction.ts'
-import { findQuantityAliasCandidates } from '../formal/quantity-alias.ts'
-import { findRelationalUnchecked } from '../formal/relational.ts'
+import { findQuantityAliasCandidates, guardKeyOf } from '../formal/quantity-alias.ts'
+import {
+  findRelationalUnchecked,
+  relationalInputsOf,
+  singletonOwners,
+} from '../formal/relational.ts'
 import {
   DEFAULT_SEMANTIC_THRESHOLD,
   findOppositionCandidates,
@@ -153,7 +158,7 @@ import { checkSubsumption } from '../formal/subsumption.ts'
 import { findTemporalContradictions, type TemporalSolverCheck } from '../formal/temporal.ts'
 import { earsToTemporal, G, tAnd, tAtom, tNot } from '../formal/temporal-patterns.ts'
 import { checkVacuity } from '../formal/vacuity.ts'
-import { checkGtWRules, checkGtWRulesSet } from '../lint/gtwr.ts'
+import { checkGtWRules, checkGtWRulesSet, lintSentenceOf } from '../lint/gtwr.ts'
 import { type FormalTierResult, runSolvers } from '../solvers/index.ts'
 import { asView } from '../solvers/types.ts'
 import { type Exclusion, excludedIds, gateRequirements, namesExactly } from './gate.ts'
@@ -796,74 +801,9 @@ export interface CheckResult {
   findings: CheckFinding[]
 }
 
-/**
- * Resolve the antonym index a check run consults from the document's committed
- * pairs (#1). Normalizes both heads (so a pair authored as "Open"/"Shut" matches
- * the normalized leading verb the atomizer keys on) and folds them into the seed
- * table via the signed union-find. Defensive: if the committed pairs contain an
- * inconsistent polarity cycle (which the CLI rejects at write time, but a
- * hand-edited doc could still carry), fall back to the seed-only index rather
- * than throwing mid-check — a malformed antonym set must not take down the whole
- * linter. Returns `undefined` when there are no doc pairs so `makeAtomize` omits
- * the arg entirely and the default seed path runs unchanged.
- */
+/** The antonym index a check run consults: the document's committed pairs ({@link antonymIndexOf}). */
 function docAntonymIndex(doc: Doc): ReadonlyMap<string, AntonymEntry> | undefined {
-  const pairs = doc.antonyms ?? []
-  if (pairs.length === 0) return undefined
-  const normalized = pairs.map((p) => [normalize(p.a), normalize(p.b)] as const)
-  try {
-    return buildAntonymIndexWithDoc(normalized)
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * The CO-LIVENESS context key: BOTH guard slots, never `trigger` alone.
- *
- * Two requirements' obligations hold together only when their guards can hold
- * together, and EARS spreads a guard across two slots — `state-driven` and
- * `optional-feature` carry theirs in `preCondition`, `event-driven` in `trigger`,
- * and an `event-driven` requirement may carry both (`renderSentence` emits
- * "While <pre>, when <trigger>, …"). A key built from `trigger` alone collapses
- * every `preCondition`-guarded requirement to the same empty string, so two
- * MUTUALLY EXCLUSIVE states read as one always-on context.
- *
- * `''` therefore means genuinely unguarded — no precondition AND no trigger —
- * which is the only state in which a tier may tell an author that two bounds
- * "always hold". The consumers of that claim are `findQuantityAliasCandidates`
- * (whose message names the context it found) and `findRelationalUnchecked`
- * (which groups on it), and a shared derivation is what keeps the two tiers from
- * disagreeing about what "the same context" means.
- *
- * `normalize` emits only letters, marks, digits (any script) and `_`, so `|` cannot appear
- * inside either half and the composite can never alias one slot pair onto another.
- *
- * ## The two consumers group at DIFFERENT granularities, and must
- *
- * A finer key is not uniformly safer — the safe direction is opposite for a prover and a
- * discloser, so one shared granularity would be wrong for one of them:
- *
- * - `findQuantityAliasCandidates` proposes a committed alias that makes a numeric conflict
- *   PROVABLE, so a too-coarse key co-asserts guards no requirement declared together and
- *   fabricates. It groups on this composite. Finer is safer.
- * - `findRelationalUnchecked` only ever emits `info` plus a demotion, so a too-coarse key
- *   over-discloses (harmless) while a too-FINE key deletes a disclosure — and deleting a
- *   demotion moves `verified` toward `true`, the direction the demotion-only doctrine forbids.
- *   It groups per SLOT rather than per slot pair, which is strictly coarser.
- *
- * Measured: grouping that tier on this composite dropped `FND_RELATIONAL_UNCHECKED` for a pair
- * sharing a trigger and differing in precondition, and a document the fabrication corpus files as
- * a known open gap then reported `verified: true` beside two error-severity findings.
- * `relational.ts` owns the grouping and `relational.test.ts` gates it.
- */
-function guardKeyOf(r: {
-  readonly preCondition?: string | undefined
-  readonly trigger?: string | undefined
-}): string {
-  const pre = r.preCondition !== undefined ? normalize(r.preCondition) : ''
-  const trigger = r.trigger !== undefined ? normalize(r.trigger) : ''
-  return pre === '' && trigger === '' ? '' : `${pre}|${trigger}`
+  return antonymIndexOf(doc.antonyms ?? [])
 }
 
 /**
@@ -1022,7 +962,7 @@ function normalizeStructural(findings: Finding[]): CheckFinding[] {
 function normalizeLint(requirements: readonly Requirement[]): CheckFinding[] {
   const withSentences = requirements.map((requirement) => ({
     requirement,
-    sentence: requirement.sentence || renderSentence(requirement),
+    sentence: lintSentenceOf(requirement),
   }))
 
   const perStatement = withSentences.flatMap(({ requirement, sentence }) =>
@@ -1376,32 +1316,9 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       )
 
       // Wishlist #5b: tally the spec-wide atom roster and count singletons —
-      // atoms that appear in exactly one included requirement. An atom counts
-      // once per requirement (a requirement that repeats an atom across slots
-      // does not make it "matched"); an atom is "matched" only when ≥2 distinct
-      // requirements reference it. Deterministic, no solver contact.
-      const atomOwners = new Map<string, Set<string>>()
-      for (const e of encoded) {
-        for (const row of e.atoms) {
-          let owners = atomOwners.get(row.atom)
-          if (owners === undefined) {
-            owners = new Set<string>()
-            atomOwners.set(row.atom, owners)
-          }
-          owners.add(e.id)
-        }
-      }
-      // Spec 007 AC-2-1: a contrary axiom compares two atoms exactly as the old rename's one shared
-      // atom did, so each side's atom counts the other side's owners as partners. Two members of
-      // one side get no credit: nothing relates them, so nothing compared them. Read from a
-      // snapshot so the credit is one hop.
-      const contraryOwners = contraryPairs(encoded.flatMap((e) => e.atoms)).map(
-        ([a, b]) => [a, b, [...(atomOwners.get(a) ?? [])], [...(atomOwners.get(b) ?? [])]] as const,
-      )
-      for (const [a, b, ownersA, ownersB] of contraryOwners) {
-        for (const id of ownersB) atomOwners.get(a)?.add(id)
-        for (const id of ownersA) atomOwners.get(b)?.add(id)
-      }
+      // atoms that appear in exactly one included requirement, contraries crediting each
+      // other's owners (`atomOwnerRoster`, where the rule is stated).
+      const atomOwners = atomOwnerRoster(encoded)
       for (const owners of atomOwners.values()) {
         if (owners.size === 1) unmatchedAtoms += 1
       }
@@ -1524,31 +1441,10 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // bounds the quantity at `<= 30 s`; read without the flag it asserted `> 30 s` (spec
       // 007 AC-2-6). The R6 lint reads its bounds through the same function.
       //
-      // A response that does an action asserts its occurrence, which is what two opposed
-      // prohibitions on it (`shall not keep the door unlocked above 30 seconds`, `... below 40
-      // seconds`) cannot both survive: at every place a bound could stand, keyed as that bound's
-      // subject would be, with the rest as its qualifier (`keep the door unlocked`, `... until
-      // the guard arrives`); and, with bounds, on each bound's own quantity, whatever unit it is
-      // in (`run the pump at least 80%` runs the pump, and meets `not above 30 minutes` there).
-      // A bound's quantity is not always the action: `keep the door unlocked when the level is
-      // above 5 meters` bounds `keep the door unlocked when the level`, and `... after at most 5
-      // seconds` a delay, while both keep the door unlocked, so a bound response keys its
-      // prefixes too. Its whole text, bound included, names no action, and is not one of them.
-      // Never a prohibition's: `shall not keep the door unlocked` does not do the action.
-      const occurrencesOf = (r: (typeof reqs)[number], response: readonly NumericPredicate[]) => {
-        const view = toEncodable(r)
-        if (view.negated === true) return []
-        const sourceText = view.systemResponse.trim()
-        const bound = response.map((p) => ({
-          quantity: p.quantity,
-          ...(p.qualifier !== undefined ? { qualifier: p.qualifier } : {}),
-        }))
-        const keyed = new Set(bound.map((a) => a.quantity))
-        const prefixes = actionOccurrences(view.systemResponse, r.systemName, quantityAliases)
-          .filter((a) => !keyed.has(a.quantity))
-          .filter((a) => bound.length === 0 || a.qualifier !== undefined)
-        return [...bound, ...prefixes].map((a) => ({ ...a, sourceText }))
-      }
+      // What a response performs beside its bounds (`responseOccurrences`, where the rule is
+      // stated): the occurrence two opposed prohibitions on one quantity cannot both survive.
+      const occurrencesOf = (r: (typeof reqs)[number], response: readonly NumericPredicate[]) =>
+        responseOccurrences(r, response, quantityAliases)
       const numericReqPreds = reqs.map((r) => {
         const predicates = requirementBounds(r, quantityAliases).map((b) => b.predicate)
         const response = predicates.filter((p) => p.slot === 'resp')
@@ -1623,24 +1519,12 @@ export async function runCheck(doc: Doc, options: CheckOptions = {}): Promise<Ch
       // declines to certify (DEMOTES `verified`), never asserts a conflict, so
       // it cannot manufacture a false one. Per-requirement `hasUnmatchedAtom` is
       // read from the atom-owner roster built above (owners.size === 1).
-      const singletonOwnerIds = new Set<string>()
-      for (const [, owners] of atomOwners) {
-        if (owners.size === 1) for (const id of owners) singletonOwnerIds.add(id)
-      }
       const relationalUnchecked = findRelationalUnchecked(
-        reqs.map((r) => ({
-          id: r.id,
-          systemName: r.systemName,
-          guardKey: guardKeyOf(r),
-          // The RAW slots too: this tier groups per slot rather than per slot PAIR, because a
-          // discloser wants a coarser key than the prover it shares `guardKeyOf` with. See
-          // `relational.ts`'s grouping comment for the direction argument.
-          ...(r.preCondition !== undefined ? { preCondition: r.preCondition } : {}),
-          ...(r.trigger !== undefined ? { trigger: r.trigger } : {}),
-          responseText: r.systemResponse,
-          hasNumericBound: (predsById.get(r.id) ?? []).length > 0,
-          hasUnmatchedAtom: singletonOwnerIds.has(r.id),
-        })),
+        relationalInputsOf(
+          reqs,
+          (id) => (predsById.get(id) ?? []).length > 0,
+          singletonOwners(atomOwners),
+        ),
       )
 
       // AC-33-2: opt-in bounded temporal tier. Map each requirement to LTL

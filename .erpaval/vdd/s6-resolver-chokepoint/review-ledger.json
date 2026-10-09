@@ -1,0 +1,168 @@
+{
+  "_about": "Review of run 4, assembled by the clerk (job 2257) from records/review-1.json and the board results review-prep, review-l1, review-l2; corrected by clerk-r1 (job 2276) from records/review-2.json, records/decisions.json (voids) and the board results review-prep-v2 and review-l1-v2. Both reviews are closed, so the canary mappings appear. The clerk judges nothing.",
+  "run": 4,
+  "contract_hash": "971c904835f2",
+  "round": 1,
+  "range_reviewed": "9605b2c884692d82a281724c3135c6fe5c467e3b..2ce1b057321dfcb5053accd8f3a0be84e5c8d019 (product code identical to base 2b03644; 7b1fc2b adds one test)",
+  "prep": {
+    "job": 2218,
+    "family": "codex (OpenAI)",
+    "items": {
+      "v1": "canary L2: test oracle weakened (s6-properties.test.ts:786, the X14 control compares invalid with itself)",
+      "v2": "clean (unmodified product and test code)",
+      "v3": "canary L1: prefix-only waiver hash compare (content-hash.ts:199)"
+    },
+    "each_item": "35 packet files, 33 changed files, 22,170 source lines, diff.patch 8,900 lines; 179 vitest tests green (6 files, outcome.test.ts excluded) and tsc clean on each",
+    "key_sha256": "27dbff09ef27db211da51e2a797b047e133acdbc5d25c17534f7ae667597b878",
+    "key_verified": true
+  },
+  "lenses": [
+    {
+      "lens": "L1 correctness and false certificates",
+      "job": 2222,
+      "family": "codex (OpenAI)",
+      "author_family": "Anthropic",
+      "verdict_on_items": {
+        "v1": "survives",
+        "v2": "survives",
+        "v3": "does not survive"
+      },
+      "lines_read": {
+        "v1": "diff.patch 1-8900 all lines; contract.json all 31; content-hash.ts 1-215",
+        "v2": "diff.patch 1-8900; contract.json 1-31; content-hash.ts 1-215, compat.ts 1-404, atomize.ts 1-1335, encode.ts 1-520, quantity-alias.ts 1-316, relational.ts 1-229, gate.ts 1-202",
+        "v3": "diff.patch 1-8900; contract.json 1-31; content-hash.ts 1-215, compat.ts 1-404, projection.ts 1-346"
+      },
+      "lines_read_total": "26700 of 26700 diff lines (self-reported; trace check by the auditor)",
+      "canaries_caught": {
+        "L1 canary v3 (prefix waiver hash)": true,
+        "L2 canary v1 (weakened test)": true
+      },
+      "canary_findings": {
+        "L1-WAIVER-PREFIX": "v3, the planted L1 canary",
+        "L1-X14-CONTROL": "v1, the planted L2 canary"
+      },
+      "status": "VOID (AUD-REVIEW-1, audit job 2259): the reviewer made one prohibited GitHub clone (event 109157), which the coordinator's garbled goal line allowed; its verdicts and catches are kept below as recorded and no longer count toward the done check. Rerun: round_1_L1_rerun."
+    },
+    {
+      "lens": "L2 errors and tests",
+      "job": 2223,
+      "family": "codex (OpenAI)",
+      "author_family": "Anthropic",
+      "verdict_on_items": {
+        "v1": "survives",
+        "v2": "survives",
+        "v3": "survives (with a hash finding)"
+      },
+      "lines_read": {
+        "v1": "diff.patch 1-8900; contract.json 1-31; solver-service.ts 1-242, solver-service.test.ts 1-581",
+        "v2": "diff.patch 1-8900; contract.json 1-31; solver-service.ts 1-242",
+        "v3": "diff.patch 1-8900; contract.json 1-31; content-hash.ts 1-215, solver-service.ts 1-242, compat.ts 1-404"
+      },
+      "lines_read_total": "26700 of 26700 diff lines (self-reported; trace check by the auditor)",
+      "canaries_caught": {
+        "L2 canary v1 (weakened test)": true,
+        "L1 canary v3 (prefix waiver hash)": true
+      },
+      "canary_findings": {
+        "L2-v1-control": "v1, the planted L2 canary",
+        "L2-v3-hash": "v3, the planted L1 canary"
+      },
+      "status": "kept: clean per the audit (zero prohibited reads; 26,700 unique diff lines verified from the trace; full-source reading narrower than the diff is a coverage limitation, not a void)"
+    }
+  ],
+  "reviews": [
+    {
+      "lens": "L1",
+      "job": 2222,
+      "lines_read": "26700/26700 diff lines (self-reported; trace check by auditor)",
+      "caught": {
+        "L1 canary v3": true,
+        "L2 canary v1": true
+      },
+      "status": "VOID (AUD-REVIEW-1); replaced by job 2269 (round_1_L1_rerun)"
+    },
+    {
+      "lens": "L2",
+      "job": 2223,
+      "lines_read": "26700/26700",
+      "caught": {
+        "L2 canary v1": true,
+        "L1 canary v3": true
+      },
+      "status": "kept (clean per the audit)"
+    }
+  ],
+  "findings_on_clean_item_v2": [
+    {
+      "id": "RV-1",
+      "lens": "L1",
+      "severity": "major",
+      "file": "src/domain/vocabulary/projection.ts:100",
+      "claim": "A real system named 'vocabulary probe' collides with the synthetic PROBE_SYSTEM scope and gets two false V-KIND hygiene violations even when the projection is the identity",
+      "repro": "job-2222/v2-probe-repro.ts, exit 1, 'synthetic probes must not manufacture document hygiene collisions; 2 !== 0'",
+      "criterion": "none",
+      "effect": "false refusal (demotes), not a false certificate",
+      "proposed": "follow-up, S7/S8 (reserve or escape the probe scope)",
+      "disposition": "accepted residual (D-4-2), owner Laith, revisit S7/S8"
+    },
+    {
+      "id": "RV-2",
+      "lens": "L2",
+      "severity": "major",
+      "file": "src/adapters/z3/solver-service.ts:151",
+      "claim": "A second module copy of solver-service cannot release its pending mailbox wait: the Atomics.waitAsync filter install is process-global but the wait registry and released-heap set are per module copy",
+      "repro": "job-2223/review-v2/repro-mailbox.mjs, exit 1, 'second module copy: workersTerminated=1 mailboxSettled=false' (simulated runtime, no WASM boot)",
+      "criterion": "none",
+      "effect": "memory not released when two copies of the module load in one process (e.g. dual ESM/CJS or bundled dist plus src); not seen in the suite",
+      "proposed": "residual, lifecycle class, owner pick",
+      "disposition": "accepted residual (D-4-2), owner Laith, revisit S7/S8 or the next solver-service change"
+    }
+  ],
+  "note_on_recorded_slips": "Job 2222 goal had a garbled environment line naming a GitHub clone; the coordinator mailed a correction (mail 696) and the auditor checks the trace. Not judged here.",
+  "criterion_effect": "RV-1 and RV-2 name no criterion (criterion none in the review records). Neither is a false certificate: RV-1 demotes, RV-2 is a lifecycle leak not seen in the suite.",
+  "round_1_L1_rerun": {
+    "cause": "AUD-REVIEW-1, see records/decisions.json voids",
+    "prep": {
+      "job": 2263,
+      "board_item": "review-prep-v2",
+      "key_file": "run-4-2.key (kept outside the readers)",
+      "key_sha256": "1506cf848632f207bc8e85d4bd5230b7ab86a66c2c5b3e52dde9370997d53b0f",
+      "key_verified": true,
+      "items": {
+        "w1": "canary L1: resolve.ts:146 union-find attaches the merge endpoint (parent.set(m.b, a)) instead of the class root; a transitive merge splits an admitted class and the representative depends on merge order; passes the 180-test pure suite",
+        "w2": "clean"
+      },
+      "each_item": "33 files, 31 changed source files, 22,077 source lines, diff.patch 8,867 lines, contract.json 31 lines"
+    },
+    "review": {
+      "lens": "L1",
+      "job": 2269,
+      "board_item": "review-l1-v2",
+      "family": "codex (OpenAI)",
+      "author_family": "Anthropic",
+      "lines_read": "17734/17734 diff lines (8,867 per item, self-reported; the final auditor check on this trace is pending, board item audit-r1)",
+      "contract_lines_read": "31/31 per item",
+      "verdict_on_items": {
+        "w1": "does not survive (S6-010, blocking; repro ran, exit 1; reordered control exit 0)",
+        "w2": "survives"
+      },
+      "canary_caught": {
+        "L1 canary w1": true
+      },
+      "finding_on_clean_item_w2": {
+        "severity": "minor",
+        "claim": "declared quantity unit or dimension is not checked against its bounds (existing follow-up B9)",
+        "repro": "job-2269/w2-repro/review-quantity-metadata.ts, exit 0, violations=0, declared time/ms against a distance/m bound",
+        "criterion": "none",
+        "status": "existing contract residual B9, not a new scope"
+      }
+    },
+    "setup_note": "the provided PATH selected a pnpm 11.27.1 shim; the reviewer used the installed pnpm 11.21.0; no remote clone or fetch; one board_claim only"
+  },
+  "audit_disposition": {
+    "job": 2259,
+    "AUD-REVIEW-1": "job 2222 is void; job 2223 is kept",
+    "resolution": "rerun by jobs 2263 and 2269; the final auditor check on the rerun reviewer's trace is pending (audit-r1)"
+  },
+  "decision": "D-4-3 (coordinator default after an unanswered ask, redirectable): the w1 canary is added to the S6-010 residual's evidence; no new test. See receipt.md section 2."
+}

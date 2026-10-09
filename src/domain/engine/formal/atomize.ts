@@ -99,7 +99,7 @@
  * two decide tiers agree; it does not make either one looser than it was.
  */
 
-import { ANTONYM_INDEX, type AntonymEntry } from './antonyms.ts'
+import { ANTONYM_INDEX, type AntonymEntry, buildAntonymIndexWithDoc } from './antonyms.ts'
 import { deInflectHead } from './lemma.ts'
 
 export { deInflectHead } from './lemma.ts'
@@ -531,6 +531,31 @@ export interface AtomizeArgs {
  * {@link normalize} so a glossary authored in natural phrasing matches the
  * normalized slot body. A canonical mapped to itself is harmless (idempotent).
  */
+/**
+ * The antonym index a document's committed pairs give the atomizer (#1): both heads
+ * {@link normalize}d (so a pair authored as "Open"/"Shut" matches the normalized leading verb the
+ * atomizer keys on) and folded into the seed table by the signed union-find. Defensive: if the
+ * committed pairs carry an inconsistent polarity cycle (which the CLI refuses at write time, but a
+ * hand-edited document could still hold), it falls back to the seed-only path rather than throwing
+ * mid-check, because a malformed antonym set must not take down the whole linter. `undefined` when
+ * there are no committed pairs, so {@link makeAtomize} omits the argument and the seed path runs
+ * unchanged.
+ *
+ * The ONE construction: `check` builds its atomizer with it, and so does `domain/vocabulary`,
+ * whose phrase keys are atom bodies and so must be read under the same table.
+ */
+export function antonymIndexOf(
+  pairs: ReadonlyArray<{ readonly a: string; readonly b: string }>,
+): ReadonlyMap<string, AntonymEntry> | undefined {
+  if (pairs.length === 0) return undefined
+  const normalized = pairs.map((p) => [normalize(p.a), normalize(p.b)] as const)
+  try {
+    return buildAntonymIndexWithDoc(normalized)
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Build the token-sequence substitution table {@link atomize} consumes from a document's
  * committed `terms`.
