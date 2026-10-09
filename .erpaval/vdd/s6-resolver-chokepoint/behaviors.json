@@ -1,5 +1,5 @@
 {
-  "_about": "S6 resolver chokepoint behavior registry, VDD run 4 (reconciler job 2184 proposed the ids; the person approved contract 971c904835f2 as D-4-1). Test names and -t counts are read from src/domain/vocabulary/s6-properties.test.ts at 7b1fc2b by the clerk (job 2257). class, floor and achieved are the reconciler and evidence roles, not the clerk.",
+  "_about": "S6 resolver chokepoint behavior registry, VDD run 4 (reconciler job 2184 proposed the ids; the person approved contract 971c904835f2 as D-4-1). Test names and -t counts are read from src/domain/vocabulary/s6-properties.test.ts at 7b1fc2b by the clerk (job 2257). class, floor and achieved are the reconciler and evidence roles, not the clerk. Corrected by clerk-r1 (job 2276): the S6-005 and S6-006 gap labels follow records/decisions.json evidence_notes, and the S6-010 entry carries D-4-3.",
   "run": 4,
   "contract_hash": "971c904835f2",
   "test_file": "src/domain/vocabulary/s6-properties.test.ts",
@@ -118,7 +118,7 @@
       "oracle": "exact example; sabotage (P1 red)",
       "cls": "false certificate",
       "floor": 2,
-      "achieved": "1 example plus sabotage kill (gap candidate, accepted in D-4-2)",
+      "achieved": "1 example plus sabotage kill (example level 1 in the evidence matrix, job 2211, before attack; proved by its plan sabotage in the attack phase; not in D-4-2's accepted list)",
       "filter": "S6-005",
       "count": 1,
       "tests": [
@@ -135,7 +135,7 @@
       "oracle": "exact example; sabotage (two-symbol assertion red)",
       "cls": "false certificate",
       "floor": 2,
-      "achieved": "1 example plus sabotage kill (gap candidate, accepted in D-4-2)",
+      "achieved": "1 example plus sabotage kill (example level 1 in the evidence matrix, job 2211, before attack; proved by its plan sabotage in the attack phase; not in D-4-2's accepted list)",
       "filter": "S6-006",
       "count": 1,
       "tests": [
@@ -210,7 +210,7 @@
       "oracle": "exact",
       "cls": "false certificate (reconciler); binding drift (evidence role floor assignment)",
       "floor": 2,
-      "achieved": "1 (example only; accepted gap, revisit S8)",
+      "achieved": "level 1: three examples, no generated property (residual accepted in D-4-2, revisit S8; D-4-3 adds the L1 rerun canary to its evidence)",
       "filter": "S6-010",
       "count": 3,
       "tests": [

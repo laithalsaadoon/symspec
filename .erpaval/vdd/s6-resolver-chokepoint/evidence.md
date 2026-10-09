@@ -1,6 +1,6 @@
 # Evidence: S6 resolver chokepoint, run 4
 
-Assembled by the clerk (job 2257) from the role records. The clerk judges nothing. Contract `971c904835f2`, base `2b0364406121fc441a4b30b1da36d771b9eecf97` (2b03644), heads: contract role 2ce1b05, contract-r1 and attack-r1 7b1fc2b88250dc87c3c95e3e05ab7a35a4111579. A number the clerk measured is marked "clerk run" with its command. Every other number is a role's record, named by job.
+Assembled by the clerk (job 2257) from the role records and corrected by clerk-r1 (job 2276) from the audit (job 2259), the L1 rerun (jobs 2263, 2269) and records/decisions.json. The clerk judges nothing. Contract `971c904835f2`, base `2b0364406121fc441a4b30b1da36d771b9eecf97` (2b03644), heads: contract role 2ce1b05, contract-r1 and attack-r1 7b1fc2b88250dc87c3c95e3e05ab7a35a4111579. A number the clerk measured is marked "clerk run" with its command. Every other number is a role's record, named by job.
 
 ## 1. G0 legs, base against H
 
@@ -44,16 +44,16 @@ Levels: 1 example, 2 generated or corpus-input property, 3 type rule. Layer for 
 | S6-002 | P2 declaring rendered ops rebuilds the index | binding drift | 2 | 2 | ok |
 | S6-003 | P3 minted ids are fixed points, order-free | binding drift | 2 | 2 | ok |
 | S6-004 | P4 rewrite keeps contrary pairs | false certificate | 2 | 2 | ok |
-| S6-005 | SAB-1 target | binding drift | 2 | 1 plus sabotage kill | gap candidate (accepted in D-4-2 by the person's "accept the rest"; a single example) |
-| S6-006 | SAB-2 target | binding drift | 2 | 1 plus sabotage kill | gap candidate (same) |
+| S6-005 | SAB-1 target | binding drift | 2 | 1 plus sabotage kill | gap candidate at the matrix (before attack); the attack phase then proved it by its plan sabotage (attack 2217, attack-r1 2250, audit 2259 each saw the target test red); not in D-4-2's accepted list |
+| S6-006 | SAB-2 target | binding drift | 2 | 1 plus sabotage kill | gap candidate at the matrix (before attack); proved by its plan sabotage in the attack phase; not in D-4-2's accepted list |
 | S6-007 | SAB-3 target | false certificate | 2 | 1 on the tagged test; 2 via S6-004 X21 | ok (shared) |
 | S6-008 | SAB-4 target | gate drift | 1 | 1 | ok |
 | S6-009 | slot to kind | binding drift | 2 | 1 on X1-X8; 2 from X21 | ok |
-| S6-010 | min-id representative, different-key rewrite | binding drift | 2 | 1 | gap candidate (residual "S6-010 projection evidence is example-only", D-4-2, revisit S8) |
+| S6-010 | min-id representative, different-key rewrite | binding drift | 2 | 1 (three examples, no generated property) | gap candidate (residual "S6-010 projection evidence is example-only", D-4-2, revisit S8) |
 | S6-011 | direct and transitive contrary merges | false certificate | 2 | 1 on tagged tests; 2 via S6-004 and invariants V-OPP | ok (shared) |
 | S6-012 | G0 | gate drift | 1 | n/a | green |
 
-Note for the reader: the reconciler proposed S6-005..008 as "false certificate" (section 3 of its record); the evidence role assigned its floors itself. Both are recorded in `behaviors.json`. The person's D-4-2 answer ("Fix M24 as recommended, accept the rest") closed the gap candidates as accepted residuals only for S6-010 by name; S6-005 and S6-006 are listed here as the matrix recorded them.
+Note for the reader: the reconciler proposed S6-005..008 as "false certificate" (section 3 of its record); the evidence role assigned its floors itself. Both are recorded in `behaviors.json`. The person's D-4-2 answer ("Fix M24 as recommended, accept the rest") accepted the S6-010 residual by name. S6-005 and S6-006 are not in D-4-2's list: `records/decisions.json` evidence_notes records that the matrix had them at example level 1 before attack and that the attack phase then proved each by its plan sabotage (job 2217, replay 2250, audit 2259 each saw the target test red), which is their contract oracle. S6-010 stays at level 1 with three examples.
 
 Residual candidates the matrix named (no criterion): `renderVocabularyOps` edge cases; `projectedDocument`; `frozenTablesDigest`; `readers.ts` V-READ; `waiverBinding` in `content-hash.ts` (no test names it; content-hash.test.ts has 7 tests, 0 mention waiver; indirect cover through readers.test.ts waiver cases around lines 884-1019, check-waivers.test.ts 37, waiver-scope.test.ts 5); the engine refactors (check.test.ts 20, waiver-scope 5, numeric-*.test.ts, encode.test.ts 16 with 2 added in the range, package-boundary.test.ts 9 with 1 added; behavior preservation rests on the whole suite and unchanged snapshots, assumption A1); solver-service `letGo` (11 tests, 1 added in the range, no direct reference outside `solver-service.ts`). Full matrix text: `job-2211/evidence-matrix.md`.
 
@@ -78,7 +78,7 @@ The contract bound is 4 GB for a new test that boots a solver per document; the 
 - Set: 45 generated mutants over 10 product files (targeted operators over keys, union-find, refusal and waiver code; no throw or catch sites in scope, so no smell operators). 4 rejected by `tsc` (M19, M23, M26, M28), 41 valid. Round 1 at 2ce1b05: 31 killed, 10 survived (75.61%, no contractual floor); both passes had identical per-mutant outcomes; no timeouts or tool errors.
 - Frozen set hash, SHA-256 of `JSON.stringify(parsed mutants.json)`: `7a6d59545faf7ba0939cad37cf9412a5156c9cd790a9b7a7be4a9a9925ee1a1b`. The replay verified the same hash.
 - Sabotage controls (each type-checks, exits 1, restores with `git diff --quiet` exit 0): SAB-1 2 sites, 17 failing tests, caught at `s6-properties.test.ts:552:26` (S6-005); SAB-2 2 sites, 12 failing, caught at `:418:21` (S6-006); SAB-3 5 sites, 11 failing, caught at `:725:39` (S6-007); SAB-4 5 sites, 15 failing, caught at `:770:28` (S6-008). SAB-4-partial (three numeric-bound return sites only) leaves both S6-008 tests green, as reading B found; the whole SAB-4 is the required control.
-- Round 1 verdict red on S6-004: M24 (`invariants.ts:224`, `w.aliases = w.aliases.filter((a) => a !== phrase)` replaced by `w.aliases = w.aliases`) survived all 30 S6 tests and 122 other pure vocabulary tests in both passes and violates P4 on a V2 collision with declared contraries (a missing case). Probes: original passes twice, mutant fails twice at `check-p4-probe.mjs:8:8`.
+- Round 1 verdict red on S6-004: M24 (`invariants.ts:224`, `w.aliases = w.aliases.filter((a) => a !== phrase)` replaced by `w.aliases = w.aliases`) survived the 152 selected pure tests (30 S6 plus 122 others) in both passes; the attack did not run `pnpm check`. It violates P4 on a V2 collision with declared contraries (a missing case). Probes: original passes twice, mutant fails twice at `check-p4-probe.mjs:8:8`.
 - Equivalents: M01 (KEY_SCOPE literal), M13 (empty-label guard under the extractor's invariant), M27 (maximum instead of minimum representative preserves the partition).
 - Surviving non-criterion residual candidates at round 1: M04, M09, M15, M30, M32, M43 (see decisions below).
 - Replay at 7b1fc2b (attack-r1, job 2250, ledger SHA-256 `a9931355d0d38d259d1de317dddae0542e7932291730e32bf95714a312a01704`): baseline `tsc` exit 0 and 230 tests passed (s6-properties 31, invariants/hygiene/readers/resolve 122, compat/requirements/content-hash/check-waivers/waiver-scope 76, outcome 1); 55 executions; 32 killed, 9 survived, 4 type-rejected; M24 killed in both passes at `s6-properties.test.ts:769` ("expected [ 'open the valve' ] to not include 'open the valve'"); all 31 round-1 kills still die; the nine survivors are M01, M04, M09, M13, M15, M27, M30, M32, M43; no new mutants; product source and oracle hashes unchanged; clean restoration every time.
@@ -89,7 +89,9 @@ The contract bound is 4 GB for a new test that boots a solver per document; the 
 - Commit 7b1fc2b, one file (+32 lines): the test "[S6-004] a refused V2 alias leaves no contrary pair in its class: `open the valve` is dropped from act_close". Fixture: empty document, antonyms open/close, frozen tables, `act_open` (`open the valve`), `act_close` (`close the valve`, alias `open the valve`). Asserts the V2 violation, the refused alias absent, 2 action symbols, one contrary pair, `contraryLosses` empty, different representatives.
 - `-t "S6-004"` 6 passed (was 5). Under M24 in a throwaway copy: 1 failed, 5 passed, at `s6-properties.test.ts:769:32`.
 
-## 7. Review round 1 (jobs 2218, 2222, 2223; `review-ledger.json`)
+## 7. Review round 1 (jobs 2218, 2222, 2223; `review-ledger.json`) and the L1 rerun (jobs 2263, 2269)
+
+Round-1 L1 review job 2222 is VOID (AUD-REVIEW-1, section 9): the reviewer made one GitHub clone that the coordinator's garbled goal line allowed. Its lines below are kept as recorded and do not count toward the done check. L2 job 2223 is kept (clean per the audit). The L1 rerun is in section 7b.
 
 - Prep (codex, 2218): three blind items over `9605b2c..2ce1b05` (33 files, 22,170 source lines, 8,900 diff lines each), one clean and two one-line canaries, the key file kept outside the readers; key SHA-256 `27dbff09ef27db211da51e2a797b047e133acdbc5d25c17534f7ae667597b878`, verified. Each item passed `tsc` and 179 pure vocabulary tests.
 - Mapping (review closed): v1 canary L2 (test oracle weakened, `s6-properties.test.ts:786`), v2 clean, v3 canary L1 (prefix-only waiver hash, `content-hash.ts:199`).
@@ -97,6 +99,33 @@ The contract bound is 4 GB for a new test that boots a solver per document; the 
 - Findings on the clean item v2, neither naming a criterion: RV-1 `projection.ts:100` a real system named `vocabulary probe` collides with the synthetic probe scope and gets 2 false V-KIND reports (repro `job-2222/v2-probe-repro.ts`, exit 1); RV-2 `solver-service.ts:151` a second module copy cannot release its pending mailbox wait (simulated runtime, repro `job-2223/review-v2/repro-mailbox.mjs`, exit 1, no WASM boot, not seen in the suite).
 - Both are accepted residuals under D-4-2. Findings on the canary items are the planted defects and are not product findings.
 
+## 7b. L1 rerun (jobs 2263 and 2269; `review-ledger.json` round_1_L1_rerun; `records/review-2.json`)
+
+- Prep (codex, job 2263, board item review-prep-v2): two blind items w1 and w2 over the same range, each 33 files, 31 changed source files, 22,077 source lines, `diff.patch` 8,867 lines, `contract.json` 31 lines; key file `run-4-2.key` kept outside the readers; key SHA-256 `1506cf848632f207bc8e85d4bd5230b7ab86a66c2c5b3e52dde9370997d53b0f`, verified.
+- Mapping (review closed): w1 is the L1 canary (`resolve.ts:146`, `parent.set(m.b, a)` attaches the merge endpoint instead of the class root, so a transitive merge b~c then a~c leaves `sys_b` its own representative); w2 is clean. The canary passes the 180-test pure suite and `s6-properties.test.ts`.
+- L1 (codex, job 2269, board item review-l1-v2): read 17,734 of 17,734 diff lines (8,867 per item) and 31 of 31 contract lines per item, self-reported; the final auditor check on this trace is pending (board item audit-r1). w1: does not survive, blocking, S6-010, repro exit 1 with the reordered control exit 0; the canary is caught. w2: survives, with one minor finding equal to the existing follow-up B9 (a declared quantity's unit or dimension is not checked against its bounds; repro exit 0, violations 0; criterion none).
+- Setup note from the reviewer: the provided PATH selected a pnpm 11.27.1 shim; the reviewer used the installed pnpm 11.21.0. No remote clone or fetch; one board claim.
+- Disposition: D-4-3 (receipt section 2) adds this canary to the S6-010 residual's evidence and adds no test; the final card offers one more round for a transitive-merge test.
+
 ## 8. Decisions and residuals
 
-See `receipt.md` section 2 and 3. The machine-readable copy is the coordinator's `records/decisions.json` (D-4-1, D-4-2, residuals, assumptions, follow-ups).
+See `receipt.md` section 2 and 3. The machine-readable copy is the coordinator's `records/decisions.json` (D-4-1, D-4-2, D-4-3, residuals, assumptions, follow-ups, voids, evidence_notes).
+
+## 9. Audit and done check (job 2259, codex GPT family, at e8951f6; findings returned only)
+
+The auditor had no prior build or attack involvement; its checks ran in its own scratch clones (clean afterwards); it opened no canary key file. Node 24.21.0, pnpm 11.21.0, Vitest 4.1.6, TypeScript 6.0.3 from the frozen lockfile. Verdict recorded by the audit: criteria S6-001 to S6-012 pass at e8951f6; the overall done check was NOT SATISFIED because review job 2222 is void.
+
+- Criterion filters, `npx vitest run src/domain/vocabulary/s6-properties.test.ts -t "S6-n"`, each exit 0: S6-001 3, S6-002 3, S6-003 5, S6-004 6, S6-009 9, S6-010 3, S6-011 3 passed. Existing filters, exit 0: `resolve.test.ts -t "implicit vocabulary"` 16 (D-4-2), `(2) declaring` 1, `(3) mints|mintSymbolIds` 5, `invariants.test.ts -t "property (4)|V-OPP"` 6, `heat` 2.
+- Plan sabotages, baseline 31 of 31 passed, each applied once and restored: SAB-1 7 failed of 31 (S6-005 target, test line 552); SAB-2 10 failed (S6-006, line 418); SAB-3 4 failed (S6-007, line 725); SAB-4 1 failed (S6-008, line 802). Restored full-file replay 31 of 31, exit 0, peak RSS 235,752 KB.
+- S6-012: `pnpm check` exit 0, all seven legs ran: `biome ci` 260 files no fixes, `tsc --noEmit`, `check:agents`, reachability FEASIBLE (clean PROVED_UNDER_HYPOTHESES, buggy VIOLATED, 809 ms of 5000), build, Vitest 3890 passed in 119 files, knip no findings. Elapsed 3:01.47, peak RSS 5,231,672 KB. KNOWN_ESCAPES 51 (source evaluation). No snapshot path changed in `9605b2c..2b03644` or `2b03644..e8951f6`.
+- Diff `2b03644..e8951f6`: seven additions (`s6-properties.test.ts`, 955 lines, 31 test declarations, 132 `expect` calls, no skip, only or todo, plus the six records); nothing modified or deleted. Both approval JSON paths are absent. The contract hash recomputed to `971c904835f2` (full `971c904835f2ea2bdd865f30296b2d09d2c6c5dc50b5769890f62d6bfe1676c5`) and the tree's contract is byte-identical to `records/contract.json`. The three commits (2ce1b05, 7b1fc2b, e8951f6) carry a Behaviors paragraph.
+- Trace checks: job 2218 no prohibited explicit write (the one outside write is the authorized key file, mode 0600); job 2223 clean, zero prohibited reads; job 2222 one prohibited GitHub clone (event 109157).
+
+| finding | what the audit said | resolution |
+|---|---|---|
+| AUD-REVIEW-1 | review job 2222 is void (one prohibited clone, allowed by the coordinator's garbled goal line; an orchestration instruction conflict, not reviewer disobedience); a fresh blind L1 review with a new key is required | rerun by prep job 2263 and L1 job 2269 (section 7b); the final auditor check on job 2269's trace is pending (audit-r1) |
+| AUD-DOC-1 | receipt said three criteria rest on one example each; S6-010 has three examples, level 1 | corrected by clerk-r1 (this commit): counts as the matrix gives them (S6-005 and S6-006 one example each, S6-010 three examples) |
+| AUD-DOC-2 | receipt said M24 passed every test; the attack selected 152 pure tests (30 S6 plus 122 others) and did not rerun `pnpm check` | corrected by clerk-r1: claim limited to the 152 selected tests, both passes |
+| AUD-DOC-3 | `behaviors.json` and `evidence.md` labeled the S6-005 and S6-006 gaps accepted in D-4-2, which excluded them | corrected by clerk-r1 from `records/decisions.json` evidence_notes |
+
+The audit also noted job 2223's full-source reading was narrower than the diff (9,096, 8,570 and 9,038 of 22,170 lines per item); it classed this a coverage limitation, not a second void review. The audit records no trusted-base change or residual acceptance.

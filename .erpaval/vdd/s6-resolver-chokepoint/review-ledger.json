@@ -1,5 +1,5 @@
 {
-  "_about": "Review round 1 of run 4, assembled by the clerk (job 2257) from records/review-1.json and the board results review-prep, review-l1, review-l2. The review is closed, so the canary mapping appears. The clerk judges nothing.",
+  "_about": "Review of run 4, assembled by the clerk (job 2257) from records/review-1.json and the board results review-prep, review-l1, review-l2; corrected by clerk-r1 (job 2276) from records/review-2.json, records/decisions.json (voids) and the board results review-prep-v2 and review-l1-v2. Both reviews are closed, so the canary mappings appear. The clerk judges nothing.",
   "run": 4,
   "contract_hash": "971c904835f2",
   "round": 1,
@@ -40,7 +40,8 @@
       "canary_findings": {
         "L1-WAIVER-PREFIX": "v3, the planted L1 canary",
         "L1-X14-CONTROL": "v1, the planted L2 canary"
-      }
+      },
+      "status": "VOID (AUD-REVIEW-1, audit job 2259): the reviewer made one prohibited GitHub clone (event 109157), which the coordinator's garbled goal line allowed; its verdicts and catches are kept below as recorded and no longer count toward the done check. Rerun: round_1_L1_rerun."
     },
     {
       "lens": "L2 errors and tests",
@@ -65,7 +66,8 @@
       "canary_findings": {
         "L2-v1-control": "v1, the planted L2 canary",
         "L2-v3-hash": "v3, the planted L1 canary"
-      }
+      },
+      "status": "kept: clean per the audit (zero prohibited reads; 26,700 unique diff lines verified from the trace; full-source reading narrower than the diff is a coverage limitation, not a void)"
     }
   ],
   "reviews": [
@@ -76,7 +78,8 @@
       "caught": {
         "L1 canary v3": true,
         "L2 canary v1": true
-      }
+      },
+      "status": "VOID (AUD-REVIEW-1); replaced by job 2269 (round_1_L1_rerun)"
     },
     {
       "lens": "L2",
@@ -85,7 +88,8 @@
       "caught": {
         "L2 canary v1": true,
         "L1 canary v3": true
-      }
+      },
+      "status": "kept (clean per the audit)"
     }
   ],
   "findings_on_clean_item_v2": [
@@ -115,5 +119,50 @@
     }
   ],
   "note_on_recorded_slips": "Job 2222 goal had a garbled environment line naming a GitHub clone; the coordinator mailed a correction (mail 696) and the auditor checks the trace. Not judged here.",
-  "criterion_effect": "RV-1 and RV-2 name no criterion (criterion none in the review records). Neither is a false certificate: RV-1 demotes, RV-2 is a lifecycle leak not seen in the suite."
+  "criterion_effect": "RV-1 and RV-2 name no criterion (criterion none in the review records). Neither is a false certificate: RV-1 demotes, RV-2 is a lifecycle leak not seen in the suite.",
+  "round_1_L1_rerun": {
+    "cause": "AUD-REVIEW-1, see records/decisions.json voids",
+    "prep": {
+      "job": 2263,
+      "board_item": "review-prep-v2",
+      "key_file": "run-4-2.key (kept outside the readers)",
+      "key_sha256": "1506cf848632f207bc8e85d4bd5230b7ab86a66c2c5b3e52dde9370997d53b0f",
+      "key_verified": true,
+      "items": {
+        "w1": "canary L1: resolve.ts:146 union-find attaches the merge endpoint (parent.set(m.b, a)) instead of the class root; a transitive merge splits an admitted class and the representative depends on merge order; passes the 180-test pure suite",
+        "w2": "clean"
+      },
+      "each_item": "33 files, 31 changed source files, 22,077 source lines, diff.patch 8,867 lines, contract.json 31 lines"
+    },
+    "review": {
+      "lens": "L1",
+      "job": 2269,
+      "board_item": "review-l1-v2",
+      "family": "codex (OpenAI)",
+      "author_family": "Anthropic",
+      "lines_read": "17734/17734 diff lines (8,867 per item, self-reported; the final auditor check on this trace is pending, board item audit-r1)",
+      "contract_lines_read": "31/31 per item",
+      "verdict_on_items": {
+        "w1": "does not survive (S6-010, blocking; repro ran, exit 1; reordered control exit 0)",
+        "w2": "survives"
+      },
+      "canary_caught": {
+        "L1 canary w1": true
+      },
+      "finding_on_clean_item_w2": {
+        "severity": "minor",
+        "claim": "declared quantity unit or dimension is not checked against its bounds (existing follow-up B9)",
+        "repro": "job-2269/w2-repro/review-quantity-metadata.ts, exit 0, violations=0, declared time/ms against a distance/m bound",
+        "criterion": "none",
+        "status": "existing contract residual B9, not a new scope"
+      }
+    },
+    "setup_note": "the provided PATH selected a pnpm 11.27.1 shim; the reviewer used the installed pnpm 11.21.0; no remote clone or fetch; one board_claim only"
+  },
+  "audit_disposition": {
+    "job": 2259,
+    "AUD-REVIEW-1": "job 2222 is void; job 2223 is kept",
+    "resolution": "rerun by jobs 2263 and 2269; the final auditor check on the rerun reviewer's trace is pending (audit-r1)"
+  },
+  "decision": "D-4-3 (coordinator default after an unanswered ask, redirectable): the w1 canary is added to the S6-010 residual's evidence; no new test. See receipt.md section 2."
 }
