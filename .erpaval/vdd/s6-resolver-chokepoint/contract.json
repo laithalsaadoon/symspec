@@ -1,0 +1,31 @@
+{
+ "run": 4,
+ "story": "symspec spec 007 Phase 3 slice S6 receipt, entry legacy",
+ "base": "2b0364406121fc441a4b30b1da36d771b9eecf97",
+ "receipted_range": "9605b2c884692d82a281724c3135c6fe5c467e3b..2b0364406121fc441a4b30b1da36d771b9eecf97",
+ "tier": 3,
+ "tier_note": "RQ1(a): the receipted range edits engine core and the z3 adapter; a third reading (reader-b) runs before the contract role; no threat model (intake found no trust boundary)",
+ "write_scope": ["src/domain/vocabulary/s6-properties.test.ts", ".erpaval/vdd/s6-resolver-chokepoint/**", "src/domain/vocabulary/*.ts product code only when a criterion turns red, under a person ruling"],
+ "untouched": "every other src/** file, existing tests, snapshots, spec.md, phase3-plan.md, AGENTS.md, package.json, lockfile, vitest/biome/knip/tsconfig, CLAUDE.md, .github; sabotages only in a throwaway clone",
+ "runner": "npx vitest run from the repo root with node 24 on PATH; the new file boots no solver and stays under 4 GB RSS",
+ "g0_base": {"biome ci": "exit 0, 259 files, No fixes applied.", "tsc --noEmit": "exit 0", "check:agents": "exit 0", "gate:reachability": "exit 0, FEASIBLE — sound, 836 ms of 5000", "build": "exit 0", "vitest run": "exit 0, 3859 passed in 118 files", "knip": "exit 0, no findings", "pnpm check": "exit 0, 2:47, peak RSS 5.3 GB", "KNOWN_ESCAPES": 51, "snapshots": "unchanged in the receipted range"},
+ "rulings": {"RQ1": "a", "RQ2": "a", "RQ3": "a", "RQ4": "b", "RQ5": "a", "RQ6": "a", "RQ7": "a", "RQ8": "a", "RQ9": "b"},
+ "criteria": [
+  {"id": "S6-001", "line": "P1", "command": "npx vitest run src/domain/vocabulary/resolve.test.ts -t \"implicit vocabulary\" && npx vitest run src/domain/vocabulary/s6-properties.test.ts -t \"S6-001\"", "expected": "exit 0; 15 passed (@existing) and all S6-001 tests passed, 0 failed, 0 skipped; X9 per RQ7 over fixture and 73 docs", "phase": "contract, evidence"},
+  {"id": "S6-002", "line": "P2", "command": "npx vitest run src/domain/vocabulary/s6-properties.test.ts -t \"S6-002\" (+ resolve.test.ts -t \"\\(2\\) declaring\", 1 passed)", "expected": "exit 0; X10 on fixture and 73 docs", "phase": "contract, evidence"},
+  {"id": "S6-003", "line": "P3", "command": "npx vitest run src/domain/vocabulary/s6-properties.test.ts -t \"S6-003\" (+ resolve.test.ts -t \"\\(3\\) mints|mintSymbolIds\", 5 passed)", "expected": "exit 0; X11, X17, label-key reading, digest and suffix forms", "phase": "contract, evidence"},
+  {"id": "S6-004", "line": "P4", "command": "npx vitest run src/domain/vocabulary/s6-properties.test.ts -t \"S6-004\" (+ invariants.test.ts -t \"property \\(4\\)|V-OPP\", 6 passed)", "expected": "exit 0; X12, X13 (RQ5 form a), 73 docs, action phrases", "phase": "contract, evidence"},
+  {"id": "S6-005", "line": "SAB-1", "command": "throwaway clone: keys.ts action case keyed with normalize(text); npx vitest run src/domain/vocabulary/s6-properties.test.ts", "expected": "exit 1, the S6-005 P1 test on the RQ9(b) variant red; restore; git diff --quiet exit 0", "phase": "attack"},
+  {"id": "S6-006", "line": "SAB-2", "command": "throwaway clone: keys.ts system case keyed with normalize(text)", "expected": "exit 1, X4/X18 two-symbol test red (P1 may stay green); restore clean", "phase": "attack"},
+  {"id": "S6-007", "line": "SAB-3", "command": "throwaway clone: every V-OPP return in outcome.ts compareOutcome disabled", "expected": "exit 1, S6-004 test on D1 red in (4); restore clean", "phase": "attack"},
+  {"id": "S6-008", "line": "SAB-4", "command": "throwaway clone: every V-NUM return in outcome.ts compareOutcome disabled", "expected": "exit 1, X14 refusal test red; restore clean", "phase": "attack"},
+  {"id": "S6-009", "line": "AC-4-1 (S6 part)", "command": "npx vitest run src/domain/vocabulary/s6-properties.test.ts -t \"S6-009\"", "expected": "exit 0; X1-X8; no feature row (RQ8 a)", "phase": "contract, evidence"},
+  {"id": "S6-010", "line": "AC-4-2 (S6 part)", "command": "npx vitest run src/domain/vocabulary/s6-properties.test.ts -t \"S6-010\"", "expected": "exit 0; X16, same-key per RQ6 a", "phase": "contract, evidence"},
+  {"id": "S6-011", "line": "AC-4-6 (S6 part)", "command": "npx vitest run src/domain/vocabulary/s6-properties.test.ts -t \"S6-011\" (+ invariants.test heat/cool, 2 passed)", "expected": "exit 0; X15", "phase": "contract, evidence"},
+  {"id": "S6-012", "line": "G0", "command": "pnpm check (biome ci, tsc, check:agents, gate:reachability, build, vitest run, knip)", "expected": "exit 0; every leg as on base; vitest 3859 plus the new tests; KNOWN_ESCAPES 51; no snapshot file moved", "phase": "evidence, audit"}
+ ],
+ "residuals": ["AC-4-1: S5 schema and per-kind payloads; S7 declaration through the fold and symspec vocab", "AC-4-2: S8 atoms scoped through the projection at compat.toEngineDoc and the spec's Door Controller sabotage", "AC-4-6: S7 vocab alias refusing at write time"],
+ "assumptions": ["A1 the engine refactors in the receipted range preserve behavior (unchanged snapshots, G0-6), owner Laith", "A2 S8 feeds the engine through projectedDocument text alone, owner S8", "A3 the test stand-in declare matches S7's fold for vocab ops, owner S7"],
+ "followups_from_readings": ["B1/RQ3 plan 4.2(b) text vs base V-OPP refusal of contrary-adding merges (S8/S17)", "B2/RQ4 plan F4 and 4.3 V-OPP text vs base (S7 fold re-validates)", "B3 plan P3 text names quantityKey; the label key is meant", "B9 declared quantity unit vs its bounds (MW vs mw) unchecked (S5/S7)"],
+ "approved_by": "person (ask_human, job 2172, 2026-10-09): Approve all as recommended"
+}

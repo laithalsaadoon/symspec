@@ -1,0 +1,273 @@
+{
+  "_about": "S6 resolver chokepoint behavior registry, VDD run 4 (reconciler job 2184 proposed the ids; the person approved contract 971c904835f2 as D-4-1). Test names and -t counts are read from src/domain/vocabulary/s6-properties.test.ts at 7b1fc2b by the clerk (job 2257). class, floor and achieved are the reconciler and evidence roles, not the clerk.",
+  "run": 4,
+  "contract_hash": "971c904835f2",
+  "test_file": "src/domain/vocabulary/s6-properties.test.ts",
+  "head": "7b1fc2b88250dc87c3c95e3e05ab7a35a4111579",
+  "tests_in_file": 31,
+  "behaviors": {
+    "S6-001": {
+      "statement": "Implicit symbols are never finer than the engine's atom and quantity-key partition (X9, X21)",
+      "line": "P1",
+      "oracle": "differential vs engine encoder and requirementBounds; exact",
+      "cls": "false certificate",
+      "floor": 2,
+      "achieved": "2 (corpus property over 73 documents)",
+      "filter": "S6-001",
+      "count": 3,
+      "tests": [
+        "[S6-001] [S6-002] [S6-003] [S6-004] [S6-009] the fixture has 14 rows and 26 implicit symbols, the corpus 73 documents, 204 requirements and 375 symbols",
+        "[S6-001] X9 on the fixture: 0 violations, 19 atoms on every row, 20 engine keys, the gate including R1-R10",
+        "[S6-001] X21 over the 73 corpus documents: 0 violations, every requirement encodes an atom"
+      ],
+      "existing": {
+        "file": "src/domain/vocabulary/resolve.test.ts",
+        "filter": "implicit vocabulary",
+        "count": 16,
+        "contract_text": 15,
+        "note": "Contract text says 15 passed; the filter selects 16 (7 in the corpus describe, 9 in the multi-spelling describe). Recorded as 16 under D-4-2; contract.json is not edited."
+      },
+      "rulings": [
+        "RQ7 a"
+      ],
+      "origin": "reading"
+    },
+    "S6-002": {
+      "statement": "Declaring the rendered implicit vocabulary rebuilds the same index and bindings (X10, X21)",
+      "line": "P2",
+      "oracle": "round trip with a test stand-in declare (metamorphic)",
+      "cls": "binding drift",
+      "floor": 2,
+      "achieved": "2",
+      "filter": "S6-002",
+      "count": 3,
+      "tests": [
+        "[S6-001] [S6-002] [S6-003] [S6-004] [S6-009] the fixture has 14 rows and 26 implicit symbols, the corpus 73 documents, 204 requirements and 375 symbols",
+        "[S6-002] X10 on the fixture: 26 ops, no violation, same index fields, 14 equal bindings, identity projection",
+        "[S6-002] X21 over the 73 corpus documents: 375 ops and 204 equal bindings"
+      ],
+      "existing": {
+        "file": "src/domain/vocabulary/resolve.test.ts",
+        "filter": "\\(2\\) declaring",
+        "count": 1
+      },
+      "rulings": [
+        "Q2 (b) plus raw minted"
+      ],
+      "origin": "reading"
+    },
+    "S6-003": {
+      "statement": "Every minted id is a scope and quantity-label fixed point, deterministic under reordering (X11, X17, digest and suffix forms)",
+      "line": "P3, F9",
+      "oracle": "exact; metamorphic (order)",
+      "cls": "binding drift",
+      "floor": 2,
+      "achieved": "2",
+      "filter": "S6-003",
+      "count": 5,
+      "tests": [
+        "[S6-001] [S6-002] [S6-003] [S6-004] [S6-009] the fixture has 14 rows and 26 implicit symbols, the corpus 73 documents, 204 requirements and 375 symbols",
+        "[S6-003] X11 on the fixture: all 26 ids, the `_2` id included; the full quantity key is scoped by design",
+        "[S6-003] the digest and suffix forms are fixed points too",
+        "[S6-003] X17 the fixture`s vocabulary is a function of the requirement set: reversed order deep-equals",
+        "[S6-003] X21 over the 73 corpus documents: 375 minted ids, every one a fixed point"
+      ],
+      "existing": {
+        "file": "src/domain/vocabulary/resolve.test.ts",
+        "filter": "\\(3\\) mints|mintSymbolIds",
+        "count": 5
+      },
+      "rulings": [
+        "label-key reading (B3)"
+      ],
+      "origin": "reading"
+    },
+    "S6-004": {
+      "statement": "The canonical rewrite keeps every contrary action pair, and drops a contrary-losing alias (X12, X13)",
+      "line": "P4, F4",
+      "oracle": "exact; differential vs areContrary",
+      "cls": "false certificate",
+      "floor": 2,
+      "achieved": "2",
+      "filter": "S6-004",
+      "count": 6,
+      "count_history": "5 at 2ce1b05; 6 at 7b1fc2b after contract-r1 added the M24 fixture",
+      "tests": [
+        "[S6-001] [S6-002] [S6-003] [S6-004] [S6-009] the fixture has 14 rows and 26 implicit symbols, the corpus 73 documents, 204 requirements and 375 symbols",
+        "[S6-004] X12 on the fixture: 3 contrary pairs at one probe scope, 0 losses, `seal the valve` contrary to neither",
+        "[S6-004] [S6-007] X13 D1 (listed form): property (4) holds on the validated index, and V-OPP drops `shut the valve`",
+        "[S6-004] X13 control: D1 without the alias validates clean",
+        "[S6-004] a refused V2 alias leaves no contrary pair in its class: `open the valve` is dropped from act_close",
+        "[S6-004] X21 over the 73 corpus documents: 0 losses, and the action phrases hold contrary pairs"
+      ],
+      "existing": {
+        "file": "src/domain/vocabulary/invariants.test.ts",
+        "filter": "property \\(4\\)|V-OPP",
+        "count": 6
+      },
+      "rulings": [
+        "RQ3 a",
+        "RQ4 b",
+        "RQ5 a"
+      ],
+      "origin": "reading"
+    },
+    "S6-005": {
+      "statement": "Actions are keyed by the atomize resp body, so `opens the valve` and `open the valve` are one symbol",
+      "line": "SAB-1",
+      "oracle": "exact example; sabotage (P1 red)",
+      "cls": "false certificate",
+      "floor": 2,
+      "achieved": "1 example plus sabotage kill (gap candidate, accepted in D-4-2)",
+      "filter": "S6-005",
+      "count": 1,
+      "tests": [
+        "[S6-005] P1 on the RQ9(b) variant: one action act_open_the_valve for R8 and R15, 0 violations"
+      ],
+      "rulings": [
+        "RQ9 b"
+      ],
+      "origin": "reading"
+    },
+    "S6-006": {
+      "statement": "Systems are keyed by the engine scope key, so `A Gateway` and `Gateway` stay two systems",
+      "line": "SAB-2",
+      "oracle": "exact example; sabotage (two-symbol assertion red)",
+      "cls": "false certificate",
+      "floor": 2,
+      "achieved": "1 example plus sabotage kill (gap candidate, accepted in D-4-2)",
+      "filter": "S6-006",
+      "count": 1,
+      "tests": [
+        "[S6-006] [S6-009] X4 the article keeps two systems: sys_a_gateway (R4) and sys_gateway (R5)"
+      ],
+      "rulings": [],
+      "origin": "reading"
+    },
+    "S6-007": {
+      "statement": "V-OPP refuses D1's alias `shut the valve`",
+      "line": "SAB-3",
+      "oracle": "exact example; sabotage ((4) red)",
+      "cls": "false certificate",
+      "floor": 2,
+      "achieved": "1 on the tagged test; level 2 through S6-004 X21 and invariants V-OPP",
+      "filter": "S6-007",
+      "count": 1,
+      "tests": [
+        "[S6-004] [S6-007] X13 D1 (listed form): property (4) holds on the validated index, and V-OPP drops `shut the valve`"
+      ],
+      "rulings": [
+        "RQ5 a"
+      ],
+      "origin": "reading"
+    },
+    "S6-008": {
+      "statement": "V-NUM refuses D2's alias `at most 25 C` of `at most 20 C` (X14)",
+      "line": "SAB-4",
+      "oracle": "exact example with control; sabotage (refusal assertion red)",
+      "cls": "false certificate (reconciler); gate drift (evidence role floor assignment)",
+      "floor": 1,
+      "achieved": "1",
+      "filter": "S6-008",
+      "count": 2,
+      "tests": [
+        "[S6-008] X14 D2 (listed form): exactly one V-NUM violation, the alias dropped",
+        "[S6-008] X14 control: D2 without the alias validates clean"
+      ],
+      "rulings": [
+        "Q8 a"
+      ],
+      "origin": "reading"
+    },
+    "S6-009": {
+      "statement": "Each slot resolves to its kind per plan 4.1, every requirement resolves, only used kinds are minted (X1-X8)",
+      "line": "AC-4-1 (S6 part)",
+      "oracle": "exact",
+      "cls": "binding drift",
+      "floor": 2,
+      "achieved": "1 on X1-X8; level 2 from S6-001/002/003 X21 over 73 documents",
+      "filter": "S6-009",
+      "count": 9,
+      "tests": [
+        "[S6-001] [S6-002] [S6-003] [S6-004] [S6-009] the fixture has 14 rows and 26 implicit symbols, the corpus 73 documents, 204 requirements and 375 symbols",
+        "[S6-009] X1 the implicit vocabulary: 26 symbols, 6 system, 1 state, 3 event, 14 action, 2 quantity, no feature",
+        "[S6-009] X2 one system, two spellings: sys_door_controller binds R1, R2, R3, R6, R7",
+        "[S6-009] X3 one state through article and copula: st_train_moving binds R6 precondition and R7 trigger",
+        "[S6-006] [S6-009] X4 the article keeps two systems: sys_a_gateway (R4) and sys_gateway (R5)",
+        "[S6-009] X5 the valve actions: R8 act_open_the_valve (canonical `opens the valve`), R9 shut, R10 seal",
+        "[S6-009] X6 unit case MW/mw: two actions, one quantity qty_limit_the_output",
+        "[S6-009] X7 two bounds, one quantity: qty_keep_the_cabin_temperature at 20/1 C and 25/1 C",
+        "[S6-009] X8 events: evt_tank_full (R9), evt_leak_alarm_sounds (R10), evt_door_opens (R14)"
+      ],
+      "rulings": [
+        "RQ8 a"
+      ],
+      "origin": "reading"
+    },
+    "S6-010": {
+      "statement": "The projection uses the min-id representative and rewrites only different-key slots (X16)",
+      "line": "AC-4-2 (S6 part)",
+      "oracle": "exact",
+      "cls": "false certificate (reconciler); binding drift (evidence role floor assignment)",
+      "floor": 2,
+      "achieved": "1 (example only; accepted gap, revisit S8)",
+      "filter": "S6-010",
+      "count": 3,
+      "tests": [
+        "[S6-010] X16 alias `The Door Controller` of `door-controller`: admitted, only that requirement rewritten",
+        "[S6-010] X16 the class representative is the minimum id, in either merge direction",
+        "[S6-010] RQ6(a) same-key spellings resolve to the declared canonical; `The Door Controller` needs an alias"
+      ],
+      "rulings": [
+        "RQ6 a"
+      ],
+      "origin": "reading"
+    },
+    "S6-011": {
+      "statement": "The validator refuses direct and transitive contrary action merges (X15)",
+      "line": "AC-4-6 (S6 part)",
+      "oracle": "exact",
+      "cls": "false certificate",
+      "floor": 2,
+      "achieved": "1 on tagged tests; level 2 through S6-004 property (4) and invariants V-OPP",
+      "filter": "S6-011",
+      "count": 3,
+      "tests": [
+        "[S6-011] X15 heat/cool: the direct merge is refused V-OPP and no merge is admitted",
+        "[S6-011] X15 heat~warm admitted, warm~cool refused V-OPP, class representative act_a_heat",
+        "[S6-011] X15 on the fixture: open+shut and lock+unlock merges are refused V-OPP"
+      ],
+      "existing": {
+        "file": "src/domain/vocabulary/invariants.test.ts",
+        "filter": "heat",
+        "count": 2
+      },
+      "rulings": [],
+      "origin": "reading"
+    },
+    "S6-012": {
+      "statement": "G0 stays green with the run's additions",
+      "line": "G0",
+      "oracle": "the repo's own check (pnpm check)",
+      "cls": "gate drift",
+      "floor": 1,
+      "achieved": "n/a (gate)",
+      "filter": null,
+      "count": null,
+      "tests": [],
+      "rulings": [
+        "RQ1 a"
+      ],
+      "origin": "reading",
+      "legs": [
+        "biome ci",
+        "tsc --noEmit",
+        "check:agents",
+        "gate:reachability",
+        "build",
+        "vitest run",
+        "knip"
+      ]
+    }
+  }
+}
