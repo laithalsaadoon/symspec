@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.1.0](https://github.com/laithalsaadoon/symspec/compare/v2.0.0...v2.1.0) (2026-10-09)
+
+
+### Features
+
+* **vocabulary:** S6 resolver chokepoint, implicit vocabulary and invariants (pure) ([#20](https://github.com/laithalsaadoon/symspec/issues/20)) ([49b37c6](https://github.com/laithalsaadoon/symspec/commit/49b37c6a700a7915df36c7fbe41a93a19baa7b56))
+
+
+### Bug Fixes
+
+* **lint:** force-ignore .claude so biome ci survives nested worktree configs ([9605b2c](https://github.com/laithalsaadoon/symspec/commit/9605b2c884692d82a281724c3135c6fe5c467e3b))
+* **lint:** force-ignore .claude so biome ci survives nested worktree configs ([0cbfac5](https://github.com/laithalsaadoon/symspec/commit/0cbfac562173602e5a143017c5a17820e276a299))
+
 ## [2.0.0](https://github.com/laithalsaadoon/symspec/compare/v1.2.1...v2.0.0) (2026-10-06)
 
 
