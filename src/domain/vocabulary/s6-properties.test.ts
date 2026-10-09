@@ -743,6 +743,38 @@ describe('[S6-004] the canonical rewrite keeps every contrary action pair, and d
     expect(contraryLosses(D1_CONTROL, index)).toEqual([])
   })
 
+  it('[S6-004] a refused V2 alias leaves no contrary pair in its class: `open the valve` is dropped from act_close', () => {
+    // contract-r1 (attack M24): an alias that is another symbol's canonical is refused V2, and
+    // the refusal must remove it, or act_close holds `close the valve` and `open the valve`.
+    const base: RequirementsDocument = { ...emptyDocument(), antonyms: [{ a: 'open', b: 'close' }] }
+    const doc = withVocabulary(base, [
+      act('act_open', 'open the valve'),
+      act('act_close', 'close the valve', ['open the valve']),
+    ])
+    // The fixture is a real contrary pair at the probe scope, so P4 below quantifies over something.
+    const atom = atomOf(base)
+    expect(areContrary(atom('open the valve'), atom('close the valve'))).toBe(true)
+
+    const { index, invalid } = buildVocabularyIndex(doc)
+    expect(brief(invalid)).toEqual([
+      {
+        invariant: 'V2',
+        dropped: 'alias',
+        symbols: ['act_close', 'act_open'],
+        phrase: 'open the valve',
+      },
+    ])
+    const close = index.byId.get('act_close')
+    expect(close?.canonical).toBe('close the valve')
+    expect(close?.aliases).not.toContain('open the valve')
+    expect(index.symbols.filter((s) => s.kind === 'action')).toHaveLength(2)
+    expect(contraryPairs(base, index)).toEqual(['close the valve / open the valve'])
+    expect(contraryLosses(base, index)).toEqual([])
+    expect(index.representative.get('act_close') ?? 'act_close').not.toBe(
+      index.representative.get('act_open') ?? 'act_open',
+    )
+  })
+
   it('[S6-004] X21 over the 73 corpus documents: 0 losses, and the action phrases hold contrary pairs', () => {
     let pairs = 0
     const losses: string[] = []
